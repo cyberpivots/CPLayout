@@ -3,7 +3,7 @@
 ## Completed In This Pass
 
 - Local Git is initialized with generated artifacts ignored, so future work can use `git status` and `git diff`.
-- Project-local Codex defaults request `gpt-5.5` with `xhigh` reasoning where available.
+- Project-local Codex defaults request `gpt-5.5` with medium default reasoning and high plan-mode reasoning; `AGENTS.md` defines escalation to high or xhigh by task risk.
 - Map package metadata now distinguishes archive type, tile content type, tile scheme, TileJSON URL, tile URL templates, checksum, install status, bounds, attribution, and license.
 - SQLite schema version `3` adds tile source metadata and package lookup indexes while preserving the project snapshot restore path.
 - Project ZIP archives validate manifest shape and project id/CRS consistency on import.
@@ -11,11 +11,11 @@
 - The SVG layout map supports tap-to-draft vertices in drawing/edit modes while panning and zooming remain viewport-only state.
 - Android native proof now has repo-local scripts for tool/device/package detection and completion-gated JSON report validation.
 - Web SQLite remains behind a documented gate and domain test that keeps localStorage selected unless WASM, COOP/COEP, and Playwright persistence proof all pass.
-- Native MapLibre tile rendering has a design gate that maps project tile metadata to MapLibre source props without adding the native dependency.
+- MapLibre is installed/configured for native and web adapter work, while native runtime verification remains blocked on a development build and device/emulator evidence.
 
 ## Still Deferred
 
-- Native MapLibre rendering of PMTiles/MBTiles remains deferred. MapLibre React Native accepts TileJSON URLs or tile URL templates, so raw archive files still require a local protocol adapter, local HTTP tile server, extracted tile directory, or conversion path.
+- Native MapLibre runtime behavior and native PMTiles/MBTiles rendering remain deferred. MapLibre React Native accepts TileJSON URLs or tile URL templates, so raw archive files still require a local protocol adapter, local HTTP tile server, extracted tile directory, or conversion path plus device verification.
 - Web SQLite remains deferred until Expo SQLite web is proven with Metro WASM support and COOP/COEP headers in the actual deployment environment.
 - Native SQLite and native ZIP sharing are compile-ready but not production-verified until `docs/android-native-verification.md` passes on a real Android device or emulator.
 - `npm run check:android-tools`, `npm run verify:android-native`, and `npm run verify:release` intentionally fail when Android SDK/device/app evidence is unavailable.

@@ -1,0 +1,22 @@
+{
+  "name": "@cplayout/map-adapters",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "validate": "npm run typecheck"
+  },
+  "dependencies": {
+    "@cplayout/core": "*",
+    "@cplayout/geometry": "*",
+    "@maplibre/maplibre-react-native": "^11.2.1",
+    "lucide-react-native": "1.16.0",
+    "maplibre-gl": "^5.24.0",
+    "pmtiles": "^4.4.1",
+    "react": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-svg": "15.15.3"
+  }
+}

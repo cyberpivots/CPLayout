@@ -2,6 +2,7 @@
   "mvp_tasks": [
     {
       "id": "MVP-01",
+      "current_status": "active",
       "objective": "Scaffold monorepo and shared packages.",
       "inputs": [
         "handoff JSON",
@@ -9,8 +10,11 @@
       ],
       "outputs": [
         "apps/mobile",
-        "apps/windows",
-        "packages/core"
+        "packages/core",
+        "packages/geometry",
+        "packages/gnss",
+        "packages/map-adapters",
+        "packages/project-store"
       ],
       "dependencies": [],
       "success_criteria": [
@@ -20,18 +24,24 @@
       "recommended_files_modules_to_edit": [
         "package.json",
         "tsconfig.base.json",
-        "packages/core"
+        "apps/mobile",
+        "packages/core",
+        "packages/geometry",
+        "packages/gnss",
+        "packages/map-adapters",
+        "packages/project-store"
       ],
       "requires_native_platform_expertise": false
     },
     {
       "id": "MVP-02",
+      "current_status": "implemented",
       "objective": "Implement project schemas and unit/CRS policy.",
       "inputs": [
         "DATA_MODEL_TYPESCRIPT_SPEC.md"
       ],
       "outputs": [
-        "Zod schemas",
+        "project document validator",
         "unit conversion module",
         "CRS guard"
       ],
@@ -43,14 +53,17 @@
         "project fixture validates"
       ],
       "recommended_files_modules_to_edit": [
-        "packages/core/src/schema.ts",
+        "packages/core/src/projectDocument.ts",
+        "packages/core/src/types.ts",
         "packages/core/src/units.ts",
-        "packages/core/src/crs.ts"
+        "packages/core/src/coordinates.ts",
+        "packages/core/src/settings.ts"
       ],
       "requires_native_platform_expertise": false
     },
     {
       "id": "MVP-03",
+      "current_status": "implemented",
       "objective": "Implement pivot geometry core.",
       "inputs": [
         "GEOSPATIAL_ALGORITHM_SPEC.md"
@@ -75,6 +88,7 @@
     },
     {
       "id": "MVP-04",
+      "current_status": "active",
       "objective": "Implement local project store and export.",
       "inputs": [
         "project schema"
@@ -90,20 +104,25 @@
         "project round-trip test passes"
       ],
       "recommended_files_modules_to_edit": [
-        "packages/project-store/src"
+        "packages/project-store/src/projectRepository.ts",
+        "packages/project-store/src/projectRepository.native.ts",
+        "packages/project-store/src/projectArchive.ts",
+        "packages/project-store/src/persistenceSchema.ts",
+        "packages/project-store/src/sqliteProjectStore.ts"
       ],
       "requires_native_platform_expertise": false
     },
     {
       "id": "MVP-05",
+      "current_status": "active",
       "objective": "Build map workspace with manual geometry tools.",
       "inputs": [
         "UI_UX_SCREEN_SPEC.md"
       ],
       "outputs": [
         "map modes",
-        "boundary editor",
-        "obstacle editor",
+        "draft boundary capture",
+        "draft obstacle capture",
         "pivot placement"
       ],
       "dependencies": [
@@ -111,24 +130,27 @@
         "MVP-04"
       ],
       "success_criteria": [
-        "manual layout workflow completes offline"
+        "manual draft vertices commit into project field and obstacle entities with undo/validation",
+        "pan/zoom remains viewport-only state"
       ],
       "recommended_files_modules_to_edit": [
-        "apps/mobile/src/screens/MapWorkspace.tsx",
+        "apps/mobile/App.tsx",
+        "apps/mobile/src/components",
         "packages/map-adapters/src"
       ],
       "requires_native_platform_expertise": true
     },
     {
       "id": "MVP-06",
+      "current_status": "active",
       "objective": "Build machine configuration and scenario review screens.",
       "inputs": [
         "domain models"
       ],
       "outputs": [
-        "forms",
+        "workspace tabs and forms",
         "scenario metrics",
-        "conflict list"
+        "review/conflict panels"
       ],
       "dependencies": [
         "MVP-03"
@@ -138,25 +160,30 @@
         "scenario metrics visible"
       ],
       "recommended_files_modules_to_edit": [
-        "apps/mobile/src/screens/MachineConfig.tsx",
-        "apps/mobile/src/screens/ScenarioReview.tsx"
+        "apps/mobile/App.tsx",
+        "apps/mobile/src/components/ExpertReviewPanel.tsx",
+        "apps/mobile/src/components/MetricTile.tsx",
+        "packages/core/src/expertReview.ts",
+        "packages/geometry/src/geometry.ts"
       ],
       "requires_native_platform_expertise": false
     },
     {
       "id": "MVP-07",
+      "current_status": "deferred",
       "objective": "Create Windows proof shell.",
       "inputs": [
         "TECHNICAL_ARCHITECTURE.md"
       ],
       "outputs": [
-        "React Native Windows app opens project and renders WebView map fixture"
+        "Deferred until an apps/windows workspace exists"
       ],
       "dependencies": [
         "MVP-01",
         "MVP-04"
       ],
       "success_criteria": [
+        "apps/windows workspace exists",
         "Windows build runs locally",
         "WebView map fixture loads offline"
       ],
@@ -169,6 +196,7 @@
   "advanced_tasks": [
     {
       "id": "ADV-01",
+      "current_status": "implemented",
       "objective": "Implement NMEA parser and log replay.",
       "inputs": [
         "RTK_GNSS_INTEGRATION_SPEC.md",
@@ -187,12 +215,14 @@
         "quality thresholds enforced"
       ],
       "recommended_files_modules_to_edit": [
-        "packages/gnss/src"
+        "packages/gnss/src/nmea.ts",
+        "packages/gnss/src/nmea.test.ts"
       ],
       "requires_native_platform_expertise": false
     },
     {
       "id": "ADV-02",
+      "current_status": "blocked",
       "objective": "Prototype Android USB serial GNSS adapter.",
       "inputs": [
         "receiver hardware",
@@ -211,12 +241,14 @@
       ],
       "recommended_files_modules_to_edit": [
         "apps/mobile/android",
-        "packages/gnss/src/adapters/androidUsb.ts"
+        "packages/gnss/src",
+        "docs/android-native-verification.md"
       ],
       "requires_native_platform_expertise": true
     },
     {
       "id": "ADV-03",
+      "current_status": "blocked",
       "objective": "Prototype BLE GNSS adapter.",
       "inputs": [
         "BLE receiver profile"
@@ -232,59 +264,68 @@
         "quality displayed live"
       ],
       "recommended_files_modules_to_edit": [
-        "packages/gnss/src/adapters/ble.ts"
+        "packages/gnss/src",
+        "docs/android-native-verification.md"
       ],
       "requires_native_platform_expertise": true
     },
     {
       "id": "ADV-04",
+      "current_status": "deferred",
       "objective": "Prototype Windows serial adapter.",
       "inputs": [
         "Windows serial receiver",
         "RNW native module docs"
       ],
       "outputs": [
-        "SerialCommunication native module"
+        "Deferred until an apps/windows workspace exists"
       ],
       "dependencies": [
         "ADV-01",
         "MVP-07"
       ],
       "success_criteria": [
+        "apps/windows workspace exists",
         "NMEA stream captured on Windows",
         "disconnect/reconnect stable"
       ],
       "recommended_files_modules_to_edit": [
-        "apps/windows/windows",
-        "packages/gnss/src/adapters/windowsSerial.ts"
+        "apps/windows",
+        "packages/gnss/src"
       ],
       "requires_native_platform_expertise": true
     },
     {
       "id": "ADV-05",
+      "current_status": "blocked",
       "objective": "Add offline map package import.",
       "inputs": [
         "PMTiles/MBTiles fixtures"
       ],
       "outputs": [
         "map package manifest",
-        "offline renderer integration"
+        "offline renderer integration gated by local tile-source adapter proof"
       ],
       "dependencies": [
         "MVP-05",
         "MVP-07"
       ],
       "success_criteria": [
+        "local tile-source adapter is implemented",
         "offline map renders with attribution and no network"
       ],
       "recommended_files_modules_to_edit": [
+        "packages/core/src/mapTilePackages.ts",
         "packages/map-adapters/src",
-        "packages/project-store/src/mapPackages.ts"
+        "packages/project-store/src/projectArchive.ts",
+        "packages/project-store/src/persistenceSchema.ts",
+        "docs/native-map-tile-adapter-design.md"
       ],
       "requires_native_platform_expertise": true
     },
     {
       "id": "ADV-06",
+      "current_status": "deferred",
       "objective": "Add imagery tiling workflow docs/tooling.",
       "inputs": [
         "sample GeoTIFF",
@@ -302,13 +343,15 @@
         "imagery QA metadata shown"
       ],
       "recommended_files_modules_to_edit": [
-        "tools/preprocess",
-        "packages/project-store/src/imagery.ts"
+        "tools",
+        "packages/core/src/mapTilePackages.ts",
+        "docs/native-map-tile-adapter-design.md"
       ],
       "requires_native_platform_expertise": false
     },
     {
       "id": "ADV-07",
+      "current_status": "deferred",
       "objective": "Implement deterministic best-fit grid search.",
       "inputs": [
         "geometry core",

@@ -4,8 +4,8 @@ Web remains on the browser localStorage repository until Expo SQLite web is prov
 
 ## Current Decision
 
-- Web MVP persistence stays in `src/storage/projectRepository.ts`.
-- Native persistence stays in `src/storage/projectRepository.native.ts` and Expo SQLite.
+- Web MVP persistence stays in `packages/project-store/src/projectRepository.ts`.
+- Native persistence stays in `packages/project-store/src/projectRepository.native.ts` and Expo SQLite.
 - Do not switch web to Expo SQLite until `evaluateWebSqliteGate` can be satisfied and a Playwright run proves save, open, and reload with the deployed headers.
 
 ## Required Proof

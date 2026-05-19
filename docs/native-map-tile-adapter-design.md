@@ -1,6 +1,12 @@
 # Native Map Tile Adapter Design
 
-Native MapLibre rendering remains deferred until the Android native build/run path is available and device-verified. Do not add `@maplibre/maplibre-react-native` for this lane until that path exists.
+MapLibre React Native is now installed/configured in the workspace, including the mobile Expo plugin and package dependencies. That does not make native map rendering production-verified: native MapLibre runtime behavior, Android/iOS persistence, and raw PMTiles/MBTiles archive rendering remain gated until a development build runs through the device/emulator checklist in `docs/android-native-verification.md`.
+
+Current installed state:
+
+- `apps/mobile/app.json` includes the `@maplibre/maplibre-react-native` config plugin.
+- `apps/mobile/package.json` depends on `@maplibre/maplibre-react-native`.
+- `packages/map-adapters/package.json` depends on `@maplibre/maplibre-react-native`, `maplibre-gl`, and `pmtiles`.
 
 ## Metadata To MapLibre Source Mapping
 
@@ -27,7 +33,7 @@ Raw `pmtiles` and `mbtiles` archives are not native-renderable from metadata alo
 
 ## Deferred Dependencies
 
-MapLibre React Native is not part of Expo Go and requires a native app build. Keep it out of `package.json` until Android native verification can install and run a built app or development build.
+MapLibre React Native is not part of Expo Go and requires a native app build or development build. The dependency is already present, so the deferred work is no longer installation; it is native runtime verification, local tile-source adapter proof, and device evidence before any production claim.
 
 ## Primary Sources
 

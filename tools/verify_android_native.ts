@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parseCompleteAndroidNativeVerificationReport } from "../src/domain/nativeVerification";
+import { parseCompleteAndroidNativeVerificationReport } from "@cplayout/project-store";
 import {
   collectAndroidToolSnapshot,
   readExpoAndroidPackageName,

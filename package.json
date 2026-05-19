@@ -1,39 +1,26 @@
 {
-  "name": "center-pivot-layout-rn",
+  "name": "cplayout",
   "version": "0.1.0",
   "private": true,
-  "main": "index.ts",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "start": "expo start --host localhost",
-    "web": "expo start --web --host localhost",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx src/domain/geometry.test.ts && tsx src/domain/nmea.test.ts && tsx src/domain/coordinates.test.ts && tsx src/domain/settings.test.ts && tsx src/domain/mapInteraction.test.ts && tsx src/domain/mapTilePackages.test.ts && tsx src/domain/nativeVerification.test.ts && tsx src/domain/webSqliteGate.test.ts && tsx src/domain/persistenceSchema.test.ts && tsx src/domain/projectDocument.test.ts && tsx src/domain/projectArchive.test.ts && tsx src/domain/projectPersistence.test.ts",
+    "start": "npm run start -w @cplayout/mobile",
+    "web": "npm run web -w @cplayout/mobile",
+    "android": "npm run android -w @cplayout/mobile",
+    "export:web": "npm run export:web -w @cplayout/mobile",
+    "typecheck": "tsc -p tsconfig.tools.json && npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
     "validate": "npm run typecheck && npm test",
+    "audit:moderate": "npm audit --audit-level=moderate",
     "check:android-tools": "tsx tools/check_android_tools.ts",
     "verify:android-native": "tsx tools/verify_android_native.ts",
     "verify:release": "npm run validate && git diff --check && npm run check:android-tools && npm run verify:android-native"
   },
-  "dependencies": {
-    "@expo/metro-runtime": "55.0.11",
-    "expo": "55.0.24",
-    "expo-file-system": "~55.0.21",
-    "expo-sharing": "~55.0.19",
-    "expo-sqlite": "~55.0.16",
-    "expo-status-bar": "55.0.6",
-    "fflate": "^0.8.2",
-    "lucide-react-native": "1.16.0",
-    "polygon-clipping": "0.15.7",
-    "proj4": "2.20.8",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "react-native": "0.83.6",
-    "react-native-svg": "15.15.3",
-    "react-native-web": "0.21.2",
-    "zod": "4.4.3"
-  },
   "devDependencies": {
     "@types/node": "^25.9.0",
-    "@types/react": "19.2.14",
     "tsx": "4.22.2",
     "typescript": "~5.9.2"
   }

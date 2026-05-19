@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { createAndroidNativeVerificationReportTemplate } from "../src/domain/nativeVerification";
+import { createAndroidNativeVerificationReportTemplate } from "@cplayout/project-store";
 
 export interface CommandCheck {
   name: string;
@@ -125,7 +125,7 @@ export function reportFromSnapshot(snapshot: AndroidToolSnapshot) {
   });
 }
 
-export function readExpoAndroidPackageName(appJsonPath = "app.json"): string {
+export function readExpoAndroidPackageName(appJsonPath = "apps/mobile/app.json"): string {
   const raw = JSON.parse(readFileSync(appJsonPath, "utf8")) as {
     expo?: { android?: { package?: string } };
   };

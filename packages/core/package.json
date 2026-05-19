@@ -1,0 +1,16 @@
+{
+  "name": "@cplayout/core",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "tsx src/coordinates.test.ts && tsx src/settings.test.ts && tsx src/mapTilePackages.test.ts && tsx src/expertReview.test.ts && tsx src/projectDocument.test.ts && tsx src/projectReducer.test.ts",
+    "validate": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "proj4": "2.20.8",
+    "zod": "4.4.3"
+  }
+}

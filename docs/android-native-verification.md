@@ -5,6 +5,7 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 ## Required Setup
 
 - Build a native app or development client. Expo Go is not sufficient for validating config-plugin native modules.
+- From the repo root, use `npm run android` for the local Android development-build path; it delegates to `expo run:android` in `apps/mobile`.
 - Record device/emulator model, Android version, app build type, package version, and date.
 - Start from a clean install when validating migrations from scratch; repeat once with an existing install when validating upgrade migrations.
 

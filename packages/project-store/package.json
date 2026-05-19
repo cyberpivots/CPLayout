@@ -1,0 +1,21 @@
+{
+  "name": "@cplayout/project-store",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "tsx src/nativeVerification.test.ts && tsx src/webSqliteGate.test.ts && tsx src/persistenceSchema.test.ts && tsx src/projectArchive.test.ts && tsx src/projectPersistence.test.ts",
+    "validate": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@cplayout/core": "*",
+    "@cplayout/geometry": "*",
+    "expo-file-system": "~55.0.21",
+    "expo-sharing": "~55.0.19",
+    "expo-sqlite": "~55.0.16",
+    "fflate": "^0.8.2",
+    "zod": "4.4.3"
+  }
+}

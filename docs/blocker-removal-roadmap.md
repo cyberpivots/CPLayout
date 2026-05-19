@@ -9,12 +9,16 @@
 - Project ZIP archives validate manifest shape and project id/CRS consistency on import.
 - The project files UI reports backend/runtime/schema information instead of implying unverified native runtime success.
 - The SVG layout map supports tap-to-draft vertices in drawing/edit modes while panning and zooming remain viewport-only state.
+- Android native proof now has repo-local scripts for tool/device/package detection and completion-gated JSON report validation.
+- Web SQLite remains behind a documented gate and domain test that keeps localStorage selected unless WASM, COOP/COEP, and Playwright persistence proof all pass.
+- Native MapLibre tile rendering has a design gate that maps project tile metadata to MapLibre source props without adding the native dependency.
 
 ## Still Deferred
 
 - Native MapLibre rendering of PMTiles/MBTiles remains deferred. MapLibre React Native accepts TileJSON URLs or tile URL templates, so raw archive files still require a local protocol adapter, local HTTP tile server, extracted tile directory, or conversion path.
 - Web SQLite remains deferred until Expo SQLite web is proven with Metro WASM support and COOP/COEP headers in the actual deployment environment.
 - Native SQLite and native ZIP sharing are compile-ready but not production-verified until `docs/android-native-verification.md` passes on a real Android device or emulator.
+- `npm run check:android-tools`, `npm run verify:android-native`, and `npm run verify:release` intentionally fail when Android SDK/device/app evidence is unavailable.
 - Draft map vertices are not yet committed into `PivotProject.fieldBoundary` or obstacle entities. Full geometry editing still needs commit/cancel, undo, validation, and project mutation tests.
 
 ## Primary Sources Checked

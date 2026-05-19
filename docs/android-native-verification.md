@@ -8,6 +8,13 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 - Record device/emulator model, Android version, app build type, package version, and date.
 - Start from a clean install when validating migrations from scratch; repeat once with an existing install when validating upgrade migrations.
 
+## Repo Harness
+
+- `npm run check:android-tools` detects `adb`, connected devices/emulators, whether `local.centerpivot.layout` is installed, and basic package/log evidence.
+- `npm run verify:android-native` writes a timestamped JSON report under `reports/android-native-verification/` and fails until a built app plus completed checklist evidence are available.
+- `npm run verify:android-native -- --report <report.json>` validates a completed report. Incomplete reports fail and must not be used to claim native runtime verification.
+- Use `docs/android-native-verification-report-template.json` as the checked-in report shape. Runtime reports are intentionally ignored by Git unless a specific report is promoted intentionally.
+
 ## SQLite Project Store
 
 1. Open the app and navigate to `Export`.
@@ -37,3 +44,9 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 ## Pass Criteria
 
 Native persistence is verified only when save, relaunch, list, load, delete, export, and import all pass on device/emulator. If any step is not run, report it as unverified rather than complete.
+
+## Primary Sources
+
+- Expo SQLite web support is alpha and requires Metro WASM plus COOP/COEP headers: https://docs.expo.dev/versions/latest/sdk/sqlite/
+- Expo Sharing has native local-file sharing behavior that does not carry to web local file URIs: https://docs.expo.dev/versions/latest/sdk/sharing/
+- Expo development builds are distinct from Expo Go and are required when native libraries/config need a built app: https://docs.expo.dev/develop/development-builds/introduction/

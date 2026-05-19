@@ -4,6 +4,7 @@ node_modules/
 dist/
 dist-android/
 web-build/
+reports/android-native-verification/
 
 *.log
 *.tmp

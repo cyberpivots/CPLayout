@@ -1,0 +1,85 @@
+{
+  "reportSchemaVersion": 1,
+  "proofTarget": "android-native-runtime",
+  "generatedAt": "",
+  "status": "incomplete",
+  "device": {
+    "adbSerial": "",
+    "model": "",
+    "androidVersion": "",
+    "apiLevel": ""
+  },
+  "app": {
+    "packageName": "local.centerpivot.layout",
+    "versionName": "",
+    "versionCode": "",
+    "buildType": "",
+    "commit": "",
+    "packagePath": ""
+  },
+  "sqlite": {
+    "schemaVersion": 3,
+    "pragmaUserVersion": 0,
+    "schemaMigrations": [],
+    "mapPackageColumns": [],
+    "geometryRowsPopulated": false
+  },
+  "projectRoundTrip": {
+    "backendLabel": "",
+    "runtime": "",
+    "sampleProjectSaved": false,
+    "relaunchCompleted": false,
+    "listAfterRelaunch": false,
+    "loadedProjectId": "",
+    "loadedProjectName": "",
+    "fieldBoundaryPointCount": 0,
+    "obstacleCount": 0,
+    "surveyPointCount": 0,
+    "settingsMatched": false,
+    "deleteConfirmed": false
+  },
+  "zipRoundTrip": {
+    "exportedFilename": "",
+    "exportedBytes": 0,
+    "exportedSha256": "",
+    "importedProjectId": "",
+    "manifestJsonPresent": false,
+    "projectJsonPresent": false,
+    "manifestProjectIdMatched": false,
+    "manifestProjectCrsMatched": false,
+    "savedImportedProject": false
+  },
+  "checklist": {
+    "cleanInstallOrUpgradePath": {
+      "status": "not_run",
+      "observedAt": "",
+      "evidence": ""
+    },
+    "backendPanel": {
+      "status": "not_run",
+      "observedAt": "",
+      "evidence": ""
+    },
+    "saveLoadDelete": {
+      "status": "not_run",
+      "observedAt": "",
+      "evidence": ""
+    },
+    "zipExportImport": {
+      "status": "not_run",
+      "observedAt": "",
+      "evidence": ""
+    },
+    "migrationEvidence": {
+      "status": "not_run",
+      "observedAt": "",
+      "evidence": ""
+    }
+  },
+  "evidence": {
+    "checklistDocument": "docs/android-native-verification.md",
+    "adbDeviceLine": "",
+    "logExcerptPath": "",
+    "notes": ""
+  }
+}

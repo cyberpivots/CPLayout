@@ -71,6 +71,11 @@ const webReady = describeTilePackageReadiness(webPmtiles, "web_maplibre_gl_js");
 assert.equal(webReady.canRender, true);
 assert.match(webReady.reason, /pmtiles protocol/);
 
+const nativeRawPmtiles = describeTilePackageReadiness(webPmtiles, "native_maplibre_rn");
+assert.equal(nativeRawPmtiles.canRender, false);
+assert.equal(nativeRawPmtiles.requiresAdapter, true);
+assert.match(nativeRawPmtiles.reason, /raw PMTiles\/MBTiles files need/);
+
 assert.throws(
   () => validateMapPackageManifest({ ...packageManifest, maxZoom: 9 }),
   /maxZoom/,

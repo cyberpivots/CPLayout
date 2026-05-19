@@ -7,8 +7,11 @@
     "start": "expo start --host localhost",
     "web": "expo start --web --host localhost",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/domain/geometry.test.ts && tsx src/domain/nmea.test.ts && tsx src/domain/coordinates.test.ts && tsx src/domain/settings.test.ts && tsx src/domain/mapInteraction.test.ts && tsx src/domain/mapTilePackages.test.ts && tsx src/domain/persistenceSchema.test.ts && tsx src/domain/projectDocument.test.ts && tsx src/domain/projectArchive.test.ts && tsx src/domain/projectPersistence.test.ts",
-    "validate": "npm run typecheck && npm test"
+    "test": "tsx src/domain/geometry.test.ts && tsx src/domain/nmea.test.ts && tsx src/domain/coordinates.test.ts && tsx src/domain/settings.test.ts && tsx src/domain/mapInteraction.test.ts && tsx src/domain/mapTilePackages.test.ts && tsx src/domain/nativeVerification.test.ts && tsx src/domain/webSqliteGate.test.ts && tsx src/domain/persistenceSchema.test.ts && tsx src/domain/projectDocument.test.ts && tsx src/domain/projectArchive.test.ts && tsx src/domain/projectPersistence.test.ts",
+    "validate": "npm run typecheck && npm test",
+    "check:android-tools": "tsx tools/check_android_tools.ts",
+    "verify:android-native": "tsx tools/verify_android_native.ts",
+    "verify:release": "npm run validate && git diff --check && npm run check:android-tools && npm run verify:android-native"
   },
   "dependencies": {
     "@expo/metro-runtime": "55.0.11",

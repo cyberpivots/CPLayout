@@ -7,7 +7,7 @@
     "start": "expo start --host localhost",
     "web": "expo start --web --host localhost",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/domain/geometry.test.ts && tsx src/domain/nmea.test.ts && tsx src/domain/coordinates.test.ts && tsx src/domain/settings.test.ts && tsx src/domain/mapInteraction.test.ts && tsx src/domain/persistenceSchema.test.ts && tsx src/domain/projectDocument.test.ts && tsx src/domain/projectArchive.test.ts && tsx src/domain/projectPersistence.test.ts",
+    "test": "tsx src/domain/geometry.test.ts && tsx src/domain/nmea.test.ts && tsx src/domain/coordinates.test.ts && tsx src/domain/settings.test.ts && tsx src/domain/mapInteraction.test.ts && tsx src/domain/mapTilePackages.test.ts && tsx src/domain/persistenceSchema.test.ts && tsx src/domain/projectDocument.test.ts && tsx src/domain/projectArchive.test.ts && tsx src/domain/projectPersistence.test.ts",
     "validate": "npm run typecheck && npm test"
   },
   "dependencies": {

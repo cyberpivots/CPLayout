@@ -125,6 +125,23 @@ export function panViewportByScreenDelta(
   });
 }
 
+export function screenPointToWorld(
+  viewport: MapViewport,
+  point: { xPixels: number; yPixels: number },
+  screen: { widthPixels: number; heightPixels: number },
+): XY {
+  const widthMeters = visibleWidthMeters(viewport);
+  const heightMeters = visibleHeightMeters(viewport);
+  const minX = viewport.center.x - widthMeters / 2;
+  const minSvgY = -viewport.center.y - heightMeters / 2;
+  const xRatio = point.xPixels / Math.max(1, screen.widthPixels);
+  const yRatio = point.yPixels / Math.max(1, screen.heightPixels);
+  return {
+    x: minX + xRatio * widthMeters,
+    y: -(minSvgY + yRatio * heightMeters),
+  };
+}
+
 export function zoomViewport(viewport: MapViewport, factor: number): MapViewport {
   return {
     ...viewport,

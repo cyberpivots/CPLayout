@@ -12,7 +12,7 @@ import {
   RefreshCcw,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { PanResponder, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import { boundsForGeometry, ringsToSvgPath } from "../domain/geometry";
@@ -23,6 +23,7 @@ import {
   DrawingMapAction,
   DrawingMapState,
   reduceDrawingMapState,
+  screenPointToWorld,
   viewportToSvgViewBox,
   visibleHeightMeters,
   visibleWidthMeters,
@@ -57,6 +58,7 @@ export function LayoutMap({ project, result, settings }: LayoutMapProps): React.
   );
   const [mapState, setMapState] = useState<DrawingMapState>(() => createDrawingMapState(initialViewport));
   const [mapPixelWidth, setMapPixelWidth] = useState(900);
+  const [mapPixelHeight, setMapPixelHeight] = useState(440);
   const palette = paletteForMapStyle(settings.mapStyle);
   const viewWidth = visibleWidthMeters(mapState.viewport);
   const viewHeight = visibleHeightMeters(mapState.viewport);
@@ -78,11 +80,34 @@ export function LayoutMap({ project, result, settings }: LayoutMapProps): React.
         });
       },
     }),
-    [mapPixelWidth],
+    [mapPixelHeight, mapPixelWidth, mapState.mode, mapState.viewport],
   );
 
   function dispatch(action: DrawingMapAction): void {
     setMapState((current) => reduceDrawingMapState(current, action));
+  }
+
+  function addDraftVertexFromPress(event: GestureResponderEvent): void {
+    if (!canAddDraftVertex(mapState.mode)) return;
+    dispatch({
+      type: "add_draft_vertex",
+      vertex: screenPointToWorld(
+        mapState.viewport,
+        {
+          xPixels: event.nativeEvent.locationX,
+          yPixels: event.nativeEvent.locationY,
+        },
+        {
+          widthPixels: mapPixelWidth,
+          heightPixels: mapPixelHeight,
+        },
+      ),
+    });
+  }
+
+  function addDraftVertexAtViewCenter(): void {
+    if (!canAddDraftVertex(mapState.mode)) return;
+    dispatch({ type: "add_draft_vertex", vertex: mapState.viewport.center });
   }
 
   return (
@@ -104,11 +129,25 @@ export function LayoutMap({ project, result, settings }: LayoutMapProps): React.
 
       <View
         style={[styles.mapSurface, { backgroundColor: palette.background }]}
-        onLayout={(event) => setMapPixelWidth(Math.max(1, event.nativeEvent.layout.width))}
-        {...panResponder.panHandlers}
+        onLayout={(event) => {
+          setMapPixelWidth(Math.max(1, event.nativeEvent.layout.width));
+          setMapPixelHeight(Math.max(1, event.nativeEvent.layout.height));
+        }}
       >
-        <Svg viewBox={viewportToSvgViewBox(mapState.viewport)} style={styles.svg}>
-          <Rect x={minX} y={minY} width={viewWidth} height={viewHeight} fill={palette.background} />
+        <Svg
+          onPress={addDraftVertexFromPress}
+          viewBox={viewportToSvgViewBox(mapState.viewport)}
+          style={styles.svg}
+          {...panResponder.panHandlers}
+        >
+          <Rect
+            x={minX}
+            y={minY}
+            width={viewWidth}
+            height={viewHeight}
+            fill={palette.background}
+            onPress={addDraftVertexFromPress}
+          />
           <MapBackground minX={minX} maxX={maxX} minY={minY} maxY={maxY} styleName={settings.mapStyle} />
           <Grid minX={minX} maxX={maxX} minY={minY} maxY={maxY} stroke={palette.grid} />
           <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} />
@@ -116,6 +155,7 @@ export function LayoutMap({ project, result, settings }: LayoutMapProps): React.
           <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} />
           <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
           <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
+          <DraftVertices vertices={mapState.draftVertices} color={palette.draft} />
           <PointMarker point={project.pivotCenter} color={palette.pivot} label="Pivot" />
           <PointMarker point={project.waterSource} color={palette.water} label="Water" />
           <PointMarker point={project.powerSource} color={palette.power} label="Power" />
@@ -152,6 +192,15 @@ export function LayoutMap({ project, result, settings }: LayoutMapProps): React.
           </View>
           <IconControl icon={<ArrowDown size={20} />} label="Pan south" onPress={() => dispatch({ type: "pan", delta: { x: 0, y: -settings.drawing.panStepMeters } })} />
         </View>
+        <View style={styles.draftHud}>
+          <Text style={styles.draftHudText}>{mapState.activeLayer.replaceAll("_", " ")} draft · {mapState.draftVertices.length} pts</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Add draft vertex at view center" onPress={addDraftVertexAtViewCenter} style={styles.clearDraftButton}>
+            <Text style={styles.clearDraftText}>Add Center</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Clear draft vertices" onPress={() => dispatch({ type: "clear_draft" })} style={styles.clearDraftButton}>
+            <Text style={styles.clearDraftText}>Clear</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.layerRow}>
@@ -171,6 +220,10 @@ export function LayoutMap({ project, result, settings }: LayoutMapProps): React.
       </View>
     </View>
   );
+}
+
+function canAddDraftVertex(mode: DrawingMapState["mode"]): boolean {
+  return mode === "draw_boundary" || mode === "mark_obstacle" || mode === "edit_vertices";
 }
 
 function Grid({ minX, maxX, minY, maxY, stroke }: { minX: number; maxX: number; minY: number; maxY: number; stroke: string }): React.JSX.Element {
@@ -229,6 +282,24 @@ function PointMarker({ point, color, label }: { point: XY; color: string; label:
   );
 }
 
+function DraftVertices({ vertices, color }: { vertices: XY[]; color: string }): React.JSX.Element {
+  if (vertices.length === 0) return <></>;
+  const path = vertices.length >= 2 ? `M ${vertices.map((vertex) => `${vertex.x} ${-vertex.y}`).join(" L ")}` : "";
+  return (
+    <>
+      {path ? <Path d={path} fill="none" stroke={color} strokeDasharray="10 8" strokeWidth={5} /> : null}
+      {vertices.map((vertex, index) => (
+        <React.Fragment key={`${vertex.x}-${vertex.y}-${index}`}>
+          <Circle cx={vertex.x} cy={-vertex.y} r={10} fill="#ffffff" stroke={color} strokeWidth={5} />
+          <SvgText x={vertex.x + 12} y={-vertex.y - 10} fill={color} fontSize={22} fontWeight="900">
+            {index + 1}
+          </SvgText>
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 function ToolButton({ active, icon, label, onPress }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void }): React.JSX.Element {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive]}>
@@ -277,6 +348,7 @@ function paletteForMapStyle(style: MapStyle): {
   power: string;
   tower: string;
   markerFill: string;
+  draft: string;
 } {
   if (style === "high_contrast") {
     return {
@@ -293,6 +365,7 @@ function paletteForMapStyle(style: MapStyle): {
       power: "#7a4a00",
       tower: "#1a1f1c",
       markerFill: "#ffffff",
+      draft: "#8b1e18",
     };
   }
 
@@ -311,6 +384,7 @@ function paletteForMapStyle(style: MapStyle): {
       power: "#a36500",
       tower: "#4f5a50",
       markerFill: "#fffef8",
+      draft: "#7b1f5a",
     };
   }
 
@@ -329,6 +403,7 @@ function paletteForMapStyle(style: MapStyle): {
       power: "#946500",
       tower: "#5b624e",
       markerFill: "#fffef8",
+      draft: "#7b1f5a",
     };
   }
 
@@ -346,6 +421,7 @@ function paletteForMapStyle(style: MapStyle): {
     power: "#c78500",
     tower: "#54645a",
     markerFill: "#fffdf5",
+    draft: "#7b1f5a",
   };
 }
 
@@ -433,6 +509,40 @@ const styles = StyleSheet.create({
   panMiddle: {
     flexDirection: "row",
     gap: 44,
+  },
+  draftHud: {
+    alignItems: "center",
+    backgroundColor: "#fffef8",
+    borderColor: "#b9c5b6",
+    borderRadius: 8,
+    borderWidth: 1,
+    bottom: 12,
+    flexDirection: "row",
+    gap: 8,
+    left: 12,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    position: "absolute",
+  },
+  draftHudText: {
+    color: "#26392f",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "capitalize",
+  },
+  clearDraftButton: {
+    backgroundColor: "#f1f5ee",
+    borderColor: "#cdd8ca",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  clearDraftText: {
+    color: "#254234",
+    fontSize: 12,
+    fontWeight: "900",
   },
   iconControl: {
     alignItems: "center",

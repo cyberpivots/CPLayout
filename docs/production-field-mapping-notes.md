@@ -25,13 +25,18 @@
 - Local settings are typed and validated; project-relevant settings are exportable while local package directories remain local-only.
 - SQLite schema migrations cover projects, settings, large geometry vertex tables, survey points, GPS tracks, offline map package metadata, scenarios, and exports.
 - Project files now have a versioned `pivot-project-v1` document validator, a local save/open repository interface, native SQLite repository implementation, browser local-storage repository implementation, and ZIP package round-trip logic.
-- ZIP packages include `manifest.json`, `project.json`, scenario GeoJSON, survey CSV, and metrics CSV. Map package binaries are referenced by metadata; they are not embedded as canonical project geometry.
+- ZIP packages include `manifest.json`, `project.json`, scenario GeoJSON, survey CSV, metrics CSV, and map package metadata CSV. Map package binaries are referenced by metadata; they are not embedded as canonical project geometry.
+- Map package manifests now separate archive type from tile content type, tile scheme, TileJSON URL, tile URL templates, checksum, install status, attribution, and license.
+- The project files UI reports the active persistence backend, runtime, schema version, and project count so compile-ready native code is not confused with device-verified runtime behavior.
+- The SVG drawing workspace supports draft vertex capture while keeping pan/zoom as viewport-only state.
 
 ## Deferred Work
 
 - Native MapLibre integration with local PMTiles/MBTiles protocol adapters.
 - Production web SQLite, because Expo SQLite web support is alpha and needs WASM plus COOP/COEP headers.
 - Native large-file import workflows beyond user-picked ZIP packages.
+- Android native SQLite/FileSystem/Sharing runtime acceptance until the checklist in `docs/android-native-verification.md` is run on device or emulator.
+- Full geometry editor commit/undo flows from draft vertices into project field and obstacle entities.
 - R-tree/FTS/SQLCipher configuration gates after target platform builds are established.
 - Live GNSS receiver transports and RTK correction workflows.
 

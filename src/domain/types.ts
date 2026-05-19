@@ -145,19 +145,30 @@ export type RingXY = XY[];
 export type PolygonXY = RingXY[];
 export type MultiPolygonXY = PolygonXY[];
 
+export type MapPackageType = "pmtiles" | "mbtiles" | "raster_tiles";
+export type TileContentType = "raster" | "vector";
+export type TileScheme = "xyz" | "tms";
+export type TilePackageInstallStatus = "metadata_only" | "available" | "missing" | "indexed";
+
 export interface MapPackageManifest {
   id: string;
   name: string;
-  packageType: "pmtiles" | "mbtiles" | "raster_tiles";
+  packageType: MapPackageType;
+  tileContentType: TileContentType;
   uri: string;
   minZoom: number;
   maxZoom: number;
+  tileScheme: TileScheme;
   boundsWgs84: {
     minLongitude: number;
     minLatitude: number;
     maxLongitude: number;
     maxLatitude: number;
   };
+  tileJsonUrl?: string;
+  tileUrlTemplates?: string[];
+  checksumSha256?: string;
+  installStatus?: TilePackageInstallStatus;
   attribution: string;
   licenseText: string;
   bytes?: number;

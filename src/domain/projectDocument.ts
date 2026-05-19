@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { MapPackageManifestSchema } from "./mapTilePackages";
 import { ProjectSettingsSchema } from "./settings";
 import type { PivotProject } from "./types";
 import { assertProjectedCrs } from "./units";
@@ -71,25 +72,6 @@ const ObstacleZoneSchema = z.object({
   hardConflict: z.boolean(),
   noSpray: z.boolean(),
   confidence: z.enum(["rtk_fixed", "rtk_float", "dgps", "autonomous_gps", "imagery_digitized", "imported_cad", "user_estimated", "optimized"]),
-});
-
-const MapPackageManifestSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  packageType: z.enum(["pmtiles", "mbtiles", "raster_tiles"]),
-  uri: z.string().min(1),
-  minZoom: z.number().int().min(0),
-  maxZoom: z.number().int().min(0),
-  boundsWgs84: z.object({
-    minLongitude: z.number().min(-180).max(180),
-    minLatitude: z.number().min(-90).max(90),
-    maxLongitude: z.number().min(-180).max(180),
-    maxLatitude: z.number().min(-90).max(90),
-  }),
-  attribution: z.string().min(1),
-  licenseText: z.string().min(1),
-  bytes: z.number().int().nonnegative().optional(),
-  importedAt: z.string().min(1),
 });
 
 export const PivotProjectSchema = z.object({

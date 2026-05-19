@@ -4,7 +4,7 @@ export interface SqlMigration {
   statements: string[];
 }
 
-export const SQLITE_SCHEMA_VERSION = 2;
+export const SQLITE_SCHEMA_VERSION = 3;
 
 export const SQLITE_MIGRATIONS: SqlMigration[] = [
   {
@@ -165,6 +165,20 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
         FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
       )`,
       `CREATE INDEX IF NOT EXISTS idx_project_snapshots_updated ON project_snapshots(updated_at)`,
+    ],
+  },
+  {
+    id: 3,
+    name: "add_tile_package_source_metadata",
+    statements: [
+      `ALTER TABLE map_packages ADD COLUMN tile_content_type TEXT NOT NULL DEFAULT 'raster'`,
+      `ALTER TABLE map_packages ADD COLUMN tile_scheme TEXT NOT NULL DEFAULT 'xyz'`,
+      `ALTER TABLE map_packages ADD COLUMN tilejson_url TEXT`,
+      `ALTER TABLE map_packages ADD COLUMN tile_url_templates_json TEXT NOT NULL DEFAULT '[]'`,
+      `ALTER TABLE map_packages ADD COLUMN checksum_sha256 TEXT`,
+      `ALTER TABLE map_packages ADD COLUMN install_status TEXT NOT NULL DEFAULT 'metadata_only'`,
+      `CREATE INDEX IF NOT EXISTS idx_map_packages_bounds ON map_packages(project_id, min_longitude, min_latitude, max_longitude, max_latitude)`,
+      `CREATE INDEX IF NOT EXISTS idx_map_packages_status ON map_packages(project_id, install_status, package_type)`,
     ],
   },
 ];

@@ -28,6 +28,24 @@ function writeStore(store: Record<string, StoredProject>): void {
 export const projectRepository: ProjectRepository = {
   backendLabel: "Browser local storage",
 
+  async getBackendInfoAsync() {
+    const projects = await projectRepository.listProjectsAsync();
+    return {
+      backendLabel: projectRepository.backendLabel,
+      runtime: "web",
+      storageEngine: "local_storage",
+      durable: typeof localStorage !== "undefined",
+      projectCount: projects.length,
+      supportsProjectList: true,
+      supportsZipImport: true,
+      supportsZipExport: true,
+      notes: [
+        "Web MVP uses browser localStorage until Expo SQLite web is configured with WASM and COOP/COEP headers.",
+        "ZIP export uses browser download APIs instead of native file sharing.",
+      ],
+    };
+  },
+
   async listProjectsAsync(): Promise<ProjectSummary[]> {
     return Object.values(readStore())
       .map((entry) => entry.summary)

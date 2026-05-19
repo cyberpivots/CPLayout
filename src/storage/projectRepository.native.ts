@@ -7,6 +7,29 @@ import type { ProjectRepository, ProjectSummary } from "./projectRepositoryTypes
 export const projectRepository: ProjectRepository = {
   backendLabel: "Expo SQLite",
 
+  async getBackendInfoAsync() {
+    const db = await openProjectDatabaseAsync();
+    const version = await db.getFirstAsync<{ user_version: number | null }>("PRAGMA user_version;");
+    const count = await db.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM projects WHERE deleted_at IS NULL;",
+    );
+    return {
+      backendLabel: projectRepository.backendLabel,
+      runtime: "native",
+      storageEngine: "sqlite",
+      durable: true,
+      schemaVersion: Number(version?.user_version ?? 0),
+      projectCount: Number(count?.count ?? 0),
+      supportsProjectList: true,
+      supportsZipImport: true,
+      supportsZipExport: true,
+      notes: [
+        "Native persistence uses Expo SQLite with project snapshots plus normalized geometry/map metadata tables.",
+        "Native ZIP import/export uses Expo FileSystem and Sharing and still requires device runtime verification.",
+      ],
+    };
+  },
+
   async listProjectsAsync(): Promise<ProjectSummary[]> {
     const db = await openProjectDatabaseAsync();
     const rows = await db.getAllAsync<{

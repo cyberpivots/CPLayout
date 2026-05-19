@@ -1,4 +1,5 @@
 import type { LayoutResult, MapPackageManifest, ObstacleZone, PivotProject, SurveyPoint, XY } from "./types";
+import { validateMapPackageManifest } from "./mapTilePackages";
 import { serializeProjectDocument } from "./projectDocument";
 
 export interface SqlStatementPlan {
@@ -17,6 +18,13 @@ export interface GeometryPersistenceRow {
   properties: Record<string, unknown>;
   vertices: XY[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
+}
+
+export interface GeometryBboxQuery {
+  projectId: string;
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  layerTypes?: string[];
+  limit?: number;
 }
 
 export function buildProjectGeometryRows(project: PivotProject): GeometryPersistenceRow[] {
@@ -174,26 +182,79 @@ function surveyPointStatement(projectId: string, point: SurveyPoint): SqlStateme
 }
 
 function mapPackageStatement(projectId: string, mapPackage: MapPackageManifest): SqlStatementPlan {
+  const parsed = validateMapPackageManifest(mapPackage);
   return {
-    sql: `INSERT INTO map_packages (id, project_id, name, package_type, uri, min_zoom, max_zoom, min_longitude, min_latitude, max_longitude, max_latitude, attribution, license_text, bytes, imported_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO map_packages (id, project_id, name, package_type, tile_content_type, uri, min_zoom, max_zoom, tile_scheme, min_longitude, min_latitude, max_longitude, max_latitude, tilejson_url, tile_url_templates_json, checksum_sha256, install_status, attribution, license_text, bytes, imported_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
-      mapPackage.id,
+      parsed.id,
       projectId,
-      mapPackage.name,
-      mapPackage.packageType,
-      mapPackage.uri,
-      mapPackage.minZoom,
-      mapPackage.maxZoom,
-      mapPackage.boundsWgs84.minLongitude,
-      mapPackage.boundsWgs84.minLatitude,
-      mapPackage.boundsWgs84.maxLongitude,
-      mapPackage.boundsWgs84.maxLatitude,
-      mapPackage.attribution,
-      mapPackage.licenseText,
-      mapPackage.bytes ?? null,
-      mapPackage.importedAt,
+      parsed.name,
+      parsed.packageType,
+      parsed.tileContentType,
+      parsed.uri,
+      parsed.minZoom,
+      parsed.maxZoom,
+      parsed.tileScheme,
+      parsed.boundsWgs84.minLongitude,
+      parsed.boundsWgs84.minLatitude,
+      parsed.boundsWgs84.maxLongitude,
+      parsed.boundsWgs84.maxLatitude,
+      parsed.tileJsonUrl ?? null,
+      JSON.stringify(parsed.tileUrlTemplates ?? []),
+      parsed.checksumSha256 ?? null,
+      parsed.installStatus ?? "metadata_only",
+      parsed.attribution,
+      parsed.licenseText,
+      parsed.bytes ?? null,
+      parsed.importedAt,
     ],
+  };
+}
+
+export function buildGeometryBboxQueryPlan(query: GeometryBboxQuery): SqlStatementPlan {
+  const layerTypes = query.layerTypes?.filter((layerType) => layerType.length > 0) ?? [];
+  const layerFilter = layerTypes.length > 0
+    ? ` AND layer_type IN (${layerTypes.map(() => "?").join(", ")})`
+    : "";
+  const limit = Math.max(1, Math.min(10000, Math.trunc(query.limit ?? 1000)));
+  return {
+    sql: `SELECT id, layer_type, feature_kind, name, source_confidence, properties_json, min_x, min_y, max_x, max_y
+      FROM geometries
+      WHERE project_id = ?
+        AND max_x >= ?
+        AND min_x <= ?
+        AND max_y >= ?
+        AND min_y <= ?${layerFilter}
+      ORDER BY updated_at DESC
+      LIMIT ${limit}`,
+    params: [
+      query.projectId,
+      query.bounds.minX,
+      query.bounds.maxX,
+      query.bounds.minY,
+      query.bounds.maxY,
+      ...layerTypes,
+    ],
+  };
+}
+
+export function buildGeometryVerticesQueryPlan(geometryIds: string[]): SqlStatementPlan {
+  const ids = [...new Set(geometryIds)].filter((id) => id.length > 0);
+  if (ids.length === 0) {
+    return {
+      sql: `SELECT geometry_id, ring_index, vertex_index, x, y, z, observed_at, source_point_id
+        FROM geometry_vertices
+        WHERE 1 = 0`,
+      params: [],
+    };
+  }
+  return {
+    sql: `SELECT geometry_id, ring_index, vertex_index, x, y, z, observed_at, source_point_id
+      FROM geometry_vertices
+      WHERE geometry_id IN (${ids.map(() => "?").join(", ")})
+      ORDER BY geometry_id, ring_index, vertex_index`,
+    params: ids,
   };
 }
 

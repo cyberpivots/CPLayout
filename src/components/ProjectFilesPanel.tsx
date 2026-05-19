@@ -11,6 +11,7 @@ import {
 import type { LayoutResult, PivotProject } from "../domain/types";
 import { exportZipFileAsync, importZipFileAsync } from "../storage/projectArchiveIO";
 import { projectRepository, type ProjectSummary } from "../storage/projectRepository";
+import type { ProjectRepositoryBackendInfo } from "../storage/projectRepositoryTypes";
 
 interface ProjectFilesPanelProps {
   project: PivotProject;
@@ -21,6 +22,7 @@ interface ProjectFilesPanelProps {
 export function ProjectFilesPanel({ project, result, onProjectLoaded }: ProjectFilesPanelProps): React.JSX.Element {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [status, setStatus] = useState<string>(`Storage: ${projectRepository.backendLabel}`);
+  const [backendInfo, setBackendInfo] = useState<ProjectRepositoryBackendInfo | null>(null);
 
   useEffect(() => {
     void refreshProjects();
@@ -28,7 +30,12 @@ export function ProjectFilesPanel({ project, result, onProjectLoaded }: ProjectF
 
   async function refreshProjects(): Promise<void> {
     try {
-      setProjects(await projectRepository.listProjectsAsync());
+      const [projectList, info] = await Promise.all([
+        projectRepository.listProjectsAsync(),
+        projectRepository.getBackendInfoAsync(),
+      ]);
+      setProjects(projectList);
+      setBackendInfo(info);
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -113,6 +120,17 @@ export function ProjectFilesPanel({ project, result, onProjectLoaded }: ProjectF
         <Database size={17} color="#254234" />
         <Text style={styles.statusText}>{status}</Text>
       </View>
+      {backendInfo && (
+        <View style={styles.backendGrid}>
+          <BackendTile label="Backend" value={backendInfo.backendLabel} />
+          <BackendTile label="Runtime" value={backendInfo.runtime} />
+          <BackendTile label="Schema" value={backendInfo.schemaVersion === undefined ? "n/a" : `v${backendInfo.schemaVersion}`} />
+          <BackendTile label="Projects" value={`${backendInfo.projectCount ?? projects.length}`} />
+        </View>
+      )}
+      {backendInfo?.notes.map((note) => (
+        <Text key={note} style={styles.backendNote}>{note}</Text>
+      ))}
 
       <View style={styles.projectList}>
         {projects.length === 0 ? (
@@ -134,6 +152,15 @@ export function ProjectFilesPanel({ project, result, onProjectLoaded }: ProjectF
           </View>
         ))}
       </View>
+    </View>
+  );
+}
+
+function BackendTile({ label, value }: { label: string; value: string }): React.JSX.Element {
+  return (
+    <View style={styles.backendTile}>
+      <Text style={styles.backendLabel}>{label}</Text>
+      <Text style={styles.backendValue}>{value}</Text>
     </View>
   );
 }
@@ -210,6 +237,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18,
+  },
+  backendGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  backendTile: {
+    backgroundColor: "#f8faf4",
+    borderColor: "#d8e0d4",
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 128,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  backendLabel: {
+    color: "#5a6c60",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  backendValue: {
+    color: "#21382b",
+    fontSize: 13,
+    fontWeight: "900",
+    marginTop: 3,
+  },
+  backendNote: {
+    color: "#53655a",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
   },
   projectList: {
     gap: 9,

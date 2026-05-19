@@ -4,6 +4,7 @@ import {
   createDrawingMapState,
   createInitialViewport,
   reduceDrawingMapState,
+  screenPointToWorld,
   viewportToSvgViewBox,
   visibleWidthMeters,
 } from "./mapInteraction";
@@ -34,6 +35,12 @@ const dragged = reduceDrawingMapState(zoomed, {
 assert.equal(dragged.viewport.center.x, zoomed.viewport.center.x - 100);
 assert.equal(dragged.viewport.center.y, zoomed.viewport.center.y - 50);
 assert.deepEqual(dragged.draftVertices, withVertex.draftVertices);
+
+const centerWorld = screenPointToWorld(viewport, { xPixels: 500, yPixels: 400 }, { widthPixels: 1000, heightPixels: 800 });
+assert.deepEqual(centerWorld, viewport.center);
+
+const topLeftWorld = screenPointToWorld(viewport, { xPixels: 0, yPixels: 0 }, { widthPixels: 1000, heightPixels: 800 });
+assert.deepEqual(topLeftWorld, { x: 0, y: 800 });
 
 const editMode = reduceDrawingMapState(dragged, { type: "set_mode", mode: "edit_vertices" });
 assert.equal(editMode.mode, "edit_vertices");

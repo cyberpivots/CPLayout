@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Center Pivot Layout",
+    "slug": "center-pivot-layout",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "local.centerpivot.layout"
+    },
+    "android": {
+      "package": "local.centerpivot.layout"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-sharing"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+.expo/
+.cache/
+node_modules/
+dist/
+dist-android/
+web-build/
+
+*.log
+*.tmp
+*.png
+*.zip
+
+.env
+.env.*
+!.env.example

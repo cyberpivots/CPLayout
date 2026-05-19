@@ -1,0 +1,3478 @@
+{
+  "project": {
+    "name": "Free React Native Center Pivot Survey Mapping Layout App",
+    "purpose": "Developer-ready handoff for a local-first React Native application that captures survey data, imports/exports GIS files, connects to practical GNSS/RTK workflows, models center pivot irrigation geometry, evaluates coverage and conflicts, and supports offline maps without paid APIs or paid cloud dependencies.",
+    "base_source_file": "/mnt/h/CPLayout/center_pivot_free_python_tooling_handoff.json",
+    "target_platforms": [
+      "iOS",
+      "Android",
+      "Windows"
+    ],
+    "free_cost_policy": "Recommended software must be open-source or otherwise free to use without mandatory subscription, paid API key, paid cloud build, paid map service, or trial-only plan. Hardware, cellular service, RTK correction subscriptions, Apple/Google/Microsoft store enrollment, and legal review may still cost money and are explicitly separated from the software stack.",
+    "research_date": "2026-05-19",
+    "confidence_level": "High for official documentation, package names, and package license metadata verified on 2026-05-19; medium for cross-platform build practicality because native module support, receiver protocols, and app-store policies can change.",
+    "major_constraints": [
+      "React Native cannot directly run Shapely, GeoPandas, GDAL, rasterio, RTKLIB, or most Python geospatial libraries inside iOS/Android/Windows without a bridge, native port, WebAssembly build, backend, or preprocessing workflow.",
+      "All acre, radius, buffer, tower, and clearance calculations must be performed in a projected CRS with linear units, never directly in WGS84 degrees.",
+      "MapLibre React Native is recommended for iOS/Android, but Windows needs a separate strategy such as React Native WebView with OpenLayers/MapLibre GL JS or a Windows native map module.",
+      "Offline maps require lawful local tile packages; public OSM tile servers must not be bulk-downloaded or used as a hidden offline tile backend.",
+      "RTK-grade accuracy requires paid or already-owned hardware and a lawful correction/base workflow; free software does not make receivers, antennas, radios, or correction networks free.",
+      "iOS external GNSS support is easiest with Core Location-compatible receivers or BLE; Bluetooth Classic serial/SPP-style receivers are primarily an Android/Windows path.",
+      "Windows support must be validated package by package because many React Native mobile libraries do not ship Windows implementations."
+    ],
+    "assumptions": [
+      "The MVP is an offline/local-first app with local files and local SQLite, not a paid backend.",
+      "The field technician enters verified machine geometry from manufacturer/as-built records.",
+      "Free public basemap or imagery data is optional context, not a design-grade boundary source until validated by field survey.",
+      "Development can use local build tools; hosted build services are optional and not required.",
+      "The source JSON domain rules are preserved unless this React Native handoff explicitly narrows a feature to preprocessing or a later native module."
+    ],
+    "non_goals": [
+      "No paid Google Maps, Mapbox, Esri/ArcGIS, SaaS GIS, paid RTK correction service, paid satellite imagery, or paid cloud build dependency.",
+      "No promise of centimeter accuracy from phone GPS.",
+      "No hydraulic, electrical, structural, legal, water-rights, utility locating, or manufacturer safety approval.",
+      "No embedded Python geospatial runtime in the mobile MVP.",
+      "No unattended scraping or offline caching of public map tiles in violation of provider policies."
+    ]
+  },
+  "source_json_analysis": {
+    "important_findings_reused": [
+      "The Python handoff already separates software cost from unavoidable hardware/correction costs.",
+      "It treats projected CRS handling as mandatory for all area, buffer, and radius calculations.",
+      "It models wet coverage separately from physical machine/tower travel and clearance conflicts.",
+      "It requires survey quality metadata and distinguishes RTK-fixed, RTK-float, DGPS, autonomous GPS, imagery digitized, imported CAD, user-estimated, and optimized sources.",
+      "It keeps imagery-derived boundaries planning-grade until field validated.",
+      "It recommends local/offline formats such as GeoJSON, CSV, GeoPackage, RINEX, GPX, KML, and DXF."
+    ],
+    "python_tools_that_translate_well_to_react_native": [
+      "pynmea2 concepts translate to a TypeScript NMEA parser, but not the Python package itself.",
+      "Shapely geometry workflows translate conceptually to Turf.js, polygon-clipping, JSTS, or native GEOS/Rust modules.",
+      "pyproj CRS concepts translate partially to proj4js with explicit EPSG/proj definitions.",
+      "GeoPandas layer schemas translate to GeoJSON feature collections plus SQLite tables.",
+      "matplotlib/folium review maps translate to MapLibre/OpenLayers/Leaflet map overlays.",
+      "pytest fixture discipline translates to Jest golden-file geometry tests."
+    ],
+    "python_tools_that_do_not_translate_directly": [
+      "GDAL/OGR, rasterio, GeoPandas, Shapely, pyogrio, RTKLIB, OpenDroneMap, and QGIS are not direct mobile React Native dependencies.",
+      "Large GeoTIFF/COG rendering is not practical as an in-app raw raster workflow; tile conversion is preferred.",
+      "RTKLIB is best kept as an external desktop/offline preprocessing tool rather than embedded in the MVP app.",
+      "GeoPackage full GIS semantics are easier to handle through preprocessing than through mobile TypeScript alone.",
+      "Advanced optimization from scipy/OR-Tools should begin as deterministic TypeScript grid search, then move to Python/Rust/native if needed."
+    ],
+    "domain_logic_to_preserve": [
+      "machine_radius = sum(span_lengths) + overhang_length unless manufacturer geometry defines wet radius differently.",
+      "end_gun_radius = machine_radius + end_gun_throw; model end-gun as optional annular sector clipped by end-gun shutoff zones.",
+      "full_circle_sweep = buffer(pivot_center, machine_radius) in projected CRS.",
+      "partial_circle_sweep = sector polygon built from center point and arc points between start_angle and end_angle; handle clockwise/counterclockwise wraparound.",
+      "irrigated_area = field_boundary.intersection(base_sweep.union(end_gun_sweep)).difference(obstacle_buffers.union(no_spray_zones)).area.",
+      "dry_corners = field_boundary.difference(irrigated_area_polygon).difference(nonfarmable_exclusions).",
+      "tower_track_i = circle or arc at radius cumulative_span_i around pivot center; buffer track by configured tower/wheel clearance where needed.",
+      "clearance conflict = machine_path_or_tower_track_buffer.intersects(obstacle_or_boundary_buffer) when boundary/obstacle is treated as hard clearance.",
+      "acres = square_meters / 4046.8564224 or square_feet / 43560 depending project units.",
+      "pipeline route score = route_length_cost + obstacle_crossing_penalties + elevation_penalties + constructability flags.",
+      "field_usable = field_boundary.difference(nonfarmable_zones)",
+      "wet_raw = base_sweep.union(end_gun_sweep if enabled else empty)",
+      "wet_allowed = wet_raw.intersection(field_usable).difference(no_spray_zones.union(obstacle_wet_exclusions))",
+      "irrigated_acres = wet_allowed.area / 4046.8564224 for meter CRS",
+      "dry_acres = field_usable.area - wet_allowed.area converted to acres",
+      "coverage_percent = wet_allowed.area / field_usable.area * 100 if field_usable.area > 0 else null"
+    ],
+    "workflow_requirements_to_preserve": [
+      "Reject calculations in degrees.",
+      "Preserve raw survey coordinates and transformed coordinates.",
+      "Store CRS and source quality with every layer.",
+      "Require technician review for polygon repair, optimized placement, and imagery-derived boundaries.",
+      "Export open local files for backup and review."
+    ],
+    "risks_inherited_from_source_json": [
+      "Receiver protocols and correction workflows vary by hardware.",
+      "Imagery can be stale, offset, or too coarse for clearance decisions.",
+      "Invalid polygons, missing CRS, and unordered boundary points can silently produce wrong acreage.",
+      "Optimizers can produce mathematically attractive but constructability-poor layouts.",
+      "Open-source license compatibility still needs legal review before commercial distribution."
+    ]
+  },
+  "recommended_app_architecture": {
+    "architecture_summary": "Use a shared TypeScript domain core for project schema, CRS policy, geometry generation, scoring, import/export normalization, and tests. Use platform-specific shells for GNSS hardware and map rendering: MapLibre React Native on iOS/Android, and a WebView/OpenLayers or MapLibre GL JS path on Windows until a Windows-native map strategy is proven. Keep Python/GDAL/RTKLIB as optional offline preprocessing tools for heavy raster, vector conversion, and GNSS post-processing.",
+    "mvp_architecture": [
+      "Monorepo with packages/core, packages/geometry, packages/project-store, apps/mobile, and apps/windows.",
+      "React Native mobile app using TypeScript and local SQLite/project JSON files.",
+      "Manual boundary drawing/editing and GeoJSON/CSV import before live RTK hardware support.",
+      "MapLibre React Native for iOS/Android display; WebView map fallback for Windows.",
+      "Pure TypeScript center pivot geometry with deterministic tests.",
+      "Project package export as ZIP containing project JSON, GeoJSON layers, CSV report, and map package references."
+    ],
+    "advanced_architecture": [
+      "Native Android module for USB serial GNSS and Bluetooth Classic receiver profiles.",
+      "BLE receiver integration for iOS/Android receivers that expose useful NMEA/vendor characteristics.",
+      "Windows C++/C# native module for Windows.Devices.SerialCommunication and Geolocation.",
+      "Optional Rust/C++ geometry core if TypeScript polygon robustness becomes insufficient.",
+      "Offline tile package builder using Python/GDAL/tippecanoe/pmtiles/MBTiles outside the mobile app.",
+      "RTKLIB desktop companion workflow for RINEX/PPK and base/rover solution QA."
+    ],
+    "offline_first_strategy": [
+      "No account or backend required for project creation.",
+      "Store canonical project metadata and vector layers locally in SQLite plus exportable JSON/GeoJSON.",
+      "Store imagery/basemap packages as user-imported PMTiles/MBTiles or local tile folders with attribution metadata.",
+      "Use atomic write patterns: write to temporary file, fsync/close where platform allows, then rename.",
+      "Keep a project backup/export command that creates a portable ZIP."
+    ],
+    "cross_platform_strategy": [
+      "Shared TypeScript packages own domain logic and tests.",
+      "Platform adapters implement location, GNSS hardware, file picker, map renderer, and packaging.",
+      "Do not assume a mobile native module supports Windows; every dependency gets a Windows status.",
+      "Use fixture-driven tests in the shared core before native UI work."
+    ],
+    "platform_specific_modules": {
+      "ios": [
+        "Core Location adapter for internal device GPS and compatible external GNSS exposed through location services.",
+        "Core Bluetooth adapter for BLE GNSS receiver profiles.",
+        "ExternalAccessory path only for compatible/MFi accessories and later-phase native work.",
+        "MapLibre React Native mobile map renderer.",
+        "Document picker/file import-export adapter."
+      ],
+      "android": [
+        "Android location adapter.",
+        "Bluetooth LE adapter through react-native-ble-plx.",
+        "Bluetooth Classic/SPP or custom native module for NMEA receivers.",
+        "USB host/serial native module for USB GNSS receivers.",
+        "MapLibre React Native mobile map renderer.",
+        "Scoped storage/file picker adapter."
+      ],
+      "windows": [
+        "React Native Windows application shell.",
+        "Windows.Devices.SerialCommunication native module for GNSS receiver serial ports.",
+        "Windows.Devices.Geolocation adapter.",
+        "WebView/OpenLayers or MapLibre GL JS map renderer.",
+        "MSIX/local installer packaging and filesystem project management."
+      ]
+    },
+    "where_python_still_fits": [
+      "GDAL/ogr2ogr conversion of Shapefile/KML/GeoPackage/DXF into normalized GeoJSON before import.",
+      "Raster conversion of GeoTIFF/COG/drone orthomosaics into PMTiles/MBTiles/local tiles.",
+      "RTKLIB/pygnssutils/georinex workflows for RINEX, base/rover, and PPK outside the mobile MVP.",
+      "Batch validation of project exports and high-precision reference calculations.",
+      "Optional advanced optimization prototyping before porting stable logic to TypeScript/Rust."
+    ],
+    "where_typescript_should_replace_python": [
+      "Project schemas and validation.",
+      "Survey point quality filtering.",
+      "Pivot circle/sector/tower/end-gun geometry generation.",
+      "Coverage scoring, scenario comparison, and report metrics.",
+      "GeoJSON import/export for MVP files.",
+      "NMEA parsing for GGA/GSA/GST/RMC quality fields once receiver stream access exists."
+    ],
+    "where_native_modules_may_be_required": [
+      "Android USB serial and Bluetooth Classic GNSS streams.",
+      "iOS ExternalAccessory or vendor SDK receiver access.",
+      "Windows serial port GNSS streams.",
+      "High-performance geometry if TypeScript polygon operations fail tolerance tests.",
+      "Large local file access and background location behavior, depending platform restrictions."
+    ]
+  },
+  "recommended_stack": {
+    "minimum_viable_stack": [
+      "react-native",
+      "TypeScript",
+      "zod",
+      "@turf/turf",
+      "proj4",
+      "polygon-clipping",
+      "rbush",
+      "react-native-webview",
+      "ol",
+      "@react-navigation/native",
+      "react-native-screens",
+      "react-native-safe-area-context",
+      "react-native-quick-sqlite or expo-sqlite for mobile",
+      "react-native-fs or expo-file-system",
+      "react-hook-form",
+      "react-native-paper",
+      "jest"
+    ],
+    "advanced_stack": [
+      "@maplibre/maplibre-react-native",
+      "pmtiles",
+      "MBTiles",
+      "react-native-ble-plx",
+      "react-native-bluetooth-classic",
+      "react-native-usb-serialport-for-android",
+      "react-native-windows native modules",
+      "RTKLIB offline workflow",
+      "GDAL/ogr2ogr preprocessing",
+      "Rust/C++ geometry core optional"
+    ],
+    "mapping_stack": [
+      "@maplibre/maplibre-react-native for iOS/Android",
+      "react-native-webview + OpenLayers or MapLibre GL JS for Windows and fallback",
+      "PMTiles/MBTiles/local tiles for offline maps",
+      "OpenStreetMap-derived data only with ODbL attribution and lawful tile generation"
+    ],
+    "geospatial_math_stack": [
+      "proj4",
+      "@turf/turf",
+      "polygon-clipping",
+      "rbush",
+      "geokdbush",
+      "geographiclib-geodesic",
+      "JSTS optional after license review",
+      "native GEOS/Rust deferred until precision tests require it"
+    ],
+    "rtk_gnss_stack": [
+      "internal device location first",
+      "TypeScript NMEA parser",
+      "react-native-ble-plx for BLE GNSS",
+      "Android Bluetooth Classic/USB serial native paths",
+      "Windows SerialCommunication native module",
+      "RTKLIB/RINEX as offline preprocessing"
+    ],
+    "storage_stack": [
+      "SQLite canonical store",
+      "GeoJSON project/layer export",
+      "ZIP project package",
+      "AsyncStorage/MMKV only for settings",
+      "PMTiles/MBTiles for map packages",
+      "@nozbe/watermelondb optional",
+      "realm deferred"
+    ],
+    "ui_stack": [
+      "@react-navigation/native",
+      "react-native-screens",
+      "react-native-safe-area-context",
+      "react-native-paper or custom field UI",
+      "react-hook-form",
+      "zod",
+      "large touch targets",
+      "offline status and GNSS quality panels"
+    ],
+    "testing_stack": [
+      "jest",
+      "@testing-library/react-native",
+      "Detox for iOS/Android",
+      "Maestro optional CLI",
+      "golden GeoJSON fixtures",
+      "NMEA log fixtures",
+      "projection roundtrip tests"
+    ],
+    "build_packaging_stack": [
+      "local Xcode/Android Studio/Gradle builds",
+      "React Native Windows with Visual Studio and MSIX",
+      "Expo prebuild/development builds only when compatible",
+      "no mandatory hosted EAS, App Center, or paid CI"
+    ]
+  },
+  "tool_catalog": [
+    {
+      "name": "react-native",
+      "category": "React Native foundation",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows via react-native-windows"
+      ],
+      "primary_use": "Core application framework.",
+      "why_relevant_to_center_pivot_app": "Provides shared TypeScript UI and native module access for field survey, map tools, and local project workflows.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native",
+        "yarn": "yarn add react-native",
+        "expo_compatibility": "Expo uses React Native under the hood; bare app gives more native control.",
+        "bare_react_native_required": "no for core, yes for many GNSS/map modules",
+        "native_dependencies": [
+          "Xcode for iOS",
+          "Android Studio/SDK for Android",
+          "Visual Studio workloads for Windows"
+        ],
+        "windows_notes": [
+          "Use react-native-windows for Windows target."
+        ]
+      },
+      "example_use_cases": [
+        "Shared mobile app shell",
+        "TypeScript business logic packages",
+        "native sensor bridge host"
+      ],
+      "strengths": [
+        "Large ecosystem",
+        "active upstream",
+        "native access"
+      ],
+      "limitations": [
+        "Windows support requires React Native Windows, not every mobile package works there."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "Flutter",
+        "Kotlin/Swift native apps"
+      ],
+      "official_sources": [
+        "https://reactnative.dev/docs/getting-started",
+        "https://reactnative.dev/docs/the-new-architecture/landing-page"
+      ]
+    },
+    {
+      "name": "expo",
+      "category": "React Native foundation",
+      "platforms": [
+        "iOS",
+        "Android"
+      ],
+      "primary_use": "Mobile development tooling and development builds.",
+      "why_relevant_to_center_pivot_app": "Good for early mobile MVP if native modules are handled through prebuild/development builds rather than Expo Go.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Expo open-source tooling is free; hosted EAS services may have paid limits and must not be required.",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npx create-expo-app",
+        "yarn": "yarn create expo-app",
+        "expo_compatibility": "Recommended only with development builds/prebuild; Expo Go is insufficient for MapLibre and GNSS native modules.",
+        "bare_react_native_required": "bare/prebuild required for native GNSS and map packages",
+        "native_dependencies": [
+          "Expo prebuild",
+          "iOS/Android native toolchains"
+        ],
+        "windows_notes": [
+          "Does not solve React Native Windows."
+        ]
+      },
+      "example_use_cases": [
+        "Mobile MVP shell",
+        "permissions",
+        "file system",
+        "local dev builds"
+      ],
+      "strengths": [
+        "Fast mobile bootstrapping",
+        "good docs"
+      ],
+      "limitations": [
+        "Windows target remains separate; native modules require care."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "bare React Native CLI"
+      ],
+      "official_sources": [
+        "https://docs.expo.dev/",
+        "https://docs.expo.dev/build-reference/local-builds/"
+      ]
+    },
+    {
+      "name": "react-native-windows",
+      "category": "React Native Windows",
+      "platforms": [
+        "Windows"
+      ],
+      "primary_use": "Windows desktop application target.",
+      "why_relevant_to_center_pivot_app": "Provides the Windows app path for survey-office workflows, serial GNSS receiver workflows, and local project editing on field laptops.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npx react-native-windows-init",
+        "yarn": "yarn react-native-windows-init",
+        "expo_compatibility": "Not an Expo target.",
+        "bare_react_native_required": "yes for Windows project",
+        "native_dependencies": [
+          "Visual Studio",
+          "Windows SDK",
+          "MSIX packaging"
+        ],
+        "windows_notes": [
+          "Treat Windows package compatibility separately."
+        ]
+      },
+      "example_use_cases": [
+        "Windows map/editor app",
+        "serial receiver native module host",
+        "local file package manager"
+      ],
+      "strengths": [
+        "Official Microsoft project",
+        "native Windows APIs"
+      ],
+      "limitations": [
+        "Mobile RN packages often lack Windows implementations."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "Electron plus React web",
+        "Tauri/Rust plus web UI"
+      ],
+      "official_sources": [
+        "https://microsoft.github.io/react-native-windows/",
+        "https://microsoft.github.io/react-native-windows/docs/native-modules"
+      ]
+    },
+    {
+      "name": "@react-navigation/native",
+      "category": "React Native foundation",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows support must be validated"
+      ],
+      "primary_use": "Navigation between project, map, survey, equipment, and export screens.",
+      "why_relevant_to_center_pivot_app": "Gives the app a standard screen/navigation model while keeping business logic outside UI components.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install @react-navigation/native react-native-screens react-native-safe-area-context",
+        "yarn": "yarn add @react-navigation/native react-native-screens react-native-safe-area-context",
+        "expo_compatibility": "Compatible with Expo and bare React Native; Windows support must be validated with chosen navigator.",
+        "bare_react_native_required": "no for core navigation, native dependencies autolink",
+        "native_dependencies": [
+          "react-native-screens",
+          "react-native-safe-area-context"
+        ],
+        "windows_notes": [
+          "Validate navigator package on React Native Windows."
+        ]
+      },
+      "example_use_cases": [
+        "project list to map flow",
+        "settings/export navigation",
+        "field workflow stacks"
+      ],
+      "strengths": [
+        "Mature RN navigation ecosystem",
+        "MIT license"
+      ],
+      "limitations": [
+        "Navigator choice and Windows support need proof."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "custom navigation shell"
+      ],
+      "official_sources": [
+        "https://github.com/react-navigation/react-navigation"
+      ]
+    },
+    {
+      "name": "@maplibre/maplibre-react-native",
+      "category": "Mapping/rendering",
+      "platforms": [
+        "iOS",
+        "Android"
+      ],
+      "primary_use": "Native vector map renderer.",
+      "why_relevant_to_center_pivot_app": "Best native mobile map candidate for offline vector/raster tiles, survey overlays, pivot circles, sectors, tower markers, and tracks without Mapbox SDK billing.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "software free; tile data/source generation still needs license compliance and storage planning.",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install @maplibre/maplibre-react-native",
+        "yarn": "yarn add @maplibre/maplibre-react-native",
+        "expo_compatibility": "Requires development build/prebuild; not Expo Go.",
+        "bare_react_native_required": "yes for native setup",
+        "native_dependencies": [
+          "CocoaPods",
+          "Android Gradle",
+          "offline style/tile assets"
+        ],
+        "windows_notes": [
+          "No React Native Windows support. Use WebView map for Windows."
+        ]
+      },
+      "example_use_cases": [
+        "Offline basemap",
+        "GeoJSON overlays",
+        "tower markers",
+        "field boundary editing display"
+      ],
+      "strengths": [
+        "Native performance",
+        "Mapbox-style vector tile ecosystem without Mapbox service lock-in"
+      ],
+      "limitations": [
+        "Windows gap",
+        "editing controls must be built",
+        "offline tile packaging remains nontrivial"
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "react-native-webview with MapLibre GL JS/OpenLayers",
+        "Leaflet in WebView"
+      ],
+      "official_sources": [
+        "https://github.com/maplibre/maplibre-react-native",
+        "https://maplibre.org/maplibre-react-native/"
+      ]
+    },
+    {
+      "name": "react-native-maps",
+      "category": "Mapping/rendering",
+      "platforms": [
+        "iOS",
+        "Android"
+      ],
+      "primary_use": "Native Apple Maps/Google Maps-backed map component.",
+      "why_relevant_to_center_pivot_app": "Evaluated but not recommended for the core app because Android commonly depends on Google Maps provider/API setup and the package does not solve offline open basemap or Windows requirements.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "package is MIT; map data/providers may impose API keys, terms, quotas, billing, or platform limits.",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Use only for a platform-specific proof where provider terms are acceptable; do not make it a required dependency."
+      },
+      "installation": {
+        "npm": "npm install react-native-maps",
+        "yarn": "yarn add react-native-maps",
+        "expo_compatibility": "Requires native setup; provider configuration varies.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "Apple Maps on iOS",
+          "Google Maps provider commonly used on Android"
+        ],
+        "windows_notes": [
+          "No Windows path."
+        ]
+      },
+      "example_use_cases": [
+        "iOS Apple Maps proof only",
+        "non-offline prototype"
+      ],
+      "strengths": [
+        "Mature package",
+        "native map gestures"
+      ],
+      "limitations": [
+        "Not offline-first, provider cost/terms risk, no Windows solution."
+      ],
+      "risk_level": "high",
+      "alternatives": [
+        "@maplibre/maplibre-react-native",
+        "WebView with OpenLayers/MapLibre GL JS"
+      ],
+      "official_sources": [
+        "https://github.com/react-native-maps/react-native-maps"
+      ]
+    },
+    {
+      "name": "react-native-webview + OpenLayers",
+      "category": "Mapping/rendering",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows"
+      ],
+      "primary_use": "Cross-platform WebView map surface.",
+      "why_relevant_to_center_pivot_app": "Most practical shared map fallback for Windows and for rendering PMTiles/MBTiles-derived local tiles when native packages diverge.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "software free; still must supply lawful local tile data.",
+        "license": "MIT for react-native-webview; BSD-2-Clause for OpenLayers",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native-webview ol",
+        "yarn": "yarn add react-native-webview ol",
+        "expo_compatibility": "Works in Expo development builds; platform support must be validated.",
+        "bare_react_native_required": "native WebView module required",
+        "native_dependencies": [
+          "WebView native implementation",
+          "local asset server or file access bridge"
+        ],
+        "windows_notes": [
+          "React Native Windows WebView support must be verified against chosen version."
+        ]
+      },
+      "example_use_cases": [
+        "Windows map view",
+        "local HTML map bundle",
+        "geometry editing UI",
+        "PMTiles viewer"
+      ],
+      "strengths": [
+        "Single map UI can be shared across platforms",
+        "mature web GIS APIs"
+      ],
+      "limitations": [
+        "Bridge latency",
+        "harder native gesture integration",
+        "large raster memory constraints"
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "Leaflet in WebView",
+        "MapLibre GL JS in WebView"
+      ],
+      "official_sources": [
+        "https://github.com/react-native-webview/react-native-webview",
+        "https://github.com/openlayers/openlayers"
+      ]
+    },
+    {
+      "name": "pmtiles",
+      "category": "Offline map storage",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "offline preprocessing"
+      ],
+      "primary_use": "Single-file map tile archive and JavaScript reader.",
+      "why_relevant_to_center_pivot_app": "Useful for technician-loaded offline basemaps and raster/vector tile packages without a paid tile API.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "software free; tile data production and OSM attribution/license compliance remain required.",
+        "license": "BSD-3-Clause",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install pmtiles",
+        "yarn": "yarn add pmtiles",
+        "expo_compatibility": "Usable in JS/WebView contexts; native MapLibre integration may need protocol support or preprocessing.",
+        "bare_react_native_required": "no for JS reader, yes if bridged into native map",
+        "native_dependencies": [],
+        "windows_notes": [
+          "PMTiles file can be stored with project assets."
+        ]
+      },
+      "example_use_cases": [
+        "Offline county basemap",
+        "drone imagery tile package",
+        "single-file backup"
+      ],
+      "strengths": [
+        "Simple file distribution",
+        "HTTP range friendly",
+        "good for local-first projects"
+      ],
+      "limitations": [
+        "Native mobile integration may require WebView or custom protocol adapter."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "MBTiles",
+        "local XYZ tile folder"
+      ],
+      "official_sources": [
+        "https://docs.protomaps.com/pmtiles/",
+        "https://github.com/protomaps/PMTiles"
+      ]
+    },
+    {
+      "name": "MBTiles",
+      "category": "Offline map storage",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "offline preprocessing"
+      ],
+      "primary_use": "SQLite tile archive format.",
+      "why_relevant_to_center_pivot_app": "Common output from tile conversion workflows for offline raster/vector maps and orthomosaics.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "format is free; data license and renderer support are separate.",
+        "license": "open specification",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "format only",
+        "yarn": "format only",
+        "expo_compatibility": "Needs SQLite reader and renderer adapter.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [
+          "SQLite"
+        ],
+        "windows_notes": [
+          "Can be read through SQLite on all platforms."
+        ]
+      },
+      "example_use_cases": [
+        "Offline raster basemap",
+        "drone orthomosaic tiles",
+        "project map package"
+      ],
+      "strengths": [
+        "Widely understood",
+        "SQLite container"
+      ],
+      "limitations": [
+        "Renderer/protocol glue is required; not a React Native component by itself."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "PMTiles",
+        "GeoPackage tiles"
+      ],
+      "official_sources": [
+        "https://github.com/mapbox/mbtiles-spec",
+        "https://www.sqlite.org/copyright.html"
+      ]
+    },
+    {
+      "name": "@turf/turf",
+      "category": "Geospatial math",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "GeoJSON measurement and boolean helper library.",
+      "why_relevant_to_center_pivot_app": "Good first TypeScript layer for area, length, buffers, circle approximations, intersects, and clipping support around pivot geometry.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install @turf/turf",
+        "yarn": "yarn add @turf/turf",
+        "expo_compatibility": "JS-only package.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "Area checks",
+        "distance measurement",
+        "simple buffers",
+        "circle/sector helper geometry"
+      ],
+      "strengths": [
+        "Easy GeoJSON API",
+        "broad ecosystem"
+      ],
+      "limitations": [
+        "Complex polygon validity and precision can be weaker than GEOS; validate with golden tests."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "polygon-clipping",
+        "JSTS",
+        "native GEOS/Rust core"
+      ],
+      "official_sources": [
+        "https://turfjs.org/",
+        "https://github.com/Turfjs/turf"
+      ]
+    },
+    {
+      "name": "proj4",
+      "category": "CRS/projection",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "Coordinate transformation in JavaScript.",
+      "why_relevant_to_center_pivot_app": "Required to avoid measuring acres/radius in WGS84 degrees and to transform survey WGS84 points to a project CRS.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install proj4",
+        "yarn": "yarn add proj4",
+        "expo_compatibility": "JS-only package.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "WGS84 to UTM",
+        "State Plane definitions when supplied",
+        "project CRS round trips"
+      ],
+      "strengths": [
+        "Proven JS projection package",
+        "offline CRS definitions possible"
+      ],
+      "limitations": [
+        "EPSG database is not automatically complete; app must ship or define needed CRS strings."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "PROJ native via Rust/C++/Python preprocessing"
+      ],
+      "official_sources": [
+        "https://github.com/proj4js/proj4js"
+      ]
+    },
+    {
+      "name": "polygon-clipping",
+      "category": "Geospatial math",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "Polygon union/intersection/difference/xor.",
+      "why_relevant_to_center_pivot_app": "A pragmatic TypeScript core for subtracting obstacles, clipping pivot sectors to fields, and computing dry corners.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install polygon-clipping",
+        "yarn": "yarn add polygon-clipping",
+        "expo_compatibility": "JS-only package.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "coverage = field intersect pivot",
+        "dry corners",
+        "obstacle subtraction"
+      ],
+      "strengths": [
+        "Focused polygon boolean operations",
+        "small dependency"
+      ],
+      "limitations": [
+        "GeoJSON conversion and invalid polygon repair must be implemented around it."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "JSTS",
+        "Turf boolean ops",
+        "native GEOS"
+      ],
+      "official_sources": [
+        "https://github.com/mfogel/polygon-clipping"
+      ]
+    },
+    {
+      "name": "jsts",
+      "category": "Geospatial math",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "JavaScript Topology Suite.",
+      "why_relevant_to_center_pivot_app": "Useful optional geometry fallback for validation and robust topology if Turf/polygon-clipping hit edge cases.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "open-source but non-MIT license; legal review recommended before commercial distribution.",
+        "license": "EDL-1.0 OR EPL-1.0",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Keep optional until license review approves distribution obligations."
+      },
+      "installation": {
+        "npm": "npm install jsts",
+        "yarn": "yarn add jsts",
+        "expo_compatibility": "JS-only package.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "geometry validity",
+        "topology repair experiments",
+        "line/polygon operations"
+      ],
+      "strengths": [
+        "Mature geometry model"
+      ],
+      "limitations": [
+        "License differs from MIT stack; API heavier."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "polygon-clipping",
+        "native GEOS"
+      ],
+      "official_sources": [
+        "https://github.com/bjornharrtell/jsts"
+      ]
+    },
+    {
+      "name": "rbush",
+      "category": "Spatial index",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "R-tree spatial indexing.",
+      "why_relevant_to_center_pivot_app": "Speeds obstacle lookup, vertex snapping, conflict search, and nearest-feature UI hit testing.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install rbush",
+        "yarn": "yarn add rbush",
+        "expo_compatibility": "JS-only package.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "find obstacles near tower track",
+        "snap candidate vertices",
+        "map feature hit testing"
+      ],
+      "strengths": [
+        "Fast",
+        "small",
+        "well-known"
+      ],
+      "limitations": [
+        "Index stores boxes; geometry predicates still needed."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "flatbush",
+        "custom grid index"
+      ],
+      "official_sources": [
+        "https://github.com/mourner/rbush"
+      ]
+    },
+    {
+      "name": "geokdbush",
+      "category": "Spatial index",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "Nearest-neighbor search for geographic points.",
+      "why_relevant_to_center_pivot_app": "Useful for fast lookup of survey points, receiver samples, and nearby control points.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "ISC",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install geokdbush",
+        "yarn": "yarn add geokdbush",
+        "expo_compatibility": "JS-only package.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "nearest survey point",
+        "quality-control point clusters"
+      ],
+      "strengths": [
+        "Fast for points"
+      ],
+      "limitations": [
+        "Works on points, not polygon topology."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "rbush",
+        "kdbush"
+      ],
+      "official_sources": [
+        "https://github.com/mourner/geokdbush"
+      ]
+    },
+    {
+      "name": "geographiclib-geodesic",
+      "category": "Geospatial math",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "Geodesic calculations on ellipsoid.",
+      "why_relevant_to_center_pivot_app": "Useful for GNSS QA and distance sanity checks before projection; not a replacement for projected acreage calculations.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install geographiclib-geodesic",
+        "yarn": "yarn add geographiclib-geodesic",
+        "expo_compatibility": "JS-only package.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "distance between repeated RTK shots",
+        "projection distortion QA"
+      ],
+      "strengths": [
+        "Accurate geodesic math"
+      ],
+      "limitations": [
+        "Do not use for polygon acres or layout buffers."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "geolib",
+        "native GeographicLib"
+      ],
+      "official_sources": [
+        "https://github.com/geographiclib/geographiclib-js"
+      ]
+    },
+    {
+      "name": "geotiff",
+      "category": "Imagery",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "GeoTIFF parsing.",
+      "why_relevant_to_center_pivot_app": "Can inspect small GeoTIFF metadata and convert user imagery; large orthomosaics should be tiled offline before display.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install geotiff",
+        "yarn": "yarn add geotiff",
+        "expo_compatibility": "JS-only but memory heavy for large rasters.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "read GeoTIFF bounds",
+        "COG metadata inspection",
+        "small raster preview"
+      ],
+      "strengths": [
+        "Pure JS",
+        "COG-aware"
+      ],
+      "limitations": [
+        "Large rasters are impractical inside RN memory; tile externally."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "GDAL CLI preprocessing",
+        "rasterio Python preprocessing"
+      ],
+      "official_sources": [
+        "https://github.com/geotiffjs/geotiff.js"
+      ]
+    },
+    {
+      "name": "shapefile",
+      "category": "Import/export",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "Read ESRI Shapefiles.",
+      "why_relevant_to_center_pivot_app": "Can import simple field boundaries, but Shapefile is better handled in preprocessing or converted to GeoJSON/GeoPackage.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "BSD-3-Clause",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install shapefile",
+        "yarn": "yarn add shapefile",
+        "expo_compatibility": "JS package; test bundling in RN.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "read simple boundary shapefile",
+        "convert to GeoJSON"
+      ],
+      "strengths": [
+        "Free",
+        "known package"
+      ],
+      "limitations": [
+        "NPM metadata shows older modification; Shapefile sidecar/encoding issues make this a deferred MVP feature."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "GDAL/ogr2ogr preprocessing",
+        "GeoJSON import"
+      ],
+      "official_sources": [
+        "https://github.com/mbostock/shapefile"
+      ]
+    },
+    {
+      "name": "@tmcw/togeojson",
+      "category": "Import/export",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "Convert KML/GPX to GeoJSON.",
+      "why_relevant_to_center_pivot_app": "Supports common survey exports from phones and handheld GPS units.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "BSD-2-Clause",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install @tmcw/togeojson",
+        "yarn": "yarn add @tmcw/togeojson",
+        "expo_compatibility": "JS package.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "KML boundary import",
+        "GPX track import"
+      ],
+      "strengths": [
+        "Focused converter",
+        "open license"
+      ],
+      "limitations": [
+        "Complex KMZ and huge files may require preprocessing."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "GDAL CLI preprocessing",
+        "custom GPX parser"
+      ],
+      "official_sources": [
+        "https://github.com/placemark/togeojson"
+      ]
+    },
+    {
+      "name": "react-native-quick-sqlite",
+      "category": "Storage",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows uncertain"
+      ],
+      "primary_use": "SQLite database access.",
+      "why_relevant_to_center_pivot_app": "Best candidate for local project store, geometry tables, RTK samples, and map package manifests on mobile.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native-quick-sqlite",
+        "yarn": "yarn add react-native-quick-sqlite",
+        "expo_compatibility": "Requires development build/prebuild.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "C++/JSI native build"
+        ],
+        "windows_notes": [
+          "Windows support must be verified or replaced with platform SQLite adapter."
+        ]
+      },
+      "example_use_cases": [
+        "project database",
+        "survey point log",
+        "offline tile index"
+      ],
+      "strengths": [
+        "Fast local SQL",
+        "works offline"
+      ],
+      "limitations": [
+        "Native package compatibility is the main risk, especially Windows."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "expo-sqlite for mobile",
+        "WatermelonDB on SQLite",
+        "platform-native SQLite wrapper"
+      ],
+      "official_sources": [
+        "https://github.com/margelo/react-native-quick-sqlite"
+      ]
+    },
+    {
+      "name": "expo-sqlite + expo-file-system",
+      "category": "Storage/files",
+      "platforms": [
+        "iOS",
+        "Android"
+      ],
+      "primary_use": "Expo mobile SQLite and file access.",
+      "why_relevant_to_center_pivot_app": "Useful if the mobile app starts with Expo prebuild/development builds and wants Expo-maintained local storage/file APIs.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "open-source Expo packages are free; hosted Expo services must not be required.",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install expo-sqlite expo-file-system",
+        "yarn": "yarn add expo-sqlite expo-file-system",
+        "expo_compatibility": "Good for Expo prebuild/development builds; not a Windows solution.",
+        "bare_react_native_required": "requires Expo/native app",
+        "native_dependencies": [
+          "Expo native modules"
+        ],
+        "windows_notes": [
+          "Use separate Windows adapters."
+        ]
+      },
+      "example_use_cases": [
+        "mobile project store",
+        "project export files",
+        "local map package references"
+      ],
+      "strengths": [
+        "Expo-maintained",
+        "simple mobile setup"
+      ],
+      "limitations": [
+        "Windows gap; native module compatibility still matters."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "react-native-quick-sqlite",
+        "react-native-fs"
+      ],
+      "official_sources": [
+        "https://docs.expo.dev/"
+      ]
+    },
+    {
+      "name": "@nozbe/watermelondb",
+      "category": "Storage",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows uncertain"
+      ],
+      "primary_use": "Offline database abstraction over SQLite.",
+      "why_relevant_to_center_pivot_app": "Potential later data layer if project state grows beyond simple SQLite access and sync remains out of scope.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install @nozbe/watermelondb",
+        "yarn": "yarn add @nozbe/watermelondb",
+        "expo_compatibility": "Requires native setup and adapter validation.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "SQLite adapter"
+        ],
+        "windows_notes": [
+          "Windows support must be proved before adoption."
+        ]
+      },
+      "example_use_cases": [
+        "large survey log store",
+        "project list indexing",
+        "offline queries"
+      ],
+      "strengths": [
+        "Offline-first model",
+        "MIT license"
+      ],
+      "limitations": [
+        "Adds abstraction and migration complexity; not required for MVP."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "react-native-quick-sqlite",
+        "plain SQLite tables"
+      ],
+      "official_sources": [
+        "https://github.com/Nozbe/WatermelonDB"
+      ]
+    },
+    {
+      "name": "realm",
+      "category": "Storage",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows status must be verified"
+      ],
+      "primary_use": "Local object database, deferred.",
+      "why_relevant_to_center_pivot_app": "Evaluated because it is common in React Native storage discussions, but not recommended for MVP because SQLite is simpler, file formats are more transparent, and cloud/sync product boundaries can confuse the no-backend requirement.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "local SDK package is open source; any cloud/sync service must be excluded unless separately verified free and optional.",
+        "license": "Apache-2.0",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Defer unless the project specifically needs Realm local object storage and legal/product review approves it."
+      },
+      "installation": {
+        "npm": "npm install realm",
+        "yarn": "yarn add realm",
+        "expo_compatibility": "Native package; not Expo Go.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "Realm native SDK"
+        ],
+        "windows_notes": [
+          "Windows RN support must be verified before use."
+        ]
+      },
+      "example_use_cases": [
+        "deferred local object store"
+      ],
+      "strengths": [
+        "Powerful local database",
+        "Apache-2.0 package metadata"
+      ],
+      "limitations": [
+        "Not needed for MVP; cloud/sync confusion; native integration risk."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "SQLite",
+        "WatermelonDB"
+      ],
+      "official_sources": [
+        "https://github.com/realm/realm-js"
+      ]
+    },
+    {
+      "name": "@react-native-async-storage/async-storage",
+      "category": "Storage",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows support must be verified"
+      ],
+      "primary_use": "Small key-value settings.",
+      "why_relevant_to_center_pivot_app": "Use only for preferences, not project geometry or survey logs.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install @react-native-async-storage/async-storage",
+        "yarn": "yarn add @react-native-async-storage/async-storage",
+        "expo_compatibility": "Commonly supported.",
+        "bare_react_native_required": "no for mobile autolinking, verify Windows",
+        "native_dependencies": [],
+        "windows_notes": [
+          "Use for small settings only."
+        ]
+      },
+      "example_use_cases": [
+        "last project path",
+        "UI preferences",
+        "draft mode flags"
+      ],
+      "strengths": [
+        "Simple",
+        "free"
+      ],
+      "limitations": [
+        "Not crash-safe enough for project files or high-rate GPS logs."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "react-native-mmkv",
+        "SQLite settings table"
+      ],
+      "official_sources": [
+        "https://github.com/react-native-async-storage/async-storage"
+      ]
+    },
+    {
+      "name": "react-native-mmkv",
+      "category": "Storage",
+      "platforms": [
+        "iOS",
+        "Android"
+      ],
+      "primary_use": "Fast key-value storage.",
+      "why_relevant_to_center_pivot_app": "Good for small high-read settings and cached UI state, not canonical project geometry.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native-mmkv",
+        "yarn": "yarn add react-native-mmkv",
+        "expo_compatibility": "Requires native dev build.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "JSI native module"
+        ],
+        "windows_notes": [
+          "No primary Windows path."
+        ]
+      },
+      "example_use_cases": [
+        "map UI state",
+        "receiver profile cache"
+      ],
+      "strengths": [
+        "Very fast"
+      ],
+      "limitations": [
+        "Native package, Windows gap."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "AsyncStorage",
+        "SQLite settings table"
+      ],
+      "official_sources": [
+        "https://github.com/mrousavy/react-native-mmkv"
+      ]
+    },
+    {
+      "name": "react-native-fs",
+      "category": "Storage/files",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows support must be validated"
+      ],
+      "primary_use": "Local file system operations.",
+      "why_relevant_to_center_pivot_app": "Needed for project import/export, ZIP backup, imagery packages, PMTiles/MBTiles files, and reports.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native-fs",
+        "yarn": "yarn add react-native-fs",
+        "expo_compatibility": "Requires native module.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "platform file permissions"
+        ],
+        "windows_notes": [
+          "Validate Windows support and modern storage restrictions."
+        ]
+      },
+      "example_use_cases": [
+        "save project package",
+        "import GeoJSON",
+        "copy PMTiles",
+        "export report"
+      ],
+      "strengths": [
+        "Straightforward file API"
+      ],
+      "limitations": [
+        "Storage permission behavior varies by OS version."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "expo-file-system for mobile",
+        "platform file picker/native modules"
+      ],
+      "official_sources": [
+        "https://github.com/itinance/react-native-fs"
+      ]
+    },
+    {
+      "name": "react-native-ble-plx",
+      "category": "GNSS/RTK integration",
+      "platforms": [
+        "iOS",
+        "Android"
+      ],
+      "primary_use": "Bluetooth Low Energy communication.",
+      "why_relevant_to_center_pivot_app": "Most realistic shared mobile path for modern BLE GNSS receivers that expose NMEA or vendor services over BLE.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native-ble-plx",
+        "yarn": "yarn add react-native-ble-plx",
+        "expo_compatibility": "Requires development build/prebuild.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "CoreBluetooth",
+          "Android Bluetooth"
+        ],
+        "windows_notes": [
+          "No Windows path."
+        ]
+      },
+      "example_use_cases": [
+        "BLE GNSS receiver",
+        "NMEA over BLE characteristic",
+        "receiver profile setup"
+      ],
+      "strengths": [
+        "Active package",
+        "iOS/Android support"
+      ],
+      "limitations": [
+        "BLE protocol varies by receiver; Bluetooth Classic SPP is separate."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "native CoreBluetooth/Android BLE modules"
+      ],
+      "official_sources": [
+        "https://github.com/dotintent/react-native-ble-plx",
+        "https://developer.apple.com/documentation/corebluetooth",
+        "https://developer.android.com/develop/connectivity/bluetooth/bt-permissions"
+      ]
+    },
+    {
+      "name": "react-native-bluetooth-classic",
+      "category": "GNSS/RTK integration",
+      "platforms": [
+        "Android",
+        "iOS limited/uncertain"
+      ],
+      "primary_use": "Bluetooth Classic SPP style communication.",
+      "why_relevant_to_center_pivot_app": "Many GNSS receivers expose NMEA over Bluetooth Classic serial; Android is the practical target.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "software free; iOS Classic serial accessories may require External Accessory/MFi/hardware support.",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native-bluetooth-classic",
+        "yarn": "yarn add react-native-bluetooth-classic",
+        "expo_compatibility": "Requires bare/development build.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "Android Bluetooth Classic",
+          "iOS ExternalAccessory only for compatible accessories"
+        ],
+        "windows_notes": [
+          "Not a Windows solution."
+        ]
+      },
+      "example_use_cases": [
+        "Android SPP GNSS receiver",
+        "NMEA live stream"
+      ],
+      "strengths": [
+        "Matches many field receivers on Android"
+      ],
+      "limitations": [
+        "iOS limitations are severe; package release train includes RC metadata."
+      ],
+      "risk_level": "high",
+      "alternatives": [
+        "BLE receiver workflow",
+        "Android USB serial",
+        "external logger import"
+      ],
+      "official_sources": [
+        "https://github.com/kenjdavidson/react-native-bluetooth-classic",
+        "https://developer.apple.com/documentation/externalaccessory"
+      ]
+    },
+    {
+      "name": "react-native-usb-serialport-for-android",
+      "category": "GNSS/RTK integration",
+      "platforms": [
+        "Android"
+      ],
+      "primary_use": "USB serial receiver communication.",
+      "why_relevant_to_center_pivot_app": "Practical Android path for USB GNSS receivers and USB-serial adapters that stream NMEA.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native-usb-serialport-for-android",
+        "yarn": "yarn add react-native-usb-serialport-for-android",
+        "expo_compatibility": "Requires native Android build.",
+        "bare_react_native_required": "yes",
+        "native_dependencies": [
+          "Android USB host permission flow"
+        ],
+        "windows_notes": [
+          "Android only."
+        ]
+      },
+      "example_use_cases": [
+        "USB NMEA receiver",
+        "receiver log capture",
+        "lab test harness"
+      ],
+      "strengths": [
+        "Direct serial path",
+        "no paid cloud"
+      ],
+      "limitations": [
+        "Maintenance and device coverage risk; Android-only."
+      ],
+      "risk_level": "high",
+      "alternatives": [
+        "custom native Android module",
+        "Bluetooth receiver",
+        "import NMEA log"
+      ],
+      "official_sources": [
+        "https://github.com/bastengao/react-native-usb-serialport-for-android",
+        "https://developer.android.com/develop/connectivity/usb/host"
+      ]
+    },
+    {
+      "name": "serialport",
+      "category": "GNSS/RTK integration",
+      "platforms": [
+        "Node desktop",
+        "offline preprocessing"
+      ],
+      "primary_use": "Serial port access for Node tools.",
+      "why_relevant_to_center_pivot_app": "Good for companion desktop import/logging tools; not a direct React Native mobile runtime dependency.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install serialport",
+        "yarn": "yarn add serialport",
+        "expo_compatibility": "Not for mobile RN runtime.",
+        "bare_react_native_required": "not applicable",
+        "native_dependencies": [
+          "Node native bindings"
+        ],
+        "windows_notes": [
+          "For Electron/CLI tools; Windows RN should use Windows native serial APIs."
+        ]
+      },
+      "example_use_cases": [
+        "Windows helper logger",
+        "offline NMEA capture",
+        "RTKLIB pipeline launcher"
+      ],
+      "strengths": [
+        "Mature Node serial ecosystem"
+      ],
+      "limitations": [
+        "Not directly usable in iOS/Android RN app."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "Windows.Devices.SerialCommunication native module",
+        "RTKLIB str2str"
+      ],
+      "official_sources": [
+        "https://github.com/serialport/node-serialport"
+      ]
+    },
+    {
+      "name": "RTKLIB",
+      "category": "GNSS/RTK integration",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "offline preprocessing"
+      ],
+      "primary_use": "RTK/PPK GNSS processing toolkit.",
+      "why_relevant_to_center_pivot_app": "Keep as external CLI/preprocessing for RINEX, base/rover, NTRIP/log workflows where mobile implementation would be too complex.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "software free; hardware, cellular data, and correction services may not be free.",
+        "license": "BSD-style with RTKLIB clauses",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Review license notice and RTCM/NTRIP/correction-source terms separately."
+      },
+      "installation": {
+        "npm": "external CLI, not npm",
+        "yarn": "external CLI, not yarn",
+        "expo_compatibility": "Not Expo/RN package.",
+        "bare_react_native_required": "not embedded in MVP",
+        "native_dependencies": [
+          "native binaries"
+        ],
+        "windows_notes": [
+          "Can be launched by desktop companion workflow, not mobile app MVP."
+        ]
+      },
+      "example_use_cases": [
+        "PPK post-processing",
+        "RINEX solution QA",
+        "NTRIP client outside app"
+      ],
+      "strengths": [
+        "Proven GNSS processing",
+        "free software"
+      ],
+      "limitations": [
+        "High domain complexity; mobile embedding is not an MVP target."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "pygnssutils preprocessing",
+        "receiver vendor software outside app"
+      ],
+      "official_sources": [
+        "https://github.com/tomojitakasu/RTKLIB",
+        "https://igs.org/wg/rinex/"
+      ]
+    },
+    {
+      "name": "react-native-paper",
+      "category": "UI/UX",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows support must be validated"
+      ],
+      "primary_use": "Material-style React Native UI components.",
+      "why_relevant_to_center_pivot_app": "Good for durable field forms, mode bars, dialogs, and technician-friendly controls if themed for sunlight and large touch targets.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-native-paper",
+        "yarn": "yarn add react-native-paper",
+        "expo_compatibility": "Compatible with standard RN; verify Windows target.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [
+          "react-native-vector-icons or icon package"
+        ],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "equipment forms",
+        "settings",
+        "dialogs",
+        "status panels"
+      ],
+      "strengths": [
+        "Mature",
+        "accessible components"
+      ],
+      "limitations": [
+        "Must be styled for field density and outdoor contrast."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "Tamagui",
+        "custom components"
+      ],
+      "official_sources": [
+        "https://github.com/callstack/react-native-paper"
+      ]
+    },
+    {
+      "name": "react-hook-form",
+      "category": "UI/forms",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows"
+      ],
+      "primary_use": "Form state management.",
+      "why_relevant_to_center_pivot_app": "Useful for equipment configuration, receiver profiles, project metadata, and validation-driven technician workflows.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install react-hook-form",
+        "yarn": "yarn add react-hook-form",
+        "expo_compatibility": "JS-only.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "span length form",
+        "RTK quality thresholds",
+        "export options"
+      ],
+      "strengths": [
+        "Efficient forms",
+        "works with Zod"
+      ],
+      "limitations": [
+        "Requires good controlled component integration."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "Formik",
+        "custom form state"
+      ],
+      "official_sources": [
+        "https://github.com/react-hook-form/react-hook-form"
+      ]
+    },
+    {
+      "name": "zod",
+      "category": "Validation",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "Runtime schema validation.",
+      "why_relevant_to_center_pivot_app": "Provides project-file schema validation, units checks, and import/export guardrails.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install zod",
+        "yarn": "yarn add zod",
+        "expo_compatibility": "JS-only.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "project JSON validation",
+        "span model validation",
+        "RTK quality payload validation"
+      ],
+      "strengths": [
+        "TypeScript-friendly",
+        "clear errors"
+      ],
+      "limitations": [
+        "Geometry validity still needs geometry-specific checks."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "Valibot",
+        "io-ts"
+      ],
+      "official_sources": [
+        "https://github.com/colinhacks/zod"
+      ]
+    },
+    {
+      "name": "jest",
+      "category": "Testing",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Node"
+      ],
+      "primary_use": "Unit and golden-file tests.",
+      "why_relevant_to_center_pivot_app": "Required for center pivot geometry, projection, NMEA parsing, and scoring tests before field use.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install --save-dev jest",
+        "yarn": "yarn add --dev jest",
+        "expo_compatibility": "Works with RN tooling.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "geometry tests",
+        "fixtures",
+        "snapshot-free golden JSON"
+      ],
+      "strengths": [
+        "Mature",
+        "fast"
+      ],
+      "limitations": [
+        "Native/e2e behavior needs separate tooling."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "Vitest for pure TS packages"
+      ],
+      "official_sources": [
+        "https://jestjs.io/"
+      ]
+    },
+    {
+      "name": "@testing-library/react-native",
+      "category": "Testing",
+      "platforms": [
+        "iOS",
+        "Android",
+        "Windows where RN renderer supports tests"
+      ],
+      "primary_use": "React Native component tests.",
+      "why_relevant_to_center_pivot_app": "Validates field workflows, form errors, and offline state transitions without device automation.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install --save-dev @testing-library/react-native",
+        "yarn": "yarn add --dev @testing-library/react-native",
+        "expo_compatibility": "Standard RN test dependency.",
+        "bare_react_native_required": "no",
+        "native_dependencies": [],
+        "windows_notes": []
+      },
+      "example_use_cases": [
+        "screen rendering tests",
+        "form validation tests",
+        "workflow state tests"
+      ],
+      "strengths": [
+        "User-centered assertions"
+      ],
+      "limitations": [
+        "Does not test native map/GNSS hardware."
+      ],
+      "risk_level": "low",
+      "alternatives": [
+        "Detox",
+        "Maestro"
+      ],
+      "official_sources": [
+        "https://callstack.github.io/react-native-testing-library/"
+      ]
+    },
+    {
+      "name": "detox",
+      "category": "Testing",
+      "platforms": [
+        "iOS",
+        "Android"
+      ],
+      "primary_use": "End-to-end mobile testing.",
+      "why_relevant_to_center_pivot_app": "Useful for validating survey and layout flows in simulators/emulators once native map modules are wired.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "none for software use",
+        "license": "MIT",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "npm install --save-dev detox",
+        "yarn": "yarn add --dev detox",
+        "expo_compatibility": "Native app build required.",
+        "bare_react_native_required": "yes for e2e targets",
+        "native_dependencies": [
+          "iOS simulator",
+          "Android emulator"
+        ],
+        "windows_notes": [
+          "No Windows path."
+        ]
+      },
+      "example_use_cases": [
+        "create project flow",
+        "offline import/export flow",
+        "map tool mode flow"
+      ],
+      "strengths": [
+        "Mature RN e2e tool"
+      ],
+      "limitations": [
+        "Setup cost; hardware GNSS still needs simulation/import tests."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "Maestro",
+        "manual field test scripts"
+      ],
+      "official_sources": [
+        "https://wix.github.io/Detox/"
+      ]
+    },
+    {
+      "name": "Maestro",
+      "category": "Testing",
+      "platforms": [
+        "iOS",
+        "Android"
+      ],
+      "primary_use": "Black-box mobile UI tests.",
+      "why_relevant_to_center_pivot_app": "Useful lower-code acceptance flow testing for field technician workflows; verify license and cloud features before adoption.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "open-source CLI is free; optional cloud services may have costs and must not be required.",
+        "license": "Apache-2.0",
+        "license_confidence": "verified from package metadata or official repository",
+        "commercial_use_notes": "Commercial use appears compatible with stated license; perform project legal review before release."
+      },
+      "installation": {
+        "npm": "CLI install from Maestro docs, not npm package",
+        "yarn": "not applicable",
+        "expo_compatibility": "Runs against built apps.",
+        "bare_react_native_required": "yes for device app",
+        "native_dependencies": [
+          "mobile emulator/simulator"
+        ],
+        "windows_notes": [
+          "No primary Windows desktop path."
+        ]
+      },
+      "example_use_cases": [
+        "MVP smoke tests",
+        "survey workflow script"
+      ],
+      "strengths": [
+        "Readable test flows"
+      ],
+      "limitations": [
+        "Avoid relying on paid Maestro Cloud."
+      ],
+      "risk_level": "medium",
+      "alternatives": [
+        "Detox",
+        "Appium"
+      ],
+      "official_sources": [
+        "https://github.com/mobile-dev-inc/Maestro"
+      ]
+    }
+  ],
+  "platform_feasibility": {
+    "ios": {
+      "feasibility": "Feasible for manual layout, internal GPS, BLE-compatible external GNSS, offline project files, and MapLibre mobile maps. Higher-risk for Bluetooth Classic serial receivers and any receiver requiring ExternalAccessory/MFi/vendor SDK.",
+      "gps_gnss_notes": [
+        "Core Location can supply phone GPS and some external receiver positions, but app must expose quality limitations and not treat phone GPS as RTK.",
+        "BLE GNSS receivers are the most practical external receiver path if they expose usable services.",
+        "NMEA over arbitrary Bluetooth Classic SPP is not a normal iOS app path."
+      ],
+      "bluetooth_serial_notes": [
+        "Use Core Bluetooth/BLE where receiver supports it.",
+        "ExternalAccessory may be required for non-BLE accessories; compatibility and program requirements are hardware-specific."
+      ],
+      "mapping_notes": [
+        "MapLibre React Native for mobile native map.",
+        "WebView/OpenLayers fallback for shared editor experiments."
+      ],
+      "build_distribution_cost_risks": [
+        "Xcode and simulator development are free, but Apple Developer Program enrollment may be required for broad device testing, TestFlight, and App Store distribution.",
+        "Local builds are possible; do not require hosted EAS."
+      ],
+      "required_permissions": [
+        "Location When In Use",
+        "Precise Location where applicable",
+        "Bluetooth usage descriptions",
+        "Local network/files/photos only if needed for import/export"
+      ]
+    },
+    "android": {
+      "feasibility": "Strongest field GNSS platform because Android supports internal location, BLE, Bluetooth Classic, USB host, local files, and sideload/local APK workflows.",
+      "gps_gnss_notes": [
+        "Internal location is useful for planning-grade capture only unless paired with external receiver data.",
+        "External GNSS can stream NMEA over BLE, Bluetooth Classic, or USB depending receiver.",
+        "Expose fix type, DOP, satellites, correction age, and estimated accuracy prominently."
+      ],
+      "bluetooth_serial_notes": [
+        "BLE path through react-native-ble-plx.",
+        "Bluetooth Classic/SPP likely requires Android-specific package or custom native module."
+      ],
+      "usb_serial_notes": [
+        "USB host permissions are runtime/device-specific.",
+        "Use a native Android USB serial adapter for supported chipsets and keep import-from-log as fallback."
+      ],
+      "mapping_notes": [
+        "MapLibre React Native is recommended for mobile map.",
+        "Offline tiles stored locally with attribution metadata."
+      ],
+      "build_distribution_cost_risks": [
+        "Local debug/release APK builds and sideloading can be free.",
+        "Google Play distribution may require a developer account fee."
+      ],
+      "required_permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION where applicable",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "USB device permission",
+        "Foreground service/background location only if a later workflow requires it",
+        "File picker/scoped storage permissions as needed"
+      ]
+    },
+    "windows": {
+      "feasibility": "Feasible as a desktop/field-laptop companion using React Native Windows, local files, WebView mapping, and native serial modules. Not all mobile RN packages carry over.",
+      "gps_gnss_notes": [
+        "Use Windows Geolocation for internal/location-provider data.",
+        "Use native serial communication for USB/serial GNSS receivers where permitted."
+      ],
+      "serial_port_notes": [
+        "Implement a RNW native module over Windows.Devices.SerialCommunication.",
+        "Node serialport is useful for companion CLI/Electron tools, not direct RNW runtime."
+      ],
+      "mapping_notes": [
+        "Prefer WebView/OpenLayers or MapLibre GL JS local map bundle.",
+        "Native mobile MapLibre package should not be assumed to support Windows."
+      ],
+      "build_distribution_cost_risks": [
+        "Local MSIX/sideload packaging can avoid store costs.",
+        "Microsoft Store account cost/status should be verified at publishing time."
+      ],
+      "required_permissions": [
+        "Location capability if using geolocation",
+        "serialCommunication/device capabilities in app manifest",
+        "file system picker permissions/capabilities as needed"
+      ]
+    }
+  },
+  "domain_data_models": {
+    "typescript_interfaces": [
+      "export interface ProjectMetadata {\n  id: string;\n  name: string;\n  createdAt: string;\n  updatedAt: string;\n  projectCrs: string;\n  unitSystem: 'metric' | 'us_survey_feet';\n  sourceJsonVersion: string;\n}",
+      "export interface RtkQuality {\n  fixType: 'invalid' | 'autonomous' | 'dgps' | 'rtk_float' | 'rtk_fixed' | 'ppp' | 'unknown';\n  satellites: number | null;\n  hdop: number | null;\n  vdop: number | null;\n  pdop: number | null;\n  correctionAgeSeconds: number | null;\n  horizontalAccuracyMeters: number | null;\n  verticalAccuracyMeters: number | null;\n  baseStationId?: string;\n  roverId?: string;\n  nmeaQualityCode?: number;\n}",
+      "export interface SurveyPoint {\n  id: string;\n  role: 'boundary' | 'pivot_center' | 'water_source' | 'power_source' | 'obstacle' | 'control' | 'note';\n  wgs84: { longitude: number; latitude: number; ellipsoidalHeightMeters?: number };\n  projected?: { x: number; y: number; z?: number; crs: string };\n  observedAt: string;\n  source: 'device_gps' | 'external_gnss' | 'imported' | 'manual';\n  rtk?: RtkQuality;\n  notes?: string;\n}",
+      "export interface PivotMachine {\n  id: string;\n  name: string;\n  spanLengthsMeters: number[];\n  overhangMeters: number;\n  endGunThrowMeters: number;\n  towerClearanceBufferMeters: number;\n  machineClearanceBufferMeters: number;\n  sweep: FullCircleSweep | PartialCircleSweep;\n}",
+      "export interface FullCircleSweep { mode: 'full_circle'; }\nexport interface PartialCircleSweep {\n  mode: 'partial_circle';\n  startAngleDegrees: number;\n  stopAngleDegrees: number;\n  direction: 'clockwise' | 'counterclockwise';\n  endGunOnRanges?: Array<{ startAngleDegrees: number; stopAngleDegrees: number }>;\n}",
+      "export interface LayoutScenario {\n  id: string;\n  machineId: string;\n  centerPointId?: string;\n  centerProjected: { x: number; y: number; crs: string };\n  metrics: {\n    fieldAcres: number;\n    irrigatedAcres: number;\n    nonIrrigatedAcres: number;\n    coveragePercent: number;\n    endGunAcres: number;\n    obstacleConflictCount: number;\n    hardBoundaryConflictCount: number;\n    score: number;\n  };\n  layers: GeoJSON.FeatureCollection[];\n  warnings: string[];\n}"
+    ],
+    "geojson_models": [
+      "Field boundary: GeoJSON Polygon/MultiPolygon with properties {layerType:'field_boundary', sourceConfidence, crs, areaSqM, areaAcres}.",
+      "Obstacle: Point/LineString/Polygon converted to buffered Polygon for clearance calculations with properties {obstacleType, bufferMeters, hardConflict, noSpray}.",
+      "Pivot coverage: generated Polygon/MultiPolygon with properties {scenarioId, coverageType:'base'|'end_gun'|'clipped'|'dry_corner'}.",
+      "Tower locations: Point features with towerIndex, radiusMeters, angleDegrees, scenarioId.",
+      "Tower tracks: LineString/Polygon features for circle/arc plus buffer where clearance is modeled."
+    ],
+    "pivot_machine_models": [
+      "spanLengthsMeters is an ordered array from pivot outward.",
+      "towerRadiusMeters is derived as cumulative span length.",
+      "machineRadiusMeters = sum(spanLengthsMeters) + overhangMeters unless manufacturer package defines a different wet radius.",
+      "endGunRadiusMeters = machineRadiusMeters + endGunThrowMeters when enabled.",
+      "Sweep supports full_circle and partial_circle with direction and wrap handling."
+    ],
+    "survey_models": [
+      "SurveyPoint stores WGS84 raw coordinates, optional projected coordinates, timestamp, source, role, notes, and RTK quality.",
+      "SurveyTrack stores ordered point ids, role, quality policy used, simplification tolerance, and repair log.",
+      "SourceConfidence enum must be visible in reports."
+    ],
+    "rtk_quality_models": [
+      "Map NMEA GGA quality codes to invalid/autonomous/dgps/rtk_float/rtk_fixed where possible.",
+      "Store HDOP/VDOP/PDOP, satellites, correction age, estimated accuracy, base station id, rover id, antenna height where provided.",
+      "QualityPolicy defines acceptable fix types and thresholds per feature role."
+    ],
+    "project_file_schema": [
+      "Canonical project JSON contains metadata, CRS, units, machines, layers, scenarios, map packages, imports, exports, and validation logs.",
+      "Large binary tile/imagery files are referenced by relative path in the project package, not embedded in JSON.",
+      "All files exported as a project ZIP should include a manifest with checksums and source/license metadata."
+    ],
+    "units_and_conversions": [
+      "1 acre = 4046.8564224 square meters.",
+      "1 acre = 43560 square feet.",
+      "Store canonical linear units in meters internally; render feet/acres for US field workflows as configured.",
+      "Angles must have one internal convention documented in code; convert display conventions at UI boundaries."
+    ]
+  },
+  "core_algorithms": {
+    "field_boundary_processing": [
+      "Input accepted formats: CSV lat/lon, CSV projected x/y, GPX, GeoJSON, KML/KMZ through GDAL where available, Shapefile, GeoPackage, DXF linework if units/CRS are known.",
+      "Normalize to GeoDataFrame with source_crs, target_crs, geometry, point_order, timestamp, quality fields, and source_confidence.",
+      "For boundary tracks, preserve recorded order; for unordered points, require user confirmation or compute convex/alpha shape only as draft.",
+      "Remove duplicate vertices below tolerance, close ring, detect self-intersections, repair topology, and log all modifications.",
+      "Calculate area only after projection. Store acres and square meters/feet plus CRS used.",
+      "In TypeScript MVP, accept ordered survey points and GeoJSON first; defer Shapefile/KMZ/GeoPackage to preprocessing until import tests are stable."
+    ],
+    "crs_projection_handling": [
+      "Detect input CRS when possible; require user confirmation when missing.",
+      "For GPS WGS84, estimate suitable projected CRS from field centroid: UTM zone for broad default; State Plane or local engineering CRS if specified.",
+      "Store CRS EPSG/WKT in every layer and in project metadata.",
+      "Keep raw coordinates and transformed coordinates for auditability.",
+      "Warn when field spans multiple UTM zones or projection distortion exceeds configured tolerance.",
+      "Ship explicit proj4 definitions for supported UTM/State Plane project CRS choices; require user confirmation when CRS is missing."
+    ],
+    "pivot_circle_generation": [
+      "Generate projected-coordinate circle vertices at configurable segment count.",
+      "Use high enough resolution for acreage tolerance; include tolerance in report.",
+      "Keep base machine wet radius separate from end-gun radius and machine travel clearance."
+    ],
+    "partial_circle_arc_generation": [
+      "Represent windshield-wiper operation as a sector with start_angle, stop_angle, reversal behavior, and optional excluded angle ranges.",
+      "Allow separate wet-area sector and physical overhang/tower path sector when end-gun shutoff or span/nozzle package creates different coverage.",
+      "Handle 0/360 wraparound and clockwise/counterclockwise input explicitly.",
+      "For multiple sectors, union valid sector polygons after building each sector independently."
+    ],
+    "tower_location_generation": [
+      "tower_radius_i = cumulative sum of span_lengths through tower i; overhang radius = tower_radius_last + overhang_length.",
+      "tower_location(angle, i) = center + tower_radius_i * [cos(angle), sin(angle)] in project CRS units.",
+      "tower_track_i = full circle or sector arc at tower_radius_i; buffer by wheel/structure clearance for conflict checking.",
+      "Span-to-span clearance can be modeled as swept annular sectors between cumulative radii if needed.",
+      "Machine geometry must be based on manufacturer dimensions and field-installed overhang/end-gun package, not guessed."
+    ],
+    "end_gun_coverage_generation": [
+      "end_gun_wet = annular sector from machine_radius to end_gun_radius, optionally limited by endgun_on_angles and shutoff zones.",
+      "End gun should be separately flaggable as optional, because wind, pressure, nozzle package, and control settings affect real coverage.",
+      "Subtract no-spray zones and hard exclusions; show end-gun acres separately from base pivot acres.",
+      "Allow end-gun throw and effective wet radius to be scenario inputs, not constants."
+    ],
+    "obstacle_exclusion": [
+      "Point obstacle -> circular buffer; line obstacle -> width/clearance buffer; polygon obstacle -> original polygon plus safety buffer.",
+      "No-spray zone subtraction affects wet coverage; hard obstacle clearance affects machine/tower-travel conflict.",
+      "Report nearest clearance distance from tower tracks/overhang path to each obstacle.",
+      "Keep source layer, buffer rule, and confidence for every exclusion."
+    ],
+    "coverage_area_calculation": [
+      "field_usable = field_boundary.difference(nonfarmable_zones)",
+      "wet_raw = base_sweep.union(end_gun_sweep if enabled else empty)",
+      "wet_allowed = wet_raw.intersection(field_usable).difference(no_spray_zones.union(obstacle_wet_exclusions))",
+      "irrigated_acres = wet_allowed.area / 4046.8564224 for meter CRS",
+      "dry_acres = field_usable.area - wet_allowed.area converted to acres",
+      "coverage_percent = wet_allowed.area / field_usable.area * 100 if field_usable.area > 0 else null"
+    ],
+    "best_fit_pivot_placement": [
+      "Phase 1: fixed/user-selected center only.",
+      "Phase 2: deterministic grid search inside allowed center zone.",
+      "Phase 3: refine top candidates with local optimizer or Rust/Python sidecar if needed.",
+      "Always return top N candidates and rejection reasons, not only the best score."
+    ],
+    "multi_pivot_layout": [
+      "Generate candidate scenarios per pivot; evaluate pairwise overlap and shared obstacles.",
+      "multi_pivot_score = total_covered_area - overlap_penalty - conflict_penalties - infrastructure_cost_penalties.",
+      "Use shapely union of all wet_allowed polygons for total acres; report overlap acres separately.",
+      "Use OR-Tools or greedy ranking to choose a set of pivots from precomputed candidates when multiple sites are allowed.",
+      "Validate water source capacity and hydraulics outside this geometry MVP."
+    ],
+    "survey_accuracy_scoring": [
+      "Score by fix type, repeated observations, DOP, satellite count, correction age, source confidence, and role criticality.",
+      "Make low-confidence geometry visible in warnings and reports.",
+      "Do not allow design-grade acceptance if required roles lack quality metadata unless user explicitly downgrades the project."
+    ],
+    "rtk_quality_filtering": [
+      "Every geometry should carry source_confidence: rtk_fixed, rtk_float, dgps, autonomous_gps, imagery_digitized, imported_cad, user_estimated, optimized.",
+      "Reject or downgrade points with missing quality metadata when design-grade mode is active.",
+      "For NMEA GGA, parse GPS quality, number of satellites, HDOP, altitude, geoid separation, and correction age if present.",
+      "For u-blox UBX, prefer carrier-solution status and horizontal accuracy estimates where available.",
+      "Create QA report that lists all low-confidence inputs and how they affect layout acceptance."
+    ]
+  },
+  "workflow_blueprints": {
+    "mvp_manual_layout_workflow": {
+      "steps": [
+        "Create project and choose CRS/units.",
+        "Draw or import field boundary as GeoJSON/CSV.",
+        "Mark pivot center, water source, power source, roads, fences, buildings, ditches, trees, and exclusion zones.",
+        "Enter machine span lengths, overhang, end-gun throw, and sweep mode.",
+        "Generate base/end-gun/tower geometry.",
+        "Clip coverage to field and subtract exclusions.",
+        "Review acres, coverage percent, dry corners, and conflicts.",
+        "Export project ZIP, GeoJSON, CSV report, and optional static map."
+      ],
+      "inputs": [
+        "field boundary",
+        "machine geometry",
+        "obstacle layers",
+        "project CRS",
+        "buffer rules"
+      ],
+      "outputs": [
+        "layout scenario",
+        "coverage layers",
+        "conflict report",
+        "project package"
+      ],
+      "tools": [
+        "React Native",
+        "proj4",
+        "polygon-clipping",
+        "@turf/turf",
+        "SQLite",
+        "MapLibre/OpenLayers"
+      ],
+      "validation_checks": [
+        "CRS is projected",
+        "span lengths positive",
+        "polygon valid",
+        "area tolerance met",
+        "hard conflicts displayed"
+      ]
+    },
+    "gps_boundary_survey_workflow": {
+      "steps": [
+        "Select capture mode.",
+        "Show live accuracy/fix status.",
+        "Capture ordered boundary points or import track.",
+        "Filter points by quality policy.",
+        "Project points to project CRS.",
+        "Build/repair polygon and log changes.",
+        "Compare area against expected acres.",
+        "Require technician approval."
+      ],
+      "inputs": [
+        "device GPS or external GNSS samples",
+        "quality thresholds",
+        "operator notes"
+      ],
+      "outputs": [
+        "survey points",
+        "field polygon",
+        "QA log"
+      ],
+      "tools": [
+        "Core Location/Android Location/Windows Geolocation",
+        "NMEA parser",
+        "proj4",
+        "geometry core"
+      ],
+      "validation_checks": [
+        "min point count",
+        "acceptable fix type",
+        "HDOP/correction thresholds",
+        "self-intersection check",
+        "manual review"
+      ]
+    },
+    "rtk_receiver_workflow": {
+      "steps": [
+        "Choose receiver profile and transport.",
+        "Connect via BLE/Bluetooth Classic/USB/serial depending platform.",
+        "Parse NMEA and optional vendor quality fields.",
+        "Display fix type, DOP, satellites, correction age, and estimated accuracy.",
+        "Apply role-specific quality policy.",
+        "Log raw stream where user enables it.",
+        "Store accepted points with metadata.",
+        "Allow RINEX/RTKLIB preprocessing import for advanced QA."
+      ],
+      "inputs": [
+        "receiver stream",
+        "quality policy",
+        "antenna height",
+        "base/rover metadata"
+      ],
+      "outputs": [
+        "accepted survey points",
+        "raw log",
+        "quality report"
+      ],
+      "tools": [
+        "react-native-ble-plx",
+        "Android Bluetooth/USB native modules",
+        "Windows serial native module",
+        "RTKLIB offline"
+      ],
+      "platform_notes": [
+        "iOS BLE/Core Location first; ExternalAccessory later.",
+        "Android has strongest receiver-transport options.",
+        "Windows serial module is native work."
+      ],
+      "validation_checks": [
+        "fix type accepted",
+        "correction age under threshold",
+        "repeated point residual under tolerance",
+        "base/rover metadata present for RTK records"
+      ]
+    },
+    "offline_map_package_workflow": {
+      "steps": [
+        "Select lawful source data.",
+        "Generate vector/raster tiles offline using documented tools.",
+        "Package as PMTiles or MBTiles.",
+        "Store attribution/license metadata.",
+        "Import package into app.",
+        "Render with MapLibre/OpenLayers.",
+        "Validate extent, zooms, and attribution display."
+      ],
+      "inputs": [
+        "OSM extract or user-owned imagery",
+        "style JSON",
+        "AOI",
+        "license metadata"
+      ],
+      "outputs": [
+        "PMTiles/MBTiles package",
+        "map manifest",
+        "attribution text"
+      ],
+      "tools": [
+        "PMTiles",
+        "MBTiles",
+        "GDAL/tippecanoe/tilemaker optional preprocessing",
+        "MapLibre/OpenLayers"
+      ],
+      "licensing_notes": [
+        "OSM data is ODbL and needs attribution.",
+        "Do not bulk download public OSM tiles.",
+        "Public/user imagery terms must be stored with package."
+      ],
+      "validation_checks": [
+        "package opens offline",
+        "attribution visible",
+        "AOI/zoom limits match project",
+        "no hidden paid API calls"
+      ]
+    },
+    "imagery_import_workflow": {
+      "steps": [
+        "Accept user-supplied GeoTIFF/COG/orthomosaic as source.",
+        "Inspect CRS, bounds, resolution, nodata, and file size.",
+        "If large, require offline tiling to PMTiles/MBTiles.",
+        "Import tile package and manifest.",
+        "Overlay field/pivot geometry.",
+        "Mark imagery-derived features planning-grade until survey validated."
+      ],
+      "inputs": [
+        "GeoTIFF/COG/orthomosaic/tiles",
+        "GCP metadata optional",
+        "license metadata"
+      ],
+      "outputs": [
+        "local imagery package",
+        "preview layer",
+        "imagery QA report"
+      ],
+      "tools": [
+        "geotiff.js for metadata/small previews",
+        "GDAL preprocessing",
+        "PMTiles/MBTiles"
+      ],
+      "risks": [
+        "large raster memory",
+        "stale/offset imagery",
+        "unknown CRS",
+        "license uncertainty"
+      ],
+      "validation_checks": [
+        "CRS known",
+        "bounds match field",
+        "known control point offset checked",
+        "file size under device limits"
+      ]
+    },
+    "export_reporting_workflow": {
+      "steps": [
+        "Validate project.",
+        "Generate metrics.",
+        "Write GeoJSON layers.",
+        "Write CSV report.",
+        "Write project manifest/checksums.",
+        "Package ZIP.",
+        "Optionally create printable PDF/static map in later phase."
+      ],
+      "inputs": [
+        "project",
+        "scenario",
+        "selected export formats"
+      ],
+      "outputs": [
+        "project ZIP",
+        "GeoJSON",
+        "CSV",
+        "report JSON"
+      ],
+      "tools": [
+        "SQLite",
+        "file system adapter",
+        "GeoJSON writer",
+        "CSV writer"
+      ],
+      "validation_checks": [
+        "schema valid",
+        "all referenced files exist",
+        "CRS metadata included",
+        "attribution included",
+        "round-trip import test passes"
+      ]
+    }
+  },
+  "screen_and_feature_spec": {
+    "screens": [
+      "Project list",
+      "Project setup",
+      "Map workspace",
+      "Survey capture",
+      "Receiver connection",
+      "Field boundary editor",
+      "Obstacle/exclusion editor",
+      "Pivot layout editor",
+      "Machine configuration",
+      "Scenario comparison",
+      "Export/report",
+      "Settings/about/licenses"
+    ],
+    "field_work_modes": [
+      "pan/inspect",
+      "capture point",
+      "draw boundary",
+      "edit vertices",
+      "mark obstacle",
+      "measure distance/area",
+      "place pivot",
+      "simulate sweep",
+      "review conflicts"
+    ],
+    "map_tools": [
+      "large mode buttons",
+      "snap toggle",
+      "undo/redo",
+      "vertex add/move/delete",
+      "buffer editor",
+      "layer visibility",
+      "GPS follow",
+      "offline map package selector"
+    ],
+    "survey_tools": [
+      "point capture",
+      "track capture",
+      "quality gate",
+      "repeat observation",
+      "notes/photos optional",
+      "raw NMEA logging optional"
+    ],
+    "pivot_layout_tools": [
+      "set center",
+      "enter radius/machine",
+      "full circle",
+      "partial circle",
+      "end-gun toggle/ranges",
+      "tower locations",
+      "dry corner display",
+      "clearance conflict list"
+    ],
+    "equipment_configuration_tools": [
+      "span length list",
+      "overhang",
+      "end gun throw",
+      "clearance buffers",
+      "manufacturer/model notes",
+      "angle convention",
+      "units"
+    ],
+    "export_import_tools": [
+      "GeoJSON",
+      "CSV",
+      "project ZIP",
+      "KML/GPX import",
+      "PMTiles/MBTiles import",
+      "NMEA log import",
+      "deferred DXF/Shapefile via preprocessing"
+    ],
+    "settings": [
+      "units",
+      "default CRS policy",
+      "quality thresholds",
+      "attribution text",
+      "receiver profiles",
+      "offline storage location",
+      "license acknowledgements"
+    ]
+  },
+  "file_format_support": {
+    "import_formats": [
+      "GeoJSON",
+      "CSV lat/lon",
+      "CSV projected x/y",
+      "GPX/KML through @tmcw/togeojson",
+      "project ZIP",
+      "NMEA log",
+      "PMTiles/MBTiles map packages"
+    ],
+    "export_formats": [
+      "project ZIP",
+      "GeoJSON",
+      "CSV metrics",
+      "CSV survey points",
+      "report JSON",
+      "KML deferred",
+      "DXF deferred/preprocessing"
+    ],
+    "offline_map_formats": [
+      "PMTiles recommended",
+      "MBTiles supported with adapter",
+      "local XYZ/TMS folder optional",
+      "GeoPackage tiles deferred"
+    ],
+    "imagery_formats": [
+      "PMTiles/MBTiles raster tiles recommended",
+      "GeoTIFF/COG metadata/small preview only",
+      "drone orthomosaic through offline tiling workflow"
+    ],
+    "rtk_gnss_formats": [
+      "NMEA live/log",
+      "RINEX import/preprocessing",
+      "RTKLIB solution files optional",
+      "receiver binary logs deferred by vendor"
+    ],
+    "unsupported_or_deferred_formats": [
+      "Raw Shapefile in MVP",
+      "full GeoPackage editing in MVP",
+      "large raw GeoTIFF rendering in app",
+      "vendor GNSS binary protocols",
+      "paid API basemaps"
+    ]
+  },
+  "sample_typescript_pseudocode": {
+    "load_project": "async function loadProject(path: string): Promise<Project> {\n  const raw = await files.readText(path);\n  const project = ProjectSchema.parse(JSON.parse(raw));\n  assertSupportedSchemaVersion(project.schemaVersion);\n  await validateLayerCrs(project.layers, project.metadata.projectCrs);\n  return project;\n}",
+    "capture_gps_point": "async function captureGpsPoint(role: SurveyPoint['role']): Promise<SurveyPoint> {\n  const sample = await gnssProvider.currentSample();\n  const rtk = normalizeRtkQuality(sample);\n  if (!qualityPolicy.accepts(role, rtk)) throw new Error('GNSS quality is below threshold');\n  return {\n    id: ids.create(),\n    role,\n    wgs84: { longitude: sample.lon, latitude: sample.lat, ellipsoidalHeightMeters: sample.heightM },\n    observedAt: sample.timestamp,\n    source: sample.source,\n    rtk,\n  };\n}",
+    "parse_nmea_sentence": "function parseNmeaSentence(sentence: string): Partial<GnssSample> {\n  const parsed = nmea.parse(sentence);\n  if (parsed.type === 'GGA') {\n    return {\n      lat: parsed.latitude,\n      lon: parsed.longitude,\n      timestamp: parsed.time,\n      fixType: mapGgaQuality(parsed.quality),\n      satellites: parsed.numSatellites,\n      hdop: parsed.hdop,\n      correctionAgeSeconds: parsed.dgpsAge ?? null,\n    };\n  }\n  if (parsed.type === 'GST') return { horizontalAccuracyMeters: estimateFromGst(parsed) };\n  return {};\n}",
+    "convert_wgs84_to_projected": "function convertWgs84ToProjected(point: LonLat, projectCrs: string): XY {\n  const transformer = proj4('EPSG:4326', projectCrs);\n  const [x, y] = transformer.forward([point.longitude, point.latitude]);\n  return { x, y };\n}",
+    "build_field_polygon": "function buildFieldPolygon(points: SurveyPoint[]): Polygon {\n  const xy = orderedBoundaryPoints(points).map(p => p.projected!);\n  const ring = closeRing(removeDuplicateVertices(xy, 0.05));\n  const polygon = polygonFromRing(ring);\n  const repaired = makeValidOrFail(polygon);\n  assertAreaUnitsAreLinear(repaired.crs);\n  return repaired;\n}",
+    "create_pivot_circle": "function createPivotCircle(center: XY, radiusM: number): Polygon {\n  assertPositive(radiusM, 'radiusM');\n  return approximateCircle(center, radiusM, { segments: 256 });\n}",
+    "create_partial_pivot_sector": "function createPartialPivotSector(center: XY, radiusM: number, sweep: PartialCircleSweep): Polygon {\n  const arc = buildArcVertices(center, radiusM, sweep.startAngleDegrees, sweep.stopAngleDegrees, sweep.direction, 256);\n  return polygonFromRing([center, ...arc, center]);\n}",
+    "calculate_tower_points": "function calculateTowerPoints(center: XY, machine: PivotMachine, angleDeg: number): TowerPoint[] {\n  let radius = 0;\n  return machine.spanLengthsMeters.map((span, idx) => {\n    radius += span;\n    return { towerIndex: idx + 1, radiusMeters: radius, point: polarOffset(center, radius, angleDeg) };\n  });\n}",
+    "clip_coverage_to_field": "function clipCoverageToField(coverage: Polygon, field: Polygon): Polygon {\n  return booleanIntersection(coverage, field) ?? emptyPolygon();\n}",
+    "subtract_obstacles": "function subtractObstacles(coverage: Polygon, obstacles: Polygon[]): Polygon {\n  return obstacles.reduce((current, obstacle) => booleanDifference(current, obstacle) ?? emptyPolygon(), coverage);\n}",
+    "score_layout": "function scoreLayout(input: LayoutScoreInput): LayoutScore {\n  const acresScore = input.irrigatedAcres * input.weights.irrigatedAcre;\n  const dryPenalty = input.dryAcres * input.weights.dryAcrePenalty;\n  const conflictPenalty = input.hardConflicts.length * input.weights.hardConflictPenalty;\n  const confidencePenalty = input.lowConfidenceInputs.length * input.weights.lowConfidencePenalty;\n  return { total: acresScore - dryPenalty - conflictPenalty - confidencePenalty, components: { acresScore, dryPenalty, conflictPenalty, confidencePenalty } };\n}",
+    "export_geojson": "async function exportGeojson(project: Project, layerIds: string[], outPath: string): Promise<void> {\n  const features = layerIds.flatMap(id => project.layers[id].features);\n  const fc = { type: 'FeatureCollection', features, properties: { projectCrs: project.metadata.projectCrs } };\n  await files.writeText(outPath, JSON.stringify(fc, null, 2));\n}"
+  },
+  "development_context_files": [
+    {
+      "file_name": "README_DEVELOPMENT_HANDOFF.md",
+      "purpose": "Plain-English package overview.",
+      "required_contents": [
+        "app summary",
+        "target users",
+        "platforms",
+        "MVP/advanced scope",
+        "free policy"
+      ]
+    },
+    {
+      "file_name": "PRODUCT_REQUIREMENTS.md",
+      "purpose": "Product and field workflow requirements.",
+      "required_contents": [
+        "personas",
+        "features",
+        "non-goals",
+        "acceptance criteria",
+        "outdoor constraints"
+      ]
+    },
+    {
+      "file_name": "TECHNICAL_ARCHITECTURE.md",
+      "purpose": "React Native architecture and module strategy.",
+      "required_contents": [
+        "monorepo",
+        "native modules",
+        "offline storage",
+        "mapping",
+        "RTK",
+        "Windows"
+      ]
+    },
+    {
+      "file_name": "FREE_OPEN_SOURCE_STACK_AUDIT.md",
+      "purpose": "Dependency license/cost audit.",
+      "required_contents": [
+        "package",
+        "license",
+        "cost risk",
+        "status",
+        "sources"
+      ]
+    },
+    {
+      "file_name": "GEOSPATIAL_ALGORITHM_SPEC.md",
+      "purpose": "Domain algorithm implementation spec.",
+      "required_contents": [
+        "pivot geometry",
+        "CRS",
+        "coverage",
+        "scoring"
+      ]
+    },
+    {
+      "file_name": "RTK_GNSS_INTEGRATION_SPEC.md",
+      "purpose": "Receiver and RTK workflow spec.",
+      "required_contents": [
+        "NMEA",
+        "transport",
+        "quality",
+        "RTKLIB/RINEX"
+      ]
+    },
+    {
+      "file_name": "OFFLINE_MAPPING_AND_IMAGERY_SPEC.md",
+      "purpose": "Map and imagery package spec.",
+      "required_contents": [
+        "PMTiles",
+        "MBTiles",
+        "OSM attribution",
+        "GeoTIFF workflow"
+      ]
+    },
+    {
+      "file_name": "DATA_MODEL_TYPESCRIPT_SPEC.md",
+      "purpose": "TypeScript schema spec.",
+      "required_contents": [
+        "interfaces",
+        "GeoJSON",
+        "project file"
+      ]
+    },
+    {
+      "file_name": "UI_UX_SCREEN_SPEC.md",
+      "purpose": "Screens and field UI behavior.",
+      "required_contents": [
+        "screens",
+        "tools",
+        "outdoor usability"
+      ]
+    },
+    {
+      "file_name": "TESTING_VALIDATION_PLAN.md",
+      "purpose": "Test plan and fixtures.",
+      "required_contents": [
+        "unit",
+        "geometry",
+        "GPS simulation",
+        "cross-platform"
+      ]
+    },
+    {
+      "file_name": "AGENTIC_DEVELOPMENT_TASKS.json",
+      "purpose": "Ordered coding-agent tasks.",
+      "required_contents": [
+        "objective",
+        "inputs",
+        "outputs",
+        "dependencies",
+        "success criteria"
+      ]
+    },
+    {
+      "file_name": "PACKAGE_INSTALLATION_NOTES.md",
+      "purpose": "Install and build notes.",
+      "required_contents": [
+        "npm commands",
+        "Expo/bare warnings",
+        "Windows setup"
+      ]
+    },
+    {
+      "file_name": "MVP_BUILD_PLAN.md",
+      "purpose": "Smallest useful build plan.",
+      "required_contents": [
+        "what to build",
+        "what to delay",
+        "accuracy from day one"
+      ]
+    }
+  ],
+  "risk_register": [
+    {
+      "risk": "Incorrect CRS or measuring in degrees.",
+      "why_it_matters": "Acreage, radius, tower locations, buffers, and conflicts become wrong.",
+      "mitigation": "Require projected CRS before calculations; unit tests reject EPSG:4326 calculations.",
+      "severity": "critical",
+      "applies_to": [
+        "geometry",
+        "survey",
+        "reports"
+      ]
+    },
+    {
+      "risk": "Map package appears free but relies on prohibited tile caching.",
+      "why_it_matters": "Violates tile provider policies and can fail offline.",
+      "mitigation": "Use lawful local PMTiles/MBTiles from licensed data; store attribution.",
+      "severity": "high",
+      "applies_to": [
+        "mapping"
+      ]
+    },
+    {
+      "risk": "External GNSS receiver protocol unsupported on iOS.",
+      "why_it_matters": "Field RTK capture may work on Android but not iOS.",
+      "mitigation": "Profile receivers by platform; BLE/Core Location first on iOS; import logs fallback.",
+      "severity": "high",
+      "applies_to": [
+        "iOS",
+        "RTK/GNSS"
+      ]
+    },
+    {
+      "risk": "TypeScript polygon operations fail on complex invalid geometry.",
+      "why_it_matters": "Coverage/dry-corner outputs can be wrong.",
+      "mitigation": "Validate/repair inputs, add golden fixtures, keep Python/GDAL/GEOS preprocessing fallback.",
+      "severity": "high",
+      "applies_to": [
+        "geometry"
+      ]
+    },
+    {
+      "risk": "Windows package gap.",
+      "why_it_matters": "Mobile RN dependencies may not build on RNW.",
+      "mitigation": "Use adapter interfaces and WebView/Windows-native modules; test Windows from phase 1.",
+      "severity": "high",
+      "applies_to": [
+        "Windows"
+      ]
+    },
+    {
+      "risk": "RTK quality overstated.",
+      "why_it_matters": "Bad pivot center or obstacle position can cause real construction conflicts.",
+      "mitigation": "Prominent fix-quality display, thresholds, repeated observations, and report warnings.",
+      "severity": "critical",
+      "applies_to": [
+        "survey",
+        "RTK/GNSS"
+      ]
+    },
+    {
+      "risk": "Large imagery crashes app.",
+      "why_it_matters": "Drone orthomosaics and COGs can exceed mobile memory.",
+      "mitigation": "Tile imagery offline and import PMTiles/MBTiles; use geotiff.js for metadata/small previews only.",
+      "severity": "medium",
+      "applies_to": [
+        "imagery"
+      ]
+    },
+    {
+      "risk": "License incompatibility.",
+      "why_it_matters": "Commercial distribution obligations may be missed.",
+      "mitigation": "Keep license audit in repo; mark JSTS/RTKLIB/OpenDroneMap/QGIS review-gated.",
+      "severity": "medium",
+      "applies_to": [
+        "legal",
+        "distribution"
+      ]
+    }
+  ],
+  "development_roadmap": {
+    "phase_1_mvp_manual_layout": [
+      "Create monorepo and shared TypeScript domain packages.",
+      "Implement project schema, unit conversion, CRS policy.",
+      "Implement manual map workspace and GeoJSON/CSV import.",
+      "Implement pivot circle/sector/tower/end-gun geometry.",
+      "Implement coverage/clipping/obstacle metrics and reports.",
+      "Export project ZIP/GeoJSON/CSV."
+    ],
+    "phase_2_gps_survey_capture": [
+      "Add internal GPS capture adapter.",
+      "Add NMEA log import and parser fixtures.",
+      "Add survey quality policies.",
+      "Add boundary track capture and polygon builder.",
+      "Add repeated observation QA."
+    ],
+    "phase_3_offline_mapping": [
+      "Add PMTiles/MBTiles import manifest.",
+      "Add mobile MapLibre local source path.",
+      "Add Windows WebView/OpenLayers package viewer.",
+      "Add OSM attribution and no-public-tile-cache guardrails."
+    ],
+    "phase_4_rtk_gnss_integration": [
+      "Add BLE receiver profile abstraction.",
+      "Prototype Android USB serial.",
+      "Prototype Android Bluetooth Classic.",
+      "Prototype Windows serial native module.",
+      "Add RTK quality dashboard and raw log export.",
+      "Add RTKLIB/RINEX preprocessing import workflow."
+    ],
+    "phase_5_imagery_import": [
+      "Add GeoTIFF metadata inspection.",
+      "Add offline tiling tool instructions.",
+      "Import raster PMTiles/MBTiles.",
+      "Overlay imagery with survey geometry.",
+      "Add imagery QA/control point checks."
+    ],
+    "phase_6_optimization_and_reporting": [
+      "Add deterministic best-fit grid search.",
+      "Add multi-scenario comparison.",
+      "Add top-N ranking and rejection explanations.",
+      "Add printable report/PDF path.",
+      "Consider Rust/C++ geometry if tests require robustness/performance."
+    ]
+  },
+  "acceptance_criteria": [
+    "The app can create a project offline, choose a projected CRS, and save/reopen locally.",
+    "The app refuses acre/radius/buffer calculations in EPSG:4326 degrees.",
+    "A technician can draw/import a field boundary, obstacles, pivot center, water/power sources, and machine dimensions.",
+    "The app generates full-circle and partial-circle coverage, tower points/tracks, end-gun coverage, dry corners, conflicts, irrigated acres, non-irrigated acres, and percent coverage.",
+    "GeoJSON/CSV/project ZIP export round trips through import tests.",
+    "Every map/imagery package has attribution/license metadata and no hidden paid tile API dependency.",
+    "GPS/RTK points store fix type, DOP, satellites, correction age, and accuracy where available.",
+    "iOS, Android, and Windows platform gaps are documented in code and UI, not hidden.",
+    "The dependency audit contains licenses, cost risks, and official sources for every recommended dependency."
+  ],
+  "recommended_next_agent_tasks": [
+    "Scaffold the TypeScript monorepo and project schema package.",
+    "Build geometry fixture tests for square, quarter-section, irregular, partial-circle, obstacle, and CRS roundtrip cases.",
+    "Implement pure TypeScript pivot geometry before any native GNSS work.",
+    "Prototype MapLibre iOS/Android and WebView/OpenLayers Windows map adapters behind one interface.",
+    "Implement file/project ZIP import-export and license/attribution manifest.",
+    "Prototype Android NMEA log import, then BLE/USB/Classic live streams after fixtures pass."
+  ],
+  "sources": [
+    {
+      "tool_or_claim": "React Native",
+      "source_title": "React Native Docs",
+      "source_url": "https://reactnative.dev/docs/getting-started",
+      "source_type": "official documentation",
+      "what_it_verifies": "React Native framework baseline and TypeScript-first application development.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "React Native New Architecture",
+      "source_title": "React Native New Architecture Docs",
+      "source_url": "https://reactnative.dev/docs/the-new-architecture/landing-page",
+      "source_type": "official documentation",
+      "what_it_verifies": "New Architecture constraints for native modules and cross-platform app work.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Expo",
+      "source_title": "Expo Docs",
+      "source_url": "https://docs.expo.dev/",
+      "source_type": "official documentation",
+      "what_it_verifies": "Expo framework, development builds, and local native project generation options.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Expo local builds",
+      "source_title": "Expo EAS Local Builds",
+      "source_url": "https://docs.expo.dev/build-reference/local-builds/",
+      "source_type": "official documentation",
+      "what_it_verifies": "EAS local-build workflow exists, while hosted EAS build service must not be required for a no-cost local workflow.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "React Native Windows",
+      "source_title": "React Native for Windows Docs",
+      "source_url": "https://microsoft.github.io/react-native-windows/",
+      "source_type": "official documentation",
+      "what_it_verifies": "Windows target support through React Native Windows.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "React Native Windows native modules",
+      "source_title": "Native modules for React Native Windows",
+      "source_url": "https://microsoft.github.io/react-native-windows/docs/native-modules",
+      "source_type": "official documentation",
+      "what_it_verifies": "Windows native module path for serial/GNSS integrations.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "MapLibre React Native",
+      "source_title": "MapLibre React Native GitHub",
+      "source_url": "https://github.com/maplibre/maplibre-react-native",
+      "source_type": "official repository",
+      "what_it_verifies": "Open-source React Native MapLibre package and platform scope.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "MapLibre React Native docs",
+      "source_title": "MapLibre React Native Documentation",
+      "source_url": "https://maplibre.org/maplibre-react-native/",
+      "source_type": "official documentation",
+      "what_it_verifies": "Map display API and iOS/Android use path.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "react-native-maps",
+      "source_title": "react-native-maps GitHub",
+      "source_url": "https://github.com/react-native-maps/react-native-maps",
+      "source_type": "official repository",
+      "what_it_verifies": "License and provider caveats for Apple Maps and Google Maps usage.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "React Navigation",
+      "source_title": "React Navigation GitHub",
+      "source_url": "https://github.com/react-navigation/react-navigation",
+      "source_type": "official repository",
+      "what_it_verifies": "Navigation package license and React Native navigation role.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "MapLibre GL JS",
+      "source_title": "MapLibre GL JS Documentation",
+      "source_url": "https://maplibre.org/maplibre-gl-js/docs/",
+      "source_type": "official documentation",
+      "what_it_verifies": "WebView/Web map rendering path without Mapbox SDK dependency.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Leaflet",
+      "source_title": "Leaflet GitHub",
+      "source_url": "https://github.com/Leaflet/Leaflet",
+      "source_type": "official repository",
+      "what_it_verifies": "Leaflet open-source license and lightweight WebView map option.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OpenLayers",
+      "source_title": "OpenLayers GitHub",
+      "source_url": "https://github.com/openlayers/openlayers",
+      "source_type": "official repository",
+      "what_it_verifies": "OpenLayers open-source license and WebView GIS rendering option.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OpenStreetMap data",
+      "source_title": "OpenStreetMap Copyright and License",
+      "source_url": "https://www.openstreetmap.org/copyright",
+      "source_type": "official documentation",
+      "what_it_verifies": "ODbL data license, attribution, and OSM credit requirements.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OpenStreetMap tiles",
+      "source_title": "OpenStreetMap Tile Usage Policy",
+      "source_url": "https://operations.osmfoundation.org/policies/tiles/",
+      "source_type": "official policy",
+      "what_it_verifies": "Public OSM tile servers are not an offline/bulk tile source.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "PMTiles",
+      "source_title": "PMTiles Documentation",
+      "source_url": "https://docs.protomaps.com/pmtiles/",
+      "source_type": "official documentation",
+      "what_it_verifies": "Single-file local map tile package workflow.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pmtiles npm",
+      "source_title": "PMTiles GitHub",
+      "source_url": "https://github.com/protomaps/PMTiles",
+      "source_type": "official repository",
+      "what_it_verifies": "pmtiles JavaScript library and license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "MBTiles",
+      "source_title": "MBTiles Specification",
+      "source_url": "https://github.com/mapbox/mbtiles-spec",
+      "source_type": "official specification repository",
+      "what_it_verifies": "SQLite-based MBTiles file format.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Turf.js",
+      "source_title": "Turf.js Documentation",
+      "source_url": "https://turfjs.org/",
+      "source_type": "official documentation",
+      "what_it_verifies": "JavaScript geospatial measurement and geometry operations.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Proj4js",
+      "source_title": "Proj4js GitHub",
+      "source_url": "https://github.com/proj4js/proj4js",
+      "source_type": "official repository",
+      "what_it_verifies": "JavaScript coordinate transformations and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "JSTS",
+      "source_title": "JSTS GitHub",
+      "source_url": "https://github.com/bjornharrtell/jsts",
+      "source_type": "official repository",
+      "what_it_verifies": "JavaScript Topology Suite license and geometry capability.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "polygon-clipping",
+      "source_title": "polygon-clipping GitHub",
+      "source_url": "https://github.com/mfogel/polygon-clipping",
+      "source_type": "official repository",
+      "what_it_verifies": "MIT polygon boolean operations for TypeScript geometry core.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "rbush",
+      "source_title": "rbush GitHub",
+      "source_url": "https://github.com/mourner/rbush",
+      "source_type": "official repository",
+      "what_it_verifies": "R-tree spatial indexing package and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "geokdbush",
+      "source_title": "geokdbush GitHub",
+      "source_url": "https://github.com/mourner/geokdbush",
+      "source_type": "official repository",
+      "what_it_verifies": "Fast geographic nearest-neighbor search package and ISC license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "GeographicLib JS",
+      "source_title": "GeographicLib JS GitHub",
+      "source_url": "https://github.com/geographiclib/geographiclib-js",
+      "source_type": "official repository",
+      "what_it_verifies": "Geodesic calculation package and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "geotiff.js",
+      "source_title": "geotiff.js GitHub",
+      "source_url": "https://github.com/geotiffjs/geotiff.js",
+      "source_type": "official repository",
+      "what_it_verifies": "GeoTIFF parsing in JavaScript and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "shapefile",
+      "source_title": "shapefile GitHub",
+      "source_url": "https://github.com/mbostock/shapefile",
+      "source_type": "official repository",
+      "what_it_verifies": "Browser/Node shapefile reading and BSD-3-Clause license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "@tmcw/togeojson",
+      "source_title": "togeojson GitHub",
+      "source_url": "https://github.com/placemark/togeojson",
+      "source_type": "official repository",
+      "what_it_verifies": "KML/GPX to GeoJSON conversion and BSD-2-Clause license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "SQLite",
+      "source_title": "SQLite Copyright",
+      "source_url": "https://www.sqlite.org/copyright.html",
+      "source_type": "official documentation",
+      "what_it_verifies": "SQLite public-domain style status.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "react-native-quick-sqlite",
+      "source_title": "react-native-quick-sqlite GitHub",
+      "source_url": "https://github.com/margelo/react-native-quick-sqlite",
+      "source_type": "official repository",
+      "what_it_verifies": "React Native SQLite library license and native dependency path.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "WatermelonDB",
+      "source_title": "WatermelonDB GitHub",
+      "source_url": "https://github.com/Nozbe/WatermelonDB",
+      "source_type": "official repository",
+      "what_it_verifies": "Offline database layer and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Realm JS",
+      "source_title": "Realm JS GitHub",
+      "source_url": "https://github.com/realm/realm-js",
+      "source_type": "official repository",
+      "what_it_verifies": "Realm local SDK license; cloud/sync products are not required and are deferred.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "AsyncStorage",
+      "source_title": "AsyncStorage GitHub",
+      "source_url": "https://github.com/react-native-async-storage/async-storage",
+      "source_type": "official repository",
+      "what_it_verifies": "AsyncStorage license and scope.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "MMKV",
+      "source_title": "react-native-mmkv GitHub",
+      "source_url": "https://github.com/mrousavy/react-native-mmkv",
+      "source_type": "official repository",
+      "what_it_verifies": "Fast key-value storage license and native dependency path.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "react-native-fs",
+      "source_title": "react-native-fs GitHub",
+      "source_url": "https://github.com/itinance/react-native-fs",
+      "source_type": "official repository",
+      "what_it_verifies": "Local file access package and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "react-native-webview",
+      "source_title": "react-native-webview GitHub",
+      "source_url": "https://github.com/react-native-webview/react-native-webview",
+      "source_type": "official repository",
+      "what_it_verifies": "WebView package license and cross-platform map-container role.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "react-native-ble-plx",
+      "source_title": "react-native-ble-plx GitHub",
+      "source_url": "https://github.com/dotintent/react-native-ble-plx",
+      "source_type": "official repository",
+      "what_it_verifies": "BLE package license and native Bluetooth path.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "react-native-bluetooth-classic",
+      "source_title": "react-native-bluetooth-classic GitHub",
+      "source_url": "https://github.com/kenjdavidson/react-native-bluetooth-classic",
+      "source_type": "official repository",
+      "what_it_verifies": "Bluetooth Classic SPP path and Android-heavy risk.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "react-native-usb-serialport-for-android",
+      "source_title": "react-native-usb-serialport-for-android GitHub",
+      "source_url": "https://github.com/bastengao/react-native-usb-serialport-for-android",
+      "source_type": "official repository",
+      "what_it_verifies": "Android USB serial package and maintenance risk.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "serialport",
+      "source_title": "serialport GitHub",
+      "source_url": "https://github.com/serialport/node-serialport",
+      "source_type": "official repository",
+      "what_it_verifies": "Node desktop/CLI serial support, not direct mobile RN runtime support.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Core Location",
+      "source_title": "Apple Core Location Documentation",
+      "source_url": "https://developer.apple.com/documentation/corelocation",
+      "source_type": "official documentation",
+      "what_it_verifies": "iOS location APIs and permissions.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Core Bluetooth",
+      "source_title": "Apple Core Bluetooth Documentation",
+      "source_url": "https://developer.apple.com/documentation/corebluetooth",
+      "source_type": "official documentation",
+      "what_it_verifies": "iOS BLE integration path.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "External Accessory",
+      "source_title": "Apple External Accessory Documentation",
+      "source_url": "https://developer.apple.com/documentation/externalaccessory",
+      "source_type": "official documentation",
+      "what_it_verifies": "iOS external accessory framework constraints for non-BLE serial-style accessories.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Apple Developer Program",
+      "source_title": "Apple Developer Program Enrollment",
+      "source_url": "https://developer.apple.com/programs/enroll/",
+      "source_type": "official documentation",
+      "what_it_verifies": "Apple distribution account cost risk.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Android location",
+      "source_title": "Android Location Permissions",
+      "source_url": "https://developer.android.com/develop/sensors-and-location/location/permissions",
+      "source_type": "official documentation",
+      "what_it_verifies": "Android precise/approximate location permission model.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Android Bluetooth",
+      "source_title": "Android Bluetooth Permissions",
+      "source_url": "https://developer.android.com/develop/connectivity/bluetooth/bt-permissions",
+      "source_type": "official documentation",
+      "what_it_verifies": "Android Bluetooth runtime permissions.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Android USB host",
+      "source_title": "Android USB Host Overview",
+      "source_url": "https://developer.android.com/develop/connectivity/usb/host",
+      "source_type": "official documentation",
+      "what_it_verifies": "Android USB host mode and device permission workflow.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Google Play distribution",
+      "source_title": "Google Play Console Account",
+      "source_url": "https://support.google.com/googleplay/android-developer/answer/6112435",
+      "source_type": "official documentation",
+      "what_it_verifies": "Google Play developer account fee risk for store distribution.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Windows SerialCommunication",
+      "source_title": "Windows.Devices.SerialCommunication Namespace",
+      "source_url": "https://learn.microsoft.com/en-us/uwp/api/windows.devices.serialcommunication",
+      "source_type": "official documentation",
+      "what_it_verifies": "Windows serial device access for GNSS receivers.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Windows Geolocation",
+      "source_title": "Windows.Devices.Geolocation Namespace",
+      "source_url": "https://learn.microsoft.com/en-us/uwp/api/windows.devices.geolocation",
+      "source_type": "official documentation",
+      "what_it_verifies": "Windows geolocation APIs.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "MSIX packaging",
+      "source_title": "MSIX documentation",
+      "source_url": "https://learn.microsoft.com/en-us/windows/msix/",
+      "source_type": "official documentation",
+      "what_it_verifies": "Windows packaging approach.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Microsoft Store account",
+      "source_title": "Opening a developer account",
+      "source_url": "https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/open-a-developer-account",
+      "source_type": "official documentation",
+      "what_it_verifies": "Microsoft Store account cost and registration caveats.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "RTKLIB",
+      "source_title": "RTKLIB GitHub",
+      "source_url": "https://github.com/tomojitakasu/RTKLIB",
+      "source_type": "official repository",
+      "what_it_verifies": "Free RTK/GNSS processing software and license caveats.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "RINEX",
+      "source_title": "IGS RINEX Working Group",
+      "source_url": "https://igs.org/wg/rinex/",
+      "source_type": "official standards body",
+      "what_it_verifies": "RINEX role for GNSS observation workflows.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "NGS CORS",
+      "source_title": "NOAA NGS CORS",
+      "source_url": "https://geodesy.noaa.gov/CORS/",
+      "source_type": "official data source",
+      "what_it_verifies": "Free public GNSS station data in the United States.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "React Native Paper",
+      "source_title": "React Native Paper GitHub",
+      "source_url": "https://github.com/callstack/react-native-paper",
+      "source_type": "official repository",
+      "what_it_verifies": "Free UI component library and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "React Hook Form",
+      "source_title": "React Hook Form GitHub",
+      "source_url": "https://github.com/react-hook-form/react-hook-form",
+      "source_type": "official repository",
+      "what_it_verifies": "Free form state package and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Zod",
+      "source_title": "Zod GitHub",
+      "source_url": "https://github.com/colinhacks/zod",
+      "source_type": "official repository",
+      "what_it_verifies": "Free TypeScript validation package and MIT license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Jest",
+      "source_title": "Jest Docs",
+      "source_url": "https://jestjs.io/",
+      "source_type": "official documentation",
+      "what_it_verifies": "Unit test framework and license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "React Native Testing Library",
+      "source_title": "React Native Testing Library",
+      "source_url": "https://callstack.github.io/react-native-testing-library/",
+      "source_type": "official documentation",
+      "what_it_verifies": "React Native component testing.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Detox",
+      "source_title": "Detox Documentation",
+      "source_url": "https://wix.github.io/Detox/",
+      "source_type": "official documentation",
+      "what_it_verifies": "React Native end-to-end testing framework.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Maestro",
+      "source_title": "Maestro GitHub",
+      "source_url": "https://github.com/mobile-dev-inc/Maestro",
+      "source_type": "official repository",
+      "what_it_verifies": "Open-source mobile UI testing option and license review path.",
+      "date_accessed": "2026-05-19"
+    }
+  ]
+}

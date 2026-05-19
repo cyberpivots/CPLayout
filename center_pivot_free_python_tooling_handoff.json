@@ -1,0 +1,3530 @@
+{
+  "project": {
+    "name": "Free Python Center Pivot Survey Mapping Layout Toolkit",
+    "purpose": "Developer-ready handoff for building a local/offline-first Python system that imports survey/imagery/GNSS data, models center pivot irrigation machine geometry, evaluates coverage/conflicts, and exports maps/reports without paid SaaS, paid APIs, or subscription dependencies.",
+    "assumptions": [
+      "The developer will build a local-first application or command-line toolkit; internet access is only used to download free public data, project documentation, package wheels, or GNSS reference data when explicitly requested.",
+      "The field technician or user supplies verified machine geometry such as span lengths, overhang length, end-gun throw, tower counts, clearance rules, and machine operating mode.",
+      "All acreage, radius, clearance, and machine geometry calculations are performed in a projected coordinate reference system with linear units in meters or feet, not in geographic degrees.",
+      "GPS/RTK points may arrive as CSV, GPX, GeoJSON, KML/KMZ, Shapefile, GeoPackage, NMEA logs, RINEX observations, or receiver-specific binary logs.",
+      "Free software does not make RTK hardware free. Receivers, antennas, tripods, radios, cellular modems, drones, base stations, and field computers may still cost money.",
+      "Real-time RTK corrections are location-specific. Some public/free correction sources exist in some areas, but paid NTRIP/VRS services are excluded as required dependencies.",
+      "Imagery-based boundaries are treated as draft or planning-grade unless validated by field survey or RTK ground control.",
+      "The output is not a substitute for licensed engineering, hydraulic design, electrical design, utility locating, water-rights/legal review, or manufacturer-specific safety requirements."
+    ],
+    "non_goals": [
+      "No paid SaaS, paid cloud processing, paid tile APIs, paid satellite imagery, paid RTK correction services, or trial-only dependencies.",
+      "No mandatory Google Maps, Mapbox, Esri/ArcGIS, commercial CAD, or hosted dashboard dependency.",
+      "No guarantee of centimeter accuracy without appropriate RTK-capable hardware, base/correction source, antenna setup, field procedure, and quality control.",
+      "No automatic machine design approval; technician or engineer review remains required.",
+      "No recommendation to scrape OpenStreetMap public tile servers or violate any tile-provider policy."
+    ],
+    "free_cost_policy": "Only recommend software, data sources, and workflows that can be run with no purchase, no subscription, no paid API key, and no hidden cloud dependency. Every tool with hardware, correction-service, hosted-service, AGPL/GPL, public-tile, or account/download caveats is flagged. Use permissive open-source packages for the core stack; keep GPL/AGPL tools optional or review-gated. Public datasets are allowed when data access is free, even if a free account, local storage, bandwidth, or processing time is required.",
+    "research_date": "2026-05-19",
+    "confidence_level": "High for core package licenses and free-status claims verified from official project pages or package metadata; medium for suitability rankings because field conditions, hardware, local CRS, and manufacturer machine geometry vary. This is not legal advice; commercial distribution should include license review."
+  },
+  "center_pivot_domain_model": {
+    "core_entities": [
+      {
+        "name": "FieldBoundary",
+        "description": "Outer polygon of the farmable or irrigable field, including CRS and survey-quality metadata."
+      },
+      {
+        "name": "ObstacleZone",
+        "description": "Polygon/line/point exclusion such as road, ditch, canal, fence, power pole, tree row, building, wetland, no-spray buffer, cemetery, easement, or utility corridor."
+      },
+      {
+        "name": "PivotCenter",
+        "description": "Candidate or fixed center point with source type: surveyed, user-entered, optimized, or imported."
+      },
+      {
+        "name": "PivotMachine",
+        "description": "Machine geometry: span lengths, tower count, cumulative tower stationing, overhang, end-gun throw, drive direction, min/max angle, allowed speed zones, and clearance buffers."
+      },
+      {
+        "name": "SweepMode",
+        "description": "Full-circle, partial-circle, windshield-wiper/reversing arc, sector with shutoff zones, or multiple-sector operation."
+      },
+      {
+        "name": "CoverageGeometry",
+        "description": "Polygon representing machine wet area, machine travel/sweep area, end-gun annulus/sector, tower tracks, and clipped irrigated acres."
+      },
+      {
+        "name": "SurveyPoint",
+        "description": "Point observation with lat/lon or projected coordinates, timestamp, device/source, fix type, HDOP/PDOP, satellite count, correction age, RMS/accuracy if available, and notes."
+      },
+      {
+        "name": "WaterSource",
+        "description": "Well, canal turnout, reservoir, pump station, or hookup point with location and optional elevation/pressure metadata."
+      },
+      {
+        "name": "PowerSource",
+        "description": "Electrical service location or generator point used for planning access and utility route."
+      },
+      {
+        "name": "PipelineRoute",
+        "description": "Candidate line from water source to pivot, with length, elevation profile, obstacle crossings, and route score."
+      },
+      {
+        "name": "LayoutScenario",
+        "description": "One generated or user-specified pivot option containing geometry, metrics, risk flags, inputs, and export layers."
+      }
+    ],
+    "required_inputs": [
+      "Field boundary in projected CRS or WGS84 coordinates convertible to projected CRS.",
+      "Pivot center: fixed surveyed point, user-selected point, or search area for optimization.",
+      "Machine geometry: span lengths, overhang, optional end-gun throw, tower count, machine clearance assumptions, and full/partial circle angles.",
+      "Obstacles/no-spray/exclusion layers as polygons/lines/points with required buffers.",
+      "Target CRS or project location sufficient to choose CRS automatically.",
+      "Survey quality requirements: acceptable fix type, HDOP/PDOP, satellite count, correction age, horizontal/vertical accuracy thresholds.",
+      "Optional imagery: georeferenced orthomosaic/GeoTIFF, public satellite/aerial imagery, or user-provided raster with ground-control metadata.",
+      "Optional terrain/elevation raster for pipeline slope/elevation context.",
+      "Optional water source, power source, property line, road access, and preferred pipeline corridor."
+    ],
+    "computed_outputs": [
+      "Irrigated acres inside field after clipping to boundary and removing obstacle/no-spray zones.",
+      "Non-irrigated acres and dry-corner polygons.",
+      "Coverage percentage by field, parcel, or management zone.",
+      "Pivot radius, machine length, overhang radius, end-gun maximum wet radius, and tower cumulative stationing.",
+      "Tower locations for selected operating angles and tower-track arcs/circles.",
+      "Boundary conflict flags for machine path, overhang, end gun, tower tracks, and clearance buffers.",
+      "Obstacle conflict flags and clearance distances.",
+      "Partial-circle start/end angles and irrigated sector geometry.",
+      "Candidate layout ranking score with acre, conflict, pipe-length, access, and accuracy penalties.",
+      "Pipeline route length and optional elevation profile.",
+      "Export layers in GeoPackage/GeoJSON/DXF/CSV and static/interactive map artifacts."
+    ],
+    "layout_calculations": [
+      "machine_radius = sum(span_lengths) + overhang_length unless manufacturer geometry defines wet radius differently.",
+      "end_gun_radius = machine_radius + end_gun_throw; model end-gun as optional annular sector clipped by end-gun shutoff zones.",
+      "full_circle_sweep = buffer(pivot_center, machine_radius) in projected CRS.",
+      "partial_circle_sweep = sector polygon built from center point and arc points between start_angle and end_angle; handle clockwise/counterclockwise wraparound.",
+      "irrigated_area = field_boundary.intersection(base_sweep.union(end_gun_sweep)).difference(obstacle_buffers.union(no_spray_zones)).area.",
+      "dry_corners = field_boundary.difference(irrigated_area_polygon).difference(nonfarmable_exclusions).",
+      "tower_track_i = circle or arc at radius cumulative_span_i around pivot center; buffer track by configured tower/wheel clearance where needed.",
+      "clearance conflict = machine_path_or_tower_track_buffer.intersects(obstacle_or_boundary_buffer) when boundary/obstacle is treated as hard clearance.",
+      "acres = square_meters / 4046.8564224 or square_feet / 43560 depending project units.",
+      "pipeline route score = route_length_cost + obstacle_crossing_penalties + elevation_penalties + constructability flags."
+    ],
+    "geometry_rules": [
+      "Never calculate acres, radius, buffer distance, or clearance in EPSG:4326 degrees; reproject to a suitable local projected CRS first.",
+      "Validate every polygon before use; repair with shapely.make_valid or controlled buffer(0) fallback, then log the repair.",
+      "Close boundary rings, remove duplicate points, reject isolated outliers, and preserve holes for non-irrigable islands.",
+      "Represent line obstacles such as roads/fences/ditches as buffered polygons using technician-defined clearances.",
+      "Represent point obstacles such as poles/trees/wells as circular buffers using equipment clearance radius.",
+      "Use configurable boundary rules: a field edge can be a soft crop boundary for wet-area clipping or a hard fence/property boundary for machine/tower clearance.",
+      "Keep wet-area geometry separate from machine-travel geometry because the machine may physically conflict where water coverage would simply be clipped.",
+      "Store every layer with CRS metadata and source-quality metadata; reject mixed-CRS layers until transformed.",
+      "Use a consistent angular convention: 0 degrees = east or north must be defined explicitly; store clockwise/counterclockwise direction and convert only at rendering boundaries.",
+      "When comparing layout scenarios, use the same CRS, same exclusion buffers, same machine geometry, and same scoring weights."
+    ],
+    "accuracy_considerations": [
+      "Handheld GPS boundary data is commonly planning-grade, not design-grade; use conservative buffers and field verification.",
+      "RTK design-grade points require fixed solution status, adequate satellites, low DOP, low correction age, stable antenna setup, good sky view, repeated observations, and logging of quality metadata.",
+      "Base-rover distance, multipath, antenna height entry, datum, epoch, geoid model, and CRS can dominate error even when software is free.",
+      "Imagery date and georeferencing error must be recorded; imagery can be stale or offset relative to RTK survey points.",
+      "DEM elevation values are usually not accurate enough for final pump/hydraulic design without local survey where grade is critical.",
+      "Always store source type: RTK fixed, RTK float, DGPS/SBAS, autonomous GPS, digitized imagery, user-clicked map, imported CAD, or optimized estimate.",
+      "When mixing RTK and imagery, use RTK as the higher-trust geometry source for pivot center, boundaries, and hard obstacles."
+    ]
+  },
+  "recommended_stack": {
+    "minimum_viable_stack": [
+      {
+        "status": "confirmed_free_core",
+        "tools": [
+          "python",
+          "numpy",
+          "pandas",
+          "shapely",
+          "geopandas",
+          "pyproj",
+          "pyogrio",
+          "matplotlib",
+          "pydantic",
+          "pytest",
+          "ruff"
+        ],
+        "purpose": "Build a local vector-geometry MVP for GPS boundary import, pivot sweep modeling, acre calculations, obstacle clipping, scenario scoring, static maps, validation, and exports."
+      },
+      {
+        "status": "recommended_storage",
+        "tools": [
+          "GeoPackage / SQLite",
+          "GeoJSON",
+          "CSV"
+        ],
+        "purpose": "Use GeoPackage as the primary project container and GeoJSON/CSV for simple interchange."
+      },
+      {
+        "status": "developer_note",
+        "tools": [
+          "conda-forge environment recommended"
+        ],
+        "purpose": "For GIS dependencies, conda-forge usually reduces Windows GDAL/GEOS/PROJ installation failures."
+      }
+    ],
+    "advanced_stack": [
+      {
+        "status": "confirmed_free_advanced",
+        "tools": [
+          "GDAL / OGR",
+          "rasterio",
+          "xarray",
+          "rioxarray",
+          "opencv-python-headless",
+          "scikit-image",
+          "networkx",
+          "ortools",
+          "ezdxf",
+          "gpxpy"
+        ],
+        "purpose": "Add raster/imagery, elevation, CAD/GPX import/export, route planning, and optimization."
+      },
+      {
+        "status": "optional_with_license_review",
+        "tools": [
+          "QGIS Python ecosystem",
+          "OpenDroneMap ODM",
+          "Segment Anything"
+        ],
+        "purpose": "Use for validation, local drone photogrammetry, and AI-assisted imagery workflows; review GPL/AGPL obligations before distribution."
+      }
+    ],
+    "rtk_stack": [
+      {
+        "status": "confirmed_free_software",
+        "tools": [
+          "RTKLIB",
+          "pyserial",
+          "pynmea2",
+          "georinex",
+          "pygnssutils",
+          "pyrtcm",
+          "pyubx2"
+        ],
+        "purpose": "Support NMEA parsing, live receiver logging, RINEX reading, RTK/PPK processing workflows, NTRIP client software, and receiver QA."
+      },
+      {
+        "status": "external_not_free_guaranteed",
+        "tools": [
+          "RTK-capable receiver",
+          "GNSS antenna",
+          "base station or correction source",
+          "cell/radio link"
+        ],
+        "purpose": "Necessary for centimeter-grade survey, but not guaranteed free. The software handoff must not require paid correction services."
+      },
+      {
+        "status": "free_public_data_when_available",
+        "tools": [
+          "NOAA/NGS CORS",
+          "IGS data/products"
+        ],
+        "purpose": "Use archived public GNSS data for PPK/quality workflows where coverage and time windows fit."
+      }
+    ],
+    "imagery_stack": [
+      {
+        "status": "confirmed_free_public_data",
+        "tools": [
+          "USGS Landsat",
+          "Copernicus Sentinel-2",
+          "NAIP imagery",
+          "USGS 3DEP",
+          "SRTM",
+          "Copernicus DEM"
+        ],
+        "purpose": "Use free public imagery/elevation for context, vegetation/terrain screening, and planning layers."
+      },
+      {
+        "status": "user_supplied_local_data",
+        "tools": [
+          "drone orthomosaic GeoTIFF",
+          "surveyed GCPs",
+          "local DEM/DSM"
+        ],
+        "purpose": "Best free-data path for high-detail field/obstacle analysis when the user already owns imagery/drone data."
+      },
+      {
+        "status": "not_design_grade_without_ground_truth",
+        "tools": [
+          "satellite imagery",
+          "stale aerial imagery",
+          "AI-derived masks"
+        ],
+        "purpose": "Require RTK/GPS validation before using for hard clearance/layout decisions."
+      }
+    ],
+    "visualization_stack": [
+      {
+        "status": "confirmed_free",
+        "tools": [
+          "matplotlib",
+          "folium",
+          "ipyleaflet",
+          "plotly",
+          "dash"
+        ],
+        "purpose": "Static plots, notebook maps, standalone HTML maps/charts, and local dashboards."
+      },
+      {
+        "status": "tile_caution",
+        "tools": [
+          "OpenStreetMap data + self-hosted tiles",
+          "OpenMapTiles",
+          "TileServer GL"
+        ],
+        "purpose": "Use local/self-hosted basemaps only; do not bulk download or offline-cache public OSM tiles."
+      }
+    ],
+    "testing_stack": [
+      {
+        "status": "confirmed_free",
+        "tools": [
+          "pytest",
+          "pydantic",
+          "ruff",
+          "numpy",
+          "shapely"
+        ],
+        "purpose": "Unit tests, schema validation, style checks, and geometry regression testing."
+      },
+      {
+        "status": "recommended_test_types",
+        "tools": [
+          "synthetic square field",
+          "synthetic quarter section",
+          "irregular field with holes",
+          "partial-circle field",
+          "obstacle collision cases",
+          "CRS roundtrip cases",
+          "NMEA/RTK quality fixture logs"
+        ],
+        "purpose": "Prevent hidden geometry and survey-quality failures."
+      }
+    ]
+  },
+  "tool_catalog": [
+    {
+      "name": "numpy",
+      "category": "Core Python numerical/scientific",
+      "primary_use": "Array math and vectorized numerical operations.",
+      "why_relevant_to_center_pivot_layout": "Used for coordinate arrays, distance calculations, tower stationing, grid generation, angle sweeps, and acres/percent calculations.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription or service cost. Standard open-source package; only compute/storage hardware costs apply.",
+        "license": "BSD-style",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install numpy",
+        "conda": "conda install -c conda-forge numpy",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "numpy as np"
+      ],
+      "example_use_cases": [
+        "coordinate arrays",
+        "distance/radius calculations",
+        "tower cumulative span lengths",
+        "synthetic fields for testing"
+      ],
+      "strengths": [
+        "Fast vectorized math",
+        "stable foundation for scientific Python"
+      ],
+      "limitations": [
+        "Not GIS-aware by itself",
+        "does not handle CRS or geometry topology"
+      ],
+      "alternatives": [
+        "scipy",
+        "pandas"
+      ],
+      "official_sources": [
+        "https://numpy.org/doc/stable/license.html"
+      ]
+    },
+    {
+      "name": "scipy",
+      "category": "Core Python numerical/scientific",
+      "primary_use": "Scientific algorithms, interpolation, spatial indexes, optimization, and numerical methods.",
+      "why_relevant_to_center_pivot_layout": "Useful for best-fit pivot placement, radius/angle optimization, spatial searches, and objective scoring using differential_evolution or minimize.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription or service cost. Some algorithms need tuning and compute time.",
+        "license": "BSD 3-Clause",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install scipy",
+        "conda": "conda install -c conda-forge scipy",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "scipy.optimize",
+        "scipy.spatial"
+      ],
+      "example_use_cases": [
+        "global optimization of pivot center/radius",
+        "nearest-neighbor searches",
+        "penalty minimization"
+      ],
+      "strengths": [
+        "Strong optimization toolset",
+        "integrates with NumPy"
+      ],
+      "limitations": [
+        "Stochastic optimizers can be slow",
+        "optimizer results must be validated geometrically"
+      ],
+      "alternatives": [
+        "ortools",
+        "networkx"
+      ],
+      "official_sources": [
+        "https://github.com/scipy/scipy/blob/main/LICENSE.txt",
+        "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html"
+      ]
+    },
+    {
+      "name": "pandas",
+      "category": "Core Python numerical/scientific",
+      "primary_use": "Tabular data import, cleanup, joining, and reporting.",
+      "why_relevant_to_center_pivot_layout": "Used for survey CSVs, machine span tables, tower charts, point logs, acre reports, and quality-control tables.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription or service cost.",
+        "license": "BSD 3-Clause",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install pandas",
+        "conda": "conda install -c conda-forge pandas",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pandas as pd"
+      ],
+      "example_use_cases": [
+        "CSV boundary import",
+        "span chart table handling",
+        "survey observation logs",
+        "report tables"
+      ],
+      "strengths": [
+        "Excellent CSV/tabular tooling",
+        "widely understood by developers"
+      ],
+      "limitations": [
+        "Not a geometry engine",
+        "large raster/imagery data should not be stored in pandas"
+      ],
+      "alternatives": [
+        "polars",
+        "pyarrow"
+      ],
+      "official_sources": [
+        "https://github.com/pandas-dev/pandas/blob/main/LICENSE"
+      ]
+    },
+    {
+      "name": "shapely",
+      "category": "GIS/vector geometry",
+      "primary_use": "Planar vector geometry: points, lines, polygons, buffers, intersections, unions, differences, validity repair.",
+      "why_relevant_to_center_pivot_layout": "Core package for field polygons, pivot circles/sectors, obstacle buffers, dry corners, coverage clipping, and clearance checks.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Free software. Depends on GEOS, which is LGPL; dynamic-linking obligations should be reviewed for packaged desktop distributions.",
+        "license": "BSD 3-Clause; GEOS dependency LGPL-2.1",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install shapely",
+        "conda": "conda install -c conda-forge shapely",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "shapely",
+        "shapely.geometry",
+        "shapely.ops"
+      ],
+      "example_use_cases": [
+        "field polygon cleanup",
+        "circle-sector coverage",
+        "obstacle exclusion",
+        "tower track buffers"
+      ],
+      "strengths": [
+        "Precise topology operations",
+        "fast enough for MVP layout scoring"
+      ],
+      "limitations": [
+        "Planar geometry only; must use projected CRS in meters",
+        "invalid polygons require cleanup"
+      ],
+      "alternatives": [
+        "geos",
+        "geopandas"
+      ],
+      "official_sources": [
+        "https://github.com/shapely/shapely/blob/main/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "geopandas",
+      "category": "GIS/vector geometry",
+      "primary_use": "GeoDataFrame layer handling over pandas + shapely + pyproj.",
+      "why_relevant_to_center_pivot_layout": "Used for loading, storing, filtering, exporting, and plotting field boundaries, obstacles, survey points, and generated layouts.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription or service cost. Packaging may pull GDAL/GEOS/PROJ dependencies.",
+        "license": "BSD 3-Clause",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install geopandas",
+        "conda": "conda install -c conda-forge geopandas",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "geopandas as gpd"
+      ],
+      "example_use_cases": [
+        "read/write GeoPackage",
+        "CRS transformations",
+        "layer joins",
+        "field/obstacle exports"
+      ],
+      "strengths": [
+        "Developer-friendly GIS layer abstraction",
+        "works with GeoJSON/Shapefile/GeoPackage through backends"
+      ],
+      "limitations": [
+        "GDAL-related install friction on Windows",
+        "large raster workflows require rasterio/GDAL separately"
+      ],
+      "alternatives": [
+        "pyogrio + shapely direct",
+        "fiona"
+      ],
+      "official_sources": [
+        "https://github.com/geopandas/geopandas/blob/main/LICENSE.txt",
+        "https://geopandas.org/"
+      ]
+    },
+    {
+      "name": "pyproj",
+      "category": "GIS/vector geometry",
+      "primary_use": "Coordinate reference system definitions, transformations, geodesy, and projection handling.",
+      "why_relevant_to_center_pivot_layout": "Critical for converting WGS84 GPS/RTK lat-lon into local projected meters before calculating pivot radius, acreage, pipe lengths, and clearances.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Requires correct CRS choice; wrong CRS creates bad layouts.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install pyproj",
+        "conda": "conda install -c conda-forge pyproj",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pyproj",
+        "pyproj.Transformer",
+        "pyproj.CRS"
+      ],
+      "example_use_cases": [
+        "WGS84 to UTM/State Plane conversion",
+        "CRS validation",
+        "local metric transformations"
+      ],
+      "strengths": [
+        "Official PROJ Python interface",
+        "robust CRS database support"
+      ],
+      "limitations": [
+        "CRS selection requires domain rules",
+        "network grid downloads should be disabled or controlled for offline workflows"
+      ],
+      "alternatives": [
+        "PROJ CLI",
+        "geopandas.to_crs"
+      ],
+      "official_sources": [
+        "https://github.com/pyproj4/pyproj/blob/main/LICENSE"
+      ]
+    },
+    {
+      "name": "pyogrio",
+      "category": "Survey data import/export",
+      "primary_use": "Fast GDAL/OGR vector data I/O for GeoPackage, Shapefile, GeoJSON and related formats.",
+      "why_relevant_to_center_pivot_layout": "Recommended default vector I/O backend for survey layers, obstacles, generated layout layers, and GeoPackage project files.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Requires GDAL binaries; conda-forge install is usually simpler than pip on Windows.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install pyogrio",
+        "conda": "conda install -c conda-forge pyogrio",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pyogrio"
+      ],
+      "example_use_cases": [
+        "read/write GeoPackage",
+        "read Shapefile",
+        "read GeoJSON/KML where GDAL driver is available"
+      ],
+      "strengths": [
+        "Fast vectorized I/O",
+        "GeoPandas default backend in modern versions"
+      ],
+      "limitations": [
+        "GDAL driver availability varies by build",
+        "format-specific driver quirks"
+      ],
+      "alternatives": [
+        "fiona",
+        "ogr2ogr"
+      ],
+      "official_sources": [
+        "https://github.com/geopandas/pyogrio"
+      ]
+    },
+    {
+      "name": "GDAL / OGR",
+      "category": "Raster/imagery and vector engine",
+      "primary_use": "Command-line and library engine for raster/vector geospatial formats, reprojection, warping, clipping, and format conversion.",
+      "why_relevant_to_center_pivot_layout": "Underlying workhorse for orthomosaics, GeoTIFFs, KML/Shapefile/GeoPackage, raster reprojection, and imagery alignment.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Installation and binary compatibility are the largest friction point; prefer conda-forge or OS packages.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install GDAL",
+        "conda": "conda install -c conda-forge gdal",
+        "system_dependencies": [
+          "May need OS-level GDAL binaries, PROJ data, GEOS, compiler depending on platform"
+        ]
+      },
+      "python_imports": [
+        "osgeo.gdal",
+        "osgeo.ogr",
+        "osgeo.osr"
+      ],
+      "example_use_cases": [
+        "reproject GeoTIFF",
+        "clip raster to field",
+        "convert KML/Shapefile/GeoPackage",
+        "ground control/warping"
+      ],
+      "strengths": [
+        "Industry-standard open-source geospatial backend",
+        "broadest format support"
+      ],
+      "limitations": [
+        "Hardest package in the stack to install cleanly",
+        "Python bindings version must match GDAL binary version"
+      ],
+      "alternatives": [
+        "rasterio",
+        "pyogrio",
+        "QGIS processing"
+      ],
+      "official_sources": [
+        "https://gdal.org/en/stable/license.html",
+        "https://gdal.org/"
+      ]
+    },
+    {
+      "name": "rasterio",
+      "category": "Raster/imagery",
+      "primary_use": "Pythonic raster I/O and geospatial raster processing built on GDAL.",
+      "why_relevant_to_center_pivot_layout": "Used for reading GeoTIFF/orthomosaic imagery, sampling rasters, masks, transforms, raster windows, and writing outputs.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Requires GDAL; installation easier with wheels/conda but platform constraints still matter.",
+        "license": "BSD-style / BSD-3 style",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install rasterio",
+        "conda": "conda install -c conda-forge rasterio",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "rasterio",
+        "rasterio.mask",
+        "rasterio.features"
+      ],
+      "example_use_cases": [
+        "read orthomosaic",
+        "clip raster to field polygon",
+        "vectorize raster masks",
+        "sample NDVI/elevation"
+      ],
+      "strengths": [
+        "Pythonic raster API",
+        "works well with shapely/geopandas"
+      ],
+      "limitations": [
+        "GDAL dependency",
+        "not an image-segmentation model by itself"
+      ],
+      "alternatives": [
+        "GDAL Python bindings",
+        "rioxarray"
+      ],
+      "official_sources": [
+        "https://github.com/rasterio/rasterio"
+      ]
+    },
+    {
+      "name": "opencv-python-headless",
+      "category": "Raster/imagery and computer vision",
+      "primary_use": "Image processing package for local CV operations without GUI dependencies.",
+      "why_relevant_to_center_pivot_layout": "Useful for edge detection, thresholding, contour extraction, road/tree/ditch candidate detection, image registration, and QA overlays from drone or orthomosaic imagery.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Use headless package to avoid GUI/Qt dependency complications. OpenCV is free, but models/data/hardware are separate.",
+        "license": "OpenCV Apache-2.0; opencv-python package scripts MIT; wheel dependency caveats apply",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install opencv-python-headless",
+        "conda": "conda install -c conda-forge opencv",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "cv2"
+      ],
+      "example_use_cases": [
+        "edge detection",
+        "contour extraction",
+        "image-to-map alignment support",
+        "morphological cleanup"
+      ],
+      "strengths": [
+        "Powerful local CV toolkit",
+        "no cloud required"
+      ],
+      "limitations": [
+        "Imagery classification is not reliable without validation/training",
+        "not GIS-aware without rasterio/GDAL coordinates"
+      ],
+      "alternatives": [
+        "scikit-image",
+        "segment-anything"
+      ],
+      "official_sources": [
+        "https://opencv.org/license/",
+        "https://pypi.org/project/opencv-python/"
+      ]
+    },
+    {
+      "name": "scikit-image",
+      "category": "Raster/imagery and computer vision",
+      "primary_use": "Scientific image processing algorithms.",
+      "why_relevant_to_center_pivot_layout": "Useful for segmentation, morphology, edge detection, region labeling, and feature extraction in field/obstacle detection pipelines.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Free algorithms, but data quality and validation remain limiting factors.",
+        "license": "BSD 3-Clause",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install scikit-image",
+        "conda": "conda install -c conda-forge scikit-image",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "skimage"
+      ],
+      "example_use_cases": [
+        "morphological cleanup",
+        "watershed/segmentation experiments",
+        "connected-component labeling"
+      ],
+      "strengths": [
+        "Strong image algorithms",
+        "pure Python/scientific stack friendly"
+      ],
+      "limitations": [
+        "Not geospatial by itself",
+        "needs rasterio/GDAL to preserve coordinates"
+      ],
+      "alternatives": [
+        "opencv-python-headless",
+        "rasterio.features"
+      ],
+      "official_sources": [
+        "https://scikit-image.org/docs/stable/license.html"
+      ]
+    },
+    {
+      "name": "xarray",
+      "category": "Raster/imagery and terrain data",
+      "primary_use": "Labeled multidimensional arrays for raster, time-series, and GNSS converted datasets.",
+      "why_relevant_to_center_pivot_layout": "Useful for multi-band imagery, time-series Sentinel/Landsat analyses, and GeoRinex outputs.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Large datasets need local storage and compute.",
+        "license": "Apache-2.0",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install xarray",
+        "conda": "conda install -c conda-forge xarray",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "xarray as xr"
+      ],
+      "example_use_cases": [
+        "multi-band rasters",
+        "RINEX-to-NetCDF outputs",
+        "time-series crop index experiments"
+      ],
+      "strengths": [
+        "Clear labeled-array model",
+        "integrates with dask/rioxarray"
+      ],
+      "limitations": [
+        "Overkill for simple MVP geometry",
+        "requires care with chunking/large data"
+      ],
+      "alternatives": [
+        "rioxarray",
+        "numpy"
+      ],
+      "official_sources": [
+        "https://github.com/pydata/xarray"
+      ]
+    },
+    {
+      "name": "rioxarray",
+      "category": "Raster/imagery and terrain data",
+      "primary_use": "xarray extension for geospatial raster metadata, CRS, clipping, and reprojection.",
+      "why_relevant_to_center_pivot_layout": "Useful when imagery/elevation workflows need labeled arrays with CRS-aware raster operations.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Raw license is Apache-2.0; GitHub UI may show mixed/unknown due included dependency license files, so keep license file in review.",
+        "license": "Apache-2.0",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install rioxarray",
+        "conda": "conda install -c conda-forge rioxarray",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "rioxarray"
+      ],
+      "example_use_cases": [
+        "clip DEM to field",
+        "reproject raster arrays",
+        "multi-band imagery workflows"
+      ],
+      "strengths": [
+        "CRS-aware xarray integration",
+        "good for DEM and satellite stacks"
+      ],
+      "limitations": [
+        "Adds abstraction complexity",
+        "depends on rasterio/pyproj/xarray"
+      ],
+      "alternatives": [
+        "rasterio",
+        "GDAL"
+      ],
+      "official_sources": [
+        "https://github.com/corteva/rioxarray/blob/master/LICENSE"
+      ]
+    },
+    {
+      "name": "matplotlib",
+      "category": "Visualization and plotting",
+      "primary_use": "Static plotting and figure generation.",
+      "why_relevant_to_center_pivot_layout": "Used for plan-view layout maps, tower circles, coverage/dry-corner plots, QC charts, and PDF/PNG report figures.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost.",
+        "license": "BSD-compatible",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install matplotlib",
+        "conda": "conda install -c conda-forge matplotlib",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "matplotlib.pyplot as plt"
+      ],
+      "example_use_cases": [
+        "plot pivot coverage",
+        "plot survey quality",
+        "generate report figures"
+      ],
+      "strengths": [
+        "Stable, offline, no API keys",
+        "excellent for engineering plots"
+      ],
+      "limitations": [
+        "Not interactive web map by itself",
+        "requires projection-aware data input"
+      ],
+      "alternatives": [
+        "plotly",
+        "folium"
+      ],
+      "official_sources": [
+        "https://matplotlib.org/stable/users/project/license.html"
+      ]
+    },
+    {
+      "name": "folium",
+      "category": "Visualization and local web maps",
+      "primary_use": "Generate Leaflet-based interactive maps from Python.",
+      "why_relevant_to_center_pivot_layout": "Useful for browser-based review of field boundary, pivot sweep, obstacles, and survey points. Use local/vector tiles or approved basemap sources to avoid tile-policy violations.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Folium is free, but basemap tile sources may have usage limits or paid terms. Do not rely on tile.openstreetmap.org for bulk/offline use.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install folium",
+        "conda": "conda install -c conda-forge folium",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "folium"
+      ],
+      "example_use_cases": [
+        "interactive project map",
+        "HTML field review",
+        "layer toggles"
+      ],
+      "strengths": [
+        "Easy HTML map output",
+        "works offline if tiles/data are local"
+      ],
+      "limitations": [
+        "Basemap tiles are the cost/legal risk",
+        "does not perform geometry optimization"
+      ],
+      "alternatives": [
+        "ipyleaflet",
+        "plotly",
+        "QGIS"
+      ],
+      "official_sources": [
+        "https://github.com/python-visualization/folium",
+        "https://operations.osmfoundation.org/policies/tiles/"
+      ]
+    },
+    {
+      "name": "ipyleaflet",
+      "category": "Visualization and local web maps",
+      "primary_use": "Interactive Leaflet maps in Jupyter notebooks.",
+      "why_relevant_to_center_pivot_layout": "Good for development notebooks where a technician/developer reviews points, boundaries, coverage, and exclusions interactively.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Package is free; basemap tile rules still apply. Prefer local tiles or explicit public-domain/static imagery for production.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install ipyleaflet",
+        "conda": "conda install -c conda-forge ipyleaflet",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "ipyleaflet"
+      ],
+      "example_use_cases": [
+        "notebook map review",
+        "draw/edit polygons in Jupyter",
+        "survey QA"
+      ],
+      "strengths": [
+        "Interactive notebook workflow",
+        "good for prototyping"
+      ],
+      "limitations": [
+        "Jupyter environment required",
+        "tile source limitations"
+      ],
+      "alternatives": [
+        "folium",
+        "QGIS"
+      ],
+      "official_sources": [
+        "https://github.com/jupyter-widgets/ipyleaflet",
+        "https://operations.osmfoundation.org/policies/tiles/"
+      ]
+    },
+    {
+      "name": "plotly",
+      "category": "Visualization and plotting",
+      "primary_use": "Interactive charts and maps in Python; standalone HTML export.",
+      "why_relevant_to_center_pivot_layout": "Useful for interactive coverage tradeoff charts, layout score plots, tower tables, and technician-facing report visuals.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "plotly.py is MIT/free; do not confuse with paid hosted services or commercial dashboard hosting.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install plotly",
+        "conda": "conda install -c conda-forge plotly",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "plotly.graph_objects as go",
+        "plotly.express as px"
+      ],
+      "example_use_cases": [
+        "coverage score charts",
+        "HTML reports",
+        "interactive scatter/line plots"
+      ],
+      "strengths": [
+        "Standalone HTML possible",
+        "good UX for non-developers"
+      ],
+      "limitations": [
+        "Map tile layers still have external cost/policy issues",
+        "Dash/hosting is separate"
+      ],
+      "alternatives": [
+        "matplotlib",
+        "dash"
+      ],
+      "official_sources": [
+        "https://github.com/plotly/plotly.py"
+      ]
+    },
+    {
+      "name": "dash",
+      "category": "Mapping/UI/web-map tools",
+      "primary_use": "Local Python web app framework for dashboards.",
+      "why_relevant_to_center_pivot_layout": "Optional local UI for entering machine geometry, survey points, obstacles, and running layout scenarios without a paid SaaS backend.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Dash package is MIT/free locally. Dash Enterprise or hosted/cloud services are not part of the allowed stack.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install dash",
+        "conda": "conda install -c conda-forge dash",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "dash"
+      ],
+      "example_use_cases": [
+        "local layout app",
+        "scenario comparison UI",
+        "form-driven span inputs"
+      ],
+      "strengths": [
+        "Can run locally with no subscription",
+        "integrates with Plotly"
+      ],
+      "limitations": [
+        "Production hosting may cost money if outsourced",
+        "requires web development work"
+      ],
+      "alternatives": [
+        "streamlit is not selected due license/hosted-service considerations",
+        "Qt/PySide local UI if license reviewed"
+      ],
+      "official_sources": [
+        "https://github.com/plotly/dash"
+      ]
+    },
+    {
+      "name": "RTKLIB",
+      "category": "GNSS/RTK tools",
+      "primary_use": "Open-source GNSS positioning, post-processing, real-time processing, and stream utilities.",
+      "why_relevant_to_center_pivot_layout": "Core free GNSS engine for PPK/RTK workflows, RINEX processing, base/rover workflows, and NTRIP stream handling via tools such as rnx2rtkp and str2str.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Software is free. RTK receivers, antennas, radios/cell data, base station, and correction services may cost money. Some RTK correction services are paid; use only free/public corrections where legally available.",
+        "license": "BSD 2-Clause style plus additional RTKLIB clauses",
+        "license_confidence": "confirmed from official RTKLIB project sources",
+        "commercial_use_notes": "Commercial/noncommercial use appears permitted by RTKLIB license text when obligations are met; legal review recommended before embedding/distributing binaries."
+      },
+      "installation": {
+        "pip": "Download/build from RTKLIB source; use CLI tools such as rnx2rtkp and str2str",
+        "conda": "Available through some OS package managers/conda-forge variants; verify version",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "post-process rover/base RINEX",
+        "stream RTCM via NTRIP client",
+        "quality-check fixed/float solutions",
+        "produce high-precision points"
+      ],
+      "strengths": [
+        "Mature GNSS toolkit",
+        "broad workflow coverage"
+      ],
+      "limitations": [
+        "Steep GNSS learning curve",
+        "not a Python package by default",
+        "accuracy depends on hardware/corrections/procedure"
+      ],
+      "alternatives": [
+        "pygnssutils",
+        "georinex",
+        "pyrtklib optional"
+      ],
+      "official_sources": [
+        "https://www.rtklib.com/",
+        "https://github.com/tomojitakasu/RTKLIB",
+        "https://manpages.debian.org/testing/rtklib/str2str.1.en.html"
+      ]
+    },
+    {
+      "name": "pyserial",
+      "category": "GNSS/RTK tools",
+      "primary_use": "Serial port communication for Python.",
+      "why_relevant_to_center_pivot_layout": "Used to read live GNSS receiver output from USB/serial/Bluetooth and write correction data to receivers.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Hardware receiver/cables are separate.",
+        "license": "BSD 3-Clause",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install pyserial",
+        "conda": "conda install -c conda-forge pyserial",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "serial"
+      ],
+      "example_use_cases": [
+        "read NMEA stream",
+        "log receiver serial data",
+        "send RTCM/UBX config to receiver"
+      ],
+      "strengths": [
+        "Simple and stable serial API",
+        "cross-platform"
+      ],
+      "limitations": [
+        "No GNSS parsing by itself",
+        "serial permissions/driver issues on field laptops"
+      ],
+      "alternatives": [
+        "pygnssutils",
+        "pynmea2"
+      ],
+      "official_sources": [
+        "https://github.com/pyserial/pyserial"
+      ]
+    },
+    {
+      "name": "pynmea2",
+      "category": "GNSS/RTK tools",
+      "primary_use": "Parse NMEA 0183 GPS/GNSS sentences.",
+      "why_relevant_to_center_pivot_layout": "Useful for handheld GPS or rover logs where position, fix quality, satellites, HDOP, altitude, and timestamp are in NMEA GGA/RMC messages.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. NMEA logs are only as accurate as the receiver and correction state.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install pynmea2",
+        "conda": "conda install -c conda-forge pynmea2",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pynmea2"
+      ],
+      "example_use_cases": [
+        "parse GGA fix quality",
+        "extract lat/lon/HDOP/satellites",
+        "filter survey logs"
+      ],
+      "strengths": [
+        "Lightweight",
+        "simple parsing model"
+      ],
+      "limitations": [
+        "Limited to NMEA fields",
+        "does not solve RTK/PPK"
+      ],
+      "alternatives": [
+        "pynmeagps",
+        "pygnssutils"
+      ],
+      "official_sources": [
+        "https://github.com/Knio/pynmea2"
+      ]
+    },
+    {
+      "name": "georinex",
+      "category": "GNSS/RTK tools",
+      "primary_use": "Read RINEX 2/3/4 NAV/OBS and SP3 files; convert to NetCDF/HDF5/xarray.",
+      "why_relevant_to_center_pivot_layout": "Useful for offline GNSS/RINEX analysis, base/rover data inspection, CORS data workflows, and converting large RINEX logs for quality analysis.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. RINEX data sources, receiver hardware, and storage are separate.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install georinex",
+        "conda": "conda install -c conda-forge georinex",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "georinex as gr"
+      ],
+      "example_use_cases": [
+        "load RINEX observations",
+        "convert RINEX to NetCDF",
+        "inspect GNSS data before RTKLIB processing"
+      ],
+      "strengths": [
+        "Python-native RINEX handling",
+        "xarray output"
+      ],
+      "limitations": [
+        "Not a full RTK solver replacement",
+        "may not support every vendor edge case"
+      ],
+      "alternatives": [
+        "RTKLIB",
+        "gfzrnx external tool"
+      ],
+      "official_sources": [
+        "https://github.com/geospace-code/georinex"
+      ]
+    },
+    {
+      "name": "pygnssutils",
+      "category": "GNSS/RTK tools",
+      "primary_use": "GNSS stream, parsing, NTRIP client/server/caster utilities built around NMEA/UBX/RTCM parsers.",
+      "why_relevant_to_center_pivot_layout": "Useful for local GNSS data logging, parsing, live receiver monitoring, NTRIP correction forwarding, and rover QA tooling.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Package is free; NTRIP correction source may be paid or require credentials. Treat corrections as external and location-specific.",
+        "license": "BSD-3-Clause",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "python3 -m pip install --upgrade pygnssutils",
+        "conda": "conda install -c conda-forge pygnssutils",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pygnssutils"
+      ],
+      "example_use_cases": [
+        "live GNSS streamer",
+        "NTRIP client to receiver",
+        "RTCM/NMEA/UBX log inspection",
+        "GNSS simulator for tests"
+      ],
+      "strengths": [
+        "Modern Python GNSS utilities",
+        "CLI and class APIs"
+      ],
+      "limitations": [
+        "Requires Python >=3.10 in current versions",
+        "not a replacement for surveying procedure"
+      ],
+      "alternatives": [
+        "RTKLIB str2str",
+        "pyserial + pynmea2"
+      ],
+      "official_sources": [
+        "https://pypi.org/project/pygnssutils/"
+      ]
+    },
+    {
+      "name": "pyrtcm",
+      "category": "GNSS/RTK tools",
+      "primary_use": "Parse RTCM3 correction messages.",
+      "why_relevant_to_center_pivot_layout": "Useful for inspecting RTCM correction streams, logging base-station messages, and verifying correction feed behavior.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "The Python package is free; RTCM3 is a proprietary standard and correction streams may be paid/licensed. Confirm package license and protocol-use obligations before redistribution.",
+        "license": "Package license listed as BSD-family in package indexes; RTCM standard itself proprietary",
+        "license_confidence": "medium: PyPI/project metadata and third-party index indicate BSD-family, but protocol standard is proprietary",
+        "commercial_use_notes": "Use internally for parsing/logging; legal review before shipping any product that redistributes RTCM-related implementation details."
+      },
+      "installation": {
+        "pip": "pip install pyrtcm",
+        "conda": "conda install -c conda-forge pyrtcm",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pyrtcm"
+      ],
+      "example_use_cases": [
+        "parse RTCM message ids",
+        "inspect correction stream health",
+        "test NTRIP client output"
+      ],
+      "strengths": [
+        "Focused RTCM parser",
+        "works with pygnssutils ecosystem"
+      ],
+      "limitations": [
+        "Not a position solver",
+        "protocol-standard access is separate from package license"
+      ],
+      "alternatives": [
+        "pygnssutils",
+        "RTKLIB str2str"
+      ],
+      "official_sources": [
+        "https://pypi.org/project/pyrtcm/"
+      ]
+    },
+    {
+      "name": "pyubx2",
+      "category": "GNSS/RTK tools",
+      "primary_use": "Parse and generate u-blox UBX binary messages.",
+      "why_relevant_to_center_pivot_layout": "Useful when the rover/base receiver is u-blox based, especially ZED-F9P-style RTK workflows, receiver configuration, and quality flags beyond NMEA.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Package is free; u-blox receiver hardware costs money; UBX protocol is vendor-specific.",
+        "license": "BSD-3-Clause style",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install pyubx2",
+        "conda": "conda install -c conda-forge pyubx2",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pyubx2"
+      ],
+      "example_use_cases": [
+        "parse NAV-PVT/NAV-DOP",
+        "configure receiver message rates",
+        "log carrier solution status"
+      ],
+      "strengths": [
+        "Useful for common low-cost RTK hardware",
+        "richer status than NMEA"
+      ],
+      "limitations": [
+        "Vendor-specific",
+        "not needed for non-u-blox receivers"
+      ],
+      "alternatives": [
+        "pygnssutils",
+        "pynmea2"
+      ],
+      "official_sources": [
+        "https://pypi.org/project/pyubx2/"
+      ]
+    },
+    {
+      "name": "ezdxf",
+      "category": "Survey data import/export",
+      "primary_use": "Read, create, modify, and write DXF CAD files.",
+      "why_relevant_to_center_pivot_layout": "Useful for exporting layout plans, pivot center, tower circles, pipeline routes, and exclusion zones to CAD-compatible drawings.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Downstream CAD software may be paid, but DXF export itself is free.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install ezdxf",
+        "conda": "conda install -c conda-forge ezdxf",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "ezdxf"
+      ],
+      "example_use_cases": [
+        "export DXF plan",
+        "import simple CAD linework",
+        "label towers/radii"
+      ],
+      "strengths": [
+        "Direct CAD interoperability",
+        "pure Python"
+      ],
+      "limitations": [
+        "DXF units/layers must be standardized",
+        "not a GIS CRS engine"
+      ],
+      "alternatives": [
+        "GDAL DXF driver",
+        "QGIS export"
+      ],
+      "official_sources": [
+        "https://ezdxf.readthedocs.io/"
+      ]
+    },
+    {
+      "name": "gpxpy",
+      "category": "Survey data import/export",
+      "primary_use": "Parse and manipulate GPX tracks, routes, and waypoints.",
+      "why_relevant_to_center_pivot_layout": "Useful for importing handheld GPS boundary walks, water-source waypoints, and field-track logs.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. GPX accuracy depends on device quality.",
+        "license": "Apache-2.0",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install gpxpy",
+        "conda": "conda install -c conda-forge gpxpy",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "gpxpy"
+      ],
+      "example_use_cases": [
+        "import boundary track",
+        "import waypoints",
+        "convert GPX to GeoDataFrame"
+      ],
+      "strengths": [
+        "Simple GPX handling",
+        "good for handheld GPS workflows"
+      ],
+      "limitations": [
+        "GPX is usually WGS84 and often low precision",
+        "needs CRS conversion and cleaning"
+      ],
+      "alternatives": [
+        "GDAL/OGR GPX driver",
+        "geopandas read_file"
+      ],
+      "official_sources": [
+        "https://github.com/tkrajina/gpxpy"
+      ]
+    },
+    {
+      "name": "GeoPackage / SQLite",
+      "category": "Survey data import/export",
+      "primary_use": "Open geospatial project storage format using SQLite.",
+      "why_relevant_to_center_pivot_layout": "Recommended primary project file format for storing field boundary, survey points, obstacles, pivot layouts, machine geometry, and result layers in one local file.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Open format; no subscription cost. SQLite storage is local.",
+        "license": "Open OGC standard; SQLite public-domain style core",
+        "license_confidence": "confirmed for format openness from OGC GeoPackage source",
+        "commercial_use_notes": "Format is suitable for commercial products; confirm driver/library licenses separately."
+      },
+      "installation": {
+        "pip": "No pip package required for the format; use geopandas/pyogrio/GDAL to read/write",
+        "conda": "conda install -c conda-forge geopandas pyogrio gdal",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "sqlite3",
+        "geopandas"
+      ],
+      "example_use_cases": [
+        "store project layers",
+        "offline field project file",
+        "exchange with QGIS"
+      ],
+      "strengths": [
+        "Portable single-file project storage",
+        "supports vector/raster/tile/attributes"
+      ],
+      "limitations": [
+        "Complex extension use may reduce interoperability",
+        "large rasters can make files large"
+      ],
+      "alternatives": [
+        "GeoJSON for simple vector exchange",
+        "Shapefile for legacy exchange"
+      ],
+      "official_sources": [
+        "https://www.geopackage.org/"
+      ]
+    },
+    {
+      "name": "networkx",
+      "category": "Optimization/layout algorithms",
+      "primary_use": "Graph and network algorithms.",
+      "why_relevant_to_center_pivot_layout": "Useful for optional pipeline routing, obstacle-avoidance path planning, visibility graphs, and connecting pivots/water sources with cost-weighted paths.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost.",
+        "license": "BSD-style / BSD-new",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install networkx",
+        "conda": "conda install -c conda-forge networkx",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "networkx as nx"
+      ],
+      "example_use_cases": [
+        "pipeline routing graph",
+        "multi-pivot network costs",
+        "shortest path around obstacles"
+      ],
+      "strengths": [
+        "Broad graph algorithms",
+        "easy Python API"
+      ],
+      "limitations": [
+        "Not a geometry engine; needs shapely/geopandas to build graph nodes/edges"
+      ],
+      "alternatives": [
+        "scipy.sparse.csgraph",
+        "ortools"
+      ],
+      "official_sources": [
+        "https://networkx.org/",
+        "https://github.com/networkx/networkx"
+      ]
+    },
+    {
+      "name": "ortools",
+      "category": "Optimization/layout algorithms",
+      "primary_use": "Combinatorial optimization, routing, CP-SAT, linear programming, and graph algorithms.",
+      "why_relevant_to_center_pivot_layout": "Optional advanced optimizer for multi-pivot selection, route planning, discrete tower/span combinations, and layout choice constraints.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost for OR-Tools itself. Some wrappers around external commercial solvers are irrelevant and should not be used.",
+        "license": "Apache-2.0",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "python -m pip install ortools",
+        "conda": "conda install -c conda-forge ortools",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "ortools"
+      ],
+      "example_use_cases": [
+        "choose among candidate layouts",
+        "constrain multiple pivot coverage",
+        "pipeline network optimization"
+      ],
+      "strengths": [
+        "Strong discrete optimization toolkit",
+        "Python wrappers"
+      ],
+      "limitations": [
+        "More complex than MVP; geometry objective still must be computed externally"
+      ],
+      "alternatives": [
+        "scipy.optimize",
+        "networkx"
+      ],
+      "official_sources": [
+        "https://github.com/google/or-tools",
+        "https://developers.google.com/optimization/install"
+      ]
+    },
+    {
+      "name": "QGIS Python ecosystem",
+      "category": "Mapping/UI/web-map tools",
+      "primary_use": "Free/open-source desktop GIS and Python processing ecosystem.",
+      "why_relevant_to_center_pivot_layout": "Optional validation and technician review environment. Developers can open GeoPackage outputs in QGIS, compare layers, and build optional GPL-compatible plugins.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "QGIS is free/open source. GPL license can affect plugin/distribution strategy; do not embed QGIS libraries into closed-source app without legal review.",
+        "license": "GPL-2.0-or-later / GPL family",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Install QGIS desktop from qgis.org; Python packages come with QGIS environment",
+        "conda": "OSGeo4W/conda environments possible but require care",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "qgis.core"
+      ],
+      "example_use_cases": [
+        "manual layout review",
+        "geoprocessing validation",
+        "technician map editing",
+        "optional plugin prototype"
+      ],
+      "strengths": [
+        "Powerful free GIS",
+        "excellent for field validation and export QA"
+      ],
+      "limitations": [
+        "GPL licensing considerations",
+        "QGIS Python environment differs from normal pip environment"
+      ],
+      "alternatives": [
+        "geopandas local app",
+        "folium/plotly local UI"
+      ],
+      "official_sources": [
+        "https://qgis.org/"
+      ]
+    },
+    {
+      "name": "OpenDroneMap ODM",
+      "category": "Raster/imagery and drone photogrammetry",
+      "primary_use": "Local command-line photogrammetry toolkit for drone imagery.",
+      "why_relevant_to_center_pivot_layout": "Optional local path for generating orthomosaics, georeferenced DEMs, point clouds, and textured models from drone imagery before pivot layout analysis.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Local ODM is free/open source, but drone hardware, GCP survey, compute, and storage cost money. Hosted WebODM/CloudODM services may be paid and are excluded unless self-hosted/local.",
+        "license": "AGPL-3.0",
+        "license_confidence": "confirmed from official repository",
+        "commercial_use_notes": "AGPL network-copyleft obligations require legal review for commercial/web-connected products."
+      },
+      "installation": {
+        "pip": "Run Docker image: docker pull opendronemap/odm",
+        "conda": "Not a normal conda package; use Docker/local install",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "generate orthomosaic",
+        "generate DSM/DEM",
+        "produce georeferenced raster for field analysis"
+      ],
+      "strengths": [
+        "Full local/offline photogrammetry path",
+        "drone-data friendly"
+      ],
+      "limitations": [
+        "AGPL license obligations",
+        "heavy compute/storage",
+        "requires good flight planning and ground control"
+      ],
+      "alternatives": [
+        "commercial photogrammetry tools excluded",
+        "user-supplied orthomosaics"
+      ],
+      "official_sources": [
+        "https://github.com/OpenDroneMap/ODM",
+        "https://webodm.net/"
+      ]
+    },
+    {
+      "name": "Segment Anything",
+      "category": "Optional AI/computer vision",
+      "primary_use": "Local image segmentation model/framework.",
+      "why_relevant_to_center_pivot_layout": "Optional assistant for imagery-based boundary/obstacle mask generation from orthomosaics; outputs must be QA-reviewed and georeferenced.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Software/model code is free/open under Apache-2.0; local GPU/compute may cost money; training/fine-tuning datasets may have separate licenses.",
+        "license": "Apache-2.0",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Follow project instructions; commonly pip install git+https://github.com/facebookresearch/segment-anything.git",
+        "conda": "No standard conda package assumed",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "segment_anything"
+      ],
+      "example_use_cases": [
+        "semi-automatic obstacle masks",
+        "field edge segmentation experiments",
+        "human-in-the-loop image QA"
+      ],
+      "strengths": [
+        "Powerful segmentation baseline",
+        "no paid API required if run locally"
+      ],
+      "limitations": [
+        "Needs local compute and georeferencing pipeline",
+        "not irrigation-specific",
+        "not a replacement for surveyed boundaries"
+      ],
+      "alternatives": [
+        "opencv-python-headless",
+        "scikit-image"
+      ],
+      "official_sources": [
+        "https://github.com/facebookresearch/segment-anything"
+      ]
+    },
+    {
+      "name": "pytest",
+      "category": "Testing, validation, and simulation",
+      "primary_use": "Unit and integration testing framework.",
+      "why_relevant_to_center_pivot_layout": "Used to validate acreage math, CRS conversions, geometry rules, RTK quality filters, import/export, and synthetic layout scenarios.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Optional paid support/subscriptions are not required.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install pytest",
+        "conda": "conda install -c conda-forge pytest",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pytest"
+      ],
+      "example_use_cases": [
+        "geometry regression tests",
+        "survey parser tests",
+        "golden-file exports",
+        "synthetic field simulations"
+      ],
+      "strengths": [
+        "Simple and widely used",
+        "scales to full test suite"
+      ],
+      "limitations": [
+        "Does not generate tests automatically",
+        "requires domain-specific fixtures"
+      ],
+      "alternatives": [
+        "unittest",
+        "hypothesis optional"
+      ],
+      "official_sources": [
+        "https://github.com/pytest-dev/pytest"
+      ]
+    },
+    {
+      "name": "pydantic",
+      "category": "Testing, validation, and simulation",
+      "primary_use": "Data model validation using Python type hints.",
+      "why_relevant_to_center_pivot_layout": "Useful for validating machine/span inputs, survey point schemas, project configs, and layout result payloads before calculations.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost. Pydantic Logfire/monitoring is separate and not required.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install pydantic",
+        "conda": "conda install -c conda-forge pydantic",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "pydantic"
+      ],
+      "example_use_cases": [
+        "machine config validation",
+        "survey point schema validation",
+        "JSON API models"
+      ],
+      "strengths": [
+        "Catches bad inputs early",
+        "good developer ergonomics"
+      ],
+      "limitations": [
+        "Version 1 vs 2 API differences",
+        "not a geometry validator by itself"
+      ],
+      "alternatives": [
+        "dataclasses",
+        "attrs"
+      ],
+      "official_sources": [
+        "https://github.com/pydantic/pydantic"
+      ]
+    },
+    {
+      "name": "ruff",
+      "category": "Testing, validation, and simulation",
+      "primary_use": "Python linter and formatter.",
+      "why_relevant_to_center_pivot_layout": "Useful for code quality in the handoff implementation so survey/math code remains readable and maintainable.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No subscription cost.",
+        "license": "MIT",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "pip install ruff",
+        "conda": "conda install -c conda-forge ruff",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "lint code",
+        "format code",
+        "CI checks"
+      ],
+      "strengths": [
+        "Fast single-tool lint/format workflow",
+        "low setup friction"
+      ],
+      "limitations": [
+        "Does not test mathematical correctness"
+      ],
+      "alternatives": [
+        "black",
+        "flake8"
+      ],
+      "official_sources": [
+        "https://github.com/astral-sh/ruff"
+      ]
+    },
+    {
+      "name": "USGS Landsat",
+      "category": "Free public imagery dataset",
+      "primary_use": "No-cost satellite imagery archive.",
+      "why_relevant_to_center_pivot_layout": "Useful for coarse field context, historical crop patterns, vegetation indices, and confirming field shape where high-resolution imagery is unavailable.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No data subscription cost. Downloads may require free account/API setup and local storage; spatial resolution is too coarse for final pivot clearance design.",
+        "license": "Public government/open data terms; verify product-specific terms",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Access through USGS EarthExplorer/M2M/API; process with rasterio/GDAL",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "NDVI context",
+        "historical field review",
+        "coarse boundary context"
+      ],
+      "strengths": [
+        "No-cost long historical archive",
+        "global coverage"
+      ],
+      "limitations": [
+        "30 m resolution is not enough for precise obstacles/clearance",
+        "clouds/time mismatch"
+      ],
+      "alternatives": [
+        "Sentinel-2",
+        "NAIP",
+        "drone orthomosaic"
+      ],
+      "official_sources": [
+        "https://www.usgs.gov/landsat-missions/landsat-data-access"
+      ]
+    },
+    {
+      "name": "Copernicus Sentinel-2",
+      "category": "Free public imagery dataset",
+      "primary_use": "Free multispectral satellite imagery.",
+      "why_relevant_to_center_pivot_layout": "Useful for crop/vegetation context, field boundary hints, soil/water/crop patterns, and coarse remote analysis.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "No data subscription cost. Account/API/download workflow and storage may be required; 10 m best bands are still not design-grade for obstacle clearance.",
+        "license": "Copernicus free data terms; verify product-specific terms",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Access through Copernicus Data Space; process with rasterio/GDAL/xarray/rioxarray",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "vegetation monitoring",
+        "field boundary hints",
+        "seasonal imagery review"
+      ],
+      "strengths": [
+        "Free to public/scientific/commercial users",
+        "higher revisit than Landsat"
+      ],
+      "limitations": [
+        "Clouds and 10 m resolution limit precision",
+        "not a substitute for RTK field survey"
+      ],
+      "alternatives": [
+        "Landsat",
+        "NAIP",
+        "drone orthomosaic"
+      ],
+      "official_sources": [
+        "https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-2"
+      ]
+    },
+    {
+      "name": "NAIP imagery",
+      "category": "Free public imagery dataset",
+      "primary_use": "US aerial imagery for agriculture.",
+      "why_relevant_to_center_pivot_layout": "Useful for field boundary tracing, road/fence/tree/building context, and technician review in U.S. project areas.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Public access is free where available. Coverage/update year varies by state; not global; downloads/storage cost local resources.",
+        "license": "Public domain with attribution in common public-hosted distributions; verify source-specific terms",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Access through USGS tools, The National Map, or public cloud catalogs; process with rasterio/GDAL",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "manual boundary digitizing",
+        "obstacle context",
+        "field overview"
+      ],
+      "strengths": [
+        "Higher resolution than Landsat/Sentinel",
+        "agriculture-focused"
+      ],
+      "limitations": [
+        "U.S.-only, recency varies",
+        "not survey-grade unless ground-truthed"
+      ],
+      "alternatives": [
+        "drone orthomosaic",
+        "Sentinel-2"
+      ],
+      "official_sources": [
+        "https://www.usgs.gov/centers/eros/science/usgs-eros-archive-aerial-photography-national-agriculture-imagery-program-naip"
+      ]
+    },
+    {
+      "name": "USGS 3DEP",
+      "category": "Free public terrain/elevation dataset",
+      "primary_use": "U.S. elevation, DEM, and lidar-derived products.",
+      "why_relevant_to_center_pivot_layout": "Useful for pump/pipeline planning context, slope checks, drainage awareness, and elevation change estimates in U.S. project areas.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "All 3DEP products are free of charge and without use restrictions. Download/storage/processing costs are local.",
+        "license": "Public domain / no use restrictions per USGS",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Access through The National Map/Lidar Explorer; process with rasterio/GDAL/rioxarray",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "slope/elevation profile",
+        "pipeline route elevation",
+        "terrain QA"
+      ],
+      "strengths": [
+        "Free high-quality U.S. elevation products",
+        "lidar in many areas"
+      ],
+      "limitations": [
+        "U.S.-focused",
+        "vertical datum handling matters",
+        "not a substitute for hydraulic engineering"
+      ],
+      "alternatives": [
+        "SRTM",
+        "Copernicus DEM"
+      ],
+      "official_sources": [
+        "https://www.usgs.gov/3d-elevation-program"
+      ]
+    },
+    {
+      "name": "SRTM",
+      "category": "Free public terrain/elevation dataset",
+      "primary_use": "Near-global DEM from Shuttle Radar Topography Mission.",
+      "why_relevant_to_center_pivot_layout": "Useful for coarse elevation context outside U.S. or where no local DEM exists.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Data is free through USGS/NASA access paths; free account may be required; resolution/voids/vertical datum must be checked.",
+        "license": "Public NASA/USGS data terms; verify region/product terms",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Access via USGS EarthExplorer/NASA Earthdata; process with rasterio/GDAL",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "coarse terrain screening",
+        "pipeline elevation context",
+        "slope warning flags"
+      ],
+      "strengths": [
+        "Near-global coverage",
+        "free baseline DEM"
+      ],
+      "limitations": [
+        "Coarse for farm engineering",
+        "not enough for precise pipeline design"
+      ],
+      "alternatives": [
+        "Copernicus DEM",
+        "local lidar",
+        "USGS 3DEP"
+      ],
+      "official_sources": [
+        "https://www.usgs.gov/centers/eros/science/usgs-eros-archive-digital-elevation-shuttle-radar-topography-mission-srtm"
+      ]
+    },
+    {
+      "name": "Copernicus DEM GLO-30/GLO-90",
+      "category": "Free public terrain/elevation dataset",
+      "primary_use": "Global DEM products.",
+      "why_relevant_to_center_pivot_layout": "Useful for coarse terrain/elevation context, especially outside U.S. 3DEP coverage.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "Free license for general public has geographic caveats; verify country/region restrictions before commercial use.",
+        "license": "Copernicus DEM free license with documented caveats",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Access through Copernicus/spacedata/public cloud catalogs; process with rasterio/GDAL",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "terrain screening",
+        "pipeline elevation context",
+        "slope flags"
+      ],
+      "strengths": [
+        "Global availability",
+        "useful where no local lidar exists"
+      ],
+      "limitations": [
+        "Country/region caveats and coarse engineering precision",
+        "not a substitute for survey-grade elevation"
+      ],
+      "alternatives": [
+        "SRTM",
+        "USGS 3DEP"
+      ],
+      "official_sources": [
+        "https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model"
+      ]
+    },
+    {
+      "name": "NOAA/NGS CORS",
+      "category": "Free public GNSS data source",
+      "primary_use": "Continuously Operating Reference Station data.",
+      "why_relevant_to_center_pivot_layout": "Useful for post-processing rover data against nearby base stations where coverage exists, especially U.S. workflows.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "CORS data is free of charge, but it is not a universal real-time correction service. Rover hardware, logging, baseline distance, and processing still matter.",
+        "license": "U.S. government public data; verify station/product terms",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Download RINEX data from NOAA/NGS CORS; process with RTKLIB/georinex",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "PPK base data source",
+        "check nearby reference stations",
+        "post-process rover surveys"
+      ],
+      "strengths": [
+        "No data subscription cost",
+        "high-quality reference network where available"
+      ],
+      "limitations": [
+        "Station coverage varies",
+        "not the same as live RTK corrections",
+        "latency and data intervals matter"
+      ],
+      "alternatives": [
+        "local base station",
+        "IGS data/products"
+      ],
+      "official_sources": [
+        "https://geodesy.noaa.gov/CORS/",
+        "https://catalog.data.gov/dataset/cors-continuously-operating-reference-stations"
+      ]
+    },
+    {
+      "name": "International GNSS Service data/products",
+      "category": "Free public GNSS data source",
+      "primary_use": "Open GNSS data, ephemerides, clocks, and station products.",
+      "why_relevant_to_center_pivot_layout": "Useful for advanced PPK/PPP-grade post-processing research and quality analysis, not as the first MVP workflow.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "IGS data/products are free and open; workflow complexity and compute are the cost.",
+        "license": "IGS open data/product terms",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Access IGS/CDDIS mirrors; process with RTKLIB/georinex or specialist GNSS tools",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "precise ephemeris products",
+        "advanced GNSS QA",
+        "research-grade processing"
+      ],
+      "strengths": [
+        "High-quality GNSS products",
+        "global reference network"
+      ],
+      "limitations": [
+        "Advanced workflow",
+        "not a simple live field mapping tool"
+      ],
+      "alternatives": [
+        "NOAA CORS",
+        "local base station"
+      ],
+      "official_sources": [
+        "https://igs.org/products/"
+      ]
+    },
+    {
+      "name": "OpenStreetMap data + self-hosted tiles",
+      "category": "Mapping/UI/web-map tools",
+      "primary_use": "Open map data and optional self-hosted basemap stack.",
+      "why_relevant_to_center_pivot_layout": "Useful for roads/context basemaps in local maps if the project avoids public tile scraping and follows ODbL attribution/share-alike rules.",
+      "free_status": {
+        "is_free": true,
+        "cost_risk": "OSM data is free/open with ODbL obligations, but public OSM tile servers prohibit bulk/offline use. For production/offline use, self-host tiles or use a provider that explicitly allows the intended use.",
+        "license": "ODbL for OSM data; tile server terms vary",
+        "license_confidence": "confirmed from official or primary project source",
+        "commercial_use_notes": "Likely usable commercially if license obligations are followed; not legal advice."
+      },
+      "installation": {
+        "pip": "Use GDAL/osmium/OpenMapTiles/TileServer GL for self-hosted workflows; not a single Python package",
+        "conda": "Not a Python package",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "local basemap context",
+        "roads/waterway context",
+        "offline project map tiles"
+      ],
+      "strengths": [
+        "No paid API required if self-hosted",
+        "strong map data ecosystem"
+      ],
+      "limitations": [
+        "Self-hosting requires storage/compute/admin",
+        "ODbL obligations",
+        "public tile servers are not for bulk/offline use"
+      ],
+      "alternatives": [
+        "NAIP/drone imagery as basemap",
+        "GeoPackage tiles"
+      ],
+      "official_sources": [
+        "https://www.openstreetmap.org/copyright",
+        "https://operations.osmfoundation.org/policies/tiles/",
+        "https://openmaptiles.org/",
+        "https://github.com/maptiler/tileserver-gl"
+      ]
+    },
+    {
+      "name": "Ultralytics YOLO",
+      "category": "Optional AI/computer vision - excluded by default",
+      "primary_use": "Object detection/segmentation framework; not recommended as a default dependency for this no-hidden-cost handoff.",
+      "why_relevant_to_center_pivot_layout": "Could detect objects in imagery, but AGPL/commercial-license implications conflict with a clean hidden-cost-free proprietary deployment unless the whole product is compatible with AGPL or a paid license is purchased.",
+      "free_status": {
+        "is_free": false,
+        "cost_risk": "Default AGPL terms may force source-disclosure obligations; paid enterprise license creates hidden cost. Exclude unless legal strategy accepts AGPL.",
+        "license": "AGPL-3.0 by default; paid enterprise option",
+        "license_confidence": "confirmed from official licensing page",
+        "commercial_use_notes": "Use only if product is AGPL-compatible. Do not include in proprietary no-cost stack."
+      },
+      "installation": {
+        "pip": "Do not install by default",
+        "conda": "",
+        "system_dependencies": []
+      },
+      "python_imports": [
+        "ultralytics"
+      ],
+      "example_use_cases": [
+        "research-only obstacle detection experiments"
+      ],
+      "strengths": [
+        "Strong model ecosystem"
+      ],
+      "limitations": [
+        "License/commercial cost risk",
+        "training data and compute costs"
+      ],
+      "alternatives": [
+        "Segment Anything",
+        "OpenCV",
+        "scikit-image"
+      ],
+      "official_sources": [
+        "https://www.ultralytics.com/license"
+      ]
+    },
+    {
+      "name": "Google Maps / Mapbox paid APIs / Esri ArcGIS paid dependencies",
+      "category": "Excluded paid or API-key mapping stack",
+      "primary_use": "Commercial mapping APIs and paid GIS platforms.",
+      "why_relevant_to_center_pivot_layout": "These tools may be useful generally but violate the project rule against paid APIs, subscriptions, hidden costs, or required commercial accounts.",
+      "free_status": {
+        "is_free": false,
+        "cost_risk": "Paid/API-key/subscription risk. Excluded from development stack.",
+        "license": "Varies by vendor",
+        "license_confidence": "not applicable",
+        "commercial_use_notes": "Do not use as required dependency."
+      },
+      "installation": {
+        "pip": "Excluded",
+        "conda": "Excluded",
+        "system_dependencies": []
+      },
+      "python_imports": [],
+      "example_use_cases": [
+        "none for this project"
+      ],
+      "strengths": [
+        "rich commercial ecosystems"
+      ],
+      "limitations": [
+        "violates free/no-subscription requirement",
+        "vendor lock-in"
+      ],
+      "alternatives": [
+        "Folium with local tiles",
+        "QGIS",
+        "GeoPackage",
+        "OpenStreetMap self-hosted tiles"
+      ],
+      "official_sources": []
+    }
+  ],
+  "workflow_blueprints": {
+    "imagery_based_layout_workflow": {
+      "steps": [
+        "Acquire free/user-owned imagery: NAIP, Sentinel-2, Landsat, drone orthomosaic, or local GeoTIFF. Record source, date, resolution, CRS, and license/terms.",
+        "Load raster with rasterio/GDAL; verify geotransform, CRS, bounds, nodata, and resolution.",
+        "Reproject imagery to project CRS or reproject vector layers to imagery CRS only for raster operations; keep final layout in local projected CRS.",
+        "Clip imagery to field candidate area plus buffer.",
+        "For manual or semi-automatic boundary detection, use RGB/NDVI/edge/threshold/contour methods with OpenCV or scikit-image; optionally use Segment Anything for human-in-the-loop masks.",
+        "Convert masks/contours to vector polygons with rasterio.features or shapely; simplify and validate geometry.",
+        "Digitize or detect obstacle candidates such as roads, ditches, trees, buildings, water, and no-spray zones; buffer according to field rules.",
+        "Overlay candidate pivot coverage and machine-travel geometry; compute acres and conflicts.",
+        "Mark all imagery-derived boundaries/obstacles as planning-grade until GPS/RTK validation is complete.",
+        "Export review map and list of field items needing ground verification."
+      ],
+      "recommended_tools": [
+        "rasterio",
+        "GDAL / OGR",
+        "opencv-python-headless",
+        "scikit-image",
+        "shapely",
+        "geopandas",
+        "pyproj",
+        "matplotlib",
+        "folium",
+        "Segment Anything optional",
+        "OpenDroneMap ODM optional"
+      ],
+      "inputs": [
+        "GeoTIFF/orthomosaic",
+        "public imagery tile/scene",
+        "optional NDVI bands",
+        "field AOI",
+        "known GPS/RTK control points",
+        "obstacle buffer rules"
+      ],
+      "outputs": [
+        "draft field boundary polygon",
+        "draft obstacle/no-spray polygons",
+        "imagery QA report",
+        "coverage map",
+        "ground-truth checklist"
+      ],
+      "risks": [
+        "Imagery may be stale or offset",
+        "AI/CV output can misclassify roads, shadows, wet areas, and crop rows",
+        "public tile policies may prohibit offline/bulk use",
+        "satellite resolution may be too coarse for clearance"
+      ],
+      "validation_checks": [
+        "Compare imagery boundary against GPS/RTK points",
+        "measure known road/building offsets",
+        "verify CRS and pixel size",
+        "flag imagery older than user threshold",
+        "require technician approval before design use"
+      ]
+    },
+    "gps_boundary_survey_workflow": {
+      "steps": [
+        "Import boundary points/tracks from CSV, GPX, GeoJSON, KML/KMZ, Shapefile, or GeoPackage.",
+        "Parse point attributes: timestamp, fix type, HDOP/PDOP, satellite count, altitude, device, operator notes.",
+        "Convert WGS84 coordinates to local projected CRS using pyproj/geopandas.",
+        "Remove duplicate points, obvious outliers, and low-quality observations using configurable thresholds.",
+        "Build ordered polygon from track or user-provided order; close ring and validate geometry.",
+        "Apply boundary cleanup: simplify within survey tolerance, snap near-duplicate vertices, repair invalid topology, preserve holes/exclusions.",
+        "Import pivot center, water source, power source, and obstacles as points/lines/polygons; buffer line/point obstacles.",
+        "Model full-circle or partial-circle pivot coverage; clip to field and subtract exclusions.",
+        "Compute irrigated acres, non-irrigated acres, dry corners, and conflict flags.",
+        "Export GeoPackage project, CSV report, DXF plan, and static/interactive map."
+      ],
+      "recommended_tools": [
+        "pandas",
+        "gpxpy",
+        "pyogrio",
+        "GDAL / OGR",
+        "geopandas",
+        "pyproj",
+        "shapely",
+        "matplotlib",
+        "folium",
+        "ezdxf"
+      ],
+      "inputs": [
+        "CSV/GPX/KML/GeoJSON/Shapefile/GeoPackage survey data",
+        "machine geometry",
+        "obstacle buffer rules",
+        "CRS/location"
+      ],
+      "outputs": [
+        "clean field polygon",
+        "quality-filtered survey points",
+        "pivot layout layers",
+        "acreage report",
+        "DXF/GeoPackage exports"
+      ],
+      "risks": [
+        "Handheld GPS may be inaccurate",
+        "point order may be wrong",
+        "CRS may be missing",
+        "KML/GPX altitude datum may be inconsistent",
+        "field edge may not equal property/fence boundary"
+      ],
+      "validation_checks": [
+        "Reject calculations in degrees",
+        "confirm polygon area against expected acres",
+        "plot point order and boundary path",
+        "flag low-quality fixes",
+        "require manual review of polygon repairs"
+      ]
+    },
+    "rtk_precision_survey_workflow": {
+      "steps": [
+        "Define survey quality threshold: RTK fixed only or accepted fix levels, max HDOP/PDOP, max correction age, min satellites, max horizontal RMS, repeated-shot count, and antenna-height rules.",
+        "Collect rover data with RTK-capable hardware; log NMEA/UBX/SBF/RTCM/RINEX where possible with timestamps and quality fields.",
+        "If live corrections are used, use free NTRIP client software such as RTKLIB str2str or pygnssutils; do not make a paid correction network a required dependency.",
+        "For PPK, collect rover raw observations and base/CORS RINEX data; process with RTKLIB tools and inspect solution status.",
+        "Parse NMEA with pynmea2 or GNSS streams with pygnssutils; parse RINEX with georinex for QA; use RTKLIB for actual RTK/PPK solution where needed.",
+        "Filter observations by fixed/float/autonomous status and quality metrics; average repeated fixed shots for pivot center and hard obstacles.",
+        "Convert final coordinates to project CRS; store datum/epoch/projection metadata.",
+        "Use RTK-derived geometry as high-trust source for pivot center, boundary, water source, obstacles, and clearance-critical features.",
+        "Generate layout scenarios and export with source-quality metadata visible in the report."
+      ],
+      "recommended_tools": [
+        "RTKLIB",
+        "pyserial",
+        "pygnssutils",
+        "pynmea2",
+        "georinex",
+        "pyrtcm",
+        "pyubx2",
+        "pyproj",
+        "geopandas",
+        "shapely"
+      ],
+      "inputs": [
+        "NMEA/UBX/receiver logs",
+        "RINEX rover/base files",
+        "CORS data if available",
+        "RTK correction stream if free/authorized",
+        "survey quality thresholds",
+        "antenna heights"
+      ],
+      "outputs": [
+        "quality-filtered RTK survey points",
+        "RTK/PPK solution logs",
+        "survey QA report",
+        "high-trust layout geometry"
+      ],
+      "risks": [
+        "Free NTRIP software does not imply free corrections",
+        "wrong antenna height/datum can create large errors",
+        "multipath under pivots/trees/buildings",
+        "float/autonomous fixes may look precise but fail design threshold",
+        "base-rover distance limitations"
+      ],
+      "validation_checks": [
+        "Require fixed solution for design-grade points unless user explicitly downgrades confidence",
+        "repeat key points and compare residuals",
+        "log correction age and DOP",
+        "compare CORS/local base datum",
+        "include technician signoff on surveyed pivot center"
+      ]
+    },
+    "center_pivot_layout_optimization_workflow": {
+      "steps": [
+        "Create valid field polygon and obstacle/no-spray exclusion polygons in local projected CRS.",
+        "Build machine model from validated span lengths, overhang, end-gun throw, and sweep mode.",
+        "Generate candidate pivot centers from fixed point, grid search inside field, water-source vicinity, or user-defined allowed area.",
+        "For each candidate, generate full-circle or partial-sector sweep, end-gun annulus/sector, tower tracks, and machine-travel clearance geometry.",
+        "Clip wet coverage to field and subtract exclusions; evaluate tower/machine conflicts separately.",
+        "Score candidate by irrigated acres, dry-corner acres, conflict severity, clearance margin, water/power/pipeline distance, constructability, and survey confidence.",
+        "Use coarse grid search first, then refine top candidates with scipy.optimize differential_evolution/minimize or OR-Tools for discrete candidate selection.",
+        "Rank scenarios and export maps/tables with explanation of penalties and assumptions.",
+        "Require technician review before accepting optimized placement."
+      ],
+      "recommended_tools": [
+        "shapely",
+        "numpy",
+        "scipy",
+        "geopandas",
+        "pyproj",
+        "networkx",
+        "ortools optional",
+        "matplotlib",
+        "plotly"
+      ],
+      "inputs": [
+        "field polygon",
+        "obstacle/exclusion polygons",
+        "candidate center constraints",
+        "machine geometry",
+        "sweep constraints",
+        "water/power source points",
+        "scoring weights"
+      ],
+      "outputs": [
+        "ranked layout scenarios",
+        "best-fit pivot center",
+        "coverage/dry-corner polygons",
+        "conflict list",
+        "pipeline route candidates"
+      ],
+      "risks": [
+        "Optimizer can find mathematically high coverage but impractical field construction",
+        "wrong weights can produce bad recommendations",
+        "hard clearance constraints must be separated from wet-area clipping",
+        "local optima and geometry repair artifacts"
+      ],
+      "validation_checks": [
+        "Compare top candidates visually",
+        "rerun with different grid/seed",
+        "enforce hard constraints before ranking",
+        "unit-test known simple fields",
+        "report why each rejected scenario failed"
+      ]
+    }
+  },
+  "algorithm_handoff": {
+    "field_boundary_processing": [
+      "Input accepted formats: CSV lat/lon, CSV projected x/y, GPX, GeoJSON, KML/KMZ through GDAL where available, Shapefile, GeoPackage, DXF linework if units/CRS are known.",
+      "Normalize to GeoDataFrame with source_crs, target_crs, geometry, point_order, timestamp, quality fields, and source_confidence.",
+      "For boundary tracks, preserve recorded order; for unordered points, require user confirmation or compute convex/alpha shape only as draft.",
+      "Remove duplicate vertices below tolerance, close ring, detect self-intersections, repair topology, and log all modifications.",
+      "Calculate area only after projection. Store acres and square meters/feet plus CRS used."
+    ],
+    "pivot_center_selection": [
+      "Modes: fixed_surveyed, user_selected, optimized_grid, optimized_continuous, water_source_constrained.",
+      "Reject candidate centers outside allowed center zone unless user explicitly allows off-field center such as corner/wiper designs.",
+      "For existing pivots, pivot center should be RTK-surveyed or imported from verified as-built data; imagery-clicked center is planning-grade only.",
+      "Candidate center score includes coverage, conflicts, pipeline length, power access, dry corners, and survey confidence."
+    ],
+    "circle_and_arc_coverage": [
+      "Use shapely Point(center).buffer(radius, resolution=n) for full-circle approximations; set resolution high enough for acre tolerance.",
+      "For sectors, generate arc vertices from start/end angle and construct polygon [center, arc_points..., center].",
+      "Use configurable angle convention and store both raw user convention and internal math convention.",
+      "Intersections/differences should use prepared/validated geometries where repeated many times.",
+      "Store wet coverage and physical machine travel coverage separately."
+    ],
+    "partial_circle_modeling": [
+      "Represent windshield-wiper operation as a sector with start_angle, stop_angle, reversal behavior, and optional excluded angle ranges.",
+      "Allow separate wet-area sector and physical overhang/tower path sector when end-gun shutoff or span/nozzle package creates different coverage.",
+      "Handle 0/360 wraparound and clockwise/counterclockwise input explicitly.",
+      "For multiple sectors, union valid sector polygons after building each sector independently."
+    ],
+    "obstacle_exclusion": [
+      "Point obstacle -> circular buffer; line obstacle -> width/clearance buffer; polygon obstacle -> original polygon plus safety buffer.",
+      "No-spray zone subtraction affects wet coverage; hard obstacle clearance affects machine/tower-travel conflict.",
+      "Report nearest clearance distance from tower tracks/overhang path to each obstacle.",
+      "Keep source layer, buffer rule, and confidence for every exclusion."
+    ],
+    "coverage_area_calculation": [
+      "field_usable = field_boundary.difference(nonfarmable_zones)",
+      "wet_raw = base_sweep.union(end_gun_sweep if enabled else empty)",
+      "wet_allowed = wet_raw.intersection(field_usable).difference(no_spray_zones.union(obstacle_wet_exclusions))",
+      "irrigated_acres = wet_allowed.area / 4046.8564224 for meter CRS",
+      "dry_acres = field_usable.area - wet_allowed.area converted to acres",
+      "coverage_percent = wet_allowed.area / field_usable.area * 100 if field_usable.area > 0 else null"
+    ],
+    "best_fit_optimization": [
+      "Start with deterministic coarse grid within allowed center zone and radius/angle limits; evaluate all candidates with exact geometry scoring.",
+      "Refine top candidates with scipy.optimize.differential_evolution over x, y, radius, start_angle, stop_angle where variables are continuous.",
+      "Use penalties for hard conflicts, required clearance failures, radius exceeding machine maximum, unacceptable pipeline crossing, and center outside allowed zone.",
+      "Use OR-Tools only for discrete selection problems such as choosing multiple pivots from pre-scored candidates or pipeline network alternatives.",
+      "Return not only best score but top N ranked scenarios with score components and rejection reasons."
+    ],
+    "tower_and_span_modeling": [
+      "tower_radius_i = cumulative sum of span_lengths through tower i; overhang radius = tower_radius_last + overhang_length.",
+      "tower_location(angle, i) = center + tower_radius_i * [cos(angle), sin(angle)] in project CRS units.",
+      "tower_track_i = full circle or sector arc at tower_radius_i; buffer by wheel/structure clearance for conflict checking.",
+      "Span-to-span clearance can be modeled as swept annular sectors between cumulative radii if needed.",
+      "Machine geometry must be based on manufacturer dimensions and field-installed overhang/end-gun package, not guessed."
+    ],
+    "end_gun_modeling": [
+      "end_gun_wet = annular sector from machine_radius to end_gun_radius, optionally limited by endgun_on_angles and shutoff zones.",
+      "End gun should be separately flaggable as optional, because wind, pressure, nozzle package, and control settings affect real coverage.",
+      "Subtract no-spray zones and hard exclusions; show end-gun acres separately from base pivot acres.",
+      "Allow end-gun throw and effective wet radius to be scenario inputs, not constants."
+    ],
+    "multi_pivot_layout": [
+      "Generate candidate scenarios per pivot; evaluate pairwise overlap and shared obstacles.",
+      "multi_pivot_score = total_covered_area - overlap_penalty - conflict_penalties - infrastructure_cost_penalties.",
+      "Use shapely union of all wet_allowed polygons for total acres; report overlap acres separately.",
+      "Use OR-Tools or greedy ranking to choose a set of pivots from precomputed candidates when multiple sites are allowed.",
+      "Validate water source capacity and hydraulics outside this geometry MVP."
+    ],
+    "coordinate_reference_system_handling": [
+      "Detect input CRS when possible; require user confirmation when missing.",
+      "For GPS WGS84, estimate suitable projected CRS from field centroid: UTM zone for broad default; State Plane or local engineering CRS if specified.",
+      "Store CRS EPSG/WKT in every layer and in project metadata.",
+      "Keep raw coordinates and transformed coordinates for auditability.",
+      "Warn when field spans multiple UTM zones or projection distortion exceeds configured tolerance."
+    ],
+    "accuracy_error_handling": [
+      "Every geometry should carry source_confidence: rtk_fixed, rtk_float, dgps, autonomous_gps, imagery_digitized, imported_cad, user_estimated, optimized.",
+      "Reject or downgrade points with missing quality metadata when design-grade mode is active.",
+      "For NMEA GGA, parse GPS quality, number of satellites, HDOP, altitude, geoid separation, and correction age if present.",
+      "For u-blox UBX, prefer carrier-solution status and horizontal accuracy estimates where available.",
+      "Create QA report that lists all low-confidence inputs and how they affect layout acceptance."
+    ]
+  },
+  "code_architecture_recommendation": {
+    "suggested_python_modules": [
+      {
+        "module": "pivot_layout.models",
+        "contents": [
+          "Pydantic/dataclass models for FieldBoundary, PivotMachine, SurveyPoint, ObstacleZone, LayoutScenario, ProjectConfig"
+        ]
+      },
+      {
+        "module": "pivot_layout.crs",
+        "contents": [
+          "CRS detection, projected CRS selection, pyproj transformations, unit conversion"
+        ]
+      },
+      {
+        "module": "pivot_layout.io",
+        "contents": [
+          "CSV/GeoJSON/GeoPackage/GPX/DXF/KML import/export, layer schema validation"
+        ]
+      },
+      {
+        "module": "pivot_layout.geometry",
+        "contents": [
+          "circle/sector creation, tower tracks, buffers, polygon repair, area calculation"
+        ]
+      },
+      {
+        "module": "pivot_layout.survey_quality",
+        "contents": [
+          "NMEA parsing, RTK quality filters, repeated-shot averaging, observation reports"
+        ]
+      },
+      {
+        "module": "pivot_layout.rtk",
+        "contents": [
+          "RTKLIB command wrappers, RINEX/georinex parsing, pygnssutils integration points, solution log parsing"
+        ]
+      },
+      {
+        "module": "pivot_layout.imagery",
+        "contents": [
+          "Raster loading, clipping, NDVI/index helpers, segmentation/mask-to-vector helpers, georeferencing QA"
+        ]
+      },
+      {
+        "module": "pivot_layout.optimization",
+        "contents": [
+          "candidate generation, objective functions, grid search, scipy optimizers, multi-pivot selection"
+        ]
+      },
+      {
+        "module": "pivot_layout.routing",
+        "contents": [
+          "water-source/pipeline route graph generation, route scoring, elevation profile helpers"
+        ]
+      },
+      {
+        "module": "pivot_layout.reporting",
+        "contents": [
+          "acreage tables, conflict report, matplotlib/plotly visuals, HTML/CSV/DXF/GeoPackage outputs"
+        ]
+      },
+      {
+        "module": "pivot_layout.tests",
+        "contents": [
+          "synthetic geometries, golden outputs, CRS tests, survey parser tests, optimizer regression tests"
+        ]
+      }
+    ],
+    "data_models": [
+      {
+        "name": "ProjectConfig",
+        "fields": [
+          "project_id",
+          "project_name",
+          "target_crs",
+          "unit_system",
+          "free_cost_policy_acknowledged",
+          "created_at",
+          "source_notes"
+        ]
+      },
+      {
+        "name": "PivotMachine",
+        "fields": [
+          "machine_id",
+          "span_lengths",
+          "overhang_length",
+          "endgun_throw",
+          "base_radius",
+          "endgun_radius",
+          "tower_clearance_buffer",
+          "wet_radius_source",
+          "manufacturer_notes"
+        ]
+      },
+      {
+        "name": "SweepConfig",
+        "fields": [
+          "mode",
+          "start_angle_deg",
+          "stop_angle_deg",
+          "clockwise",
+          "endgun_on_angle_ranges",
+          "excluded_angle_ranges"
+        ]
+      },
+      {
+        "name": "SurveyPoint",
+        "fields": [
+          "geometry",
+          "raw_lat",
+          "raw_lon",
+          "timestamp",
+          "source",
+          "fix_type",
+          "hdop",
+          "pdop",
+          "satellites",
+          "correction_age",
+          "h_accuracy",
+          "v_accuracy",
+          "antenna_height",
+          "quality_pass"
+        ]
+      },
+      {
+        "name": "ObstacleZone",
+        "fields": [
+          "geometry",
+          "obstacle_type",
+          "buffer_distance",
+          "hard_clearance",
+          "wet_exclusion",
+          "source_confidence",
+          "notes"
+        ]
+      },
+      {
+        "name": "LayoutScenario",
+        "fields": [
+          "scenario_id",
+          "pivot_center",
+          "machine",
+          "sweep",
+          "coverage_geometry",
+          "tower_tracks",
+          "metrics",
+          "conflicts",
+          "score_components",
+          "input_hash"
+        ]
+      },
+      {
+        "name": "CoverageMetrics",
+        "fields": [
+          "field_acres",
+          "usable_field_acres",
+          "base_pivot_acres",
+          "endgun_acres",
+          "total_irrigated_acres",
+          "dry_acres",
+          "coverage_percent",
+          "overlap_acres",
+          "conflict_count"
+        ]
+      }
+    ],
+    "core_functions": [
+      "select_projected_crs(field_centroid_lonlat, user_crs=None) -> CRS",
+      "load_survey_layer(path, layer=None, source_crs=None) -> GeoDataFrame",
+      "quality_filter_survey_points(points, thresholds) -> GeoDataFrame",
+      "build_field_polygon(points_or_layer, cleanup_rules) -> Polygon",
+      "make_valid_polygon(geometry, repair_strategy) -> Polygon/MultiPolygon",
+      "build_machine(machine_config) -> PivotMachine",
+      "make_circle(center, radius, resolution) -> Polygon",
+      "make_sector(center, radius, start_angle, stop_angle, resolution) -> Polygon",
+      "make_annular_sector(center, inner_radius, outer_radius, angles, resolution) -> Polygon",
+      "make_tower_tracks(center, span_lengths, sweep_config, buffer_distance) -> list[Geometry]",
+      "calculate_coverage(field, obstacles, machine, center, sweep) -> CoverageResult",
+      "score_layout(coverage_result, constraints, weights) -> ScoreResult",
+      "generate_candidate_centers(field, spacing, allowed_zone=None) -> list[Point]",
+      "optimize_layout(field, obstacles, machine, constraints, weights) -> list[LayoutScenario]",
+      "export_project_geopackage(project, scenarios, output_path) -> Path",
+      "export_dxf_plan(scenario, output_path) -> Path",
+      "render_static_map(scenario, output_path) -> Path"
+    ],
+    "input_output_formats": [
+      {
+        "format": "GeoPackage (.gpkg)",
+        "role": "Primary local project storage for vector layers, attributes, results, and optional tiles/raster tables."
+      },
+      {
+        "format": "GeoJSON",
+        "role": "Simple vector interchange; good for web maps and agent handoffs."
+      },
+      {
+        "format": "CSV",
+        "role": "Survey points, span tables, reports, and metrics; include CRS/source columns for coordinates."
+      },
+      {
+        "format": "GPX",
+        "role": "Handheld GPS tracks/waypoints."
+      },
+      {
+        "format": "KML/KMZ",
+        "role": "Common field/GPS export; use GDAL where available and verify CRS assumptions."
+      },
+      {
+        "format": "Shapefile",
+        "role": "Legacy GIS interchange; avoid as primary storage due multi-file format and field-name limitations."
+      },
+      {
+        "format": "DXF",
+        "role": "CAD layout exports for technicians/contractors."
+      },
+      {
+        "format": "GeoTIFF",
+        "role": "Orthomosaic, DEM, imagery, clipped raster outputs."
+      },
+      {
+        "format": "RINEX",
+        "role": "GNSS observation/navigation files for RTK/PPK workflows."
+      },
+      {
+        "format": "NMEA/UBX/RTCM logs",
+        "role": "Live GNSS/RTK quality and receiver stream logs."
+      }
+    ],
+    "local_storage_options": [
+      "GeoPackage for project layers and scenario results.",
+      "SQLite sidecar database for non-spatial configs if preferred; GeoPackage already uses SQLite.",
+      "Folder-based project layout for rasters/logs: /data/raw, /data/processed, /survey, /rtk, /imagery, /exports, /reports.",
+      "JSON project manifest with source paths, CRS, checksums, software versions, and free-cost flags.",
+      "Avoid required cloud object storage; optional user-managed local/NAS storage only."
+    ],
+    "ui_options": [
+      {
+        "option": "CLI first",
+        "tools": [
+          "argparse",
+          "typer optional if license reviewed"
+        ],
+        "fit": "Best MVP: deterministic, testable, scriptable."
+      },
+      {
+        "option": "Jupyter review notebook",
+        "tools": [
+          "ipyleaflet",
+          "folium",
+          "matplotlib"
+        ],
+        "fit": "Good for developer/technician review and iterative survey QA."
+      },
+      {
+        "option": "Local dashboard",
+        "tools": [
+          "dash",
+          "plotly",
+          "folium/local tiles"
+        ],
+        "fit": "Good for form-based scenario entry and non-coder operation; no hosted service required."
+      },
+      {
+        "option": "QGIS validation workflow",
+        "tools": [
+          "QGIS",
+          "GeoPackage"
+        ],
+        "fit": "Best free desktop GIS validation and manual correction path; plugin development requires GPL review."
+      }
+    ],
+    "testing_strategy": [
+      "Unit-test acres for known geometries: circle in square, quarter-section full circle, partial sector, obstacle hole, end-gun annulus.",
+      "CRS tests: ensure WGS84 input is rejected for distance/area calculations until projected.",
+      "Golden-file tests for GeoPackage/GeoJSON/DXF exports with deterministic geometry tolerances.",
+      "Property-style geometry tests: generated polygons must be valid, area nonnegative, coverage <= usable field area unless overlap reporting explicitly allows raw area.",
+      "Survey parser tests: NMEA GGA/RMC examples with fixed/float/autonomous quality outcomes.",
+      "RTK workflow tests: mock RTKLIB command output and solution-status parsing.",
+      "Optimizer regression tests: simple square field should choose center near expected point; obstacle case should penalize conflict."
+    ]
+  },
+  "sample_pseudocode": {
+    "load_boundary_points": "def load_boundary_points(path, source_crs='EPSG:4326'):\n    if path.endswith('.csv'):\n        df = pandas.read_csv(path)\n        gdf = geopandas.GeoDataFrame(df, geometry=geopandas.points_from_xy(df.lon, df.lat), crs=source_crs)\n    elif path.endswith('.gpx'):\n        gdf = parse_gpx_to_geodataframe(path)\n    else:\n        gdf = geopandas.read_file(path)\n    assert gdf.crs is not None, 'CRS required before layout calculations'\n    return gdf",
+    "convert_crs": "def convert_crs(gdf, target_crs=None):\n    if target_crs is None:\n        lon, lat = gdf.to_crs('EPSG:4326').unary_union.centroid.coords[0]\n        target_crs = estimate_local_projected_crs(lon, lat)\n    projected = gdf.to_crs(target_crs)\n    assert projected.crs.is_projected\n    return projected",
+    "build_field_polygon": "def build_field_polygon(boundary_points, tolerance_m=0.25):\n    pts = remove_duplicate_points(boundary_points.geometry, tolerance_m)\n    ring = order_points_as_survey_track(pts)\n    poly = shapely.geometry.Polygon(ring)\n    poly = shapely.make_valid(poly)\n    if poly.geom_type == 'MultiPolygon':\n        poly = max(poly.geoms, key=lambda g: g.area)\n    assert poly.is_valid and poly.area > 0\n    return poly",
+    "place_candidate_pivot": "def place_candidate_pivot(field_polygon, spacing_m, allowed_zone=None):\n    search_area = allowed_zone.intersection(field_polygon) if allowed_zone else field_polygon\n    minx, miny, maxx, maxy = search_area.bounds\n    for x in numpy.arange(minx, maxx, spacing_m):\n        for y in numpy.arange(miny, maxy, spacing_m):\n            p = shapely.geometry.Point(x, y)\n            if search_area.contains(p):\n                yield p",
+    "calculate_pivot_coverage": "def calculate_pivot_coverage(center, machine, sweep):\n    base_radius = sum(machine.span_lengths) + machine.overhang_length\n    if sweep.mode == 'full_circle':\n        base = center.buffer(base_radius, resolution=128)\n    else:\n        base = make_sector(center, base_radius, sweep.start_angle_deg, sweep.stop_angle_deg, resolution=256)\n    if machine.endgun_throw > 0:\n        endgun = make_annular_sector(center, base_radius, base_radius + machine.endgun_throw, sweep.endgun_angles, resolution=256)\n        return shapely.union_all([base, endgun])\n    return base",
+    "clip_coverage_to_field": "def clip_coverage_to_field(raw_coverage, field_polygon):\n    clipped = raw_coverage.intersection(field_polygon)\n    return shapely.make_valid(clipped)",
+    "remove_obstacle_zones": "def remove_obstacle_zones(coverage, obstacles):\n    wet_exclusions = [o.geometry.buffer(o.buffer_distance) for o in obstacles if o.wet_exclusion]\n    if not wet_exclusions:\n        return coverage\n    exclusion_union = shapely.union_all(wet_exclusions)\n    return shapely.make_valid(coverage.difference(exclusion_union))",
+    "score_layout": "def score_layout(field, coverage, tower_tracks, obstacles, water_source, weights):\n    field_area = field.area\n    irrigated = coverage.area\n    conflict_penalty = 0\n    for track in tower_tracks:\n        for obs in obstacles:\n            hard_zone = obs.geometry.buffer(obs.buffer_distance)\n            if obs.hard_clearance and track.intersects(hard_zone):\n                conflict_penalty += weights.hard_conflict\n    pipe_penalty = weights.pipe_length * water_source.distance(coverage.centroid)\n    dry_penalty = weights.dry_acres * ((field_area - irrigated) / 4046.8564224)\n    score = (weights.irrigated_acres * (irrigated / 4046.8564224)) - conflict_penalty - pipe_penalty - dry_penalty\n    return {'score': score, 'irrigated_acres': irrigated / 4046.8564224, 'coverage_percent': 100 * irrigated / field_area}",
+    "export_results": "def export_results(project, scenarios, output_gpkg, output_report_csv, output_dxf=None):\n    for layer_name, gdf in build_result_layers(project, scenarios).items():\n        gdf.to_file(output_gpkg, layer=layer_name, driver='GPKG')\n    pandas.DataFrame([s.metrics for s in scenarios]).to_csv(output_report_csv, index=False)\n    if output_dxf:\n        export_best_scenario_to_dxf(scenarios[0], output_dxf)\n    return {'geopackage': output_gpkg, 'report_csv': output_report_csv, 'dxf': output_dxf}"
+  },
+  "risk_register": [
+    {
+      "risk": "Wrong CRS or calculations in geographic degrees",
+      "why_it_matters": "Acreage, radius, buffers, pipe length, and tower locations become wrong if geometry is measured in lat/lon degrees.",
+      "mitigation": "Reject distance/area calculations unless CRS is projected; auto-select UTM/State Plane only with user confirmation; include CRS in every report.",
+      "severity": "critical",
+      "applies_to": [
+        "GPS survey",
+        "RTK survey",
+        "imagery",
+        "optimization"
+      ]
+    },
+    {
+      "risk": "Free software mistaken for free RTK system",
+      "why_it_matters": "RTK accuracy requires hardware, antennas, base/correction source, radio/cellular link, and proper survey procedure.",
+      "mitigation": "Flag hardware/correction source as external; support RTKLIB/pygnssutils free software but never require paid corrections; include survey QA thresholds.",
+      "severity": "critical",
+      "applies_to": [
+        "RTK precision survey"
+      ]
+    },
+    {
+      "risk": "Paid or restricted basemap tile use hidden in UI",
+      "why_it_matters": "Public OSM tile servers prohibit bulk/offline use, and many tile providers require paid API keys.",
+      "mitigation": "Use local/self-hosted tiles, static user imagery, GeoPackage tiles, or approved free sources; disable bulk tile download; store tile-source terms.",
+      "severity": "high",
+      "applies_to": [
+        "mapping UI",
+        "imagery workflow"
+      ]
+    },
+    {
+      "risk": "Imagery-derived boundary or obstacle used as design-grade geometry",
+      "why_it_matters": "Imagery may be stale, shifted, low-resolution, obscured, or misclassified.",
+      "mitigation": "Mark imagery-derived geometry as planning-grade; require RTK/GPS validation for hard clearance decisions.",
+      "severity": "high",
+      "applies_to": [
+        "imagery analysis",
+        "layout optimization"
+      ]
+    },
+    {
+      "risk": "GDAL/GEOS/PROJ installation failures",
+      "why_it_matters": "GIS stack can fail on Windows or mismatched binary environments, blocking developers.",
+      "mitigation": "Recommend conda-forge environment; pin versions; add smoke tests for geopandas/rasterio/GDAL import and file I/O.",
+      "severity": "medium",
+      "applies_to": [
+        "development",
+        "deployment"
+      ]
+    },
+    {
+      "risk": "GPL/AGPL license obligations in optional tools",
+      "why_it_matters": "QGIS and OpenDroneMap are powerful but GPL/AGPL obligations may affect distribution or networked products.",
+      "mitigation": "Keep permissive core stack separate; use QGIS/ODM as optional validation/local processing tools; legal review before bundling or web deployment.",
+      "severity": "high",
+      "applies_to": [
+        "optional tools",
+        "commercial distribution"
+      ]
+    },
+    {
+      "risk": "Optimizer produces impractical layout",
+      "why_it_matters": "Mathematical coverage can ignore access, terrain, legal/property lines, hydraulics, utility conflicts, or machine service constraints.",
+      "mitigation": "Separate hard constraints from score weights; show rejection reasons; require technician review and manufacturer/hydraulic validation.",
+      "severity": "high",
+      "applies_to": [
+        "optimization",
+        "multi-pivot layout"
+      ]
+    },
+    {
+      "risk": "Incorrect machine geometry entered",
+      "why_it_matters": "Wrong span lengths, overhang, end-gun throw, or angle limits invalidates all tower and acreage calculations.",
+      "mitigation": "Use Pydantic validation, manufacturer span-chart import, explicit units, checksum of machine config, and technician signoff.",
+      "severity": "critical",
+      "applies_to": [
+        "center pivot modeling"
+      ]
+    },
+    {
+      "risk": "RTK quality metadata missing or ignored",
+      "why_it_matters": "Float/autonomous points can pass visually but fail precision requirements.",
+      "mitigation": "Record fix type, DOP, satellites, correction age, RMS/accuracy, antenna height; filter by quality before design-grade use.",
+      "severity": "critical",
+      "applies_to": [
+        "RTK precision survey",
+        "GPS survey"
+      ]
+    },
+    {
+      "risk": "No-spray and hard-clearance zones conflated",
+      "why_it_matters": "Wet-area exclusion and physical machine collision are different rules; mixing them can understate risk.",
+      "mitigation": "Maintain separate wet_exclusion and hard_clearance flags and compute separate conflict reports.",
+      "severity": "high",
+      "applies_to": [
+        "coverage modeling",
+        "obstacles"
+      ]
+    },
+    {
+      "risk": "Public dataset terms/coverage vary by region",
+      "why_it_matters": "NAIP is U.S.-focused, Sentinel/Landsat resolution may be inadequate, DEM products have regional caveats, and data access may require free accounts.",
+      "mitigation": "Store source/date/license metadata; verify local dataset terms; provide user-supplied imagery/survey fallback.",
+      "severity": "medium",
+      "applies_to": [
+        "imagery",
+        "terrain"
+      ]
+    },
+    {
+      "risk": "Elevation data used for hydraulic design without survey-grade validation",
+      "why_it_matters": "DEM vertical error, vegetation/buildings, and vertical datum mismatch can mislead pump/pipeline planning.",
+      "mitigation": "Use DEM only for screening; require local survey/engineering for final hydraulic design.",
+      "severity": "high",
+      "applies_to": [
+        "terrain",
+        "pipeline route planning"
+      ]
+    }
+  ],
+  "development_roadmap": {
+    "phase_1_minimum_viable_product": [
+      "Create Python package with data models, CRS module, and vector geometry engine.",
+      "Import CSV/GeoJSON/GeoPackage boundary and obstacle layers.",
+      "Validate CRS and convert to local projected CRS.",
+      "Build full-circle and partial-sector pivot coverage geometry.",
+      "Calculate irrigated acres, dry acres, coverage percent, and simple obstacle wet exclusions.",
+      "Export GeoPackage, CSV report, and matplotlib plan-view figure.",
+      "Implement pytest suite for known acre/geometry scenarios."
+    ],
+    "phase_2_survey_accuracy": [
+      "Add GPX/KML/Shapefile imports and robust polygon cleanup.",
+      "Add NMEA parser and GPS quality filter with fix type/HDOP/satellites/correction age.",
+      "Add repeated-shot averaging and survey QA report.",
+      "Add DXF export for pivot center, tower circles, coverage, and obstacles.",
+      "Add technician-facing validation checklist and confidence tags."
+    ],
+    "phase_3_imagery_analysis": [
+      "Add rasterio/GDAL imagery loading, clipping, and CRS QA.",
+      "Add NAIP/Sentinel/Landsat user-download processing notes; no paid APIs.",
+      "Add manual/semi-automatic boundary/obstacle vectorization using OpenCV/scikit-image.",
+      "Add optional local ODM orthomosaic input path and AGPL warning.",
+      "Add imagery source/date/resolution metadata in reports."
+    ],
+    "phase_4_rtk_integration": [
+      "Add RTKLIB command wrappers for rnx2rtkp/str2str where installed.",
+      "Add georinex RINEX inspection and NetCDF conversion hooks.",
+      "Add pygnssutils live stream/NTRIP client integration for free-authorized correction sources.",
+      "Add u-blox quality parsing through pyubx2 where applicable.",
+      "Add CORS/IGS data workflow documentation and PPK QA report fields."
+    ],
+    "phase_5_optimization_and_reporting": [
+      "Add candidate grid search and scipy optimizer refinement.",
+      "Add tower-track hard-clearance modeling and separate wet-area/no-spray modeling.",
+      "Add pipeline route planning with NetworkX and optional DEM elevation profile.",
+      "Add multi-pivot candidate ranking and overlap reporting.",
+      "Add local Dash or Jupyter review UI with local/self-hosted basemap safeguards.",
+      "Add full scenario report with assumptions, source confidence, conflicts, and acceptance checklist."
+    ]
+  },
+  "acceptance_criteria": [
+    "The MVP must calculate full-circle coverage acres for a simple square/quarter-section test field within a defined geometric tolerance.",
+    "The software must refuse to calculate acres or meter/foot buffers when input geometry is still in EPSG:4326 or another geographic CRS.",
+    "The software must preserve and report source confidence for every boundary, obstacle, pivot center, and water-source geometry.",
+    "The software must export a valid GeoPackage with layers for field_boundary, obstacles, pivot_center, coverage, dry_corners, tower_tracks, and scenario_metrics.",
+    "The software must support at least CSV and GeoPackage input in Phase 1, then GPX/KML/Shapefile/DXF as roadmap items.",
+    "The software must include tests for full circle, partial sector, end-gun annulus, obstacle subtraction, no-spray subtraction, and tower-track conflict detection.",
+    "The software must include a cost/license report that lists every non-core optional tool and flags GPL/AGPL, tile-policy, hosted-service, and correction-service risks.",
+    "The software must not require Google Maps, Mapbox, Esri/ArcGIS, paid RTK corrections, paid satellite imagery, or any hosted cloud service.",
+    "The software must allow all calculations to run offline after packages and local data are installed.",
+    "The RTK workflow must separate free client/processing software from external hardware/correction-service requirements.",
+    "The map UI must not bulk download public OSM tiles and must offer a local/static/self-hosted data path.",
+    "The scenario report must show field acres, irrigated acres, dry acres, coverage percent, conflicts, clearances, machine geometry, CRS, source data, and survey-quality flags."
+  ],
+  "recommended_next_agent_tasks": [
+    {
+      "task": "Build a pinned conda-forge environment file",
+      "details": "Create environment.yml for Python, numpy, pandas, shapely, geopandas, pyproj, pyogrio, rasterio, matplotlib, pydantic, pytest, ruff; add optional extras for imagery/rtk/ui."
+    },
+    {
+      "task": "Create geometry MVP module",
+      "details": "Implement circle/sector/annular-sector generation, coverage clipping, dry-corner calculation, obstacle subtraction, tower tracks, and acres."
+    },
+    {
+      "task": "Create CRS safety module",
+      "details": "Implement CRS detection, local projected CRS selection, EPSG:4326 rejection for distance/area, and unit conversion."
+    },
+    {
+      "task": "Create synthetic test fixtures",
+      "details": "Generate square field, rectangular field, irregular field with holes, partial-sector field, and obstacle collision cases with expected metrics."
+    },
+    {
+      "task": "Create survey import module",
+      "details": "Implement CSV and GeoPackage first; then GPX/KML/Shapefile/DXF with clear CRS and quality metadata handling."
+    },
+    {
+      "task": "Create RTK quality parser spike",
+      "details": "Parse NMEA GGA/RMC with pynmea2 and pygnssutils; build filters for fix quality, HDOP, satellites, correction age, and repeated-shot averaging."
+    },
+    {
+      "task": "Create optimization prototype",
+      "details": "Start with grid search and top-N scenario ranking; then add SciPy differential_evolution refinement and hard-constraint penalties."
+    },
+    {
+      "task": "Create reporting/export prototype",
+      "details": "Generate GeoPackage, CSV metrics, matplotlib PNG, and optional DXF. Include cost/license and source-confidence sections."
+    },
+    {
+      "task": "Create imagery spike",
+      "details": "Load GeoTIFF with rasterio, clip to field, run simple NDVI/edge/threshold workflows, vectorize candidate masks, and tag results as planning-grade."
+    },
+    {
+      "task": "Create license/cost gate in CI",
+      "details": "Maintain package allowlist with license categories and block paid/API-key dependencies from becoming required."
+    }
+  ],
+  "sources": [
+    {
+      "tool_or_claim": "NumPy license/free status",
+      "source_title": "NumPy License",
+      "source_url": "https://numpy.org/doc/stable/license.html",
+      "source_type": "official documentation",
+      "what_it_verifies": "NumPy is under a BSD-style license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "SciPy license/free status",
+      "source_title": "SciPy License",
+      "source_url": "https://github.com/scipy/scipy/blob/main/LICENSE.txt",
+      "source_type": "official repository",
+      "what_it_verifies": "SciPy is distributed under the BSD 3-Clause license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "SciPy commercial/noncommercial use",
+      "source_title": "SciPy FAQ",
+      "source_url": "https://scipy.org/faq/",
+      "source_type": "official documentation",
+      "what_it_verifies": "SciPy is free for commercial and non-commercial use under BSD terms.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pandas license",
+      "source_title": "pandas LICENSE",
+      "source_url": "https://github.com/pandas-dev/pandas/blob/main/LICENSE",
+      "source_type": "official repository",
+      "what_it_verifies": "pandas is BSD 3-Clause licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Matplotlib license",
+      "source_title": "Matplotlib License",
+      "source_url": "https://matplotlib.org/stable/users/project/license.html",
+      "source_type": "official documentation",
+      "what_it_verifies": "Matplotlib is available under a BSD-compatible license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Shapely license and dependency caveat",
+      "source_title": "Shapely LICENSE",
+      "source_url": "https://github.com/shapely/shapely/blob/main/LICENSE.txt",
+      "source_type": "official repository",
+      "what_it_verifies": "Shapely is BSD 3-Clause; GEOS dependency is LGPL.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "GeoPandas license",
+      "source_title": "GeoPandas LICENSE",
+      "source_url": "https://github.com/geopandas/geopandas/blob/main/LICENSE.txt",
+      "source_type": "official repository",
+      "what_it_verifies": "GeoPandas is BSD 3-Clause licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pyproj license",
+      "source_title": "pyproj LICENSE",
+      "source_url": "https://github.com/pyproj4/pyproj/blob/main/LICENSE",
+      "source_type": "official repository",
+      "what_it_verifies": "pyproj is MIT licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pyogrio license and format support",
+      "source_title": "pyogrio GitHub repository",
+      "source_url": "https://github.com/geopandas/pyogrio",
+      "source_type": "official repository",
+      "what_it_verifies": "pyogrio provides GDAL/OGR vector I/O for Shapefile, GeoPackage, GeoJSON and related vector formats; MIT licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Fiona license and vector I/O role",
+      "source_title": "Fiona GitHub repository",
+      "source_url": "https://github.com/Toblerity/Fiona",
+      "source_type": "official repository",
+      "what_it_verifies": "Fiona reads and writes geographic data files and is BSD 3-Clause licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "GDAL license and role",
+      "source_title": "GDAL/OGR License",
+      "source_url": "https://gdal.org/en/stable/license.html",
+      "source_type": "official documentation",
+      "what_it_verifies": "GDAL/OGR source code is MIT licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "GDAL raster/vector translation role",
+      "source_title": "GDAL Homepage",
+      "source_url": "https://gdal.org/",
+      "source_type": "official documentation",
+      "what_it_verifies": "GDAL is a translator library for raster and vector geospatial formats.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Rasterio license and dependency requirements",
+      "source_title": "Rasterio GitHub repository",
+      "source_url": "https://github.com/rasterio/rasterio",
+      "source_type": "official repository",
+      "what_it_verifies": "Rasterio reads/writes geospatial raster data and depends on GDAL; BSD-style license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OpenCV license",
+      "source_title": "OpenCV License",
+      "source_url": "https://opencv.org/license/",
+      "source_type": "official documentation",
+      "what_it_verifies": "OpenCV is Apache 2 licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "opencv-python wheel caveats",
+      "source_title": "opencv-python PyPI project",
+      "source_url": "https://pypi.org/project/opencv-python/",
+      "source_type": "package index",
+      "what_it_verifies": "opencv-python wheels include OpenCV Apache-2.0; FFmpeg and GUI dependencies may carry separate LGPL terms, so headless package is preferred for server/offline use.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "scikit-image license",
+      "source_title": "scikit-image License",
+      "source_url": "https://scikit-image.org/docs/stable/license.html",
+      "source_type": "official documentation",
+      "what_it_verifies": "scikit-image uses BSD 3-Clause license.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "xarray license",
+      "source_title": "xarray GitHub repository",
+      "source_url": "https://github.com/pydata/xarray",
+      "source_type": "official repository",
+      "what_it_verifies": "xarray is Apache 2.0 licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "rioxarray license",
+      "source_title": "rioxarray LICENSE",
+      "source_url": "https://github.com/corteva/rioxarray/blob/master/LICENSE",
+      "source_type": "official repository",
+      "what_it_verifies": "rioxarray is licensed under Apache License Version 2.0.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Folium license and Leaflet map role",
+      "source_title": "Folium GitHub repository",
+      "source_url": "https://github.com/python-visualization/folium",
+      "source_type": "official repository",
+      "what_it_verifies": "Folium creates Leaflet.js maps from Python; package is MIT licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "ipyleaflet license and Jupyter map role",
+      "source_title": "ipyleaflet GitHub repository",
+      "source_url": "https://github.com/jupyter-widgets/ipyleaflet",
+      "source_type": "official repository",
+      "what_it_verifies": "ipyleaflet is a Jupyter-Leaflet bridge and is MIT licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Plotly.py license",
+      "source_title": "plotly.py GitHub repository",
+      "source_url": "https://github.com/plotly/plotly.py",
+      "source_type": "official repository",
+      "what_it_verifies": "plotly.py is MIT licensed and can produce standalone HTML graphs.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Dash license",
+      "source_title": "Dash GitHub repository",
+      "source_url": "https://github.com/plotly/dash",
+      "source_type": "official repository",
+      "what_it_verifies": "Dash is MIT licensed for local Python web applications.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OpenStreetMap tile policy",
+      "source_title": "OpenStreetMap Tile Usage Policy",
+      "source_url": "https://operations.osmfoundation.org/policies/tiles/",
+      "source_type": "official policy",
+      "what_it_verifies": "Bulk downloading and offline use of tile.openstreetmap.org are prohibited; self-hosted tiles or an allowed provider are required for offline maps.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OpenStreetMap data license",
+      "source_title": "OpenStreetMap Copyright and License",
+      "source_url": "https://www.openstreetmap.org/copyright",
+      "source_type": "official license page",
+      "what_it_verifies": "OpenStreetMap map data is available under ODbL with attribution/share-alike obligations.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OpenMapTiles self-hosting/open source",
+      "source_title": "OpenMapTiles",
+      "source_url": "https://openmaptiles.org/",
+      "source_type": "project website",
+      "what_it_verifies": "OpenMapTiles supports self-hosting maps from OpenStreetMap data with open-source components and attribution requirements.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "TileServer GL",
+      "source_title": "TileServer GL GitHub repository",
+      "source_url": "https://github.com/maptiler/tileserver-gl",
+      "source_type": "official repository",
+      "what_it_verifies": "TileServer GL can serve vector and raster tiles locally/self-hosted; license and bundled components must be reviewed for distribution.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "RTKLIB license and role",
+      "source_title": "RTKLIB Official Site",
+      "source_url": "https://www.rtklib.com/",
+      "source_type": "official project site",
+      "what_it_verifies": "RTKLIB is an open source GNSS positioning package distributed under BSD 2-clause style terms plus additional clauses.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "RTKLIB commercial use permission",
+      "source_title": "RTKLIB GitHub repository",
+      "source_url": "https://github.com/tomojitakasu/RTKLIB",
+      "source_type": "official repository",
+      "what_it_verifies": "RTKLIB license permits noncommercial and commercial product use if license obligations are met.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "RTKLIB stream server / NTRIP client",
+      "source_title": "RTKLIB str2str manual page",
+      "source_url": "https://manpages.debian.org/testing/rtklib/str2str.1.en.html",
+      "source_type": "package documentation",
+      "what_it_verifies": "RTKLIB str2str can act as serial/TCP/NTRIP client/server stream converter.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pyserial license and role",
+      "source_title": "pyserial GitHub repository",
+      "source_url": "https://github.com/pyserial/pyserial",
+      "source_type": "official repository",
+      "what_it_verifies": "pyserial provides Python serial port access and is BSD licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pynmea2 license and parsing role",
+      "source_title": "pynmea2 GitHub repository",
+      "source_url": "https://github.com/Knio/pynmea2",
+      "source_type": "official repository",
+      "what_it_verifies": "pynmea2 parses NMEA 0183 GPS sentences and is MIT licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "GeoRinex license and RINEX support",
+      "source_title": "GeoRinex GitHub repository",
+      "source_url": "https://github.com/geospace-code/georinex",
+      "source_type": "official repository",
+      "what_it_verifies": "GeoRinex reads RINEX 2/3/4 NAV/OBS and SP3 files, converts to NetCDF/HDF5/xarray, and is MIT licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pygnssutils license and GNSS/NTRIP utilities",
+      "source_title": "pygnssutils PyPI project",
+      "source_url": "https://pypi.org/project/pygnssutils/",
+      "source_type": "package index",
+      "what_it_verifies": "pygnssutils is BSD 3-Clause, includes CLI/tools for NMEA/UBX/RTCM3/NTRIP/SPARTN workflows, and installs by pip/conda.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pyrtcm role and protocol caveat",
+      "source_title": "pyrtcm PyPI project",
+      "source_url": "https://pypi.org/project/pyrtcm/",
+      "source_type": "package index",
+      "what_it_verifies": "pyrtcm parses RTCM3, while RTCM itself is a proprietary standard; library/package license must be checked before distribution.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pyubx2 role and license",
+      "source_title": "pyubx2 PyPI project",
+      "source_url": "https://pypi.org/project/pyubx2/",
+      "source_type": "package index",
+      "what_it_verifies": "pyubx2 parses/generates u-blox UBX messages; BSD 3-Clause style package.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "NOAA/NGS CORS data cost",
+      "source_title": "NOAA CORS Network Data Access",
+      "source_url": "https://geodesy.noaa.gov/CORS/",
+      "source_type": "official government source",
+      "what_it_verifies": "NOAA/NGS CORS provides GNSS data; public data may support post-processing workflows.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "NOAA CORS free distribution",
+      "source_title": "NOAA CORS Dataset on Data.gov",
+      "source_url": "https://catalog.data.gov/dataset/cors-continuously-operating-reference-stations",
+      "source_type": "government data catalog",
+      "what_it_verifies": "NOAA/NGS CORS data is distributed free of charge.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "IGS open GNSS products",
+      "source_title": "International GNSS Service Data and Products",
+      "source_url": "https://igs.org/products/",
+      "source_type": "official project source",
+      "what_it_verifies": "IGS GNSS data and products are freely and openly available.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Landsat no-cost data",
+      "source_title": "USGS Landsat Data Access",
+      "source_url": "https://www.usgs.gov/landsat-missions/landsat-data-access",
+      "source_type": "official government source",
+      "what_it_verifies": "Landsat products in the USGS EROS archive are downloadable at no cost.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Sentinel-2 free data",
+      "source_title": "Copernicus Sentinel-2 Data Collection",
+      "source_url": "https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-2",
+      "source_type": "official program source",
+      "what_it_verifies": "Sentinel-2 data products are systematically available free of charge, including commercial users.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "NAIP free/public data",
+      "source_title": "USGS National Agriculture Imagery Program data access",
+      "source_url": "https://www.usgs.gov/centers/eros/science/usgs-eros-archive-aerial-photography-national-agriculture-imagery-program-naip",
+      "source_type": "official government source",
+      "what_it_verifies": "NAIP imagery can be searched/previewed/downloaded through USGS tools; public-domain government imagery for supported areas.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "USGS 3DEP free elevation data",
+      "source_title": "USGS 3D Elevation Program",
+      "source_url": "https://www.usgs.gov/3d-elevation-program",
+      "source_type": "official government source",
+      "what_it_verifies": "All 3DEP products are available free of charge and without use restrictions.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "SRTM data access",
+      "source_title": "USGS SRTM Data Access",
+      "source_url": "https://www.usgs.gov/centers/eros/science/usgs-eros-archive-digital-elevation-shuttle-radar-topography-mission-srtm",
+      "source_type": "official government source",
+      "what_it_verifies": "SRTM near-global elevation data is available through USGS EarthExplorer; account/access steps may apply.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Copernicus DEM free terms",
+      "source_title": "Copernicus DEM Product Handbook",
+      "source_url": "https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model",
+      "source_type": "official program source",
+      "what_it_verifies": "Copernicus DEM GLO-30/GLO-90 availability and free-license caveats.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "ezdxf license and DXF role",
+      "source_title": "ezdxf Documentation",
+      "source_url": "https://ezdxf.readthedocs.io/",
+      "source_type": "official documentation",
+      "what_it_verifies": "ezdxf is MIT licensed and supports creating/reading/modifying/writing DXF.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "gpxpy license and GPX role",
+      "source_title": "gpxpy GitHub repository",
+      "source_url": "https://github.com/tkrajina/gpxpy",
+      "source_type": "official repository",
+      "what_it_verifies": "gpxpy parses and manipulates GPX files; Apache 2.0 licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "GeoPackage open format",
+      "source_title": "OGC GeoPackage",
+      "source_url": "https://www.geopackage.org/",
+      "source_type": "standards/project site",
+      "what_it_verifies": "GeoPackage is open, standards-based, platform-independent, portable, and stores vector/raster/tile/attribute content in SQLite.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "QGIS license and free software status",
+      "source_title": "QGIS Official Website",
+      "source_url": "https://qgis.org/",
+      "source_type": "official project site",
+      "what_it_verifies": "QGIS is free/open source GIS software under GPL terms.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OpenDroneMap local drone processing",
+      "source_title": "OpenDroneMap ODM GitHub repository",
+      "source_url": "https://github.com/OpenDroneMap/ODM",
+      "source_type": "official repository",
+      "what_it_verifies": "ODM is an open-source command-line toolkit that produces georeferenced orthophotos/DEMs/point clouds; AGPL-3.0.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "WebODM hosted cost caveat",
+      "source_title": "WebODM Pricing",
+      "source_url": "https://webodm.net/",
+      "source_type": "project/commercial site",
+      "what_it_verifies": "Hosted WebODM offerings may cost money; local/open-source workflows are the no-cost path.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Segment Anything license",
+      "source_title": "Segment Anything GitHub repository",
+      "source_url": "https://github.com/facebookresearch/segment-anything",
+      "source_type": "official repository",
+      "what_it_verifies": "Segment Anything is Apache-2.0 licensed; optional local segmentation model for imagery.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Ultralytics YOLO license risk",
+      "source_title": "Ultralytics Licensing",
+      "source_url": "https://www.ultralytics.com/license",
+      "source_type": "official project source",
+      "what_it_verifies": "Ultralytics YOLO has AGPL terms by default and paid enterprise licensing for non-AGPL use; not recommended for hidden-cost-free proprietary distribution.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "pytest license",
+      "source_title": "pytest GitHub repository",
+      "source_url": "https://github.com/pytest-dev/pytest",
+      "source_type": "official repository",
+      "what_it_verifies": "pytest is MIT licensed and free/open source.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Pydantic license",
+      "source_title": "Pydantic GitHub repository",
+      "source_url": "https://github.com/pydantic/pydantic",
+      "source_type": "official repository",
+      "what_it_verifies": "Pydantic is MIT licensed and provides Python data validation.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "Ruff license",
+      "source_title": "Ruff GitHub repository",
+      "source_url": "https://github.com/astral-sh/ruff",
+      "source_type": "official repository",
+      "what_it_verifies": "Ruff is MIT licensed.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "NetworkX role",
+      "source_title": "NetworkX Documentation",
+      "source_url": "https://networkx.org/",
+      "source_type": "official documentation",
+      "what_it_verifies": "NetworkX is a Python package for graph/network algorithms; useful for pipeline/path routing.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "OR-Tools license and optimization role",
+      "source_title": "OR-Tools GitHub repository",
+      "source_url": "https://github.com/google/or-tools",
+      "source_type": "official repository",
+      "what_it_verifies": "OR-Tools is an open-source combinatorial optimization suite under Apache 2.0 and includes Python wrappers.",
+      "date_accessed": "2026-05-19"
+    },
+    {
+      "tool_or_claim": "SciPy differential evolution",
+      "source_title": "scipy.optimize.differential_evolution documentation",
+      "source_url": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html",
+      "source_type": "official documentation",
+      "what_it_verifies": "SciPy provides a stochastic global optimizer that searches large candidate spaces without gradients.",
+      "date_accessed": "2026-05-19"
+    }
+  ]
+}

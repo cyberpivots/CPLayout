@@ -1,0 +1,335 @@
+{
+  "mvp_tasks": [
+    {
+      "id": "MVP-01",
+      "objective": "Scaffold monorepo and shared packages.",
+      "inputs": [
+        "handoff JSON",
+        "architecture spec"
+      ],
+      "outputs": [
+        "apps/mobile",
+        "apps/windows",
+        "packages/core"
+      ],
+      "dependencies": [],
+      "success_criteria": [
+        "TypeScript builds",
+        "Jest runs empty suite"
+      ],
+      "recommended_files_modules_to_edit": [
+        "package.json",
+        "tsconfig.base.json",
+        "packages/core"
+      ],
+      "requires_native_platform_expertise": false
+    },
+    {
+      "id": "MVP-02",
+      "objective": "Implement project schemas and unit/CRS policy.",
+      "inputs": [
+        "DATA_MODEL_TYPESCRIPT_SPEC.md"
+      ],
+      "outputs": [
+        "Zod schemas",
+        "unit conversion module",
+        "CRS guard"
+      ],
+      "dependencies": [
+        "MVP-01"
+      ],
+      "success_criteria": [
+        "EPSG:4326 area calculations rejected",
+        "project fixture validates"
+      ],
+      "recommended_files_modules_to_edit": [
+        "packages/core/src/schema.ts",
+        "packages/core/src/units.ts",
+        "packages/core/src/crs.ts"
+      ],
+      "requires_native_platform_expertise": false
+    },
+    {
+      "id": "MVP-03",
+      "objective": "Implement pivot geometry core.",
+      "inputs": [
+        "GEOSPATIAL_ALGORITHM_SPEC.md"
+      ],
+      "outputs": [
+        "circle",
+        "sector",
+        "tower",
+        "end gun",
+        "coverage scoring"
+      ],
+      "dependencies": [
+        "MVP-02"
+      ],
+      "success_criteria": [
+        "golden geometry tests pass"
+      ],
+      "recommended_files_modules_to_edit": [
+        "packages/geometry/src"
+      ],
+      "requires_native_platform_expertise": false
+    },
+    {
+      "id": "MVP-04",
+      "objective": "Implement local project store and export.",
+      "inputs": [
+        "project schema"
+      ],
+      "outputs": [
+        "SQLite adapter",
+        "GeoJSON/CSV/project ZIP export"
+      ],
+      "dependencies": [
+        "MVP-02"
+      ],
+      "success_criteria": [
+        "project round-trip test passes"
+      ],
+      "recommended_files_modules_to_edit": [
+        "packages/project-store/src"
+      ],
+      "requires_native_platform_expertise": false
+    },
+    {
+      "id": "MVP-05",
+      "objective": "Build map workspace with manual geometry tools.",
+      "inputs": [
+        "UI_UX_SCREEN_SPEC.md"
+      ],
+      "outputs": [
+        "map modes",
+        "boundary editor",
+        "obstacle editor",
+        "pivot placement"
+      ],
+      "dependencies": [
+        "MVP-03",
+        "MVP-04"
+      ],
+      "success_criteria": [
+        "manual layout workflow completes offline"
+      ],
+      "recommended_files_modules_to_edit": [
+        "apps/mobile/src/screens/MapWorkspace.tsx",
+        "packages/map-adapters/src"
+      ],
+      "requires_native_platform_expertise": true
+    },
+    {
+      "id": "MVP-06",
+      "objective": "Build machine configuration and scenario review screens.",
+      "inputs": [
+        "domain models"
+      ],
+      "outputs": [
+        "forms",
+        "scenario metrics",
+        "conflict list"
+      ],
+      "dependencies": [
+        "MVP-03"
+      ],
+      "success_criteria": [
+        "invalid span/end-gun inputs blocked",
+        "scenario metrics visible"
+      ],
+      "recommended_files_modules_to_edit": [
+        "apps/mobile/src/screens/MachineConfig.tsx",
+        "apps/mobile/src/screens/ScenarioReview.tsx"
+      ],
+      "requires_native_platform_expertise": false
+    },
+    {
+      "id": "MVP-07",
+      "objective": "Create Windows proof shell.",
+      "inputs": [
+        "TECHNICAL_ARCHITECTURE.md"
+      ],
+      "outputs": [
+        "React Native Windows app opens project and renders WebView map fixture"
+      ],
+      "dependencies": [
+        "MVP-01",
+        "MVP-04"
+      ],
+      "success_criteria": [
+        "Windows build runs locally",
+        "WebView map fixture loads offline"
+      ],
+      "recommended_files_modules_to_edit": [
+        "apps/windows"
+      ],
+      "requires_native_platform_expertise": true
+    }
+  ],
+  "advanced_tasks": [
+    {
+      "id": "ADV-01",
+      "objective": "Implement NMEA parser and log replay.",
+      "inputs": [
+        "RTK_GNSS_INTEGRATION_SPEC.md",
+        "NMEA fixtures"
+      ],
+      "outputs": [
+        "parser",
+        "quality normalizer",
+        "log replay test"
+      ],
+      "dependencies": [
+        "MVP-02"
+      ],
+      "success_criteria": [
+        "GGA/RMC/GSA/GST fixtures parsed",
+        "quality thresholds enforced"
+      ],
+      "recommended_files_modules_to_edit": [
+        "packages/gnss/src"
+      ],
+      "requires_native_platform_expertise": false
+    },
+    {
+      "id": "ADV-02",
+      "objective": "Prototype Android USB serial GNSS adapter.",
+      "inputs": [
+        "receiver hardware",
+        "Android USB docs"
+      ],
+      "outputs": [
+        "native adapter",
+        "raw NMEA stream"
+      ],
+      "dependencies": [
+        "ADV-01"
+      ],
+      "success_criteria": [
+        "receiver stream captured",
+        "permission flow documented"
+      ],
+      "recommended_files_modules_to_edit": [
+        "apps/mobile/android",
+        "packages/gnss/src/adapters/androidUsb.ts"
+      ],
+      "requires_native_platform_expertise": true
+    },
+    {
+      "id": "ADV-03",
+      "objective": "Prototype BLE GNSS adapter.",
+      "inputs": [
+        "BLE receiver profile"
+      ],
+      "outputs": [
+        "BLE scan/connect/read adapter"
+      ],
+      "dependencies": [
+        "ADV-01"
+      ],
+      "success_criteria": [
+        "sample receiver profile documented",
+        "quality displayed live"
+      ],
+      "recommended_files_modules_to_edit": [
+        "packages/gnss/src/adapters/ble.ts"
+      ],
+      "requires_native_platform_expertise": true
+    },
+    {
+      "id": "ADV-04",
+      "objective": "Prototype Windows serial adapter.",
+      "inputs": [
+        "Windows serial receiver",
+        "RNW native module docs"
+      ],
+      "outputs": [
+        "SerialCommunication native module"
+      ],
+      "dependencies": [
+        "ADV-01",
+        "MVP-07"
+      ],
+      "success_criteria": [
+        "NMEA stream captured on Windows",
+        "disconnect/reconnect stable"
+      ],
+      "recommended_files_modules_to_edit": [
+        "apps/windows/windows",
+        "packages/gnss/src/adapters/windowsSerial.ts"
+      ],
+      "requires_native_platform_expertise": true
+    },
+    {
+      "id": "ADV-05",
+      "objective": "Add offline map package import.",
+      "inputs": [
+        "PMTiles/MBTiles fixtures"
+      ],
+      "outputs": [
+        "map package manifest",
+        "offline renderer integration"
+      ],
+      "dependencies": [
+        "MVP-05",
+        "MVP-07"
+      ],
+      "success_criteria": [
+        "offline map renders with attribution and no network"
+      ],
+      "recommended_files_modules_to_edit": [
+        "packages/map-adapters/src",
+        "packages/project-store/src/mapPackages.ts"
+      ],
+      "requires_native_platform_expertise": true
+    },
+    {
+      "id": "ADV-06",
+      "objective": "Add imagery tiling workflow docs/tooling.",
+      "inputs": [
+        "sample GeoTIFF",
+        "GDAL workflow"
+      ],
+      "outputs": [
+        "tile conversion script or docs",
+        "imagery manifest import"
+      ],
+      "dependencies": [
+        "ADV-05"
+      ],
+      "success_criteria": [
+        "sample orthomosaic tiles render offline",
+        "imagery QA metadata shown"
+      ],
+      "recommended_files_modules_to_edit": [
+        "tools/preprocess",
+        "packages/project-store/src/imagery.ts"
+      ],
+      "requires_native_platform_expertise": false
+    },
+    {
+      "id": "ADV-07",
+      "objective": "Implement deterministic best-fit grid search.",
+      "inputs": [
+        "geometry core",
+        "scoring weights"
+      ],
+      "outputs": [
+        "candidate generator",
+        "top-N scenarios",
+        "rejection reasons"
+      ],
+      "dependencies": [
+        "MVP-03"
+      ],
+      "success_criteria": [
+        "fixtures return expected ranked candidates",
+        "hard conflicts excluded before scoring"
+      ],
+      "recommended_files_modules_to_edit": [
+        "packages/geometry/src/optimization.ts"
+      ],
+      "requires_native_platform_expertise": false
+    }
+  ]
+}

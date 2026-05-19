@@ -71,6 +71,7 @@ function gisMappingReview(project: PivotProject, settings: AppSettings): ExpertR
     evidence: [
       `Project CRS: ${project.projectCrs}`,
       `Map style: ${settings.mapStyle.replaceAll("_", " ")}`,
+      `Online imagery preview: ${settings.onlineImagery.enabled ? settings.onlineImagery.providerId : "disabled"}`,
       `Offline map packages: ${packageCount}`,
       `Map attribution required: ${settings.offlineMaps.requireAttribution}`,
       `Network tiles allowed: ${settings.offlineMaps.allowNetworkTiles}`,

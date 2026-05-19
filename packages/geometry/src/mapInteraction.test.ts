@@ -5,9 +5,11 @@ import {
   createInitialViewport,
   reduceDrawingMapState,
   screenPointToWorld,
+  snapPointToGeometry,
   viewportToSvgViewBox,
   visibleWidthMeters,
 } from "./mapInteraction";
+import { planOnlineImageryTiles } from "./onlineImagery";
 
 const viewport = createInitialViewport({ minX: 0, minY: 0, maxX: 1000, maxY: 800 }, 1);
 const state = createDrawingMapState(viewport);
@@ -45,5 +47,45 @@ assert.deepEqual(topLeftWorld, { x: 0, y: 800 });
 const editMode = reduceDrawingMapState(dragged, { type: "set_mode", mode: "edit_vertices" });
 assert.equal(editMode.mode, "edit_vertices");
 assert.equal(editMode.geometryRevision, dragged.geometryRevision);
+
+const measureMode = reduceDrawingMapState(dragged, { type: "set_mode", mode: "measure" });
+assert.equal(measureMode.mode, "measure");
+assert.equal(measureMode.geometryRevision, dragged.geometryRevision);
+
+const imageryPlan = planOnlineImageryTiles({
+  viewport,
+  projectCrs: "EPSG:32613",
+  providerId: "usgs_imagery_only",
+  maxTiles: 8,
+});
+assert.equal(imageryPlan.error, null);
+assert.ok(imageryPlan.tiles.length > 0);
+assert.ok(imageryPlan.tiles.length <= 8);
+assert.match(imageryPlan.tiles[0].href, /USGSImageryOnly\/MapServer\/tile\/\d+\/\d+\/\d+/);
+assert.ok(Number.isFinite(imageryPlan.tiles[0].projectedBounds.minX));
+assert.ok(imageryPlan.tiles.every((tile) => tile.z <= imageryPlan.provider.maxZoom));
+
+const snappedVertex = snapPointToGeometry(
+  { x: 10.5, y: 19.8 },
+  { vertices: [{ x: 10, y: 20 }], rings: [[{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]] },
+  { vertexSnapToleranceMeters: 1, featureSnapToleranceMeters: 3 },
+);
+assert.equal(snappedVertex?.kind, "vertex");
+assert.deepEqual(snappedVertex?.point, { x: 10, y: 20 });
+
+const snappedFeature = snapPointToGeometry(
+  { x: 50, y: 2 },
+  { rings: [[{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]] },
+  { vertexSnapToleranceMeters: 1, featureSnapToleranceMeters: 3 },
+);
+assert.equal(snappedFeature?.kind, "feature");
+assert.deepEqual(snappedFeature?.point, { x: 50, y: 0 });
+
+const unsnapped = snapPointToGeometry(
+  { x: 50, y: 10 },
+  { rings: [[{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]] },
+  { vertexSnapToleranceMeters: 1, featureSnapToleranceMeters: 3 },
+);
+assert.equal(unsnapped, null);
 
 console.log("map interaction tests passed");

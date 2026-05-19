@@ -9,6 +9,9 @@ export type MapStyle = typeof MAP_STYLES[number];
 export const OFFLINE_PACKAGE_TYPES = ["pmtiles", "mbtiles", "raster_tiles"] as const;
 export type OfflinePackageType = typeof OFFLINE_PACKAGE_TYPES[number];
 
+export const ONLINE_IMAGERY_PROVIDERS = ["usgs_imagery_only"] as const;
+export type OnlineImageryProviderId = typeof ONLINE_IMAGERY_PROVIDERS[number];
+
 export const GPS_FIX_ORDER = ["invalid", "autonomous", "dgps", "rtk_float", "rtk_fixed", "ppp"] as const;
 export type MinimumGpsFixType = typeof GPS_FIX_ORDER[number];
 
@@ -35,6 +38,22 @@ export interface OfflineMapPreferences {
   packageDirectory: string;
 }
 
+export interface OnlineImageryPreferences {
+  enabled: boolean;
+  providerId: OnlineImageryProviderId;
+  maxTilesPerView: number;
+}
+
+export interface OnlineImageryProvider {
+  id: OnlineImageryProviderId;
+  name: string;
+  tileUrlTemplate: string;
+  minZoom: number;
+  maxZoom: number;
+  attribution: string;
+  licenseText: string;
+}
+
 export interface AppSettings {
   unitSystem: UnitSystem;
   coordinateDisplayFormat: CoordinateDisplayFormat;
@@ -43,6 +62,7 @@ export interface AppSettings {
   drawing: DrawingSettings;
   gpsQuality: GpsQualityThresholds;
   offlineMaps: OfflineMapPreferences;
+  onlineImagery: OnlineImageryPreferences;
 }
 
 export type ProjectSettings = Omit<AppSettings, "offlineMaps"> & {
@@ -57,6 +77,7 @@ const UnitSystemSchema = z.enum(["metric", "us_survey_feet"]);
 const CoordinateDisplayFormatSchema = z.enum(COORDINATE_FORMATS);
 const MapStyleSchema = z.enum(MAP_STYLES);
 const OfflinePackageTypeSchema = z.enum(OFFLINE_PACKAGE_TYPES);
+const OnlineImageryProviderIdSchema = z.enum(ONLINE_IMAGERY_PROVIDERS);
 const MinimumGpsFixTypeSchema = z.enum(GPS_FIX_ORDER);
 
 export const DrawingSettingsSchema = z.object({
@@ -82,6 +103,12 @@ export const OfflineMapPreferencesSchema = z.object({
   packageDirectory: z.string().min(1),
 });
 
+export const OnlineImageryPreferencesSchema = z.object({
+  enabled: z.boolean(),
+  providerId: OnlineImageryProviderIdSchema,
+  maxTilesPerView: z.number().int().min(1).max(128),
+});
+
 export const AppSettingsSchema = z.object({
   unitSystem: UnitSystemSchema,
   coordinateDisplayFormat: CoordinateDisplayFormatSchema,
@@ -90,6 +117,7 @@ export const AppSettingsSchema = z.object({
   drawing: DrawingSettingsSchema,
   gpsQuality: GpsQualityThresholdsSchema,
   offlineMaps: OfflineMapPreferencesSchema,
+  onlineImagery: OnlineImageryPreferencesSchema,
 });
 
 export const ProjectSettingsSchema = AppSettingsSchema.omit({ offlineMaps: true }).extend({
@@ -122,6 +150,11 @@ export function defaultAppSettings(): AppSettings {
       allowNetworkTiles: false,
       packageDirectory: "offline-map-packages",
     },
+    onlineImagery: {
+      enabled: false,
+      providerId: "usgs_imagery_only",
+      maxTilesPerView: 64,
+    },
   };
 }
 
@@ -151,8 +184,21 @@ export function projectSettingsFromApp(settings: AppSettings): ProjectSettings {
       requireAttribution: true,
       allowNetworkTiles: false,
     },
+    onlineImagery: settings.onlineImagery,
   });
 }
+
+export const ONLINE_IMAGERY_PROVIDER_CATALOG: Record<OnlineImageryProviderId, OnlineImageryProvider> = {
+  usgs_imagery_only: {
+    id: "usgs_imagery_only",
+    name: "USGS The National Map Imagery Only",
+    tileUrlTemplate: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
+    minZoom: 0,
+    maxZoom: 16,
+    attribution: "USDA, USGS The National Map: Orthoimagery",
+    licenseText: "USGS public National Map imagery service; availability, source age, and licensing vary by area. Do not bulk cache in CPLayout.",
+  },
+};
 
 export function gpsFixMeetsThreshold(fixType: MinimumGpsFixType | "unknown", minimumFixType: MinimumGpsFixType): boolean {
   if (fixType === "unknown") return false;

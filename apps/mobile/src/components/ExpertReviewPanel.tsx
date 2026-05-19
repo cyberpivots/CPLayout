@@ -39,10 +39,31 @@ export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPan
             ))}
           </View>
           <Text style={styles.gate}>{finding.acceptanceGate}</Text>
+          <View style={styles.actionList}>
+            {actionsForFinding(finding).map((action) => (
+              <Text key={action} style={styles.actionItem}>Action: {action}</Text>
+            ))}
+          </View>
         </View>
       ))}
     </View>
   );
+}
+
+function actionsForFinding(finding: ExpertReviewFinding): string[] {
+  if (finding.status === "pass") return ["Keep this evidence in the exported ZIP before field handoff."];
+  switch (finding.role) {
+    case "Product/UX":
+      return ["Open Settings and switch coordinate display to decimal degrees for field entry."];
+    case "GIS/Mapping":
+      return ["Use online imagery only as a live reference, import projected GeoJSON only, keep attribution visible, then export ZIP for review."];
+    case "Architecture/Storage":
+      return ["Save Local, export ZIP, and keep native SQLite claims blocked until device verification is complete."];
+    case "ML Feasibility":
+      return ["Keep ML/Python/GDAL work in offline preprocessing until a native offline runtime proof exists."];
+    case "QA/Safety":
+      return ["Fix obstacle conflicts or outside-field coverage in Layout, then save and export a fresh ZIP."];
+  }
 }
 
 function roleIcon(finding: ExpertReviewFinding): React.JSX.Element {
@@ -162,5 +183,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     lineHeight: 18,
+  },
+  actionList: {
+    gap: 4,
+  },
+  actionItem: {
+    color: "#1f4432",
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 17,
   },
 });

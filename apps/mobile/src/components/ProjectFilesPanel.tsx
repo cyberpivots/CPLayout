@@ -1,6 +1,6 @@
 import { Archive, Database, Download, FolderOpen, RefreshCw, Save, Trash2, Upload } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { exportScenarioGeoJson } from "@cplayout/geometry";
 import {
@@ -10,69 +10,44 @@ import {
 } from "@cplayout/project-store";
 import type { LayoutResult, PivotProject } from "@cplayout/core";
 import { exportZipFileAsync, importZipFileAsync } from "@cplayout/project-store";
-import { projectRepository, type ProjectSummary } from "@cplayout/project-store";
-import type { ProjectRepositoryBackendInfo } from "@cplayout/project-store";
+import { useProjectRepository } from "../hooks/useProjectRepository";
 
 interface ProjectFilesPanelProps {
+  dirty: boolean;
   project: PivotProject;
   result: LayoutResult;
+  onImportProjectedGeoJson: (geoJson: string) => void;
+  onImportSurveyCsv: (csv: string) => void;
   onProjectLoaded: (project: PivotProject) => void;
+  onSaved: () => void;
 }
 
-export function ProjectFilesPanel({ project, result, onProjectLoaded }: ProjectFilesPanelProps): React.JSX.Element {
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [status, setStatus] = useState<string>(`Storage: ${projectRepository.backendLabel}`);
-  const [backendInfo, setBackendInfo] = useState<ProjectRepositoryBackendInfo | null>(null);
-
-  useEffect(() => {
-    void refreshProjects();
-  }, []);
-
-  async function refreshProjects(): Promise<void> {
-    try {
-      const [projectList, info] = await Promise.all([
-        projectRepository.listProjectsAsync(),
-        projectRepository.getBackendInfoAsync(),
-      ]);
-      setProjects(projectList);
-      setBackendInfo(info);
-    } catch (error) {
-      setStatus(errorMessage(error));
-    }
-  }
+export function ProjectFilesPanel({
+  dirty,
+  project,
+  result,
+  onImportProjectedGeoJson,
+  onImportSurveyCsv,
+  onProjectLoaded,
+  onSaved,
+}: ProjectFilesPanelProps): React.JSX.Element {
+  const repository = useProjectRepository();
+  const [status, setStatus] = useState<string>("Project ZIP is the canonical project package.");
+  const [geoJsonImport, setGeoJsonImport] = useState("");
+  const [surveyCsvImport, setSurveyCsvImport] = useState("");
 
   async function saveCurrentProject(): Promise<void> {
-    try {
-      await projectRepository.saveProjectAsync(project, result);
-      await refreshProjects();
-      setStatus(`Saved ${project.name} with ${projectRepository.backendLabel}.`);
-    } catch (error) {
-      setStatus(errorMessage(error));
-    }
+    const saved = await repository.saveProject(project, result);
+    if (saved) onSaved();
   }
 
   async function openProject(projectId: string): Promise<void> {
-    try {
-      const loaded = await projectRepository.loadProjectAsync(projectId);
-      if (!loaded) {
-        setStatus("Project was not found in local storage.");
-        return;
-      }
-      onProjectLoaded(loaded);
-      setStatus(`Opened ${loaded.name}.`);
-    } catch (error) {
-      setStatus(errorMessage(error));
-    }
+    const loaded = await repository.openProject(projectId);
+    if (loaded) onProjectLoaded(loaded);
   }
 
   async function deleteProject(projectId: string): Promise<void> {
-    try {
-      await projectRepository.deleteProjectAsync(projectId);
-      await refreshProjects();
-      setStatus("Deleted local project entry.");
-    } catch (error) {
-      setStatus(errorMessage(error));
-    }
+    await repository.deleteProject(projectId);
   }
 
   async function exportZip(): Promise<void> {
@@ -96,9 +71,28 @@ export function ProjectFilesPanel({ project, result, onProjectLoaded }: ProjectF
       }
       const imported = importProjectArchiveZip(bytes);
       onProjectLoaded(imported);
-      await projectRepository.saveProjectAsync(imported);
-      await refreshProjects();
+      await repository.saveProject(imported);
       setStatus(`Imported ${imported.name}.`);
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  }
+
+  function applyGeoJsonImport(): void {
+    try {
+      onImportProjectedGeoJson(geoJsonImport);
+      setGeoJsonImport("");
+      setStatus("Imported projected GeoJSON boundary/obstacles into the current project.");
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  }
+
+  function applySurveyCsvImport(): void {
+    try {
+      onImportSurveyCsv(surveyCsvImport);
+      setSurveyCsvImport("");
+      setStatus("Imported survey CSV points into the current project.");
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -111,31 +105,56 @@ export function ProjectFilesPanel({ project, result, onProjectLoaded }: ProjectF
         <Text style={styles.title}>Project Files</Text>
       </View>
       <View style={styles.actionRow}>
-        <FileAction icon={<Save size={18} color="#ffffff" />} label="Save Local" primary onPress={saveCurrentProject} />
+        <FileAction icon={<Save size={18} color="#ffffff" />} label={dirty ? "Save Local *" : "Save Local"} primary onPress={saveCurrentProject} />
         <FileAction icon={<Download size={18} color="#254234" />} label="Export ZIP" onPress={exportZip} />
         <FileAction icon={<Upload size={18} color="#254234" />} label="Import ZIP" onPress={importZip} />
-        <FileAction icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={refreshProjects} />
+        <FileAction icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={repository.refreshProjects} />
       </View>
       <View style={styles.statusBox}>
         <Database size={17} color="#254234" />
-        <Text style={styles.statusText}>{status}</Text>
+        <Text style={styles.statusText}>{dirty ? "Unsaved edits. " : ""}{repository.statusMessage} · {status}</Text>
       </View>
-      {backendInfo && (
+      {repository.backendInfo && (
         <View style={styles.backendGrid}>
-          <BackendTile label="Backend" value={backendInfo.backendLabel} />
-          <BackendTile label="Runtime" value={backendInfo.runtime} />
-          <BackendTile label="Schema" value={backendInfo.schemaVersion === undefined ? "n/a" : `v${backendInfo.schemaVersion}`} />
-          <BackendTile label="Projects" value={`${backendInfo.projectCount ?? projects.length}`} />
+          <BackendTile label="Backend" value={repository.backendInfo.backendLabel} />
+          <BackendTile label="Runtime" value={repository.backendInfo.runtime} />
+          <BackendTile label="Schema" value={repository.backendInfo.schemaVersion === undefined ? "n/a" : `v${repository.backendInfo.schemaVersion}`} />
+          <BackendTile label="Projects" value={`${repository.backendInfo.projectCount ?? repository.projects.length}`} />
         </View>
       )}
-      {backendInfo?.notes.map((note) => (
+      {repository.backendInfo?.notes.map((note) => (
         <Text key={note} style={styles.backendNote}>{note}</Text>
       ))}
 
+      <View style={styles.importGrid}>
+        <View style={styles.importBox}>
+          <Text style={styles.importTitle}>Projected GeoJSON Import</Text>
+          <TextInput
+            multiline
+            onChangeText={setGeoJsonImport}
+            placeholder="FeatureCollection with projectCrs and field_boundary/obstacle features"
+            style={styles.importInput}
+            value={geoJsonImport}
+          />
+          <FileAction icon={<Upload size={18} color="#254234" />} label="Import GeoJSON" onPress={applyGeoJsonImport} />
+        </View>
+        <View style={styles.importBox}>
+          <Text style={styles.importTitle}>Survey CSV Import</Text>
+          <TextInput
+            multiline
+            onChangeText={setSurveyCsvImport}
+            placeholder="id,label,role,x,y,source,confidence"
+            style={styles.importInput}
+            value={surveyCsvImport}
+          />
+          <FileAction icon={<Upload size={18} color="#254234" />} label="Import CSV" onPress={applySurveyCsvImport} />
+        </View>
+      </View>
+
       <View style={styles.projectList}>
-        {projects.length === 0 ? (
+        {repository.projects.length === 0 ? (
           <Text style={styles.emptyText}>No local projects saved yet.</Text>
-        ) : projects.map((summary) => (
+        ) : repository.projects.map((summary) => (
           <View key={summary.id} style={styles.projectRow}>
             <View style={styles.projectMeta}>
               <Text style={styles.projectName}>{summary.name}</Text>
@@ -269,6 +288,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 17,
+  },
+  importGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  importBox: {
+    borderColor: "#dce3da",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 320,
+    flexGrow: 1,
+    gap: 9,
+    padding: 12,
+  },
+  importTitle: {
+    color: "#17241c",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  importInput: {
+    backgroundColor: "#ffffff",
+    borderColor: "#cdd8ca",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#1d2c22",
+    fontFamily: "monospace",
+    fontSize: 12,
+    minHeight: 96,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    textAlignVertical: "top",
   },
   projectList: {
     gap: 9,

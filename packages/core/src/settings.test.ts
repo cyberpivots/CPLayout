@@ -4,6 +4,7 @@ import {
   defaultAppSettings,
   gpsFixMeetsThreshold,
   mergeAppSettings,
+  ONLINE_IMAGERY_PROVIDER_CATALOG,
   parseAppSettings,
   projectSettingsFromApp,
 } from "./settings";
@@ -11,6 +12,9 @@ import {
 const defaults = defaultAppSettings();
 assert.equal(defaults.offlineMaps.allowNetworkTiles, false);
 assert.equal(defaults.offlineMaps.requireAttribution, true);
+assert.equal(defaults.onlineImagery.enabled, false);
+assert.equal(defaults.onlineImagery.providerId, "usgs_imagery_only");
+assert.match(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileUrlTemplate, /basemap\.nationalmap\.gov/);
 assert.equal(defaults.coordinateDisplayFormat, "decimal_degrees");
 assert.equal(defaults.gpsQuality.minimumFixType, "rtk_fixed");
 
@@ -25,6 +29,7 @@ assert.equal(merged.drawing.featureSnapToleranceMeters, defaults.drawing.feature
 const projectSettings = projectSettingsFromApp(merged);
 assert.equal(projectSettings.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in projectSettings.offlineMaps, false);
+assert.deepEqual(projectSettings.onlineImagery, merged.onlineImagery);
 assert.deepEqual(parseAppSettings(merged), merged);
 
 assert.equal(gpsFixMeetsThreshold("rtk_fixed", "rtk_float"), true);
@@ -34,6 +39,11 @@ assert.equal(gpsFixMeetsThreshold("unknown", "autonomous"), false);
 assert.throws(
   () => parseAppSettings({ ...defaults, offlineMaps: { ...defaults.offlineMaps, allowNetworkTiles: true } }),
   /Invalid input/,
+);
+
+assert.throws(
+  () => parseAppSettings({ ...defaults, onlineImagery: { ...defaults.onlineImagery, maxTilesPerView: 1000 } }),
+  /Too big/,
 );
 
 console.log("settings tests passed");

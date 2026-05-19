@@ -1,0 +1,4 @@
+interface:
+  display_name: "CPLayout Expert Panels"
+  short_description: "Run CPLayout specialist review loops"
+  default_prompt: "Use $cplayout-expert-agent-panels to run a CPLayout expert panel review with findings, gates, and next actions."

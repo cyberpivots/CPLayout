@@ -6,6 +6,7 @@ export const DRAWING_MODES = [
   "draw_boundary",
   "edit_vertices",
   "mark_obstacle",
+  "measure",
   "place_pivot",
 ] as const;
 
@@ -22,6 +23,10 @@ export const DRAWING_LAYER_TYPES = [
   "building",
   "exclusion",
   "pivot_center",
+  "water_source",
+  "power_source",
+  "control_point",
+  "note_point",
 ] as const;
 
 export type DrawingLayerType = typeof DRAWING_LAYER_TYPES[number];
@@ -40,6 +45,17 @@ export interface DrawingMapState {
   draftVertices: XY[];
   selectedFeatureId: string | null;
   geometryRevision: number;
+}
+
+export interface SnapCandidate {
+  point: XY;
+  kind: "vertex" | "feature";
+  distanceMeters: number;
+}
+
+export interface SnapGeometry {
+  vertices?: XY[];
+  rings?: XY[][];
 }
 
 export type DrawingMapAction =
@@ -174,6 +190,57 @@ export function createDrawingMapState(viewport: MapViewport): DrawingMapState {
     selectedFeatureId: null,
     geometryRevision: 0,
   };
+}
+
+export function snapPointToGeometry(
+  point: XY,
+  geometry: SnapGeometry,
+  tolerances: { vertexSnapToleranceMeters: number; featureSnapToleranceMeters: number },
+): SnapCandidate | null {
+  const vertices = geometry.vertices ?? [];
+  const rings = geometry.rings ?? [];
+  const ringVertices = rings.flat();
+  const vertexCandidate = nearestPoint(point, [...vertices, ...ringVertices]);
+  if (vertexCandidate && vertexCandidate.distanceMeters <= tolerances.vertexSnapToleranceMeters) {
+    return { ...vertexCandidate, kind: "vertex" };
+  }
+
+  let nearestFeature: { point: XY; distanceMeters: number } | null = null;
+  for (const ring of rings) {
+    for (let index = 0; index < ring.length; index += 1) {
+      const start = ring[index];
+      const end = ring[(index + 1) % ring.length];
+      const candidate = nearestPointOnSegment(point, start, end);
+      if (!nearestFeature || candidate.distanceMeters < nearestFeature.distanceMeters) nearestFeature = candidate;
+    }
+  }
+  if (nearestFeature && nearestFeature.distanceMeters <= tolerances.featureSnapToleranceMeters) {
+    return { ...nearestFeature, kind: "feature" };
+  }
+  return null;
+}
+
+function nearestPoint(point: XY, candidates: XY[]): { point: XY; distanceMeters: number } | null {
+  let nearest: { point: XY; distanceMeters: number } | null = null;
+  for (const candidate of candidates) {
+    const distanceMeters = distance(point, candidate);
+    if (!nearest || distanceMeters < nearest.distanceMeters) nearest = { point: candidate, distanceMeters };
+  }
+  return nearest;
+}
+
+function nearestPointOnSegment(point: XY, start: XY, end: XY): { point: XY; distanceMeters: number } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return { point: start, distanceMeters: distance(point, start) };
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  const snapped = { x: start.x + t * dx, y: start.y + t * dy };
+  return { point: snapped, distanceMeters: distance(point, snapped) };
+}
+
+function distance(a: XY, b: XY): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function clampZoom(zoomLevel: number): number {

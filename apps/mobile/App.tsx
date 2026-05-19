@@ -26,6 +26,7 @@ import { ExpertReviewPanel } from "./src/components/ExpertReviewPanel";
 import { MapSurface } from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
 import { ProjectFilesPanel } from "./src/components/ProjectFilesPanel";
+import { ProjectStartPanel } from "./src/components/ProjectStartPanel";
 import { SettingsPanel } from "./src/components/SettingsPanel";
 import {
   COORDINATE_FORMAT_LABELS,
@@ -45,7 +46,6 @@ import {
 } from "@cplayout/core";
 import { evaluateLayout, exportScenarioGeoJson, machineRadiusMeters } from "@cplayout/geometry";
 import { formatAreaFromAcres, formatDistance } from "@cplayout/core";
-import { projectRepository, type ProjectSummary } from "@cplayout/project-store";
 
 type Tab = "layout" | "survey" | "equipment" | "settings" | "review" | "export";
 type Screen = "projects" | "workspace";
@@ -55,9 +55,11 @@ export default function App(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("layout");
   const [editor, dispatchProject] = useReducer(reduceProjectEditorState, sampleProject, createProjectEditorState);
   const project = editor.project;
+  const [savedRevision, setSavedRevision] = useState(0);
   const [settings, setSettings] = useState<AppSettings>(() => mergeAppSettings(sampleProject.settings));
   const result = useMemo(() => evaluateLayout(project), [project]);
   const machineRadius = machineRadiusMeters(project.machine);
+  const isDirty = editor.revision !== savedRevision;
 
   function updateSweep(sweep: PivotSweep): void {
     dispatchProject({ type: "update_machine", machine: { ...project.machine, sweep } });
@@ -85,6 +87,7 @@ export default function App(): React.JSX.Element {
 
   function loadProject(nextProject: PivotProject): void {
     dispatchProject({ type: "load_project", project: nextProject });
+    setSavedRevision(0);
     setSettings(mergeAppSettings(nextProject.settings));
     setTab("layout");
     setScreen("workspace");
@@ -149,6 +152,7 @@ export default function App(): React.JSX.Element {
             <StatusPill icon={<Satellite size={15} color="#254234" />} label={`${settings.gpsQuality.minimumFixType.replaceAll("_", " ")} gate`} />
             <StatusPill icon={<Ruler size={15} color="#254234" />} label={project.projectCrs} />
             <StatusPill icon={<SlidersHorizontal size={15} color="#254234" />} label={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
+            <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} />
           </View>
           <View style={styles.projectActionRow}>
             <SmallActionButton label="Projects" onPress={() => setScreen("projects")} />
@@ -175,7 +179,13 @@ export default function App(): React.JSX.Element {
                 settings={settings}
                 onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
                 onCommitObstacleDraft={(vertices, kind) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind })}
+                onMoveBoundaryVertex={(vertexIndex, point) => dispatchProject({ type: "move_boundary_vertex", vertexIndex, point })}
+                onDeleteBoundaryVertex={(vertexIndex) => dispatchProject({ type: "delete_boundary_vertex", vertexIndex })}
+                onMoveObstacleVertex={(obstacleId, vertexIndex, point) => dispatchProject({ type: "move_obstacle_vertex", obstacleId, vertexIndex, point })}
+                onDeleteObstacleVertex={(obstacleId, vertexIndex) => dispatchProject({ type: "delete_obstacle_vertex", obstacleId, vertexIndex })}
                 onPlacePivot={(point) => dispatchProject({ type: "place_pivot", point })}
+                onMoveInfrastructurePoint={(pointType, point) => dispatchProject({ type: "move_infrastructure", pointType, point })}
+                onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
               />
               <View style={styles.sidePanel}>
                 <Text style={styles.sectionTitle}>Scenario Metrics</Text>
@@ -241,6 +251,12 @@ export default function App(): React.JSX.Element {
                   <View>
                     <Text style={styles.rowTitle}>{point.label}</Text>
                     <Text style={styles.rowMeta}>{point.role} · {point.source} · {point.confidence}</Text>
+                    <View style={styles.inlineActions}>
+                      {point.role === "pivot_center" ? <SmallActionButton label="Set Pivot" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "pivot_center" })} /> : null}
+                      {point.role === "water_source" ? <SmallActionButton label="Set Water" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "water_source" })} /> : null}
+                      {point.role === "power_source" ? <SmallActionButton label="Set Power" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "power_source" })} /> : null}
+                      <SmallActionButton label="Delete" onPress={() => dispatchProject({ type: "delete_survey_point", id: point.id })} />
+                    </View>
                   </View>
                   <Text style={styles.coordinate}>{formatProjectCoordinate(point.projected, point.wgs84)}</Text>
                 </View>
@@ -282,7 +298,15 @@ export default function App(): React.JSX.Element {
 
           {tab === "export" && (
             <Section title="Local Export Package" icon={<ClipboardList size={20} color="#254234" />}>
-              <ProjectFilesPanel project={project} result={result} onProjectLoaded={loadProject} />
+              <ProjectFilesPanel
+                dirty={isDirty}
+                onImportProjectedGeoJson={(geoJson) => dispatchProject({ type: "import_projected_geojson", geoJson })}
+                onImportSurveyCsv={(csv) => dispatchProject({ type: "import_survey_csv", csv })}
+                onProjectLoaded={loadProject}
+                onSaved={() => setSavedRevision(editor.revision)}
+                project={project}
+                result={result}
+              />
               <View style={styles.metricGrid}>
                 <MetricTile label="Project file" value="JSON" />
                 <MetricTile label="Geometry" value="GeoJSON" />
@@ -345,60 +369,6 @@ function SmallActionButton({ disabled = false, label, onPress }: { disabled?: bo
     <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.smallActionButton, disabled && styles.smallActionButtonDisabled]}>
       <Text style={[styles.smallActionText, disabled && styles.smallActionTextDisabled]}>{label}</Text>
     </Pressable>
-  );
-}
-
-function ProjectStartPanel({ onCreate, onOpen, onOpenSample }: { onCreate: () => void; onOpen: (project: PivotProject) => void; onOpenSample: () => void }): React.JSX.Element {
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [status, setStatus] = useState(`Storage: ${projectRepository.backendLabel}`);
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  async function refresh(): Promise<void> {
-    try {
-      setProjects(await projectRepository.listProjectsAsync());
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  async function open(projectId: string): Promise<void> {
-    try {
-      const project = await projectRepository.loadProjectAsync(projectId);
-      if (!project) {
-        setStatus("Project was not found in local storage.");
-        return;
-      }
-      onOpen(project);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  return (
-    <Section title="Projects" icon={<MapPinned size={20} color="#254234" />}>
-      <View style={styles.projectActionRow}>
-        <ActionButton label="Create New Layout" onPress={onCreate} selected />
-        <ActionButton label="Open Sample" onPress={onOpenSample} />
-        <ActionButton label="Refresh" onPress={() => void refresh()} />
-      </View>
-      <Text style={styles.rowMeta}>{status}</Text>
-      <View style={styles.projectList}>
-        {projects.length === 0 ? (
-          <View style={styles.projectCard}>
-            <Text style={styles.rowTitle}>No saved local projects yet</Text>
-            <Text style={styles.rowMeta}>Create a layout or open the bundled sample, then save it from Export.</Text>
-          </View>
-        ) : projects.map((project) => (
-          <Pressable key={project.id} onPress={() => void open(project.id)} style={styles.projectCard}>
-            <Text style={styles.rowTitle}>{project.name}</Text>
-            <Text style={styles.rowMeta}>{project.projectCrs} · {project.unitSystem} · {project.updatedAt}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </Section>
   );
 }
 
@@ -641,9 +611,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     flexBasis: 360,
-    flexGrow: 1,
+    flexGrow: 0.8,
     gap: 14,
     padding: 16,
+  },
+  inlineActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
   },
   section: {
     backgroundColor: "#fbfcf8",

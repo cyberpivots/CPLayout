@@ -10,12 +10,14 @@ import {
   PencilLine,
   Plus,
   RefreshCcw,
+  Ruler,
+  Satellite,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { PanResponder, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
-import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
+import { PanResponder, Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
+import Svg, { Circle, Image as SvgImage, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
-import { boundsForGeometry, ringsToSvgPath } from "@cplayout/geometry";
+import { boundsForGeometry, planOnlineImageryTiles, ringsToSvgPath } from "@cplayout/geometry";
 import {
   createDrawingMapState,
   createInitialViewport,
@@ -24,13 +26,18 @@ import {
   DrawingMapState,
   reduceDrawingMapState,
   screenPointToWorld,
+  snapPointToGeometry,
   viewportToSvgViewBox,
   visibleHeightMeters,
   visibleWidthMeters,
 } from "@cplayout/geometry";
-import type { MapStyle, ObstacleZone } from "@cplayout/core";
+import type { InfrastructurePoint, MapStyle, ObstacleZone, SurveyPoint } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import type { MapSurfaceProps } from "./types";
+
+type SelectedVertex =
+  | { layer: "field_boundary"; vertexIndex: number }
+  | { layer: "obstacle"; obstacleId: string; vertexIndex: number };
 
 export function SvgMapSurface({
   project,
@@ -38,7 +45,13 @@ export function SvgMapSurface({
   settings,
   onCommitBoundaryDraft,
   onCommitObstacleDraft,
+  onMoveBoundaryVertex,
+  onDeleteBoundaryVertex,
+  onMoveObstacleVertex,
+  onDeleteObstacleVertex,
   onPlacePivot,
+  onMoveInfrastructurePoint,
+  onAddSurveyPoint,
 }: MapSurfaceProps): React.JSX.Element {
   const allRings = [
     project.fieldBoundary,
@@ -61,6 +74,8 @@ export function SvgMapSurface({
   const [mapState, setMapState] = useState<DrawingMapState>(() => createDrawingMapState(initialViewport));
   const [mapPixelWidth, setMapPixelWidth] = useState(900);
   const [mapPixelHeight, setMapPixelHeight] = useState(440);
+  const [selectedVertex, setSelectedVertex] = useState<SelectedVertex | null>(null);
+  const [lastSnap, setLastSnap] = useState<{ point: XY; kind: "vertex" | "feature" } | null>(null);
   const palette = paletteForMapStyle(settings.mapStyle);
   const viewWidth = visibleWidthMeters(mapState.viewport);
   const viewHeight = visibleHeightMeters(mapState.viewport);
@@ -69,6 +84,23 @@ export function SvgMapSurface({
   const minY = -mapState.viewport.center.y - viewHeight / 2;
   const maxY = -mapState.viewport.center.y + viewHeight / 2;
   const fieldPath = ringsToSvgPath([[project.fieldBoundary]]);
+  const imageryPlan = useMemo(
+    () => settings.onlineImagery.enabled
+      ? planOnlineImageryTiles({
+        viewport: mapState.viewport,
+        projectCrs: project.projectCrs,
+        providerId: settings.onlineImagery.providerId,
+        maxTiles: settings.onlineImagery.maxTilesPerView,
+      })
+      : null,
+    [
+      mapState.viewport,
+      project.projectCrs,
+      settings.onlineImagery.enabled,
+      settings.onlineImagery.maxTilesPerView,
+      settings.onlineImagery.providerId,
+    ],
+  );
 
   const panResponder = useMemo(
     () => PanResponder.create({
@@ -84,25 +116,54 @@ export function SvgMapSurface({
     }),
     [mapPixelHeight, mapPixelWidth, mapState.mode, mapState.viewport],
   );
+  const panHandlers = Platform.OS === "web" ? {} : panResponder.panHandlers;
+  const svgInteractionProps = Platform.OS === "web"
+    ? { onClick: addDraftVertexFromWebClick }
+    : { onPress: addDraftVertexFromPress };
 
   function dispatch(action: DrawingMapAction): void {
     setMapState((current) => reduceDrawingMapState(current, action));
   }
 
   function addDraftVertexFromPress(event: GestureResponderEvent): void {
-    const vertex = screenPointToWorld(
+    addDraftVertexAtScreenPoint(event.nativeEvent.locationX, event.nativeEvent.locationY);
+  }
+
+  function addDraftVertexFromWebClick(event: { nativeEvent?: { offsetX?: number; offsetY?: number }; currentTarget?: { getBoundingClientRect?: () => { left: number; top: number } }; clientX?: number; clientY?: number }): void {
+    const bounds = event.currentTarget?.getBoundingClientRect?.();
+    const xPixels = event.nativeEvent?.offsetX ?? (bounds ? (event.clientX ?? 0) - bounds.left : 0);
+    const yPixels = event.nativeEvent?.offsetY ?? (bounds ? (event.clientY ?? 0) - bounds.top : 0);
+    addDraftVertexAtScreenPoint(xPixels, yPixels);
+  }
+
+  function addDraftVertexAtScreenPoint(xPixels: number, yPixels: number): void {
+    const rawVertex = screenPointToWorld(
       mapState.viewport,
-      {
-        xPixels: event.nativeEvent.locationX,
-        yPixels: event.nativeEvent.locationY,
-      },
+      { xPixels, yPixels },
       {
         widthPixels: mapPixelWidth,
         heightPixels: mapPixelHeight,
       },
     );
+    const vertex = snapWorldPoint(rawVertex);
     if (mapState.mode === "place_pivot") {
-      onPlacePivot?.(vertex);
+      if (mapState.activeLayer === "water_source" || mapState.activeLayer === "power_source") {
+        onMoveInfrastructurePoint?.(mapState.activeLayer, vertex);
+      } else {
+        onPlacePivot?.(vertex);
+      }
+      return;
+    }
+    if (mapState.mode === "capture_point") {
+      captureSurveyPoint(vertex);
+      return;
+    }
+    if (mapState.mode === "edit_vertices" && selectedVertex) {
+      if (selectedVertex.layer === "field_boundary") {
+        onMoveBoundaryVertex?.(selectedVertex.vertexIndex, vertex);
+      } else {
+        onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, vertex);
+      }
       return;
     }
     if (!canAddDraftVertex(mapState.mode)) return;
@@ -110,8 +171,13 @@ export function SvgMapSurface({
   }
 
   function addDraftVertexAtViewCenter(): void {
+    const vertex = snapWorldPoint(mapState.viewport.center);
+    if (mapState.mode === "capture_point") {
+      captureSurveyPoint(vertex);
+      return;
+    }
     if (!canAddDraftVertex(mapState.mode)) return;
-    dispatch({ type: "add_draft_vertex", vertex: mapState.viewport.center });
+    dispatch({ type: "add_draft_vertex", vertex });
   }
 
   function commitDraft(): void {
@@ -122,6 +188,45 @@ export function SvgMapSurface({
       onCommitObstacleDraft?.(mapState.draftVertices, obstacleKindForLayer(mapState.activeLayer));
     }
     dispatch({ type: "clear_draft" });
+  }
+
+  function selectVertex(nextSelectedVertex: SelectedVertex): void {
+    setSelectedVertex(nextSelectedVertex);
+    dispatch({ type: "set_mode", mode: "edit_vertices" });
+  }
+
+  function deleteSelectedVertex(): void {
+    if (!selectedVertex) return;
+    if (selectedVertex.layer === "field_boundary") {
+      onDeleteBoundaryVertex?.(selectedVertex.vertexIndex);
+    } else {
+      onDeleteObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex);
+    }
+    setSelectedVertex(null);
+  }
+
+  function snapWorldPoint(point: XY): XY {
+    const snap = snapPointToGeometry(
+      point,
+      {
+        vertices: [project.pivotCenter, project.waterSource, project.powerSource],
+        rings: [project.fieldBoundary, ...project.obstacles.map((obstacle) => obstacle.polygon), mapState.draftVertices],
+      },
+      settings.drawing,
+    );
+    setLastSnap(snap ? { point: snap.point, kind: snap.kind } : null);
+    return snap?.point ?? point;
+  }
+
+  function captureSurveyPoint(point: XY): void {
+    onAddSurveyPoint?.({
+      label: `${surveyRoleForLayer(mapState.activeLayer).replaceAll("_", " ")} point ${project.surveyPoints.length + 1}`,
+      role: surveyRoleForLayer(mapState.activeLayer),
+      projected: point,
+      source: "manual",
+      confidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
+      notes: settings.onlineImagery.enabled ? "Captured from online imagery preview; verify by field survey." : undefined,
+    });
   }
 
   return (
@@ -136,7 +241,10 @@ export function SvgMapSurface({
         <View style={styles.modeRow}>
           <ToolButton active={mapState.mode === "pan"} icon={<Hand size={18} />} label="Pan" onPress={() => dispatch({ type: "set_mode", mode: "pan" })} />
           <ToolButton active={mapState.mode === "draw_boundary"} icon={<PencilLine size={18} />} label="Draw" onPress={() => dispatch({ type: "set_mode", mode: "draw_boundary" })} />
+          <ToolButton active={mapState.mode === "mark_obstacle"} icon={<Crosshair size={18} />} label="Obstacle" onPress={() => dispatch({ type: "set_mode", mode: "mark_obstacle" })} />
           <ToolButton active={mapState.mode === "edit_vertices"} icon={<Crosshair size={18} />} label="Edit" onPress={() => dispatch({ type: "set_mode", mode: "edit_vertices" })} />
+          <ToolButton active={mapState.mode === "capture_point"} icon={<Satellite size={18} />} label="Survey" onPress={() => dispatch({ type: "set_mode", mode: "capture_point" })} />
+          <ToolButton active={mapState.mode === "measure"} icon={<Ruler size={18} />} label="Measure" onPress={() => dispatch({ type: "set_mode", mode: "measure" })} />
           <ToolButton active={mapState.mode === "place_pivot"} icon={<LocateFixed size={18} />} label="Pivot" onPress={() => dispatch({ type: "set_mode", mode: "place_pivot" })} />
         </View>
       </View>
@@ -147,12 +255,12 @@ export function SvgMapSurface({
           setMapPixelWidth(Math.max(1, event.nativeEvent.layout.width));
           setMapPixelHeight(Math.max(1, event.nativeEvent.layout.height));
         }}
+        {...panHandlers}
       >
         <Svg
-          onPress={addDraftVertexFromPress}
           viewBox={viewportToSvgViewBox(mapState.viewport)}
           style={styles.svg}
-          {...panResponder.panHandlers}
+          {...svgInteractionProps}
         >
           <Rect
             x={minX}
@@ -160,8 +268,19 @@ export function SvgMapSurface({
             width={viewWidth}
             height={viewHeight}
             fill={palette.background}
-            onPress={addDraftVertexFromPress}
           />
+          {imageryPlan?.tiles.map((tile) => (
+            <SvgImage
+              key={tile.key}
+              href={{ uri: tile.href }}
+              opacity={0.66}
+              preserveAspectRatio="none"
+              x={tile.projectedBounds.minX}
+              y={-tile.projectedBounds.maxY}
+              width={tile.projectedBounds.maxX - tile.projectedBounds.minX}
+              height={tile.projectedBounds.maxY - tile.projectedBounds.minY}
+            />
+          ))}
           <MapBackground minX={minX} maxX={maxX} minY={minY} maxY={maxY} styleName={settings.mapStyle} />
           <Grid minX={minX} maxX={maxX} minY={minY} maxY={maxY} stroke={palette.grid} />
           <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} />
@@ -169,10 +288,31 @@ export function SvgMapSurface({
           <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} />
           <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
           <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
+          <EditableRing
+            color={palette.fieldStroke}
+            selected={selectedVertex?.layer === "field_boundary" ? selectedVertex.vertexIndex : null}
+            vertices={project.fieldBoundary}
+            onSelect={(vertexIndex) => selectVertex({ layer: "field_boundary", vertexIndex })}
+          />
+          {project.obstacles.map((obstacle) => (
+            <React.Fragment key={obstacle.id}>
+              <ObstacleSymbol obstacle={obstacle} color={palette.obstacleStroke} />
+              <EditableRing
+                color={palette.obstacleStroke}
+                selected={selectedVertex?.layer === "obstacle" && selectedVertex.obstacleId === obstacle.id ? selectedVertex.vertexIndex : null}
+                vertices={obstacle.polygon}
+                onSelect={(vertexIndex) => selectVertex({ layer: "obstacle", obstacleId: obstacle.id, vertexIndex })}
+              />
+            </React.Fragment>
+          ))}
           <DraftVertices vertices={mapState.draftVertices} color={palette.draft} />
-          <PointMarker point={project.pivotCenter} color={palette.pivot} label="Pivot" />
-          <PointMarker point={project.waterSource} color={palette.water} label="Water" />
-          <PointMarker point={project.powerSource} color={palette.power} label="Power" />
+          {lastSnap ? <SnapMarker point={lastSnap.point} color={palette.snap} label={lastSnap.kind} /> : null}
+          <InfrastructureSymbol point={project.pivotCenter} color={palette.pivot} kind="pivot_center" label="Pivot" />
+          <InfrastructureSymbol point={project.waterSource} color={palette.water} kind="water_source" label="Water" />
+          <InfrastructureSymbol point={project.powerSource} color={palette.power} kind="power_source" label="Power" />
+          {project.surveyPoints.map((point) => (
+            <SurveyPointSymbol key={point.id} point={point} color={palette.survey} />
+          ))}
           {result.towers.map((tower) => (
             <React.Fragment key={tower.towerIndex}>
               <Line
@@ -207,17 +347,27 @@ export function SvgMapSurface({
           <IconControl icon={<ArrowDown size={20} />} label="Pan south" onPress={() => dispatch({ type: "pan", delta: { x: 0, y: -settings.drawing.panStepMeters } })} />
         </View>
         <View style={styles.draftHud}>
-          <Text style={styles.draftHudText}>{mapState.activeLayer.replaceAll("_", " ")} draft · {mapState.draftVertices.length} pts</Text>
+          <Text style={styles.draftHudText}>{mapState.activeLayer.replaceAll("_", " ")} · {mapState.draftVertices.length} pts{measureText(mapState.draftVertices)}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Add draft vertex at view center" onPress={addDraftVertexAtViewCenter} style={styles.clearDraftButton}>
-            <Text style={styles.clearDraftText}>Add Center</Text>
+            <Text style={styles.clearDraftText}>{mapState.mode === "capture_point" ? "Capture Center" : "Add Center"}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Commit draft geometry" onPress={commitDraft} style={[styles.clearDraftButton, mapState.draftVertices.length >= 3 && styles.commitDraftButton]}>
             <Text style={[styles.clearDraftText, mapState.draftVertices.length >= 3 && styles.commitDraftText]}>Commit</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Delete selected vertex" disabled={!selectedVertex} onPress={deleteSelectedVertex} style={[styles.clearDraftButton, !selectedVertex && styles.disabledDraftButton]}>
+            <Text style={styles.clearDraftText}>Delete Vertex</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Clear draft vertices" onPress={() => dispatch({ type: "clear_draft" })} style={styles.clearDraftButton}>
             <Text style={styles.clearDraftText}>Clear</Text>
           </Pressable>
         </View>
+        {imageryPlan ? (
+          <View style={styles.imageryBadge}>
+            <Text style={styles.imageryBadgeText}>
+              {imageryPlan.error ? `Imagery unavailable: ${imageryPlan.error}` : `${imageryPlan.provider.name} · z${imageryPlan.tiles[0]?.z ?? "-"} · ${imageryPlan.tiles.length} tiles${imageryPlan.capped ? " capped" : ""}`}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.layerRow}>
@@ -227,6 +377,11 @@ export function SvgMapSurface({
         <LayerButton active={mapState.activeLayer === "ditch"} label="Ditch" layer="ditch" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
         <LayerButton active={mapState.activeLayer === "fence"} label="Fence" layer="fence" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
         <LayerButton active={mapState.activeLayer === "exclusion"} label="Exclusion" layer="exclusion" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "pivot_center"} label="Pivot" layer="pivot_center" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "water_source"} label="Water" layer="water_source" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "power_source"} label="Power" layer="power_source" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "control_point"} label="Control" layer="control_point" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "note_point"} label="Note" layer="note_point" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
       </View>
 
       <View style={styles.legend}>
@@ -234,6 +389,7 @@ export function SvgMapSurface({
         <LegendSwatch color="#63c7cf" label="End gun" />
         <LegendSwatch color="#e68b58" label="Outside field" />
         <LegendSwatch color="#c64f43" label="Obstacle/no-spray" />
+        <LegendSwatch color={palette.survey} label="Survey/object point" />
       </View>
     </View>
   );
@@ -242,7 +398,7 @@ export function SvgMapSurface({
 export const LayoutMap = SvgMapSurface;
 
 function canAddDraftVertex(mode: DrawingMapState["mode"]): boolean {
-  return mode === "draw_boundary" || mode === "mark_obstacle" || mode === "edit_vertices";
+  return mode === "draw_boundary" || mode === "mark_obstacle" || mode === "measure";
 }
 
 function obstacleKindForLayer(layer: DrawingLayerType): ObstacleZone["kind"] {
@@ -250,6 +406,22 @@ function obstacleKindForLayer(layer: DrawingLayerType): ObstacleZone["kind"] {
     return layer;
   }
   return "exclusion";
+}
+
+function surveyRoleForLayer(layer: DrawingLayerType): SurveyPoint["role"] {
+  if (layer === "field_boundary") return "boundary";
+  if (layer === "pivot_center") return "pivot_center";
+  if (layer === "water_source") return "water_source";
+  if (layer === "power_source") return "power_source";
+  if (layer === "control_point") return "control";
+  if (layer === "note_point") return "note";
+  return "obstacle";
+}
+
+function measureText(vertices: XY[]): string {
+  if (vertices.length < 2) return "";
+  const distance = vertices.slice(1).reduce((sum, vertex, index) => sum + Math.hypot(vertex.x - vertices[index].x, vertex.y - vertices[index].y), 0);
+  return ` · ${distance.toFixed(1)} m`;
 }
 
 function Grid({ minX, maxX, minY, maxY, stroke }: { minX: number; maxX: number; minY: number; maxY: number; stroke: string }): React.JSX.Element {
@@ -297,15 +469,117 @@ function MapBackground({ minX, maxX, minY, maxY, styleName }: { minX: number; ma
   return <>{blocks}</>;
 }
 
-function PointMarker({ point, color, label }: { point: XY; color: string; label: string }): React.JSX.Element {
+function InfrastructureSymbol({ color, kind, label, point }: { color: string; kind: InfrastructurePoint; label: string; point: XY }): React.JSX.Element {
+  const y = -point.y;
   return (
     <>
-      <Circle cx={point.x} cy={-point.y} r={12} fill="#fffef8" stroke={color} strokeWidth={6} />
-      <SvgText x={point.x + 18} y={-point.y + 6} fill={color} fontSize={27} fontWeight="800">
+      {kind === "pivot_center" ? (
+        <>
+          <Circle cx={point.x} cy={y} r={18} fill="#fffef8" stroke={color} strokeWidth={5} />
+          <Circle cx={point.x} cy={y} r={6} fill={color} />
+          <Line x1={point.x - 25} y1={y} x2={point.x + 25} y2={y} stroke={color} strokeWidth={4} />
+          <Line x1={point.x} y1={y - 25} x2={point.x} y2={y + 25} stroke={color} strokeWidth={4} />
+        </>
+      ) : null}
+      {kind === "water_source" ? (
+        <Path d={`M ${point.x} ${y - 24} C ${point.x + 20} ${y - 2}, ${point.x + 16} ${y + 19}, ${point.x} ${y + 21} C ${point.x - 16} ${y + 19}, ${point.x - 20} ${y - 2}, ${point.x} ${y - 24} Z`} fill="#fffef8" stroke={color} strokeWidth={5} />
+      ) : null}
+      {kind === "power_source" ? (
+        <Path d={`M ${point.x - 5} ${y - 25} L ${point.x + 18} ${y - 25} L ${point.x + 4} ${y - 3} L ${point.x + 20} ${y - 3} L ${point.x - 9} ${y + 26} L ${point.x - 1} ${y + 5} L ${point.x - 19} ${y + 5} Z`} fill="#fffef8" stroke={color} strokeWidth={5} />
+      ) : null}
+      <SvgText x={point.x + 28} y={y + 8} fill={color} fontSize={27} fontWeight="800">
         {label}
       </SvgText>
     </>
   );
+}
+
+function SurveyPointSymbol({ color, point }: { color: string; point: SurveyPoint }): React.JSX.Element {
+  const x = point.projected.x;
+  const y = -point.projected.y;
+  if (point.role === "note") {
+    return (
+      <>
+        <Rect x={x - 13} y={y - 13} width={26} height={26} rx={4} fill="#fffef8" stroke={color} strokeWidth={4} />
+        <SvgText x={x + 18} y={y + 7} fill={color} fontSize={20} fontWeight="900">Note</SvgText>
+      </>
+    );
+  }
+  return (
+    <>
+      <Circle cx={x} cy={y} r={10} fill="#fffef8" stroke={color} strokeWidth={4} />
+      <SvgText x={x + 14} y={y + 6} fill={color} fontSize={18} fontWeight="900">
+        {shortSurveyLabel(point.role)}
+      </SvgText>
+    </>
+  );
+}
+
+function ObstacleSymbol({ color, obstacle }: { color: string; obstacle: ObstacleZone }): React.JSX.Element {
+  const center = centroid(obstacle.polygon);
+  const x = center.x;
+  const y = -center.y;
+  if (obstacle.kind === "road") {
+    return (
+      <>
+        <Line x1={x - 28} y1={y} x2={x + 28} y2={y} stroke="#fffef8" strokeWidth={14} />
+        <Line x1={x - 28} y1={y} x2={x + 28} y2={y} stroke={color} strokeWidth={5} strokeDasharray="10 7" />
+      </>
+    );
+  }
+  if (obstacle.kind === "ditch" || obstacle.kind === "canal") {
+    return <Path d={`M ${x - 28} ${y + 8} C ${x - 10} ${y - 14}, ${x + 10} ${y + 26}, ${x + 28} ${y - 2}`} fill="none" stroke={color} strokeWidth={6} />;
+  }
+  if (obstacle.kind === "fence") {
+    return (
+      <>
+        <Line x1={x - 28} y1={y} x2={x + 28} y2={y} stroke={color} strokeWidth={4} strokeDasharray="5 5" />
+        {[-20, 0, 20].map((offset) => <Line key={offset} x1={x + offset} y1={y - 14} x2={x + offset} y2={y + 14} stroke={color} strokeWidth={4} />)}
+      </>
+    );
+  }
+  if (obstacle.kind === "tree") {
+    return (
+      <>
+        <Circle cx={x} cy={y - 8} r={16} fill="#fffef8" stroke={color} strokeWidth={5} />
+        <Line x1={x} y1={y + 8} x2={x} y2={y + 26} stroke={color} strokeWidth={5} />
+      </>
+    );
+  }
+  if (obstacle.kind === "building") {
+    return <Rect x={x - 18} y={y - 18} width={36} height={36} fill="#fffef8" stroke={color} strokeWidth={5} />;
+  }
+  return (
+    <>
+      <Path d={`M ${x} ${y - 24} L ${x + 24} ${y + 20} L ${x - 24} ${y + 20} Z`} fill="#fffef8" stroke={color} strokeWidth={5} />
+      <Line x1={x} y1={y - 8} x2={x} y2={y + 8} stroke={color} strokeWidth={5} />
+      <Circle cx={x} cy={y + 15} r={3} fill={color} />
+    </>
+  );
+}
+
+function shortSurveyLabel(role: SurveyPoint["role"]): string {
+  switch (role) {
+    case "pivot_center":
+      return "P";
+    case "water_source":
+      return "W";
+    case "power_source":
+      return "E";
+    case "boundary":
+      return "B";
+    case "obstacle":
+      return "O";
+    case "control":
+      return "C";
+    case "note":
+      return "N";
+  }
+}
+
+function centroid(vertices: XY[]): XY {
+  const sum = vertices.reduce((accumulator, vertex) => ({ x: accumulator.x + vertex.x, y: accumulator.y + vertex.y }), { x: 0, y: 0 });
+  return { x: sum.x / Math.max(1, vertices.length), y: sum.y / Math.max(1, vertices.length) };
 }
 
 function DraftVertices({ vertices, color }: { vertices: XY[]; color: string }): React.JSX.Element {
@@ -322,6 +596,58 @@ function DraftVertices({ vertices, color }: { vertices: XY[]; color: string }): 
           </SvgText>
         </React.Fragment>
       ))}
+    </>
+  );
+}
+
+function EditableRing({
+  color,
+  onSelect,
+  selected,
+  vertices,
+}: {
+  color: string;
+  onSelect: (vertexIndex: number) => void;
+  selected: number | null;
+  vertices: XY[];
+}): React.JSX.Element {
+  return (
+    <>
+      {vertices.map((vertex, index) => (
+        <Circle
+          key={`${vertex.x}-${vertex.y}-${index}`}
+          cx={vertex.x}
+          cy={-vertex.y}
+          fill={selected === index ? color : "#fffef8"}
+          r={selected === index ? 11 : 7}
+          stroke={color}
+          strokeWidth={4}
+          {...svgElementInteractionProps(() => onSelect(index))}
+        />
+      ))}
+    </>
+  );
+}
+
+function svgElementInteractionProps(onActivate: () => void): object {
+  if (Platform.OS === "web") {
+    return {
+      onClick: (event: { stopPropagation?: () => void }) => {
+        event.stopPropagation?.();
+        onActivate();
+      },
+    };
+  }
+  return { onPress: onActivate };
+}
+
+function SnapMarker({ point, color, label }: { point: XY; color: string; label: string }): React.JSX.Element {
+  return (
+    <>
+      <Circle cx={point.x} cy={-point.y} r={16} fill="none" stroke={color} strokeDasharray="6 5" strokeWidth={4} />
+      <SvgText x={point.x + 18} y={-point.y - 14} fill={color} fontSize={20} fontWeight="900">
+        Snap {label}
+      </SvgText>
     </>
   );
 }
@@ -375,6 +701,8 @@ function paletteForMapStyle(style: MapStyle): {
   tower: string;
   markerFill: string;
   draft: string;
+  snap: string;
+  survey: string;
 } {
   if (style === "high_contrast") {
     return {
@@ -392,6 +720,8 @@ function paletteForMapStyle(style: MapStyle): {
       tower: "#1a1f1c",
       markerFill: "#ffffff",
       draft: "#8b1e18",
+      snap: "#005f52",
+      survey: "#5f2e00",
     };
   }
 
@@ -411,6 +741,8 @@ function paletteForMapStyle(style: MapStyle): {
       tower: "#4f5a50",
       markerFill: "#fffef8",
       draft: "#7b1f5a",
+      snap: "#005f52",
+      survey: "#6b3e00",
     };
   }
 
@@ -430,6 +762,8 @@ function paletteForMapStyle(style: MapStyle): {
       tower: "#5b624e",
       markerFill: "#fffef8",
       draft: "#7b1f5a",
+      snap: "#005f52",
+      survey: "#744200",
     };
   }
 
@@ -448,6 +782,8 @@ function paletteForMapStyle(style: MapStyle): {
     tower: "#54645a",
     markerFill: "#fffdf5",
     draft: "#7b1f5a",
+    snap: "#005f52",
+    survey: "#6f3f00",
   };
 }
 
@@ -457,8 +793,10 @@ const styles = StyleSheet.create({
     borderColor: "#d8ded6",
     borderRadius: 8,
     borderWidth: 1,
+    flexBasis: 760,
     flex: 1,
-    minHeight: 520,
+    flexGrow: 3,
+    minHeight: 720,
     overflow: "hidden",
   },
   headerRow: {
@@ -483,11 +821,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   svg: {
-    height: 440,
+    height: 640,
     width: "100%",
   },
   mapSurface: {
-    minHeight: 440,
+    minHeight: 640,
     position: "relative",
   },
   modeRow: {
@@ -544,12 +882,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     bottom: 12,
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     left: 12,
     minHeight: 44,
     paddingHorizontal: 10,
     paddingVertical: 8,
     position: "absolute",
+  },
+  imageryBadge: {
+    backgroundColor: "rgba(255, 254, 248, 0.92)",
+    borderColor: "#b9c5b6",
+    borderRadius: 8,
+    borderWidth: 1,
+    left: 12,
+    maxWidth: 560,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    position: "absolute",
+    top: 12,
+  },
+  imageryBadgeText: {
+    color: "#26392f",
+    fontSize: 12,
+    fontWeight: "900",
   },
   draftHudText: {
     color: "#26392f",
@@ -576,6 +932,9 @@ const styles = StyleSheet.create({
   },
   commitDraftText: {
     color: "#ffffff",
+  },
+  disabledDraftButton: {
+    opacity: 0.45,
   },
   iconControl: {
     alignItems: "center",

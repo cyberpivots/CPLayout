@@ -8,6 +8,7 @@ import {
   GPS_FIX_ORDER,
   MAP_STYLES,
   OFFLINE_PACKAGE_TYPES,
+  ONLINE_IMAGERY_PROVIDER_CATALOG,
   type MapStyle,
   type MinimumGpsFixType,
   type OfflinePackageType,
@@ -114,6 +115,30 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
           ))}
         </View>
         <Text style={styles.lockedText}>Network tiles: disabled · Attribution: required · Local directory: {settings.offlineMaps.packageDirectory}</Text>
+      </SettingsGroup>
+
+      <SettingsGroup icon={<Satellite size={20} color="#254234" />} title="Online Imagery Preview">
+        <View style={styles.buttonRow}>
+          <Choice
+            active={!settings.onlineImagery.enabled}
+            label="Off"
+            onPress={() => update({ onlineImagery: { ...settings.onlineImagery, enabled: false } })}
+          />
+          <Choice
+            active={settings.onlineImagery.enabled}
+            label="USGS imagery"
+            onPress={() => update({ onlineImagery: { ...settings.onlineImagery, enabled: true, providerId: "usgs_imagery_only" } })}
+          />
+        </View>
+        <Stepper
+          label="Tile cap"
+          value={`${settings.onlineImagery.maxTilesPerView}`}
+          onDecrease={() => update({ onlineImagery: { ...settings.onlineImagery, maxTilesPerView: clamp(settings.onlineImagery.maxTilesPerView - 8, 8, 128) } })}
+          onIncrease={() => update({ onlineImagery: { ...settings.onlineImagery, maxTilesPerView: clamp(settings.onlineImagery.maxTilesPerView + 8, 8, 128) } })}
+        />
+        <Text style={styles.lockedText}>
+          Optional live preview only · No bulk cache · {ONLINE_IMAGERY_PROVIDER_CATALOG[settings.onlineImagery.providerId].attribution}
+        </Text>
       </SettingsGroup>
     </View>
   );

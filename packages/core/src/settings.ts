@@ -65,7 +65,7 @@ export interface AppSettings {
   onlineImagery: OnlineImageryPreferences;
 }
 
-export type ProjectSettings = Omit<AppSettings, "offlineMaps"> & {
+export type ProjectSettings = Omit<AppSettings, "offlineMaps" | "onlineImagery"> & {
   offlineMaps: Omit<OfflineMapPreferences, "packageDirectory">;
 };
 
@@ -120,7 +120,7 @@ export const AppSettingsSchema = z.object({
   onlineImagery: OnlineImageryPreferencesSchema,
 });
 
-export const ProjectSettingsSchema = AppSettingsSchema.omit({ offlineMaps: true }).extend({
+export const ProjectSettingsSchema = AppSettingsSchema.omit({ offlineMaps: true, onlineImagery: true }).extend({
   offlineMaps: OfflineMapPreferencesSchema.omit({ packageDirectory: true }),
 });
 
@@ -184,7 +184,6 @@ export function projectSettingsFromApp(settings: AppSettings): ProjectSettings {
       requireAttribution: true,
       allowNetworkTiles: false,
     },
-    onlineImagery: settings.onlineImagery,
   });
 }
 

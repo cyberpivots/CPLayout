@@ -60,7 +60,7 @@ export interface SnapGeometry {
 
 export type DrawingMapAction =
   | { type: "pan"; delta: XY }
-  | { type: "pan_screen"; dxPixels: number; dyPixels: number; screenWidthPixels: number }
+  | { type: "pan_screen"; dxPixels: number; dyPixels: number; screenWidthPixels: number; screenHeightPixels: number }
   | { type: "zoom"; factor: number }
   | { type: "set_mode"; mode: DrawingMode }
   | { type: "set_active_layer"; activeLayer: DrawingLayerType }
@@ -97,6 +97,7 @@ export function reduceDrawingMapState(state: DrawingMapState, action: DrawingMap
           action.dxPixels,
           action.dyPixels,
           action.screenWidthPixels,
+          action.screenHeightPixels,
         ),
       };
     case "zoom":
@@ -133,11 +134,13 @@ export function panViewportByScreenDelta(
   dxPixels: number,
   dyPixels: number,
   screenWidthPixels: number,
+  screenHeightPixels: number,
 ): MapViewport {
-  const metersPerPixel = visibleWidthMeters(viewport) / Math.max(1, screenWidthPixels);
+  const xMetersPerPixel = visibleWidthMeters(viewport) / Math.max(1, screenWidthPixels);
+  const yMetersPerPixel = visibleHeightMeters(viewport) / Math.max(1, screenHeightPixels);
   return panViewport(viewport, {
-    x: -dxPixels * metersPerPixel,
-    y: dyPixels * metersPerPixel,
+    x: -dxPixels * xMetersPerPixel,
+    y: dyPixels * yMetersPerPixel,
   });
 }
 

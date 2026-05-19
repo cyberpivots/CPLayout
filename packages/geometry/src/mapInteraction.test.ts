@@ -33,9 +33,10 @@ const dragged = reduceDrawingMapState(zoomed, {
   dxPixels: 100,
   dyPixels: -50,
   screenWidthPixels: 500,
+  screenHeightPixels: 800,
 });
 assert.equal(dragged.viewport.center.x, zoomed.viewport.center.x - 100);
-assert.equal(dragged.viewport.center.y, zoomed.viewport.center.y - 50);
+assert.equal(dragged.viewport.center.y, zoomed.viewport.center.y - 25);
 assert.deepEqual(dragged.draftVertices, withVertex.draftVertices);
 
 const centerWorld = screenPointToWorld(viewport, { xPixels: 500, yPixels: 400 }, { widthPixels: 1000, heightPixels: 800 });
@@ -58,12 +59,21 @@ const imageryPlan = planOnlineImageryTiles({
   providerId: "usgs_imagery_only",
   maxTiles: 8,
 });
-assert.equal(imageryPlan.error, null);
-assert.ok(imageryPlan.tiles.length > 0);
-assert.ok(imageryPlan.tiles.length <= 8);
-assert.match(imageryPlan.tiles[0].href, /USGSImageryOnly\/MapServer\/tile\/\d+\/\d+\/\d+/);
-assert.ok(Number.isFinite(imageryPlan.tiles[0].projectedBounds.minX));
-assert.ok(imageryPlan.tiles.every((tile) => tile.z <= imageryPlan.provider.maxZoom));
+assert.match(imageryPlan.error ?? "", /local reprojection adapter/);
+assert.equal(imageryPlan.tiles.length, 0);
+
+const webMercatorImageryPlan = planOnlineImageryTiles({
+  viewport,
+  projectCrs: "EPSG:3857",
+  providerId: "usgs_imagery_only",
+  maxTiles: 8,
+});
+assert.equal(webMercatorImageryPlan.error, null);
+assert.ok(webMercatorImageryPlan.tiles.length > 0);
+assert.ok(webMercatorImageryPlan.tiles.length <= 8);
+assert.match(webMercatorImageryPlan.tiles[0].href, /USGSImageryOnly\/MapServer\/tile\/\d+\/\d+\/\d+/);
+assert.ok(Number.isFinite(webMercatorImageryPlan.tiles[0].projectedBounds.minX));
+assert.ok(webMercatorImageryPlan.tiles.every((tile) => tile.z <= webMercatorImageryPlan.provider.maxZoom));
 
 const snappedVertex = snapPointToGeometry(
   { x: 10.5, y: 19.8 },

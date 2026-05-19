@@ -16,8 +16,8 @@ interface ProjectFilesPanelProps {
   dirty: boolean;
   project: PivotProject;
   result: LayoutResult;
-  onImportProjectedGeoJson: (geoJson: string) => void;
-  onImportSurveyCsv: (csv: string) => void;
+  onImportProjectedGeoJson: (geoJson: string) => string;
+  onImportSurveyCsv: (csv: string) => string;
   onProjectLoaded: (project: PivotProject) => void;
   onSaved: () => void;
 }
@@ -71,8 +71,8 @@ export function ProjectFilesPanel({
       }
       const imported = importProjectArchiveZip(bytes);
       onProjectLoaded(imported);
-      await repository.saveProject(imported);
-      setStatus(`Imported ${imported.name}.`);
+      const saved = await repository.saveProject(imported);
+      setStatus(saved ? `Imported ${imported.name}.` : `Opened ${imported.name}, but it was not saved locally.`);
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -80,9 +80,9 @@ export function ProjectFilesPanel({
 
   function applyGeoJsonImport(): void {
     try {
-      onImportProjectedGeoJson(geoJsonImport);
+      const message = onImportProjectedGeoJson(geoJsonImport);
       setGeoJsonImport("");
-      setStatus("Imported projected GeoJSON boundary/obstacles into the current project.");
+      setStatus(message);
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -90,9 +90,9 @@ export function ProjectFilesPanel({
 
   function applySurveyCsvImport(): void {
     try {
-      onImportSurveyCsv(surveyCsvImport);
+      const message = onImportSurveyCsv(surveyCsvImport);
       setSurveyCsvImport("");
-      setStatus("Imported survey CSV points into the current project.");
+      setStatus(message);
     } catch (error) {
       setStatus(errorMessage(error));
     }

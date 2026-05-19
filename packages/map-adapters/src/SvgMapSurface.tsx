@@ -111,12 +111,13 @@ export function SvgMapSurface({
           dxPixels: gesture.dx,
           dyPixels: gesture.dy,
           screenWidthPixels: mapPixelWidth,
+          screenHeightPixels: mapPixelHeight,
         });
       },
     }),
     [mapPixelHeight, mapPixelWidth, mapState.mode, mapState.viewport],
   );
-  const panHandlers = Platform.OS === "web" ? {} : panResponder.panHandlers;
+  const panHandlers = panResponder.panHandlers;
   const svgInteractionProps = Platform.OS === "web"
     ? { onClick: addDraftVertexFromWebClick }
     : { onPress: addDraftVertexFromPress };
@@ -147,11 +148,8 @@ export function SvgMapSurface({
     );
     const vertex = snapWorldPoint(rawVertex);
     if (mapState.mode === "place_pivot") {
-      if (mapState.activeLayer === "water_source" || mapState.activeLayer === "power_source") {
-        onMoveInfrastructurePoint?.(mapState.activeLayer, vertex);
-      } else {
-        onPlacePivot?.(vertex);
-      }
+      if (mapState.activeLayer === "water_source" || mapState.activeLayer === "power_source") onMoveInfrastructurePoint?.(mapState.activeLayer, vertex);
+      else onPlacePivot?.(vertex);
       return;
     }
     if (mapState.mode === "capture_point") {
@@ -182,12 +180,21 @@ export function SvgMapSurface({
 
   function commitDraft(): void {
     if (mapState.draftVertices.length < 3) return;
-    if (mapState.activeLayer === "field_boundary") {
+    if (mapState.mode === "draw_boundary") {
       onCommitBoundaryDraft?.(mapState.draftVertices);
-    } else {
+    } else if (mapState.mode === "mark_obstacle") {
       onCommitObstacleDraft?.(mapState.draftVertices, obstacleKindForLayer(mapState.activeLayer));
+    } else {
+      return;
     }
     dispatch({ type: "clear_draft" });
+  }
+
+  function setToolMode(mode: DrawingMapState["mode"], layer?: DrawingLayerType): void {
+    const nextLayer = setToolLayerForMode(mode, layer);
+    if (nextLayer) dispatch({ type: "set_active_layer", activeLayer: nextLayer });
+    dispatch({ type: "set_mode", mode });
+    if (mode !== "edit_vertices") setSelectedVertex(null);
   }
 
   function selectVertex(nextSelectedVertex: SelectedVertex): void {
@@ -239,13 +246,13 @@ export function SvgMapSurface({
           </Text>
         </View>
         <View style={styles.modeRow}>
-          <ToolButton active={mapState.mode === "pan"} icon={<Hand size={18} />} label="Pan" onPress={() => dispatch({ type: "set_mode", mode: "pan" })} />
-          <ToolButton active={mapState.mode === "draw_boundary"} icon={<PencilLine size={18} />} label="Draw" onPress={() => dispatch({ type: "set_mode", mode: "draw_boundary" })} />
-          <ToolButton active={mapState.mode === "mark_obstacle"} icon={<Crosshair size={18} />} label="Obstacle" onPress={() => dispatch({ type: "set_mode", mode: "mark_obstacle" })} />
+          <ToolButton active={mapState.mode === "pan"} icon={<Hand size={18} />} label="Pan" onPress={() => setToolMode("pan")} />
+          <ToolButton active={mapState.mode === "draw_boundary"} icon={<PencilLine size={18} />} label="Draw" onPress={() => setToolMode("draw_boundary", "field_boundary")} />
+          <ToolButton active={mapState.mode === "mark_obstacle"} icon={<Crosshair size={18} />} label="Obstacle" onPress={() => setToolMode("mark_obstacle", "obstacle")} />
           <ToolButton active={mapState.mode === "edit_vertices"} icon={<Crosshair size={18} />} label="Edit" onPress={() => dispatch({ type: "set_mode", mode: "edit_vertices" })} />
-          <ToolButton active={mapState.mode === "capture_point"} icon={<Satellite size={18} />} label="Survey" onPress={() => dispatch({ type: "set_mode", mode: "capture_point" })} />
-          <ToolButton active={mapState.mode === "measure"} icon={<Ruler size={18} />} label="Measure" onPress={() => dispatch({ type: "set_mode", mode: "measure" })} />
-          <ToolButton active={mapState.mode === "place_pivot"} icon={<LocateFixed size={18} />} label="Pivot" onPress={() => dispatch({ type: "set_mode", mode: "place_pivot" })} />
+          <ToolButton active={mapState.mode === "capture_point"} icon={<Satellite size={18} />} label="Survey" onPress={() => setToolMode("capture_point", "control_point")} />
+          <ToolButton active={mapState.mode === "measure"} icon={<Ruler size={18} />} label="Measure" onPress={() => setToolMode("measure")} />
+          <ToolButton active={mapState.mode === "place_pivot"} icon={<LocateFixed size={18} />} label="Pivot" onPress={() => setToolMode("place_pivot", "pivot_center")} />
         </View>
       </View>
 
@@ -351,8 +358,8 @@ export function SvgMapSurface({
           <Pressable accessibilityRole="button" accessibilityLabel="Add draft vertex at view center" onPress={addDraftVertexAtViewCenter} style={styles.clearDraftButton}>
             <Text style={styles.clearDraftText}>{mapState.mode === "capture_point" ? "Capture Center" : "Add Center"}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Commit draft geometry" onPress={commitDraft} style={[styles.clearDraftButton, mapState.draftVertices.length >= 3 && styles.commitDraftButton]}>
-            <Text style={[styles.clearDraftText, mapState.draftVertices.length >= 3 && styles.commitDraftText]}>Commit</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Commit draft geometry" disabled={!canCommitDraft(mapState)} onPress={commitDraft} style={[styles.clearDraftButton, canCommitDraft(mapState) && styles.commitDraftButton, !canCommitDraft(mapState) && styles.disabledDraftButton]}>
+            <Text style={[styles.clearDraftText, canCommitDraft(mapState) && styles.commitDraftText]}>{mapState.mode === "measure" ? "Measure Only" : "Commit"}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Delete selected vertex" disabled={!selectedVertex} onPress={deleteSelectedVertex} style={[styles.clearDraftButton, !selectedVertex && styles.disabledDraftButton]}>
             <Text style={styles.clearDraftText}>Delete Vertex</Text>
@@ -366,6 +373,11 @@ export function SvgMapSurface({
             <Text style={styles.imageryBadgeText}>
               {imageryPlan.error ? `Imagery unavailable: ${imageryPlan.error}` : `${imageryPlan.provider.name} · z${imageryPlan.tiles[0]?.z ?? "-"} · ${imageryPlan.tiles.length} tiles${imageryPlan.capped ? " capped" : ""}`}
             </Text>
+            {!imageryPlan.error ? (
+              <Text style={styles.imageryBadgeSubtext}>
+                {imageryPlan.provider.attribution} · live preview only
+              </Text>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -399,6 +411,19 @@ export const LayoutMap = SvgMapSurface;
 
 function canAddDraftVertex(mode: DrawingMapState["mode"]): boolean {
   return mode === "draw_boundary" || mode === "mark_obstacle" || mode === "measure";
+}
+
+function canCommitDraft(mapState: DrawingMapState): boolean {
+  return mapState.draftVertices.length >= 3 && (mapState.mode === "draw_boundary" || mapState.mode === "mark_obstacle");
+}
+
+function setToolLayerForMode(mode: DrawingMapState["mode"], layer?: DrawingLayerType): DrawingLayerType | null {
+  if (layer) return layer;
+  if (mode === "draw_boundary") return "field_boundary";
+  if (mode === "mark_obstacle") return "obstacle";
+  if (mode === "capture_point") return "control_point";
+  if (mode === "place_pivot") return "pivot_center";
+  return null;
 }
 
 function obstacleKindForLayer(layer: DrawingLayerType): ObstacleZone["kind"] {
@@ -906,6 +931,12 @@ const styles = StyleSheet.create({
     color: "#26392f",
     fontSize: 12,
     fontWeight: "900",
+  },
+  imageryBadgeSubtext: {
+    color: "#405448",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 3,
   },
   draftHudText: {
     color: "#26392f",

@@ -29,7 +29,7 @@ assert.equal(merged.drawing.featureSnapToleranceMeters, defaults.drawing.feature
 const projectSettings = projectSettingsFromApp(merged);
 assert.equal(projectSettings.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in projectSettings.offlineMaps, false);
-assert.deepEqual(projectSettings.onlineImagery, merged.onlineImagery);
+assert.equal("onlineImagery" in projectSettings, false);
 assert.deepEqual(parseAppSettings(merged), merged);
 
 assert.equal(gpsFixMeetsThreshold("rtk_fixed", "rtk_float"), true);

@@ -39,6 +39,9 @@ export function planOnlineImageryTiles(params: {
 }): ImageryTilePlan {
   const provider = ONLINE_IMAGERY_PROVIDER_CATALOG[params.providerId];
   try {
+    if (!isWebMercator(params.projectCrs)) {
+      throw new Error("Online imagery preview is disabled for this project CRS until a local reprojection adapter is available.");
+    }
     const maxTiles = Math.max(1, Math.floor(params.maxTiles));
     const bounds = viewportWgs84Bounds(params.viewport, params.projectCrs);
     const z = chooseZoom(bounds, provider, maxTiles);
@@ -71,6 +74,11 @@ export function planOnlineImageryTiles(params: {
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function isWebMercator(projectCrs: string): boolean {
+  const normalized = projectCrs.trim().toUpperCase();
+  return normalized === "EPSG:3857" || normalized === "EPSG:900913";
 }
 
 function viewportWgs84Bounds(viewport: MapViewport, projectCrs: string): {

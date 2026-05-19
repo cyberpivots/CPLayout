@@ -36,6 +36,8 @@ import {
   parseAppSettings,
   projectSettingsFromApp,
   reduceProjectEditorState,
+  importProjectedGeoJsonToProject,
+  importSurveyCsvToProject,
   sampleProject,
   type AppSettings,
   type LonLat,
@@ -93,6 +95,21 @@ export default function App(): React.JSX.Element {
     setScreen("workspace");
   }
 
+  function importProjectedGeoJson(geoJson: string): string {
+    const imported = importProjectedGeoJsonToProject(project, geoJson);
+    dispatchProject({ type: "import_projected_geojson", geoJson });
+    const parts = [];
+    if (imported.importedBoundary) parts.push("boundary");
+    if (imported.importedObstacleCount > 0) parts.push(`${imported.importedObstacleCount} obstacle${imported.importedObstacleCount === 1 ? "" : "s"}`);
+    return `Imported projected GeoJSON ${parts.length > 0 ? parts.join(" and ") : "features"} into the current project.`;
+  }
+
+  function importSurveyCsv(csv: string): string {
+    const imported = importSurveyCsvToProject(project, csv);
+    dispatchProject({ type: "import_survey_csv", csv });
+    return `Imported ${imported.importedPointCount} survey point${imported.importedPointCount === 1 ? "" : "s"} into the current project.`;
+  }
+
   function createNewProject(): void {
     const createdAt = new Date().toISOString();
     loadProject({
@@ -130,9 +147,9 @@ export default function App(): React.JSX.Element {
     );
   }
 
-  function formatProjectCoordinate(point: XY, wgs84?: LonLat): string {
+  function formatProjectCoordinate(point: XY): string {
     try {
-      return formatCoordinate({ projected: point, projectCrs: project.projectCrs, wgs84 }, settings.coordinateDisplayFormat);
+      return formatCoordinate({ projected: point, projectCrs: project.projectCrs }, settings.coordinateDisplayFormat);
     } catch {
       return formatCoordinate({ projected: point, projectCrs: project.projectCrs }, "projected_local");
     }
@@ -258,7 +275,7 @@ export default function App(): React.JSX.Element {
                       <SmallActionButton label="Delete" onPress={() => dispatchProject({ type: "delete_survey_point", id: point.id })} />
                     </View>
                   </View>
-                  <Text style={styles.coordinate}>{formatProjectCoordinate(point.projected, point.wgs84)}</Text>
+                  <Text style={styles.coordinate}>{formatProjectCoordinate(point.projected)}</Text>
                 </View>
               ))}
             </Section>
@@ -300,8 +317,8 @@ export default function App(): React.JSX.Element {
             <Section title="Local Export Package" icon={<ClipboardList size={20} color="#254234" />}>
               <ProjectFilesPanel
                 dirty={isDirty}
-                onImportProjectedGeoJson={(geoJson) => dispatchProject({ type: "import_projected_geojson", geoJson })}
-                onImportSurveyCsv={(csv) => dispatchProject({ type: "import_survey_csv", csv })}
+                onImportProjectedGeoJson={importProjectedGeoJson}
+                onImportSurveyCsv={importSurveyCsv}
                 onProjectLoaded={loadProject}
                 onSaved={() => setSavedRevision(editor.revision)}
                 project={project}

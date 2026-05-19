@@ -12,6 +12,37 @@ assert.equal(parsed.projectCrs, "EPSG:32613");
 assert.deepEqual(parsed.pivotCenter, sampleProject.pivotCenter);
 assert.equal(parsed.settings?.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in (parsed.settings?.offlineMaps ?? {}), false);
+assert.equal("onlineImagery" in (parsed.settings ?? {}), false);
+
+const parsedLegacySettings = parseProjectDocument({
+  ...sampleProject,
+  settings: {
+    unitSystem: "metric",
+    coordinateDisplayFormat: "decimal_degrees",
+    defaultZoomLevel: 1,
+    mapStyle: "field_light",
+    drawing: {
+      vertexSnapToleranceMeters: 1,
+      featureSnapToleranceMeters: 3,
+      selectionTolerancePixels: 18,
+      panStepMeters: 120,
+      zoomStepFactor: 1.35,
+    },
+    gpsQuality: {
+      minimumFixType: "rtk_fixed",
+      minSatellites: 12,
+      maxHdop: 1.2,
+      maxHorizontalAccuracyMeters: 0.05,
+      maxCorrectionAgeSeconds: 3,
+    },
+    offlineMaps: {
+      preferredPackageType: "pmtiles",
+      requireAttribution: true,
+      allowNetworkTiles: false,
+    },
+  },
+});
+assert.equal(parsedLegacySettings.settings?.coordinateDisplayFormat, "decimal_degrees");
 
 const parsedLegacyMapPackage = parseProjectDocument({
   ...sampleProject,

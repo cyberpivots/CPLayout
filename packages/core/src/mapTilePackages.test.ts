@@ -65,7 +65,7 @@ const webPmtiles = validateMapPackageManifest({
   id: "web-pmtiles",
   tileJsonUrl: undefined,
   tileUrlTemplates: [],
-  uri: "pmtiles://https://example.invalid/field.pmtiles",
+  uri: "pmtiles://http://127.0.0.1:8765/field.pmtiles",
 });
 const webReady = describeTilePackageReadiness(webPmtiles, "web_maplibre_gl_js");
 assert.equal(webReady.canRender, true);
@@ -76,6 +76,18 @@ assert.equal(nativeRawPmtiles.canRender, false);
 assert.equal(nativeRawPmtiles.requiresAdapter, true);
 assert.match(nativeRawPmtiles.reason, /raw PMTiles\/MBTiles files need/);
 
+const remotePmtiles = validateMapPackageManifest({
+  ...packageManifest,
+  id: "remote-pmtiles",
+  tileJsonUrl: undefined,
+  tileUrlTemplates: [],
+  uri: "pmtiles://https://tiles.example.invalid/field.pmtiles",
+});
+const remotePmtilesReadiness = describeTilePackageReadiness(remotePmtiles, "web_maplibre_gl_js");
+assert.equal(remotePmtilesReadiness.canRender, false);
+assert.equal(remotePmtilesReadiness.requiresAdapter, false);
+assert.match(remotePmtilesReadiness.reason, /PMTiles URIs must point to local/);
+
 assert.throws(
   () => validateMapPackageManifest({ ...packageManifest, maxZoom: 9 }),
   /maxZoom/,
@@ -85,5 +97,17 @@ assert.throws(
   () => validateMapPackageManifest({ ...packageManifest, checksumSha256: "not-sha256" }),
   /Invalid string|checksumSha256/,
 );
+
+const remoteTileSource = validateMapPackageManifest({
+  ...packageManifest,
+  id: "remote-template",
+  tileJsonUrl: "https://tiles.example.invalid/tilejson.json",
+  tileUrlTemplates: ["https://tiles.example.invalid/{z}/{x}/{y}.png"],
+});
+assert.equal(toMapLibreTileSourceDescriptor(remoteTileSource), null);
+const remoteReadiness = describeTilePackageReadiness(remoteTileSource, "native_maplibre_rn");
+assert.equal(remoteReadiness.canRender, false);
+assert.equal(remoteReadiness.requiresAdapter, false);
+assert.match(remoteReadiness.reason, /local app-readable files or localhost/);
 
 console.log("map tile package tests passed");

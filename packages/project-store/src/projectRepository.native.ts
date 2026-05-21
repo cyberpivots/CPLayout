@@ -1,5 +1,6 @@
 import { parseProjectDocument } from "@cplayout/core";
 import { buildSaveProjectStatementPlan } from "./projectPersistence";
+import { LOAD_ACTIVE_PROJECT_BY_ID_SQL } from "./projectRepositorySql";
 import type { LayoutResult, PivotProject } from "@cplayout/core";
 import { openProjectDatabaseAsync } from "./sqliteProjectStore";
 import type { ProjectRepository, ProjectSummary } from "./projectRepositoryTypes";
@@ -61,7 +62,7 @@ export const projectRepository: ProjectRepository = {
   async loadProjectAsync(projectId: string): Promise<PivotProject | null> {
     const db = await openProjectDatabaseAsync();
     const row = await db.getFirstAsync<{ project_json: string }>(
-      "SELECT project_json FROM project_snapshots WHERE project_id = ?;",
+      LOAD_ACTIVE_PROJECT_BY_ID_SQL,
       projectId,
     );
     return row ? parseProjectDocument(row.project_json) : null;

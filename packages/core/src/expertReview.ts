@@ -71,10 +71,10 @@ function gisMappingReview(project: PivotProject, settings: AppSettings): ExpertR
     evidence: [
       `Project CRS: ${project.projectCrs}`,
       `Map style: ${settings.mapStyle.replaceAll("_", " ")}`,
-      `Online imagery preview: ${settings.onlineImagery.enabled ? settings.onlineImagery.providerId : "disabled"}`,
+      `Live online imagery preview: ${settings.onlineImagery.enabled ? `${settings.onlineImagery.providerId} active; remote preview tiles may load` : "disabled"}`,
       `Offline map packages: ${packageCount}`,
       `Map attribution required: ${settings.offlineMaps.requireAttribution}`,
-      `Network tiles allowed: ${settings.offlineMaps.allowNetworkTiles}`,
+      `Project package network tiles allowed: ${settings.offlineMaps.allowNetworkTiles}`,
     ],
     acceptanceGate: "A project export can be validated with projected XY geometry plus complete attribution/license metadata for every offline map package.",
   };

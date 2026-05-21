@@ -7,6 +7,7 @@ import {
   buildProjectGeometryRows,
   buildSaveProjectStatementPlan,
 } from "./projectPersistence";
+import { LOAD_ACTIVE_PROJECT_BY_ID_SQL } from "./projectRepositorySql";
 import { sampleProject } from "@cplayout/core";
 
 const rows = buildProjectGeometryRows(sampleProject);
@@ -26,6 +27,8 @@ const firstProjectStatement = plan.find((statement) => statement.sql.includes("I
 assert.ok(firstProjectStatement);
 assert.equal(firstProjectStatement.params[0], sampleProject.id);
 assert.equal(firstProjectStatement.params[2], sampleProject.projectCrs);
+assert.match(LOAD_ACTIVE_PROJECT_BY_ID_SQL, /JOIN projects p ON p\.id = s\.project_id/);
+assert.match(LOAD_ACTIVE_PROJECT_BY_ID_SQL, /p\.deleted_at IS NULL/);
 
 const projectWithTiles = {
   ...sampleProject,

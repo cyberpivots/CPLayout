@@ -1,5 +1,6 @@
 import { PivotProjectSchema } from "./projectDocument";
 import type { ObstacleZone, PivotProject, SourceConfidence, SurveyPoint, XY } from "./types";
+import { assertProjectedCrs, normalizeCrsName } from "./units";
 
 type RecordLike = Record<string, unknown>;
 
@@ -25,15 +26,20 @@ export function importProjectedGeoJsonToProject(project: PivotProject, input: st
     throw new Error("GeoJSON import must be a FeatureCollection.");
   }
 
-  const crsName = readGeoJsonCrsName(geoJson);
-  if (crsName) {
-    const normalized = crsName.toUpperCase();
-    if (normalized === "EPSG:4326" || normalized.endsWith(":4326")) {
+  const crsName = readGeoJsonProjectCrs(geoJson);
+  if (!crsName) {
+    throw new Error("Projected GeoJSON import must include root properties.projectCrs matching the project CRS.");
+  }
+  try {
+    assertProjectedCrs(crsName);
+  } catch (error) {
+    if (/Projected CRS required/.test(error instanceof Error ? error.message : "")) {
       throw new Error("GeoJSON imports must already be projected into the project CRS; WGS84 is an input/display layer only.");
     }
-    if (normalized !== project.projectCrs.toUpperCase()) {
-      throw new Error(`GeoJSON CRS ${crsName} does not match project CRS ${project.projectCrs}.`);
-    }
+    throw error;
+  }
+  if (normalizeCrsName(crsName) !== normalizeCrsName(project.projectCrs)) {
+    throw new Error(`GeoJSON CRS ${crsName} does not match project CRS ${project.projectCrs}.`);
   }
 
   let fieldBoundary: XY[] | null = null;
@@ -124,13 +130,9 @@ export function importSurveyCsvToProject(project: PivotProject, csv: string): Su
   return { project: nextProject, importedPointCount: importedPoints.length };
 }
 
-function readGeoJsonCrsName(geoJson: RecordLike): string | null {
+function readGeoJsonProjectCrs(geoJson: RecordLike): string | null {
   const properties = isRecord(geoJson.properties) ? geoJson.properties : {};
   if (typeof properties.projectCrs === "string") return properties.projectCrs;
-  if (!isRecord(geoJson.crs)) return null;
-  if (geoJson.crs.type === "name" && isRecord(geoJson.crs.properties) && typeof geoJson.crs.properties.name === "string") {
-    return geoJson.crs.properties.name;
-  }
   return null;
 }
 

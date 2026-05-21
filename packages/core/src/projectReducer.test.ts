@@ -125,6 +125,22 @@ assert.throws(
   /WGS84 is an input\/display layer only/,
 );
 
+assert.throws(
+  () => importProjectedGeoJsonToProject(sampleProject, {
+    ...projectedGeoJson,
+    properties: {},
+  }),
+  /properties\.projectCrs/,
+);
+
+assert.throws(
+  () => importProjectedGeoJsonToProject(sampleProject, {
+    ...projectedGeoJson,
+    properties: { projectCrs: "EPSG:3857" },
+  }),
+  /does not match project CRS/,
+);
+
 assert.equal(
   importSurveyCsvToProject(sampleProject, "id,label,role,x,y,source,confidence\np1,Point 1,control,501010,4506010,imported,rtk_fixed\n").importedPointCount,
   1,

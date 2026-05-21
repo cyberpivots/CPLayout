@@ -38,6 +38,15 @@ const projectedSettingsFindings = buildExpertReviewFindings(
 );
 assert.equal(projectedSettingsFindings[0].status, "watch");
 
+const liveImageryFindings = buildExpertReviewFindings(
+  sampleProject,
+  emptyResult,
+  { ...defaultAppSettings(), onlineImagery: { enabled: true, providerId: "usgs_imagery_only", maxTilesPerView: 8 } },
+);
+const liveImageryEvidence = liveImageryFindings.find((finding) => finding.role === "GIS/Mapping")?.evidence.join("\n") ?? "";
+assert.match(liveImageryEvidence, /Live online imagery preview: usgs_imagery_only active; remote preview tiles may load/);
+assert.match(liveImageryEvidence, /Project package network tiles allowed: false/);
+
 const warningFindings = buildExpertReviewFindings(
   sampleProject,
   {

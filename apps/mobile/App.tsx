@@ -131,7 +131,7 @@ export default function App(): React.JSX.Element {
               <Text style={styles.appSubtitle}>Offline project workspace</Text>
             </View>
             <View style={styles.statusRow}>
-              <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline" />
+              <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline storage" />
               <StatusPill icon={<Ruler size={15} color="#254234" />} label="Projected XY canonical" />
             </View>
           </View>
@@ -165,7 +165,8 @@ export default function App(): React.JSX.Element {
             <Text style={styles.appSubtitle}>{project.name}</Text>
           </View>
           <View style={styles.statusRow}>
-            <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline" />
+            <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline storage" />
+            {settings.onlineImagery.enabled ? <StatusPill icon={<Satellite size={15} color="#254234" />} label="Live imagery preview" /> : null}
             <StatusPill icon={<Satellite size={15} color="#254234" />} label={`${settings.gpsQuality.minimumFixType.replaceAll("_", " ")} gate`} />
             <StatusPill icon={<Ruler size={15} color="#254234" />} label={project.projectCrs} />
             <StatusPill icon={<SlidersHorizontal size={15} color="#254234" />} label={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />

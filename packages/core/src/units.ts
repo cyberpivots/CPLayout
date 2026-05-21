@@ -32,9 +32,48 @@ export function formatDistance(meters: number, unitSystem: UnitSystem): string {
   return `${metersToFeet(meters).toFixed(1)} ft`;
 }
 
+export function normalizeCrsName(crs: string): string {
+  return crs.trim().toUpperCase().replace(/\s+/g, "");
+}
+
+export function isSupportedProjectedCrs(crs: string): boolean {
+  const normalized = normalizeCrsName(crs);
+  if (normalized === "EPSG:3857" || normalized === "EPSG:900913") return true;
+  if (normalized === "LOCAL" || normalized.startsWith("LOCAL:")) return true;
+
+  const epsg = /^EPSG:(\d+)$/.exec(normalized);
+  if (!epsg) return false;
+  const code = Number(epsg[1]);
+  const utmZone = code % 100;
+  return (
+    ((code >= 32601 && code <= 32660)
+      || (code >= 32701 && code <= 32760)
+      || (code >= 26901 && code <= 26960)
+      || (code >= 26701 && code <= 26760))
+    && utmZone >= 1
+    && utmZone <= 60
+  );
+}
+
 export function assertProjectedCrs(crs: string): void {
-  const normalized = crs.trim().toUpperCase();
-  if (normalized === "EPSG:4326" || normalized.includes("WGS84") || normalized.includes("WGS 84")) {
+  const normalized = normalizeCrsName(crs);
+  const epsg = /^EPSG:(\d+)$/.exec(normalized);
+  const epsgCode = epsg ? Number(epsg[1]) : null;
+  if (
+    normalized === "EPSG:4326"
+    || normalized === "CRS:84"
+    || normalized === "OGC:CRS84"
+    || normalized.includes("WGS84")
+    || normalized.includes("+PROJ=LONGLAT")
+    || normalized.includes("LONGITUDE")
+    || normalized.includes("LATITUDE")
+    || normalized.includes("GEOGCS")
+    || normalized.includes("GEOGRAPHIC")
+    || (epsgCode !== null && epsgCode >= 4000 && epsgCode < 5000)
+  ) {
     throw new Error("Projected CRS required for acreage, radius, buffer, and clearance calculations.");
+  }
+  if (!isSupportedProjectedCrs(normalized)) {
+    throw new Error("Supported projected CRS required. Use a supported UTM/Web Mercator EPSG code or an explicit LOCAL CRS.");
   }
 }

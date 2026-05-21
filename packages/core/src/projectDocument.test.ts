@@ -73,6 +73,18 @@ assert.throws(
   /Projected CRS required/,
 );
 
+for (const geographicCrs of ["CRS:84", "OGC:CRS84", "+proj=longlat +datum=WGS84", "EPSG:4269"]) {
+  assert.throws(
+    () => parseProjectDocument({ ...sampleProject, projectCrs: geographicCrs }),
+    /Projected CRS required/,
+  );
+}
+
+assert.throws(
+  () => parseProjectDocument({ ...sampleProject, projectCrs: "EPSG:999999" }),
+  /Supported projected CRS required/,
+);
+
 assert.throws(
   () => parseProjectDocument({ documentVersion: "bad-version", project: sampleProject }),
   /fieldBoundary|projectCrs|Invalid input/,

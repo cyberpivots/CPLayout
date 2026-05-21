@@ -81,7 +81,7 @@ export function validateMapPackageManifest(input: unknown): MapPackageManifest {
 }
 
 export function mapPackageHasRenderableSource(manifest: MapPackageManifest): boolean {
-  return Boolean(manifest.tileJsonUrl || (manifest.tileUrlTemplates && manifest.tileUrlTemplates.length > 0));
+  return tileSourceUrls(manifest).length > 0 && tileSourceUrls(manifest).every(isLocalTileSourceUrl);
 }
 
 export function toMapLibreTileSourceDescriptor(manifest: MapPackageManifest): MapLibreTileSourceDescriptor | null {
@@ -115,6 +115,16 @@ export function describeTilePackageReadiness(
     };
   }
 
+  const tileUrls = tileSourceUrls(parsed);
+  if (tileUrls.length > 0 && !tileUrls.every(isLocalTileSourceUrl)) {
+    return {
+      target,
+      canRender: false,
+      requiresAdapter: false,
+      reason: "Tile source URLs must be local app-readable files or localhost tile services before this offline-first app marks them renderable.",
+    };
+  }
+
   if (source) {
     return {
       target,
@@ -126,6 +136,14 @@ export function describeTilePackageReadiness(
   }
 
   if (target === "web_maplibre_gl_js" && parsed.packageType === "pmtiles" && parsed.uri.startsWith("pmtiles://")) {
+    if (!isLocalTileSourceUrl(parsed.uri)) {
+      return {
+        target,
+        canRender: false,
+        requiresAdapter: false,
+        reason: "PMTiles URIs must point to local app-readable files or localhost tile services before this offline-first app marks them renderable.",
+      };
+    }
     return {
       target,
       canRender: true,
@@ -151,4 +169,37 @@ export function describeTilePackageReadiness(
       ? "Native MapLibre React Native consumes TileJSON or tile URL templates; raw PMTiles/MBTiles files need a local protocol or tile-serving adapter first."
       : "Raw tile archives need a renderer-specific protocol or tile-serving adapter before display.",
   };
+}
+
+function tileSourceUrls(manifest: MapPackageManifest): string[] {
+  return [
+    manifest.tileJsonUrl,
+    ...(manifest.tileUrlTemplates ?? []),
+  ].filter((url): url is string => typeof url === "string" && url.trim().length > 0);
+}
+
+function isLocalTileSourceUrl(value: string): boolean {
+  const trimmed = value.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("pmtiles://")) return isLocalTileSourceUrl(trimmed.slice("pmtiles://".length));
+  if (
+    lower.startsWith("file://")
+    || lower.startsWith("asset://")
+    || lower.startsWith("content://")
+    || lower.startsWith("app://")
+    || lower.startsWith("blob:")
+    || lower.startsWith("data:")
+    || lower.startsWith("/")
+    || lower.startsWith("./")
+    || lower.startsWith("../")
+  ) {
+    return true;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return (parsed.protocol === "http:" || parsed.protocol === "https:")
+      && (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1");
+  } catch {
+    return false;
+  }
 }

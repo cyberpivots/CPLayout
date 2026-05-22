@@ -31,6 +31,7 @@ export type ProjectEditorAction =
   | { type: "update_project_settings"; unitSystem: UnitSystem; settings: ProjectSettings }
   | { type: "import_projected_geojson"; geoJson: string | unknown }
   | { type: "import_survey_csv"; csv: string }
+  | { type: "apply_project_import"; project: PivotProject }
   | { type: "cancel_draft" }
   | { type: "undo" }
   | { type: "redo" }
@@ -96,6 +97,8 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
         return applyProjectChange(state, importProjectedGeoJsonToProject(state.project, action.geoJson).project);
       case "import_survey_csv":
         return applyProjectChange(state, importSurveyCsvToProject(state.project, action.csv).project);
+      case "apply_project_import":
+        return applyProjectChange(state, action.project);
       case "cancel_draft":
         return { ...state, lastError: null };
       case "undo":

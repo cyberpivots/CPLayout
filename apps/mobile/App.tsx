@@ -36,10 +36,12 @@ import {
   parseAppSettings,
   projectSettingsFromApp,
   reduceProjectEditorState,
+  importGoogleEarthKmlToProject,
   importProjectedGeoJsonToProject,
   importSurveyCsvToProject,
   sampleProject,
   type AppSettings,
+  type GoogleEarthKmlImportResult,
   type LonLat,
   type PivotMachine,
   type PivotProject,
@@ -108,6 +110,14 @@ export default function App(): React.JSX.Element {
     const imported = importSurveyCsvToProject(project, csv);
     dispatchProject({ type: "import_survey_csv", csv });
     return `Imported ${imported.importedPointCount} survey point${imported.importedPointCount === 1 ? "" : "s"} into the current project.`;
+  }
+
+  function previewGoogleEarthKml(kmlText: string): GoogleEarthKmlImportResult {
+    return importGoogleEarthKmlToProject(project, kmlText);
+  }
+
+  function applyGoogleEarthKmlImport(nextProject: PivotProject): void {
+    dispatchProject({ type: "apply_project_import", project: nextProject });
   }
 
   function createNewProject(): void {
@@ -315,20 +325,22 @@ export default function App(): React.JSX.Element {
           )}
 
           {tab === "export" && (
-            <Section title="Local Export Package" icon={<ClipboardList size={20} color="#254234" />}>
+            <Section title="Files and GIS Exchange" icon={<ClipboardList size={20} color="#254234" />}>
               <ProjectFilesPanel
                 dirty={isDirty}
+                onApplyGoogleEarthKmlImport={applyGoogleEarthKmlImport}
                 onImportProjectedGeoJson={importProjectedGeoJson}
                 onImportSurveyCsv={importSurveyCsv}
+                onPreviewGoogleEarthKml={previewGoogleEarthKml}
                 onProjectLoaded={loadProject}
                 onSaved={() => setSavedRevision(editor.revision)}
                 project={project}
                 result={result}
               />
               <View style={styles.metricGrid}>
-                <MetricTile label="Project file" value="JSON" />
-                <MetricTile label="Geometry" value="GeoJSON" />
-                <MetricTile label="Metrics" value="CSV-ready" />
+                <MetricTile label="Archive" value="ZIP" />
+                <MetricTile label="GIS exchange" value="GeoJSON/KML" />
+                <MetricTile label="Geometry" value="Projected XY" />
                 <MetricTile label="Cloud required" value="No" tone="good" />
               </View>
               <View style={styles.codeBlock}>

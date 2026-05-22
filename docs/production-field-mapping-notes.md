@@ -16,6 +16,8 @@
   Source: https://maplibre.org/maplibre-react-native/docs/setup/getting-started/
 - Tile package formats: PMTiles is a single-file tile archive; MBTiles stores tiled map data in SQLite and is limited to Spherical Mercator presentation.
   Sources: https://github.com/protomaps/PMTiles/blob/main/spec/v3/spec.md, https://github.com/mapbox/mbtiles-spec
+- Google Earth exchange: KML coordinates are WGS84 longitude/latitude with optional altitude, and KMZ is a ZIP archive that should contain one primary KML file such as `doc.kml`. CPLayout treats KML/KMZ as WGS84 exchange only and projects imports into the project CRS before any geometry mutation.
+  Sources: https://developers.google.com/kml/documentation/kmlreference, https://developers.google.com/kml/documentation/kmzarchives, https://docs.ogc.org/is/12-007r2/12-007r2.html
 
 ## MVP Implemented Here
 
@@ -25,7 +27,8 @@
 - Local settings are typed and validated; project-relevant settings are exportable while local package directories remain local-only.
 - SQLite schema migrations cover projects, settings, large geometry vertex tables, survey points, GPS tracks, offline map package metadata, scenarios, and exports.
 - Project files now have a versioned `pivot-project-v1` document validator, a local save/open repository interface, native SQLite repository implementation, browser local-storage repository implementation, and ZIP package round-trip logic.
-- ZIP packages include `manifest.json`, `project.json`, scenario GeoJSON, survey CSV, metrics CSV, and map package metadata CSV. Map package binaries are referenced by metadata; they are not embedded as canonical project geometry.
+- ZIP packages include `manifest.json`, `project.json`, scenario GeoJSON, Google Earth KML, survey CSV, metrics CSV, and map package metadata CSV. Map package binaries are referenced by metadata; they are not embedded as canonical project geometry.
+- Google Earth KML/KMZ import/export is implemented as GIS exchange. KML/KMZ imports are reviewed before apply, converted from WGS84 lon/lat into the project CRS, and do not make WGS84 the canonical project geometry.
 - Map package manifests now separate archive type from tile content type, tile scheme, TileJSON URL, tile URL templates, checksum, install status, attribution, and license.
 - The project files UI reports the active persistence backend, runtime, schema version, and project count so compile-ready native code is not confused with device-verified runtime behavior.
 - The SVG drawing workspace supports draft vertex capture while keeping pan/zoom as viewport-only state.
@@ -35,6 +38,7 @@
 - Native MapLibre runtime verification and local PMTiles/MBTiles protocol adapters.
 - Production web SQLite, because Expo SQLite web support is alpha and needs WASM plus COOP/COEP headers.
 - Native large-file import workflows beyond user-picked ZIP packages.
+- Advanced Google Earth constructs including NetworkLinks, overlays, 3D models, tours, embedded KMZ assets, style fidelity, and altitude/extrusion semantics as engineering data.
 - Android native SQLite/FileSystem/Sharing runtime acceptance until the checklist in `docs/android-native-verification.md` is run on device or emulator.
 - Full geometry editor commit/undo flows from draft vertices into project field and obstacle entities.
 - R-tree/FTS/SQLCipher configuration gates after target platform builds are established.

@@ -56,7 +56,7 @@ function actionsForFinding(finding: ExpertReviewFinding): string[] {
     case "Product/UX":
       return ["Open Settings and switch coordinate display to decimal degrees for field entry."];
     case "GIS/Mapping":
-      return ["Use online imagery only as a live reference, import projected GeoJSON only, keep attribution visible, then export ZIP for review."];
+      return ["Use online imagery only as a live reference; review GeoJSON/KML/KMZ imports and project them into the project CRS before geometry mutation."];
     case "Architecture/Storage":
       return ["Save Local, export ZIP, and keep native SQLite claims blocked until device verification is complete."];
     case "ML Feasibility":

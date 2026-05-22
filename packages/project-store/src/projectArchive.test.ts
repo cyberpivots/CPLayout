@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { evaluateLayout, exportScenarioGeoJson } from "@cplayout/geometry";
 import {
   PROJECT_GEOJSON_FILENAME,
+  PROJECT_GOOGLE_EARTH_KML_FILENAME,
   PROJECT_JSON_FILENAME,
   MAP_PACKAGES_CSV_FILENAME,
   PROJECT_MANIFEST_FILENAME,
@@ -22,6 +23,7 @@ assert.ok(bundle.files[PROJECT_MANIFEST_FILENAME].includes("center-pivot-project
 assert.ok(bundle.files[PROJECT_JSON_FILENAME].includes(sampleProject.id));
 assert.ok(bundle.files[PROJECT_JSON_FILENAME].includes("pivot-project-v1"));
 assert.ok(bundle.files[PROJECT_GEOJSON_FILENAME].includes("FeatureCollection"));
+assert.ok(bundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME].includes("field_boundary"));
 assert.ok(bundle.files[MAP_PACKAGES_CSV_FILENAME].startsWith("id,name,packageType"));
 
 const surveyCsv = surveyPointsToCsv(sampleProject.surveyPoints);

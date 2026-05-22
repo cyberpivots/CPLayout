@@ -21,6 +21,9 @@
 | geotiff | iOS, Android, Windows, Node | MIT | free | none for software use | medium | recommended |
 | shapefile | iOS, Android, Windows, Node | BSD-3-Clause | free | none for software use | medium | recommended |
 | @tmcw/togeojson | iOS, Android, Windows, Node | BSD-2-Clause | free | none for software use | low | recommended |
+| @xmldom/xmldom | iOS, Android, Windows, Node | MIT | free | none for software use | low | recommended |
+| @placemarkio/tokml | iOS, Android, Windows, Node | MIT | free | none for software use | low | recommended |
+| fflate | iOS, Android, Windows, Node | MIT | free | none for software use | low | recommended |
 | react-native-quick-sqlite | iOS, Android, Windows uncertain | MIT | free | none for software use | medium | recommended |
 | expo-sqlite + expo-file-system | iOS, Android | MIT | free | open-source Expo packages are free; hosted Expo services must not be required. | medium | recommended |
 | @nozbe/watermelondb | iOS, Android, Windows uncertain | MIT | free | none for software use | medium | recommended |
@@ -43,7 +46,7 @@
 
 ## NPM Metadata Snapshot
 
-Verified with `npm view` on 2026-05-19. Use this as a starting point, then re-run package metadata checks before implementation because versions and platform support can change.
+Verified with `npm view` on 2026-05-19, with KML/KMZ exchange rows refreshed on 2026-05-22. Use this as a starting point, then re-run package metadata checks before implementation because versions and platform support can change.
 
 | Package | Version observed | License observed |
 | --- | --- | --- |
@@ -61,6 +64,9 @@ Verified with `npm view` on 2026-05-19. Use this as a starting point, then re-ru
 | `geotiff` | 3.0.5 | MIT |
 | `shapefile` | 0.6.6 | BSD-3-Clause |
 | `@tmcw/togeojson` | 7.1.2 | BSD-2-Clause |
+| `@xmldom/xmldom` | 0.9.10 | MIT |
+| `@placemarkio/tokml` | 0.3.9 | MIT |
+| `fflate` | 0.8.3 | MIT |
 | `pmtiles` | 4.4.1 | BSD-3-Clause |
 | `react-native-webview` | 13.16.1 | MIT |
 | `react-native-quick-sqlite` | 8.2.7 | MIT |
@@ -90,6 +96,7 @@ Verified with `npm view` on 2026-05-19. Use this as a starting point, then re-ru
 - `react-native`, TypeScript, `zod`, `@turf/turf`, `proj4`, `polygon-clipping`, `rbush`, `react-hook-form`, `jest`, and React Native Testing Library are suitable core dependencies.
 - `@maplibre/maplibre-react-native` is recommended for iOS/Android map rendering, but Windows needs a separate map path.
 - `pmtiles` and MBTiles are recommended local/offline package formats, not data licenses by themselves.
+- `@tmcw/togeojson`, `@xmldom/xmldom`, `@placemarkio/tokml`, and existing `fflate` are the approved Google Earth KML/KMZ exchange stack. KML/KMZ remains WGS84 interchange and must be projected into CPLayout `XY`.
 
 ## Optional Or Review-Gated
 
@@ -98,6 +105,7 @@ Verified with `npm view` on 2026-05-19. Use this as a starting point, then re-ru
 - `react-native-usb-serialport-for-android`: Android-only and maintenance/device support must be validated.
 - RTKLIB: free software, but keep external to the MVP and review license notices/correction-source terms.
 - OpenDroneMap/QGIS/GDAL Python workflows: useful preprocessing, not embedded app dependencies.
+- Legacy unscoped `tokml`, `@mapbox/togeojson`, `@tmcw/togeojson-cli`, and `jszip`: not used for the app implementation because the selected stack is smaller, current enough for CPLayout's scope, and reuses existing ZIP support.
 
 ## Excluded
 

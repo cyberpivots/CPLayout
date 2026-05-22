@@ -3,6 +3,7 @@ export * from "./expertReview";
 export * from "./mapTilePackages";
 export * from "./projectDocument";
 export * from "./projectImports";
+export * from "./projectKml";
 export * from "./projectReducer";
 export * from "./sampleProject";
 export * from "./settings";

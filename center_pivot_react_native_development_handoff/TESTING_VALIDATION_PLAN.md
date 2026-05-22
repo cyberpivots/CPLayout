@@ -39,6 +39,9 @@ Golden outputs should be GeoJSON plus metrics JSON. Do not rely only on screensh
 ## Import/Export Tests
 
 - GeoJSON round trip.
+- KML import projects WGS84 lon/lat into project `XY`, warns on altitude, rejects unsupported-only files, and preserves a review step before mutation.
+- KMZ import/export uses a single KML file and rejects missing-KML, multi-KML, oversized, or unsafe archive paths.
+- KML export writes Google Earth-compatible Placemark polygons/points with CPLayout ExtendedData.
 - CSV survey point import.
 - Project ZIP export and reopen.
 - Missing CRS import rejection.

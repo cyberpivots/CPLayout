@@ -1,13 +1,14 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { z } from "zod";
 
-import { parseProjectDocument, PROJECT_DOCUMENT_VERSION, serializeProjectDocument } from "@cplayout/core";
+import { exportProjectGoogleEarthKml, parseProjectDocument, PROJECT_DOCUMENT_VERSION, serializeProjectDocument } from "@cplayout/core";
 import type { LayoutResult, PivotProject, SurveyPoint } from "@cplayout/core";
 
 export const PROJECT_ARCHIVE_VERSION = "center-pivot-project-archive-v1";
 export const PROJECT_JSON_FILENAME = "project.json";
 export const PROJECT_MANIFEST_FILENAME = "manifest.json";
 export const PROJECT_GEOJSON_FILENAME = "exports/scenario.geojson";
+export const PROJECT_GOOGLE_EARTH_KML_FILENAME = "exports/google-earth.kml";
 export const SURVEY_CSV_FILENAME = "exports/survey-points.csv";
 export const METRICS_CSV_FILENAME = "exports/scenario-metrics.csv";
 export const MAP_PACKAGES_CSV_FILENAME = "exports/map-packages.csv";
@@ -57,6 +58,7 @@ export function buildProjectArchiveBundle(
       PROJECT_MANIFEST_FILENAME,
       PROJECT_JSON_FILENAME,
       PROJECT_GEOJSON_FILENAME,
+      PROJECT_GOOGLE_EARTH_KML_FILENAME,
       SURVEY_CSV_FILENAME,
       METRICS_CSV_FILENAME,
       MAP_PACKAGES_CSV_FILENAME,
@@ -72,6 +74,7 @@ export function buildProjectArchiveBundle(
       [PROJECT_MANIFEST_FILENAME]: JSON.stringify(manifest, null, 2),
       [PROJECT_JSON_FILENAME]: serializeProjectDocument(project),
       [PROJECT_GEOJSON_FILENAME]: JSON.stringify(geoJson, null, 2),
+      [PROJECT_GOOGLE_EARTH_KML_FILENAME]: exportProjectGoogleEarthKml(project, result).kml,
       [SURVEY_CSV_FILENAME]: surveyPointsToCsv(project.surveyPoints),
       [METRICS_CSV_FILENAME]: metricsToCsv(result),
       [MAP_PACKAGES_CSV_FILENAME]: mapPackagesToCsv(project),

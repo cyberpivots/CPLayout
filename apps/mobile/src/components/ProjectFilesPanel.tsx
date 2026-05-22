@@ -5,11 +5,16 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { exportScenarioGeoJson } from "@cplayout/geometry";
 import {
   buildProjectArchiveBundle,
+  createGoogleEarthKmz,
+  exportFileAsync,
   exportProjectArchiveZip,
+  exportZipFileAsync,
   importProjectArchiveZip,
+  importFileAsync,
+  importZipFileAsync,
+  readGoogleEarthKmlFile,
 } from "@cplayout/project-store";
-import type { LayoutResult, PivotProject } from "@cplayout/core";
-import { exportZipFileAsync, importZipFileAsync } from "@cplayout/project-store";
+import { exportProjectGoogleEarthKml, type GoogleEarthKmlImportResult, type LayoutResult, type PivotProject } from "@cplayout/core";
 import { useProjectRepository } from "../hooks/useProjectRepository";
 
 interface ProjectFilesPanelProps {
@@ -18,8 +23,23 @@ interface ProjectFilesPanelProps {
   result: LayoutResult;
   onImportProjectedGeoJson: (geoJson: string) => string;
   onImportSurveyCsv: (csv: string) => string;
+  onPreviewGoogleEarthKml: (kmlText: string) => GoogleEarthKmlImportResult;
+  onApplyGoogleEarthKmlImport: (project: PivotProject) => void;
   onProjectLoaded: (project: PivotProject) => void;
   onSaved: () => void;
+}
+
+type StatusTone = "info" | "success" | "warning" | "error";
+
+interface PanelStatus {
+  tone: StatusTone;
+  text: string;
+}
+
+interface PendingKmlImport {
+  filename: string;
+  kind: "kml" | "kmz";
+  result: GoogleEarthKmlImportResult;
 }
 
 export function ProjectFilesPanel({
@@ -28,11 +48,14 @@ export function ProjectFilesPanel({
   result,
   onImportProjectedGeoJson,
   onImportSurveyCsv,
+  onPreviewGoogleEarthKml,
+  onApplyGoogleEarthKmlImport,
   onProjectLoaded,
   onSaved,
 }: ProjectFilesPanelProps): React.JSX.Element {
   const repository = useProjectRepository();
-  const [status, setStatus] = useState<string>("Project ZIP is the canonical project package.");
+  const [status, setStatus] = useState<PanelStatus>({ tone: "info", text: "Project ZIP is the canonical project package." });
+  const [pendingKmlImport, setPendingKmlImport] = useState<PendingKmlImport | null>(null);
   const [geoJsonImport, setGeoJsonImport] = useState("");
   const [surveyCsvImport, setSurveyCsvImport] = useState("");
 
@@ -56,9 +79,39 @@ export function ProjectFilesPanel({
       const zip = exportProjectArchiveZip(bundle);
       const filename = `${project.id}.center-pivot.zip`;
       const outcome = await exportZipFileAsync(filename, zip);
-      setStatus(outcome.message);
+      setStatus({ tone: outcome.ok ? "success" : "error", text: outcome.message });
     } catch (error) {
-      setStatus(errorMessage(error));
+      setStatus({ tone: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function exportKml(): Promise<void> {
+    try {
+      const exported = exportProjectGoogleEarthKml(project, result);
+      const filename = `${project.id}.google-earth.kml`;
+      const outcome = await exportFileAsync(filename, exported.kml, { mimeType: "application/vnd.google-earth.kml+xml" });
+      setStatus({
+        tone: outcome.ok ? "success" : "error",
+        text: `${outcome.message} Exported ${exported.exportedFeatureCount} Google Earth feature${exported.exportedFeatureCount === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      setStatus({ tone: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function exportKmz(): Promise<void> {
+    try {
+      const exported = exportProjectGoogleEarthKml(project, result);
+      const filename = `${project.id}.google-earth.kmz`;
+      const outcome = await exportFileAsync(filename, createGoogleEarthKmz(exported.kml), {
+        mimeType: "application/vnd.google-earth.kmz",
+      });
+      setStatus({
+        tone: outcome.ok ? "success" : "error",
+        text: `${outcome.message} KMZ contains doc.kml with ${exported.exportedFeatureCount} feature${exported.exportedFeatureCount === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      setStatus({ tone: "error", text: errorMessage(error) });
     }
   }
 
@@ -66,15 +119,38 @@ export function ProjectFilesPanel({
     try {
       const bytes = await importZipFileAsync();
       if (!bytes) {
-        setStatus("No project package selected.");
+        setStatus({ tone: "info", text: "No project package selected." });
         return;
       }
       const imported = importProjectArchiveZip(bytes);
       onProjectLoaded(imported);
       const saved = await repository.saveProject(imported);
-      setStatus(saved ? `Imported ${imported.name}.` : `Opened ${imported.name}, but it was not saved locally.`);
+      setStatus({ tone: saved ? "success" : "warning", text: saved ? `Imported ${imported.name}.` : `Opened ${imported.name}, but it was not saved locally.` });
     } catch (error) {
-      setStatus(errorMessage(error));
+      setStatus({ tone: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function importKmlOrKmz(): Promise<void> {
+    try {
+      const file = await importFileAsync({
+        accept: ".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/xml,text/xml",
+        errorLabel: "KML/KMZ",
+      });
+      if (!file) {
+        setStatus({ tone: "info", text: "No Google Earth file selected." });
+        return;
+      }
+      const googleEarthFile = readGoogleEarthKmlFile(file);
+      const result = onPreviewGoogleEarthKml(googleEarthFile.kmlText);
+      setPendingKmlImport({ filename: googleEarthFile.filename, kind: googleEarthFile.kind, result });
+      const tone: StatusTone = result.warnings.length > 0 || googleEarthFile.warnings.length > 0 ? "warning" : "info";
+      setStatus({
+        tone,
+        text: `${googleEarthFile.filename} is ready for review. ${kmlImportSummary(result)}${formatWarnings([...googleEarthFile.warnings, ...result.warnings])}`,
+      });
+    } catch (error) {
+      setStatus({ tone: "error", text: errorMessage(error) });
     }
   }
 
@@ -82,9 +158,9 @@ export function ProjectFilesPanel({
     try {
       const message = onImportProjectedGeoJson(geoJsonImport);
       setGeoJsonImport("");
-      setStatus(message);
+      setStatus({ tone: "success", text: message });
     } catch (error) {
-      setStatus(errorMessage(error));
+      setStatus({ tone: "error", text: errorMessage(error) });
     }
   }
 
@@ -92,10 +168,25 @@ export function ProjectFilesPanel({
     try {
       const message = onImportSurveyCsv(surveyCsvImport);
       setSurveyCsvImport("");
-      setStatus(message);
+      setStatus({ tone: "success", text: message });
     } catch (error) {
-      setStatus(errorMessage(error));
+      setStatus({ tone: "error", text: errorMessage(error) });
     }
+  }
+
+  function applyPendingKmlImport(): void {
+    if (!pendingKmlImport) return;
+    onApplyGoogleEarthKmlImport(pendingKmlImport.result.project);
+    setStatus({
+      tone: "success",
+      text: `Applied ${pendingKmlImport.filename}. ${kmlImportSummary(pendingKmlImport.result)}`,
+    });
+    setPendingKmlImport(null);
+  }
+
+  function cancelPendingKmlImport(): void {
+    setPendingKmlImport(null);
+    setStatus({ tone: "info", text: "Canceled Google Earth import review." });
   }
 
   return (
@@ -104,15 +195,16 @@ export function ProjectFilesPanel({
         <Archive size={20} color="#254234" />
         <Text style={styles.title}>Project Files</Text>
       </View>
+      <Text style={styles.groupTitle}>Canonical Project Package</Text>
       <View style={styles.actionRow}>
         <FileAction icon={<Save size={18} color="#ffffff" />} label={dirty ? "Save Local *" : "Save Local"} primary onPress={saveCurrentProject} />
         <FileAction icon={<Download size={18} color="#254234" />} label="Export ZIP" onPress={exportZip} />
         <FileAction icon={<Upload size={18} color="#254234" />} label="Import ZIP" onPress={importZip} />
         <FileAction icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={repository.refreshProjects} />
       </View>
-      <View style={styles.statusBox}>
-        <Database size={17} color="#254234" />
-        <Text style={styles.statusText}>{dirty ? "Unsaved edits. " : ""}{repository.statusMessage} · {status}</Text>
+      <View style={[styles.statusBox, statusToneStyle(status.tone)]}>
+        <Database size={17} color={statusToneColor(status.tone)} />
+        <Text style={[styles.statusText, statusTextToneStyle(status.tone)]}>{dirty ? "Unsaved edits. " : ""}{repository.statusMessage} · {status.text}</Text>
       </View>
       {repository.backendInfo && (
         <View style={styles.backendGrid}>
@@ -125,6 +217,33 @@ export function ProjectFilesPanel({
       {repository.backendInfo?.notes.map((note) => (
         <Text key={note} style={styles.backendNote}>{note}</Text>
       ))}
+
+      <Text style={styles.groupTitle}>GIS Exchange</Text>
+      <View style={styles.actionRow}>
+        <FileAction icon={<Upload size={18} color="#254234" />} label="Import KML/KMZ" onPress={importKmlOrKmz} />
+        <FileAction icon={<Download size={18} color="#254234" />} label="Export KML" onPress={exportKml} />
+        <FileAction icon={<Download size={18} color="#254234" />} label="Export KMZ" onPress={exportKmz} />
+      </View>
+      {pendingKmlImport ? (
+        <View style={styles.reviewBox}>
+          <View>
+            <Text style={styles.importTitle}>Review {pendingKmlImport.kind.toUpperCase()} Import</Text>
+            <Text style={styles.reviewText}>
+              {pendingKmlImport.filename} · {kmlImportSummary(pendingKmlImport.result)}
+            </Text>
+            {pendingKmlImport.result.importedBoundary ? (
+              <Text style={styles.reviewWarning}>Existing field boundary will be replaced after projection into {project.projectCrs}.</Text>
+            ) : null}
+            {pendingKmlImport.result.warnings.map((warning) => (
+              <Text key={warning} style={styles.reviewWarning}>{warning}</Text>
+            ))}
+          </View>
+          <View style={styles.actionRow}>
+            <FileAction icon={<Upload size={18} color="#ffffff" />} label="Apply Import" primary onPress={applyPendingKmlImport} />
+            <FileAction icon={<Trash2 size={18} color="#254234" />} label="Cancel" onPress={cancelPendingKmlImport} />
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.importGrid}>
         <View style={styles.importBox}>
@@ -184,7 +303,7 @@ function BackendTile({ label, value }: { label: string; value: string }): React.
   );
 }
 
-function FileAction({ icon, label, onPress, primary = false }: { icon: React.ReactNode; label: string; onPress: () => void; primary?: boolean }): React.JSX.Element {
+function FileAction({ icon, label, onPress, primary = false }: { icon: React.ReactNode; label: string; onPress: () => void | Promise<void>; primary?: boolean }): React.JSX.Element {
   return (
     <Pressable onPress={onPress} style={[styles.actionButton, primary && styles.actionButtonPrimary]}>
       {icon}
@@ -195,6 +314,42 @@ function FileAction({ icon, label, onPress, primary = false }: { icon: React.Rea
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Project file operation failed.";
+}
+
+function kmlImportSummary(result: GoogleEarthKmlImportResult): string {
+  const parts = [
+    result.importedBoundary ? "1 boundary" : "no boundary",
+    `${result.importedObstacleCount} obstacle${result.importedObstacleCount === 1 ? "" : "s"}`,
+    `${result.importedSurveyPointCount} point${result.importedSurveyPointCount === 1 ? "" : "s"}`,
+  ];
+  if (result.skippedFeatureCount > 0) parts.push(`${result.skippedFeatureCount} skipped`);
+  return parts.join(", ");
+}
+
+function formatWarnings(warnings: string[]): string {
+  const uniqueWarnings = [...new Set(warnings)];
+  return uniqueWarnings.length > 0 ? ` Warnings: ${uniqueWarnings.join(" ")}` : "";
+}
+
+function statusToneColor(tone: StatusTone): string {
+  if (tone === "error") return "#8b1e18";
+  if (tone === "warning") return "#805116";
+  if (tone === "success") return "#1f5f39";
+  return "#254234";
+}
+
+function statusToneStyle(tone: StatusTone) {
+  if (tone === "error") return styles.statusError;
+  if (tone === "warning") return styles.statusWarning;
+  if (tone === "success") return styles.statusSuccess;
+  return styles.statusInfo;
+}
+
+function statusTextToneStyle(tone: StatusTone) {
+  if (tone === "error") return styles.statusTextError;
+  if (tone === "warning") return styles.statusTextWarning;
+  if (tone === "success") return styles.statusTextSuccess;
+  return styles.statusTextInfo;
 }
 
 const styles = StyleSheet.create({
@@ -210,6 +365,12 @@ const styles = StyleSheet.create({
     color: "#17241c",
     fontSize: 17,
     fontWeight: "900",
+  },
+  groupTitle: {
+    color: "#405146",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
   },
   actionRow: {
     flexDirection: "row",
@@ -250,12 +411,39 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 10,
   },
+  statusInfo: {
+    backgroundColor: "#eef4ed",
+    borderColor: "#bed0bd",
+  },
+  statusSuccess: {
+    backgroundColor: "#edf8ef",
+    borderColor: "#a8d3b5",
+  },
+  statusWarning: {
+    backgroundColor: "#fff7e7",
+    borderColor: "#e0bf79",
+  },
+  statusError: {
+    backgroundColor: "#fff0ee",
+    borderColor: "#dfa59d",
+  },
   statusText: {
-    color: "#254234",
     flex: 1,
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18,
+  },
+  statusTextInfo: {
+    color: "#254234",
+  },
+  statusTextSuccess: {
+    color: "#1f5f39",
+  },
+  statusTextWarning: {
+    color: "#805116",
+  },
+  statusTextError: {
+    color: "#8b1e18",
   },
   backendGrid: {
     flexDirection: "row",
@@ -307,6 +495,27 @@ const styles = StyleSheet.create({
     color: "#17241c",
     fontSize: 14,
     fontWeight: "900",
+  },
+  reviewBox: {
+    borderColor: "#e0bf79",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  reviewText: {
+    color: "#26372c",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  reviewWarning: {
+    color: "#805116",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+    marginTop: 4,
   },
   importInput: {
     backgroundColor: "#ffffff",

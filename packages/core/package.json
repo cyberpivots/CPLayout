@@ -6,11 +6,17 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "tsx src/coordinates.test.ts && tsx src/settings.test.ts && tsx src/mapTilePackages.test.ts && tsx src/expertReview.test.ts && tsx src/projectDocument.test.ts && tsx src/projectReducer.test.ts",
+    "test": "tsx src/coordinates.test.ts && tsx src/settings.test.ts && tsx src/mapTilePackages.test.ts && tsx src/expertReview.test.ts && tsx src/projectDocument.test.ts && tsx src/projectKml.test.ts && tsx src/projectReducer.test.ts",
     "validate": "npm run typecheck && npm test"
   },
   "dependencies": {
+    "@placemarkio/tokml": "^0.3.9",
+    "@tmcw/togeojson": "^7.1.2",
+    "@xmldom/xmldom": "^0.9.10",
     "proj4": "2.20.8",
     "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16"
   }
 }

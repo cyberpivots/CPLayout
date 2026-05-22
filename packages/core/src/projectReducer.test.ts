@@ -147,4 +147,16 @@ assert.equal(
 );
 assert.throws(() => importSurveyCsvToProject(sampleProject, "id,label,longitude,latitude\np1,No XY,-104,40\n"), /projected x and y/);
 
+const importedProjectState = reduceProjectEditorState(createProjectEditorState(sampleProject), {
+  type: "apply_project_import",
+  project: {
+    ...sampleProject,
+    name: "Imported project state",
+    fieldBoundary: boundary,
+  },
+});
+assert.equal(importedProjectState.project.name, "Imported project state");
+assert.equal(importedProjectState.project.fieldBoundary.length, 4);
+assert.equal(importedProjectState.past.length, 1);
+
 console.log("project reducer/import tests passed");

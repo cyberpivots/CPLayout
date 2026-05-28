@@ -88,6 +88,7 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
       case "update_machine":
         return applyProjectChange(state, { ...state.project, machine: action.machine });
       case "update_project_settings":
+        if (state.project.unitSystem === action.unitSystem && projectSettingsEqual(state.project.settings, action.settings)) return state;
         return applyProjectChange(state, {
           ...state.project,
           unitSystem: action.unitSystem,
@@ -122,6 +123,10 @@ function applyProjectChange(state: ProjectEditorState, nextProject: PivotProject
     lastError: null,
     revision: state.revision + 1,
   };
+}
+
+function projectSettingsEqual(current: ProjectSettings | undefined, next: ProjectSettings): boolean {
+  return JSON.stringify(current ?? null) === JSON.stringify(next);
 }
 
 function undo(state: ProjectEditorState): ProjectEditorState {

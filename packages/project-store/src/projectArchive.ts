@@ -1,8 +1,24 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { z } from "zod";
 
-import { exportProjectGoogleEarthKml, parseProjectDocument, PROJECT_DOCUMENT_VERSION, serializeProjectDocument } from "@cplayout/core";
-import type { LayoutResult, PivotProject, SurveyPoint } from "@cplayout/core";
+import {
+  exportProjectGoogleEarthKml,
+  parseLayoutDecisionRecord,
+  parseLayoutEvidenceRecord,
+  parseModelRecommendation,
+  parseProjectDocument,
+  PROJECT_DOCUMENT_VERSION,
+  serializeProjectDocument,
+} from "@cplayout/core";
+import type {
+  LayoutDecisionRecord,
+  LayoutEvidenceRecord,
+  LayoutResult,
+  ModelRecommendation,
+  PivotProject,
+  SurveyPoint,
+  XY,
+} from "@cplayout/core";
 
 export const PROJECT_ARCHIVE_VERSION = "center-pivot-project-archive-v1";
 export const PROJECT_JSON_FILENAME = "project.json";
@@ -12,6 +28,9 @@ export const PROJECT_GOOGLE_EARTH_KML_FILENAME = "exports/google-earth.kml";
 export const SURVEY_CSV_FILENAME = "exports/survey-points.csv";
 export const METRICS_CSV_FILENAME = "exports/scenario-metrics.csv";
 export const MAP_PACKAGES_CSV_FILENAME = "exports/map-packages.csv";
+export const LAYOUT_EVIDENCE_JSONL_FILENAME = "exports/layout-evidence.jsonl";
+export const LAYOUT_DECISIONS_JSONL_FILENAME = "exports/layout-decisions.jsonl";
+export const MODEL_RECOMMENDATIONS_GEOJSON_FILENAME = "exports/model-recommendations.geojson";
 
 export interface ProjectArchiveManifest {
   archiveVersion: typeof PROJECT_ARCHIVE_VERSION;
@@ -28,6 +47,12 @@ export interface ProjectArchiveManifest {
 export interface ProjectArchiveBundle {
   manifest: ProjectArchiveManifest;
   files: Record<string, string>;
+}
+
+export interface ProjectArchiveAdjacentData {
+  evidenceRecords?: LayoutEvidenceRecord[];
+  layoutDecisions?: LayoutDecisionRecord[];
+  modelRecommendations?: ModelRecommendation[];
 }
 
 const ProjectArchiveManifestSchema = z.object({
@@ -47,7 +72,9 @@ export function buildProjectArchiveBundle(
   result: LayoutResult,
   geoJson: object,
   createdAt = new Date().toISOString(),
+  adjacentData: ProjectArchiveAdjacentData = {},
 ): ProjectArchiveBundle {
+  const optionalFiles = projectAdjacentArchiveFiles(project.id, adjacentData);
   const manifest: ProjectArchiveManifest = {
     archiveVersion: PROJECT_ARCHIVE_VERSION,
     createdAt,
@@ -62,6 +89,7 @@ export function buildProjectArchiveBundle(
       SURVEY_CSV_FILENAME,
       METRICS_CSV_FILENAME,
       MAP_PACKAGES_CSV_FILENAME,
+      ...Object.keys(optionalFiles),
     ],
     offlineFirst: true,
     paidServicesRequired: false,
@@ -78,6 +106,7 @@ export function buildProjectArchiveBundle(
       [SURVEY_CSV_FILENAME]: surveyPointsToCsv(project.surveyPoints),
       [METRICS_CSV_FILENAME]: metricsToCsv(result),
       [MAP_PACKAGES_CSV_FILENAME]: mapPackagesToCsv(project),
+      ...optionalFiles,
     },
   };
 }
@@ -186,8 +215,122 @@ export function mapPackagesToCsv(project: PivotProject): string {
   return rows.map((row) => row.map(csvCell).join(",")).join("\n") + "\n";
 }
 
+export function layoutEvidenceToJsonl(records: LayoutEvidenceRecord[]): string {
+  return records.map((record) => JSON.stringify(parseLayoutEvidenceRecord(record))).join("\n") + (records.length > 0 ? "\n" : "");
+}
+
+export function layoutDecisionsToJsonl(records: LayoutDecisionRecord[]): string {
+  return records.map((record) => JSON.stringify(parseLayoutDecisionRecord(record))).join("\n") + (records.length > 0 ? "\n" : "");
+}
+
+export function modelRecommendationsToProjectedGeoJson(recommendations: ModelRecommendation[]): object {
+  const parsedRecommendations = recommendations.map(parseModelRecommendation);
+  return {
+    type: "FeatureCollection",
+    name: "cplayout-model-recommendations",
+    coordinateReferenceSystem: "project_crs_xy",
+    canonicalGeometryMutation: false,
+    features: parsedRecommendations.flatMap(modelRecommendationFeatures),
+  };
+}
+
 function csvCell(value: unknown): string {
   const text = String(value);
   if (/[",\n\r]/.test(text)) return `"${text.replaceAll("\"", "\"\"")}"`;
   return text;
+}
+
+function projectAdjacentArchiveFiles(
+  projectId: string,
+  adjacentData: ProjectArchiveAdjacentData,
+): Record<string, string> {
+  const evidenceRecords = (adjacentData.evidenceRecords ?? []).map(parseLayoutEvidenceRecord);
+  const layoutDecisions = (adjacentData.layoutDecisions ?? []).map(parseLayoutDecisionRecord);
+  const modelRecommendations = (adjacentData.modelRecommendations ?? []).map(parseModelRecommendation);
+  for (const record of [...evidenceRecords, ...layoutDecisions, ...modelRecommendations]) {
+    if (record.projectId !== projectId) {
+      throw new Error(`Archive adjacent record ${record.id} belongs to ${record.projectId}, not ${projectId}.`);
+    }
+  }
+
+  const files: Record<string, string> = {};
+  if (evidenceRecords.length > 0) files[LAYOUT_EVIDENCE_JSONL_FILENAME] = layoutEvidenceToJsonl(evidenceRecords);
+  if (layoutDecisions.length > 0) files[LAYOUT_DECISIONS_JSONL_FILENAME] = layoutDecisionsToJsonl(layoutDecisions);
+  if (modelRecommendations.length > 0) {
+    files[MODEL_RECOMMENDATIONS_GEOJSON_FILENAME] = JSON.stringify(
+      modelRecommendationsToProjectedGeoJson(modelRecommendations),
+      null,
+      2,
+    );
+  }
+  return files;
+}
+
+function modelRecommendationFeatures(recommendation: ModelRecommendation): object[] {
+  const baseProperties = {
+    id: recommendation.id,
+    projectId: recommendation.projectId,
+    projectCrs: recommendation.projectCrs,
+    coordinateReferenceSystem: "project_crs_xy",
+    modelName: recommendation.modelName,
+    modelVersion: recommendation.modelVersion,
+    confidence: recommendation.confidence,
+    reviewStatus: recommendation.reviewStatus,
+    score: recommendation.score ?? null,
+    summary: recommendation.summary,
+    warnings: recommendation.warnings,
+    evidenceIds: recommendation.evidenceIds,
+    displayWgs84: recommendation.proposedGeometry.displayWgs84 ?? null,
+  };
+  const features: object[] = [];
+  if (recommendation.proposedGeometry.pivotCenter) {
+    features.push({
+      type: "Feature",
+      geometry: {
+        type: "Point",
+        coordinates: xyToCoordinates(recommendation.proposedGeometry.pivotCenter),
+      },
+      properties: { ...baseProperties, geometryRole: "pivot_center" },
+    });
+  }
+  if (recommendation.proposedGeometry.fieldBoundary) {
+    features.push({
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [closedRingCoordinates(recommendation.proposedGeometry.fieldBoundary)],
+      },
+      properties: { ...baseProperties, geometryRole: "field_boundary" },
+    });
+  }
+  recommendation.proposedGeometry.obstaclePolygons?.forEach((polygon, index) => {
+    features.push({
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [closedRingCoordinates(polygon)],
+      },
+      properties: { ...baseProperties, geometryRole: "obstacle_polygon", obstacleIndex: index },
+    });
+  });
+  if (features.length === 0) {
+    features.push({
+      type: "Feature",
+      geometry: null,
+      properties: { ...baseProperties, geometryRole: "metadata_only" },
+    });
+  }
+  return features;
+}
+
+function closedRingCoordinates(points: XY[]): number[][] {
+  const coordinates = points.map(xyToCoordinates);
+  const first = coordinates[0];
+  const last = coordinates[coordinates.length - 1];
+  if (first && last && (first[0] !== last[0] || first[1] !== last[1])) coordinates.push([...first]);
+  return coordinates;
+}
+
+function xyToCoordinates(point: XY): number[] {
+  return [point.x, point.y];
 }

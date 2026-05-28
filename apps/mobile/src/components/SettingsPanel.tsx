@@ -1,6 +1,6 @@
 import { Database, Map, Ruler, Satellite, SlidersHorizontal } from "lucide-react-native";
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { COORDINATE_FORMAT_LABELS, COORDINATE_FORMATS, type CoordinateDisplayFormat } from "@cplayout/core";
 import {
@@ -9,6 +9,10 @@ import {
   MAP_STYLES,
   OFFLINE_PACKAGE_TYPES,
   ONLINE_IMAGERY_PROVIDER_CATALOG,
+  ONLINE_IMAGERY_PROVIDER_LIST,
+  validateCustomOpenImagerySource,
+  resolveOnlineImageryProvider,
+  type OnlineImageryCustomSource,
   type MapStyle,
   type MinimumGpsFixType,
   type OfflinePackageType,
@@ -21,8 +25,36 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React.JSX.Element {
+  const [customFormVisible, setCustomFormVisible] = useState(settings.onlineImagery.providerId === "custom_open_xyz");
+  const [customDraft, setCustomDraft] = useState<CustomImageryDraft>(() => customDraftFromSettings(settings));
+  const customValidation = useMemo(() => validateCustomOpenImagerySource(customDraft), [customDraft]);
+  const activeProvider = useMemo(() => {
+    try {
+      return resolveOnlineImageryProvider(settings.onlineImagery.providerId, settings.onlineImagery.customSource);
+    } catch {
+      return ONLINE_IMAGERY_PROVIDER_CATALOG[settings.onlineImagery.providerId];
+    }
+  }, [settings.onlineImagery.customSource, settings.onlineImagery.providerId]);
+
+  useEffect(() => {
+    setCustomDraft(customDraftFromSettings(settings));
+    setCustomFormVisible(settings.onlineImagery.providerId === "custom_open_xyz");
+  }, [settings.onlineImagery.customSource, settings.onlineImagery.providerId]);
+
   function update(next: Partial<AppSettings>): void {
     onChange({ ...settings, ...next });
+  }
+
+  function applyCustomSource(): void {
+    if (!customValidation.ok) return;
+    update({
+      onlineImagery: {
+        ...settings.onlineImagery,
+        customSource: customValidation.source,
+        enabled: true,
+        providerId: "custom_open_xyz",
+      },
+    });
   }
 
   return (
@@ -124,11 +156,21 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
             label="Off"
             onPress={() => update({ onlineImagery: { ...settings.onlineImagery, enabled: false } })}
           />
-          <Choice
-            active={settings.onlineImagery.enabled}
-            label="USGS imagery"
-            onPress={() => update({ onlineImagery: { ...settings.onlineImagery, enabled: true, providerId: "usgs_imagery_only" } })}
-          />
+          {ONLINE_IMAGERY_PROVIDER_LIST.map((provider) => (
+            <Choice
+              key={provider.id}
+              active={settings.onlineImagery.enabled && settings.onlineImagery.providerId === provider.id}
+              label={provider.id === "custom_open_xyz" ? "Custom open" : provider.name}
+              onPress={() => {
+                if (provider.id === "custom_open_xyz") {
+                  setCustomFormVisible(true);
+                  if (customValidation.ok) applyCustomSource();
+                  return;
+                }
+                update({ onlineImagery: { ...settings.onlineImagery, enabled: true, providerId: provider.id } });
+              }}
+            />
+          ))}
         </View>
         <Stepper
           label="Tile cap"
@@ -137,8 +179,89 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
           onIncrease={() => update({ onlineImagery: { ...settings.onlineImagery, maxTilesPerView: clamp(settings.onlineImagery.maxTilesPerView + 8, 8, 128) } })}
         />
         <Text style={styles.lockedText}>
-          Optional live preview only · No bulk cache · {ONLINE_IMAGERY_PROVIDER_CATALOG[settings.onlineImagery.providerId].attribution}
+          {activeProvider.coverageLabel} · {activeProvider.projection} · {activeProvider.tileScheme.toUpperCase()} {activeProvider.tileSize}px · z{activeProvider.minZoom}-{activeProvider.maxZoom} · live preview only
         </Text>
+        <Text style={styles.lockedText}>
+          {activeProvider.attribution} · {activeProvider.licenseText}
+        </Text>
+        {customFormVisible ? (
+          <View style={styles.customForm}>
+            <SettingsInput
+              label="Source name"
+              value={customDraft.name}
+              onChangeText={(name) => setCustomDraft((current) => ({ ...current, name }))}
+            />
+            <SettingsInput
+              label="Tile URL"
+              value={customDraft.tileUrlTemplate}
+              onChangeText={(tileUrlTemplate) => setCustomDraft((current) => ({ ...current, tileUrlTemplate }))}
+            />
+            <View style={styles.buttonRow}>
+              <Choice
+                active={customDraft.tileScheme === "xyz"}
+                label="XYZ"
+                onPress={() => setCustomDraft((current) => ({ ...current, tileScheme: "xyz" }))}
+              />
+              <Choice
+                active={customDraft.tileScheme === "tms"}
+                label="TMS"
+                onPress={() => setCustomDraft((current) => ({ ...current, tileScheme: "tms" }))}
+              />
+            </View>
+            <View style={styles.formRow}>
+              <Stepper
+                label="Min zoom"
+                value={`${customDraft.minZoom}`}
+                onDecrease={() => setCustomDraft((current) => ({ ...current, minZoom: Math.max(0, current.minZoom - 1) }))}
+                onIncrease={() => setCustomDraft((current) => ({ ...current, minZoom: Math.min(23, current.minZoom + 1) }))}
+              />
+              <Stepper
+                label="Max zoom"
+                value={`${customDraft.maxZoom}`}
+                onDecrease={() => setCustomDraft((current) => ({ ...current, maxZoom: Math.max(0, current.maxZoom - 1) }))}
+                onIncrease={() => setCustomDraft((current) => ({ ...current, maxZoom: Math.min(23, current.maxZoom + 1) }))}
+              />
+            </View>
+            <SettingsInput
+              label="Coverage"
+              value={customDraft.coverageLabel}
+              onChangeText={(coverageLabel) => setCustomDraft((current) => ({ ...current, coverageLabel }))}
+            />
+            <SettingsInput
+              label="Attribution"
+              value={customDraft.attribution}
+              onChangeText={(attribution) => setCustomDraft((current) => ({ ...current, attribution }))}
+            />
+            <SettingsInput
+              label="License"
+              multiline
+              value={customDraft.licenseText}
+              onChangeText={(licenseText) => setCustomDraft((current) => ({ ...current, licenseText }))}
+            />
+            <SettingsInput
+              label="Terms URL"
+              value={customDraft.termsUrl ?? ""}
+              onChangeText={(termsUrl) => setCustomDraft((current) => ({ ...current, termsUrl }))}
+            />
+            <SettingsInput
+              label="Source URL"
+              value={customDraft.sourceUrl ?? ""}
+              onChangeText={(sourceUrl) => setCustomDraft((current) => ({ ...current, sourceUrl }))}
+            />
+            <Text style={[styles.validationText, customValidation.ok && styles.validationTextOk]}>
+              {customValidation.ok ? "Custom source ready" : customValidation.error}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Apply custom open imagery source"
+              disabled={!customValidation.ok}
+              onPress={applyCustomSource}
+              style={[styles.applyButton, !customValidation.ok && styles.applyButtonDisabled]}
+            >
+              <Text style={styles.applyButtonText}>Apply Custom Source</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </SettingsGroup>
     </View>
   );
@@ -175,6 +298,55 @@ function Stepper({ label, value, onDecrease, onIncrease }: { label: string; valu
       </View>
     </View>
   );
+}
+
+function SettingsInput({
+  label,
+  multiline,
+  onChangeText,
+  value,
+}: {
+  label: string;
+  multiline?: boolean;
+  onChangeText: (value: string) => void;
+  value: string;
+}): React.JSX.Element {
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <TextInput
+        accessibilityLabel={label}
+        autoCapitalize="none"
+        multiline={multiline}
+        onChangeText={onChangeText}
+        style={[styles.input, multiline && styles.inputMultiline]}
+        value={value}
+      />
+    </View>
+  );
+}
+
+type CustomImageryDraft = Omit<OnlineImageryCustomSource, "termsUrl" | "sourceUrl"> & {
+  termsUrl?: string;
+  sourceUrl?: string;
+};
+
+function customDraftFromSettings(settings: AppSettings): CustomImageryDraft {
+  return {
+    name: settings.onlineImagery.customSource?.name ?? "",
+    tileUrlTemplate: settings.onlineImagery.customSource?.tileUrlTemplate ?? "",
+    minZoom: settings.onlineImagery.customSource?.minZoom ?? 0,
+    maxZoom: settings.onlineImagery.customSource?.maxZoom ?? 16,
+    tileScheme: settings.onlineImagery.customSource?.tileScheme ?? "xyz",
+    tileSize: settings.onlineImagery.customSource?.tileSize ?? 256,
+    projection: "EPSG:3857",
+    coverageLabel: settings.onlineImagery.customSource?.coverageLabel ?? "User-provided open imagery source",
+    termsUrl: settings.onlineImagery.customSource?.termsUrl ?? "",
+    sourceUrl: settings.onlineImagery.customSource?.sourceUrl ?? "",
+    cachePolicy: "interactive_only",
+    attribution: settings.onlineImagery.customSource?.attribution ?? "",
+    licenseText: settings.onlineImagery.customSource?.licenseText ?? "",
+  };
 }
 
 function mapStyleLabel(style: MapStyle): string {
@@ -248,6 +420,7 @@ const styles = StyleSheet.create({
     borderColor: "#dce3da",
     borderRadius: 8,
     borderWidth: 1,
+    flex: 1,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
@@ -289,5 +462,69 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18,
+  },
+  customForm: {
+    borderColor: "#dce3da",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  formRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  inputGroup: {
+    gap: 6,
+  },
+  inputLabel: {
+    color: "#293d31",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  input: {
+    backgroundColor: "#ffffff",
+    borderColor: "#cdd8ca",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#17241c",
+    fontSize: 13,
+    fontWeight: "700",
+    minHeight: 42,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  inputMultiline: {
+    minHeight: 74,
+    textAlignVertical: "top",
+  },
+  validationText: {
+    color: "#8a4d1f",
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 17,
+  },
+  validationTextOk: {
+    color: "#254234",
+  },
+  applyButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#254234",
+    borderColor: "#254234",
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  applyButtonDisabled: {
+    opacity: 0.45,
+  },
+  applyButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "900",
   },
 });

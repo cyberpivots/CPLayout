@@ -1,5 +1,6 @@
 export * from "./coordinates";
 export * from "./expertReview";
+export * from "./layoutEvidence";
 export * from "./mapTilePackages";
 export * from "./projectDocument";
 export * from "./projectImports";

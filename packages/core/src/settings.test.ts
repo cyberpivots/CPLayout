@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 
 import {
+  buildOnlineImageryTileUrl,
   defaultAppSettings,
   gpsFixMeetsThreshold,
   mergeAppSettings,
   ONLINE_IMAGERY_PROVIDER_CATALOG,
   parseAppSettings,
   projectSettingsFromApp,
+  resolveOnlineImageryProvider,
+  validateCustomOpenImagerySource,
 } from "./settings";
 
 const defaults = defaultAppSettings();
@@ -15,6 +18,10 @@ assert.equal(defaults.offlineMaps.requireAttribution, true);
 assert.equal(defaults.onlineImagery.enabled, false);
 assert.equal(defaults.onlineImagery.providerId, "usgs_imagery_only");
 assert.match(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileUrlTemplate, /basemap\.nationalmap\.gov/);
+assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileScheme, "xyz");
+assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileSize, 256);
+assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.projection, "EPSG:3857");
+assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.cachePolicy, "interactive_only");
 assert.equal(defaults.coordinateDisplayFormat, "decimal_degrees");
 assert.equal(defaults.gpsQuality.minimumFixType, "rtk_fixed");
 
@@ -46,4 +53,74 @@ assert.throws(
   /Too big/,
 );
 
+assert.equal(
+  buildOnlineImageryTileUrl(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only, { z: 3, x: 4, y: 5 }),
+  "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/3/5/4",
+);
+
+const customSource = {
+  name: "Open farm tiles",
+  tileUrlTemplate: "https://tiles.example.org/open/default/{TileMatrix}/{TileRow}/{TileCol}.png",
+  minZoom: 2,
+  maxZoom: 17,
+  tileScheme: "xyz" as const,
+  tileSize: 256,
+  projection: "EPSG:3857" as const,
+  coverageLabel: "Example open imagery coverage",
+  termsUrl: "https://tiles.example.org/terms",
+  sourceUrl: "https://tiles.example.org",
+  cachePolicy: "interactive_only" as const,
+  attribution: "Example Open Imagery",
+  licenseText: "CC-BY 4.0 compatible example imagery.",
+};
+const customValidation = validateCustomOpenImagerySource(customSource);
+assert.equal(customValidation.ok, true);
+if (customValidation.ok) {
+  const provider = resolveOnlineImageryProvider("custom_open_xyz", customValidation.source);
+  assert.equal(provider.name, "Open farm tiles");
+  assert.equal(provider.attribution, "Example Open Imagery");
+  assert.equal(
+    buildOnlineImageryTileUrl(provider, { z: 6, x: 12, y: 21 }),
+    "https://tiles.example.org/open/default/6/21/12.png",
+  );
+}
+
+const tmsValidation = validateCustomOpenImagerySource({
+  ...customSource,
+  tileScheme: "tms" as const,
+  tileUrlTemplate: "https://tiles.example.org/open/{z}/{x}/{y}.png",
+});
+assert.equal(tmsValidation.ok, true);
+if (tmsValidation.ok) {
+  assert.equal(
+    buildOnlineImageryTileUrl(resolveOnlineImageryProvider("custom_open_xyz", tmsValidation.source), { z: 3, x: 2, y: 1 }),
+    "https://tiles.example.org/open/3/2/6.png",
+  );
+}
+
+assert.equal(validateCustomOpenImagerySource({ ...customSource, attribution: "" }).ok, false);
+assert.equal(validateCustomOpenImagerySource({ ...customSource, licenseText: "" }).ok, false);
+assert.match(
+  customSourceError({ ...customSource, tileUrlTemplate: "https://tiles.example.org/{z}/{x}/{y}.png?api_key=secret" }),
+  /hidden API keys/,
+);
+assert.match(
+  customSourceError({ ...customSource, tileUrlTemplate: "https://api.mapbox.com/styles/v1/open/{z}/{x}/{y}.png" }),
+  /Mapbox/,
+);
+assert.match(
+  customSourceError({ ...customSource, tileUrlTemplate: "https://tiles.example.org/{z}/{x}/{y}/{Time}.png" }),
+  /placeholder/,
+);
+assert.throws(
+  () => parseAppSettings({ ...defaults, onlineImagery: { enabled: true, providerId: "custom_open_xyz", maxTilesPerView: 16 } }),
+  /Custom open imagery requires/,
+);
+
 console.log("settings tests passed");
+
+function customSourceError(value: unknown): string {
+  const result = validateCustomOpenImagerySource(value);
+  if (result.ok) throw new Error("Expected custom source validation to fail.");
+  return result.error;
+}

@@ -1,0 +1,128 @@
+import { evaluateLayout } from "./geometry";
+import type { LayoutMetrics, PivotProject } from "@cplayout/core";
+
+export interface LayoutScoreWeights {
+  coverage: number;
+  outsideField: number;
+  obstacleConflicts: number;
+  machineConstraint: number;
+  confidence: number;
+}
+
+export interface LayoutScoreConstraints {
+  maxOutsideFieldAcres: number;
+  maxObstacleConflicts: number;
+  minCoveragePercent: number;
+  maxMachineRadiusMeters?: number;
+}
+
+export interface LayoutAlternative {
+  id: string;
+  project: PivotProject;
+  confidence: number;
+  source: "operator" | "deterministic" | "model";
+}
+
+export interface LayoutScoreBreakdown {
+  coverage: number;
+  outsideField: number;
+  obstacleConflicts: number;
+  machineConstraint: number;
+  confidence: number;
+}
+
+export interface RankedLayoutAlternative {
+  id: string;
+  project: PivotProject;
+  metrics: LayoutMetrics;
+  score: number;
+  breakdown: LayoutScoreBreakdown;
+  warnings: string[];
+  source: LayoutAlternative["source"];
+}
+
+const DEFAULT_WEIGHTS: LayoutScoreWeights = {
+  coverage: 0.45,
+  outsideField: 0.2,
+  obstacleConflicts: 0.15,
+  machineConstraint: 0.1,
+  confidence: 0.1,
+};
+
+const DEFAULT_CONSTRAINTS: LayoutScoreConstraints = {
+  maxOutsideFieldAcres: 2,
+  maxObstacleConflicts: 0,
+  minCoveragePercent: 70,
+};
+
+export function scoreLayoutAlternative(
+  alternative: LayoutAlternative,
+  constraints: Partial<LayoutScoreConstraints> = {},
+  weights: Partial<LayoutScoreWeights> = {},
+): RankedLayoutAlternative {
+  const effectiveConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
+  const effectiveWeights = normalizeWeights({ ...DEFAULT_WEIGHTS, ...weights });
+  const result = evaluateLayout(alternative.project);
+  const machineRadius = alternative.project.machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0)
+    + alternative.project.machine.overhangMeters;
+  const maxMachineRadius = effectiveConstraints.maxMachineRadiusMeters ?? machineRadius;
+
+  const breakdown: LayoutScoreBreakdown = {
+    coverage: clamp01(result.metrics.coveragePercent / Math.max(effectiveConstraints.minCoveragePercent, 1)),
+    outsideField: 1 - clamp01(result.metrics.outsideFieldAcres / Math.max(effectiveConstraints.maxOutsideFieldAcres, 0.0001)),
+    obstacleConflicts: 1 - clamp01(result.metrics.obstacleConflictCount / Math.max(effectiveConstraints.maxObstacleConflicts || 1, 1)),
+    machineConstraint: machineRadius <= maxMachineRadius ? 1 : clamp01(maxMachineRadius / machineRadius),
+    confidence: clamp01(alternative.confidence),
+  };
+
+  const score = (
+    breakdown.coverage * effectiveWeights.coverage
+    + breakdown.outsideField * effectiveWeights.outsideField
+    + breakdown.obstacleConflicts * effectiveWeights.obstacleConflicts
+    + breakdown.machineConstraint * effectiveWeights.machineConstraint
+    + breakdown.confidence * effectiveWeights.confidence
+  ) * 100;
+
+  return {
+    id: alternative.id,
+    project: alternative.project,
+    metrics: result.metrics,
+    score,
+    breakdown,
+    warnings: result.warnings,
+    source: alternative.source,
+  };
+}
+
+export function rankLayoutAlternatives(
+  alternatives: LayoutAlternative[],
+  constraints: Partial<LayoutScoreConstraints> = {},
+  weights: Partial<LayoutScoreWeights> = {},
+): RankedLayoutAlternative[] {
+  return alternatives
+    .map((alternative) => scoreLayoutAlternative(alternative, constraints, weights))
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      if (right.metrics.coveragePercent !== left.metrics.coveragePercent) {
+        return right.metrics.coveragePercent - left.metrics.coveragePercent;
+      }
+      return left.metrics.outsideFieldAcres - right.metrics.outsideFieldAcres;
+    });
+}
+
+function normalizeWeights(weights: LayoutScoreWeights): LayoutScoreWeights {
+  const total = Object.values(weights).reduce((sum, value) => sum + Math.max(0, value), 0);
+  if (total <= 0) return DEFAULT_WEIGHTS;
+  return {
+    coverage: Math.max(0, weights.coverage) / total,
+    outsideField: Math.max(0, weights.outsideField) / total,
+    obstacleConflicts: Math.max(0, weights.obstacleConflicts) / total,
+    machineConstraint: Math.max(0, weights.machineConstraint) / total,
+    confidence: Math.max(0, weights.confidence) / total,
+  };
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}

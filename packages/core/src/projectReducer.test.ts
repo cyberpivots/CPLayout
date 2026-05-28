@@ -12,6 +12,14 @@ const boundary = [
 ];
 
 let state = createProjectEditorState(sampleProject);
+const noOpSettingsState = reduceProjectEditorState(state, {
+  type: "update_project_settings",
+  unitSystem: sampleProject.unitSystem,
+  settings: sampleProject.settings!,
+});
+assert.equal(noOpSettingsState.revision, 0);
+assert.equal(noOpSettingsState.past.length, 0);
+
 state = reduceProjectEditorState(state, { type: "commit_boundary_draft", vertices: boundary });
 assert.equal(state.project.fieldBoundary.length, 4);
 assert.equal(state.past.length, 1);

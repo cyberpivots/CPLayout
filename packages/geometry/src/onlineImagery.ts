@@ -1,7 +1,10 @@
 import {
   ONLINE_IMAGERY_PROVIDER_CATALOG,
+  buildOnlineImageryTileUrl,
   projectLonLatToXy,
   projectXyToLonLat,
+  resolveOnlineImageryProvider,
+  type OnlineImageryCustomSource,
   type OnlineImageryProvider,
   type OnlineImageryProviderId,
   type XY,
@@ -35,11 +38,13 @@ export function planOnlineImageryTiles(params: {
   viewport: MapViewport;
   projectCrs: string;
   providerId: OnlineImageryProviderId;
+  customSource?: OnlineImageryCustomSource;
   maxTiles: number;
 }): ImageryTilePlan {
-  const provider = ONLINE_IMAGERY_PROVIDER_CATALOG[params.providerId];
+  let provider = ONLINE_IMAGERY_PROVIDER_CATALOG[params.providerId];
   try {
-    if (!isWebMercator(params.projectCrs)) {
+    provider = resolveOnlineImageryProvider(params.providerId, params.customSource);
+    if (!supportsSvgOnlineImageryOverlay(params.projectCrs)) {
       throw new Error("Online imagery preview is disabled for this project CRS until a local reprojection adapter is available.");
     }
     const maxTiles = Math.max(1, Math.floor(params.maxTiles));
@@ -76,7 +81,7 @@ export function planOnlineImageryTiles(params: {
   }
 }
 
-function isWebMercator(projectCrs: string): boolean {
+export function supportsSvgOnlineImageryOverlay(projectCrs: string): boolean {
   const normalized = projectCrs.trim().toUpperCase();
   return normalized === "EPSG:3857" || normalized === "EPSG:900913";
 }
@@ -132,10 +137,7 @@ function tileToPlannedTile(provider: OnlineImageryProvider, x: number, y: number
   const ys = projectedCorners.map((point) => point.y);
   return {
     key: `${provider.id}-${z}-${x}-${y}`,
-    href: provider.tileUrlTemplate
-      .replace("{z}", String(z))
-      .replace("{x}", String(x))
-      .replace("{y}", String(y)),
+    href: buildOnlineImageryTileUrl(provider, { z, x, y }),
     z,
     x,
     y,

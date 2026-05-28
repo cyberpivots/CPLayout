@@ -3,8 +3,13 @@ import { projectXyToLonLat, type LayoutResult, type PivotProject, type XY } from
 type GeoJsonFeature = {
   type: "Feature";
   properties: Record<string, unknown>;
-  geometry: Record<string, unknown>;
+  geometry: GeoJsonGeometry;
 };
+
+type GeoJsonGeometry =
+  | { type: "MultiPolygon"; coordinates: [number, number][][][] }
+  | { type: "LineString"; coordinates: [number, number][] }
+  | { type: "Point"; coordinates: [number, number] };
 
 export function projectLayoutToWgs84FeatureCollection(
   project: PivotProject,

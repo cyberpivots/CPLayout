@@ -5,16 +5,22 @@ import {
   PROJECT_GEOJSON_FILENAME,
   PROJECT_GOOGLE_EARTH_KML_FILENAME,
   PROJECT_JSON_FILENAME,
+  LAYOUT_DECISIONS_JSONL_FILENAME,
+  LAYOUT_EVIDENCE_JSONL_FILENAME,
   MAP_PACKAGES_CSV_FILENAME,
+  MODEL_RECOMMENDATIONS_GEOJSON_FILENAME,
   PROJECT_MANIFEST_FILENAME,
   buildProjectArchiveBundle,
   exportProjectArchiveZip,
   importProjectArchiveZip,
+  layoutDecisionsToJsonl,
+  layoutEvidenceToJsonl,
   mapPackagesToCsv,
   metricsToCsv,
+  modelRecommendationsToProjectedGeoJson,
   surveyPointsToCsv,
 } from "./projectArchive";
-import { sampleProject } from "@cplayout/core";
+import { sampleProject, type LayoutDecisionRecord, type LayoutEvidenceRecord, type ModelRecommendation } from "@cplayout/core";
 
 const result = evaluateLayout(sampleProject);
 const bundle = buildProjectArchiveBundle(sampleProject, result, exportScenarioGeoJson(sampleProject, result), "2026-05-19T12:00:00.000Z");
@@ -60,6 +66,83 @@ const mapPackageCsv = mapPackagesToCsv({
 });
 assert.match(mapPackageCsv, /tileContentType/);
 assert.match(mapPackageCsv, /field-imagery/);
+
+const evidenceRecord: LayoutEvidenceRecord = {
+  id: "evidence-001",
+  projectId: sampleProject.id,
+  sourceKind: "imagery",
+  createdAt: "2026-05-22T12:00:00.000Z",
+  projectCrs: sampleProject.projectCrs,
+  summary: "Operator traced a visible road edge for review.",
+  geometry: sampleProject.fieldBoundary.slice(0, 3),
+  imagery: {
+    providerId: "usgs-tnm-imagery-only",
+    providerName: "USGS TNM Imagery Only",
+    sourceUrl: "https://basemap.nationalmap.gov/",
+    accessedAt: "2026-05-22T12:00:00.000Z",
+    attribution: "USGS The National Map",
+    licenseText: "Public domain U.S. Government source; verify downstream source notices.",
+    offlineCopyAllowed: false,
+    keyedService: false,
+  },
+  confidence: 0.72,
+  reviewStatus: "unreviewed",
+};
+const modelRecommendation: ModelRecommendation = {
+  id: "recommendation-001",
+  projectId: sampleProject.id,
+  modelName: "baseline-local-ranker",
+  modelVersion: "0.1.0",
+  createdAt: "2026-05-22T12:05:00.000Z",
+  projectCrs: sampleProject.projectCrs,
+  summary: "Move pivot center east to reduce outside-field acres.",
+  proposedGeometry: {
+    projectCrs: sampleProject.projectCrs,
+    pivotCenter: { x: sampleProject.pivotCenter.x + 10, y: sampleProject.pivotCenter.y },
+    fieldBoundary: sampleProject.fieldBoundary,
+  },
+  confidence: 0.61,
+  evidenceIds: [evidenceRecord.id],
+  reviewStatus: "unreviewed",
+  score: 88.2,
+  warnings: [],
+};
+const layoutDecision: LayoutDecisionRecord = {
+  id: "decision-001",
+  projectId: sampleProject.id,
+  createdAt: "2026-05-22T12:10:00.000Z",
+  decidedBy: "operator",
+  decision: "deferred",
+  recommendationId: modelRecommendation.id,
+  evidenceIds: [evidenceRecord.id],
+  reason: "Needs field verification before production geometry changes.",
+};
+assert.match(layoutEvidenceToJsonl([evidenceRecord]), /Operator traced/);
+assert.match(layoutDecisionsToJsonl([layoutDecision]), /field verification/);
+assert.match(JSON.stringify(modelRecommendationsToProjectedGeoJson([modelRecommendation])), /project_crs_xy/);
+
+const bundleWithAdjacentData = buildProjectArchiveBundle(
+  sampleProject,
+  result,
+  exportScenarioGeoJson(sampleProject, result),
+  "2026-05-19T12:00:00.000Z",
+  {
+    evidenceRecords: [evidenceRecord],
+    modelRecommendations: [modelRecommendation],
+    layoutDecisions: [layoutDecision],
+  },
+);
+assert.ok(bundleWithAdjacentData.manifest.files.includes(LAYOUT_EVIDENCE_JSONL_FILENAME));
+assert.ok(bundleWithAdjacentData.manifest.files.includes(LAYOUT_DECISIONS_JSONL_FILENAME));
+assert.ok(bundleWithAdjacentData.manifest.files.includes(MODEL_RECOMMENDATIONS_GEOJSON_FILENAME));
+assert.match(bundleWithAdjacentData.files[LAYOUT_EVIDENCE_JSONL_FILENAME], /"keyedService":false/);
+assert.match(bundleWithAdjacentData.files[MODEL_RECOMMENDATIONS_GEOJSON_FILENAME], /"coordinateReferenceSystem": "project_crs_xy"/);
+assert.throws(
+  () => buildProjectArchiveBundle(sampleProject, result, exportScenarioGeoJson(sampleProject, result), "2026-05-19T12:00:00.000Z", {
+    evidenceRecords: [{ ...evidenceRecord, projectId: "other-project" }],
+  }),
+  /belongs to other-project/,
+);
 
 const zipped = exportProjectArchiveZip(bundle);
 assert.ok(zipped.byteLength > 500);

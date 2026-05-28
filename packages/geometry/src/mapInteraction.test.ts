@@ -9,7 +9,7 @@ import {
   viewportToSvgViewBox,
   visibleWidthMeters,
 } from "./mapInteraction";
-import { planOnlineImageryTiles } from "./onlineImagery";
+import { planOnlineImageryTiles, supportsSvgOnlineImageryOverlay } from "./onlineImagery";
 
 const viewport = createInitialViewport({ minX: 0, minY: 0, maxX: 1000, maxY: 800 }, 1);
 const state = createDrawingMapState(viewport);
@@ -74,6 +74,35 @@ assert.ok(webMercatorImageryPlan.tiles.length <= 8);
 assert.match(webMercatorImageryPlan.tiles[0].href, /USGSImageryOnly\/MapServer\/tile\/\d+\/\d+\/\d+/);
 assert.ok(Number.isFinite(webMercatorImageryPlan.tiles[0].projectedBounds.minX));
 assert.ok(webMercatorImageryPlan.tiles.every((tile) => tile.z <= webMercatorImageryPlan.provider.maxZoom));
+assert.equal(supportsSvgOnlineImageryOverlay("EPSG:3857"), true);
+assert.equal(supportsSvgOnlineImageryOverlay("EPSG:32613"), false);
+
+const customImageryPlan = planOnlineImageryTiles({
+  viewport,
+  projectCrs: "EPSG:3857",
+  providerId: "custom_open_xyz",
+  customSource: {
+    name: "Example open WMTS",
+    tileUrlTemplate: "https://tiles.example.org/open/{TileMatrix}/{TileRow}/{TileCol}.png",
+    minZoom: 0,
+    maxZoom: 12,
+    tileScheme: "xyz",
+    tileSize: 256,
+    projection: "EPSG:3857",
+    coverageLabel: "Example open imagery coverage",
+    termsUrl: "https://tiles.example.org/terms",
+    sourceUrl: "https://tiles.example.org",
+    cachePolicy: "interactive_only",
+    attribution: "Example Open Imagery",
+    licenseText: "CC-BY 4.0 compatible example imagery.",
+  },
+  maxTiles: 4,
+});
+assert.equal(customImageryPlan.error, null);
+assert.equal(customImageryPlan.provider.name, "Example open WMTS");
+assert.ok(customImageryPlan.tiles.length > 0);
+assert.match(customImageryPlan.tiles[0].href, /tiles\.example\.org\/open\/\d+\/\d+\/\d+\.png/);
+assert.deepEqual(withVertex.draftVertices, [{ x: 10, y: 20 }]);
 
 const snappedVertex = snapPointToGeometry(
   { x: 10.5, y: 19.8 },

@@ -1,6 +1,21 @@
-import type { LayoutResult, MapPackageManifest, ObstacleZone, PivotProject, SurveyPoint, XY } from "@cplayout/core";
-import { validateMapPackageManifest } from "@cplayout/core";
-import { serializeProjectDocument } from "@cplayout/core";
+import type {
+  LayoutDecisionRecord,
+  LayoutEvidenceRecord,
+  LayoutResult,
+  MapPackageManifest,
+  ModelRecommendation,
+  ObstacleZone,
+  PivotProject,
+  SurveyPoint,
+  XY,
+} from "@cplayout/core";
+import {
+  parseLayoutDecisionRecord,
+  parseLayoutEvidenceRecord,
+  parseModelRecommendation,
+  serializeProjectDocument,
+  validateMapPackageManifest,
+} from "@cplayout/core";
 
 export interface SqlStatementPlan {
   sql: string;
@@ -25,6 +40,12 @@ export interface GeometryBboxQuery {
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
   layerTypes?: string[];
   limit?: number;
+}
+
+export interface ProjectAdjacentData {
+  evidenceRecords?: LayoutEvidenceRecord[];
+  modelRecommendations?: ModelRecommendation[];
+  layoutDecisions?: LayoutDecisionRecord[];
 }
 
 export function buildProjectGeometryRows(project: PivotProject): GeometryPersistenceRow[] {
@@ -141,6 +162,29 @@ export function buildSaveProjectStatementPlan(project: PivotProject, result?: La
   return statements;
 }
 
+export function buildSaveProjectAdjacentDataStatementPlan(
+  projectId: string,
+  data: ProjectAdjacentData,
+): SqlStatementPlan[] {
+  const evidenceRecords = (data.evidenceRecords ?? []).map(parseLayoutEvidenceRecord);
+  const modelRecommendations = (data.modelRecommendations ?? []).map(parseModelRecommendation);
+  const layoutDecisions = (data.layoutDecisions ?? []).map(parseLayoutDecisionRecord);
+  for (const record of [...evidenceRecords, ...modelRecommendations, ...layoutDecisions]) {
+    if (record.projectId !== projectId) {
+      throw new Error(`Project-adjacent record ${record.id} belongs to ${record.projectId}, not ${projectId}.`);
+    }
+  }
+
+  return [
+    { sql: "DELETE FROM layout_decisions WHERE project_id = ?", params: [projectId] },
+    { sql: "DELETE FROM model_recommendations WHERE project_id = ?", params: [projectId] },
+    { sql: "DELETE FROM layout_evidence WHERE project_id = ?", params: [projectId] },
+    ...evidenceRecords.map(layoutEvidenceStatement),
+    ...modelRecommendations.map(modelRecommendationStatement),
+    ...layoutDecisions.map(layoutDecisionStatement),
+  ];
+}
+
 function obstacleToGeometryRow(projectId: string, obstacle: ObstacleZone): GeometryPersistenceRow {
   return {
     id: `${projectId}:obstacle:${obstacle.id}`,
@@ -156,6 +200,59 @@ function obstacleToGeometryRow(projectId: string, obstacle: ObstacleZone): Geome
     },
     vertices: obstacle.polygon,
     bounds: boundsForPoints(obstacle.polygon),
+  };
+}
+
+function layoutEvidenceStatement(record: LayoutEvidenceRecord): SqlStatementPlan {
+  return {
+    sql: `INSERT INTO layout_evidence (id, project_id, source_kind, project_crs, confidence, review_status, record_json, created_at, collected_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      record.id,
+      record.projectId,
+      record.sourceKind,
+      record.projectCrs,
+      record.confidence,
+      record.reviewStatus,
+      JSON.stringify(record),
+      record.createdAt,
+      record.collectedAt ?? null,
+    ],
+  };
+}
+
+function modelRecommendationStatement(recommendation: ModelRecommendation): SqlStatementPlan {
+  return {
+    sql: `INSERT INTO model_recommendations (id, project_id, model_name, model_version, project_crs, confidence, review_status, score, recommendation_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      recommendation.id,
+      recommendation.projectId,
+      recommendation.modelName,
+      recommendation.modelVersion,
+      recommendation.projectCrs,
+      recommendation.confidence,
+      recommendation.reviewStatus,
+      recommendation.score ?? null,
+      JSON.stringify(recommendation),
+      recommendation.createdAt,
+    ],
+  };
+}
+
+function layoutDecisionStatement(decision: LayoutDecisionRecord): SqlStatementPlan {
+  return {
+    sql: `INSERT INTO layout_decisions (id, project_id, recommendation_id, decided_by, decision, decision_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      decision.id,
+      decision.projectId,
+      decision.recommendationId ?? null,
+      decision.decidedBy,
+      decision.decision,
+      JSON.stringify(decision),
+      decision.createdAt,
+    ],
   };
 }
 

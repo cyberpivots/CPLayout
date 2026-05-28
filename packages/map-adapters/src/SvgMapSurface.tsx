@@ -17,7 +17,7 @@ import React, { useMemo, useState } from "react";
 import { PanResponder, Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import Svg, { Circle, Image as SvgImage, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
-import { boundsForGeometry, planOnlineImageryTiles, ringsToSvgPath } from "@cplayout/geometry";
+import { boundsForGeometry, planOnlineImageryTiles, ringsToSvgPath, supportsSvgOnlineImageryOverlay } from "@cplayout/geometry";
 import {
   createDrawingMapState,
   createInitialViewport,
@@ -33,6 +33,7 @@ import {
 } from "@cplayout/geometry";
 import type { InfrastructurePoint, MapStyle, ObstacleZone, SurveyPoint } from "@cplayout/core";
 import { XY } from "@cplayout/core";
+import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
 import type { MapSurfaceProps } from "./types";
 
 type SelectedVertex =
@@ -90,6 +91,7 @@ export function SvgMapSurface({
         viewport: mapState.viewport,
         projectCrs: project.projectCrs,
         providerId: settings.onlineImagery.providerId,
+        customSource: settings.onlineImagery.customSource,
         maxTiles: settings.onlineImagery.maxTilesPerView,
       })
       : null,
@@ -97,10 +99,12 @@ export function SvgMapSurface({
       mapState.viewport,
       project.projectCrs,
       settings.onlineImagery.enabled,
+      settings.onlineImagery.customSource,
       settings.onlineImagery.maxTilesPerView,
       settings.onlineImagery.providerId,
     ],
   );
+  const shouldShowMapLibrePreview = settings.onlineImagery.enabled && !supportsSvgOnlineImageryOverlay(project.projectCrs);
 
   const panResponder = useMemo(
     () => PanResponder.create({
@@ -375,12 +379,23 @@ export function SvgMapSurface({
             </Text>
             {!imageryPlan.error ? (
               <Text style={styles.imageryBadgeSubtext}>
-                {imageryPlan.provider.attribution} · live preview only
+                {imageryPlan.provider.attribution} · {imageryPlan.provider.licenseText}
               </Text>
-            ) : null}
+            ) : (
+              <Text style={styles.imageryBadgeSubtext}>
+                {imageryPlan.provider.attribution} · {imageryPlan.provider.licenseText}
+              </Text>
+            )}
           </View>
         ) : null}
       </View>
+
+      <MapLibreImageryPreview
+        project={project}
+        result={result}
+        settings={settings}
+        visible={shouldShowMapLibrePreview}
+      />
 
       <View style={styles.layerRow}>
         <LayerButton active={mapState.activeLayer === "field_boundary"} label="Boundary" layer="field_boundary" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />

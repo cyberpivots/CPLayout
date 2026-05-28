@@ -4,7 +4,7 @@ export interface SqlMigration {
   statements: string[];
 }
 
-export const SQLITE_SCHEMA_VERSION = 3;
+export const SQLITE_SCHEMA_VERSION = 4;
 
 export const SQLITE_MIGRATIONS: SqlMigration[] = [
   {
@@ -179,6 +179,51 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
       `ALTER TABLE map_packages ADD COLUMN install_status TEXT NOT NULL DEFAULT 'metadata_only'`,
       `CREATE INDEX IF NOT EXISTS idx_map_packages_bounds ON map_packages(project_id, min_longitude, min_latitude, max_longitude, max_latitude)`,
       `CREATE INDEX IF NOT EXISTS idx_map_packages_status ON map_packages(project_id, install_status, package_type)`,
+    ],
+  },
+  {
+    id: 4,
+    name: "add_project_adjacent_evidence_and_recommendations",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS layout_evidence (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        project_crs TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        review_status TEXT NOT NULL,
+        record_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        collected_at TEXT,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS model_recommendations (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        project_crs TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        review_status TEXT NOT NULL,
+        score REAL,
+        recommendation_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS layout_decisions (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        recommendation_id TEXT,
+        decided_by TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        decision_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_layout_evidence_project_status ON layout_evidence(project_id, review_status, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_layout_evidence_source ON layout_evidence(project_id, source_kind, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_model_recommendations_project_status ON model_recommendations(project_id, review_status, score)`,
+      `CREATE INDEX IF NOT EXISTS idx_layout_decisions_project_created ON layout_decisions(project_id, created_at)`,
     ],
   },
 ];

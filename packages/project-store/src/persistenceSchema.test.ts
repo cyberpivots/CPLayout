@@ -7,8 +7,8 @@ import {
   migrationSql,
 } from "./persistenceSchema";
 
-assert.equal(SQLITE_SCHEMA_VERSION, 3);
-assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3]);
+assert.equal(SQLITE_SCHEMA_VERSION, 4);
+assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4]);
 
 const sql = migrationSql();
 assert.match(sql, /CREATE TABLE IF NOT EXISTS projects/);
@@ -23,6 +23,12 @@ assert.match(sql, /license_text TEXT NOT NULL/);
 assert.match(sql, /tile_scheme TEXT NOT NULL DEFAULT 'xyz'/);
 assert.match(sql, /tile_url_templates_json TEXT NOT NULL DEFAULT '\[\]'/);
 assert.match(sql, /install_status TEXT NOT NULL DEFAULT 'metadata_only'/);
+assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_evidence/);
+assert.match(sql, /CREATE TABLE IF NOT EXISTS model_recommendations/);
+assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_decisions/);
+assert.match(sql, /record_json TEXT NOT NULL/);
+assert.match(sql, /recommendation_json TEXT NOT NULL/);
+assert.match(sql, /decision_json TEXT NOT NULL/);
 
 const indexes = listSchemaIndexNames();
 assert.ok(indexes.includes("idx_geometry_vertices_order"));
@@ -33,5 +39,9 @@ assert.ok(indexes.includes("idx_map_packages_project_type"));
 assert.ok(indexes.includes("idx_map_packages_bounds"));
 assert.ok(indexes.includes("idx_map_packages_status"));
 assert.ok(indexes.includes("idx_project_snapshots_updated"));
+assert.ok(indexes.includes("idx_layout_evidence_project_status"));
+assert.ok(indexes.includes("idx_layout_evidence_source"));
+assert.ok(indexes.includes("idx_model_recommendations_project_status"));
+assert.ok(indexes.includes("idx_layout_decisions_project_created"));
 
 console.log("persistence schema tests passed");

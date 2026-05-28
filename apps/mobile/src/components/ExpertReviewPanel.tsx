@@ -1,8 +1,14 @@
-import { AlertTriangle, ClipboardList, Database, MapPinned, Satellite } from "lucide-react-native";
-import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { AlertTriangle, Check, ClipboardList, Clock3, Database, MapPinned, Satellite, Upload, X } from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { buildExpertReviewFindings, type AppSettings, type ExpertReviewFinding, type LayoutResult, type PivotProject } from "@cplayout/core";
+import { buildExpertReviewFindings, deriveRecommendationReviewState, type AppSettings, type ExpertReviewFinding, type LayoutDecisionRecord, type LayoutResult, type ModelRecommendation, type PivotProject } from "@cplayout/core";
+import {
+  appendLayoutDecisionAsync,
+  importModelRecommendationsAsync,
+  loadProjectReviewDataAsync,
+  type ProjectReviewData,
+} from "@cplayout/project-store";
 
 interface ExpertReviewPanelProps {
   project: PivotProject;
@@ -15,9 +21,109 @@ export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPan
     () => buildExpertReviewFindings(project, result, settings),
     [project, result, settings],
   );
+  const [reviewData, setReviewData] = useState<ProjectReviewData>(() => emptyReviewData());
+  const [importText, setImportText] = useState("");
+  const [status, setStatus] = useState("Review decisions are stored adjacent to this browser project and do not change geometry.");
+
+  useEffect(() => {
+    let active = true;
+    void loadProjectReviewDataAsync(project.id)
+      .then((data) => {
+        if (active) setReviewData(data);
+      })
+      .catch((error) => {
+        if (active) setStatus(errorMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [project.id]);
+
+  async function importRecommendations(): Promise<void> {
+    try {
+      const imported = await importModelRecommendationsAsync(project.id, importText);
+      const data = await loadProjectReviewDataAsync(project.id);
+      setReviewData(data);
+      setImportText("");
+      setStatus(`Imported ${imported.length} model recommendation${imported.length === 1 ? "" : "s"} for review.`);
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  }
+
+  async function recordDecision(recommendation: ModelRecommendation, decision: LayoutDecisionRecord["decision"]): Promise<void> {
+    try {
+      const createdAt = new Date().toISOString();
+      const nextData = await appendLayoutDecisionAsync(project.id, {
+        id: `${recommendation.id}:${decision}:${createdAt.replace(/[^0-9]/g, "").slice(0, 17)}`,
+        projectId: project.id,
+        createdAt,
+        decidedBy: "operator",
+        decision,
+        recommendationId: recommendation.id,
+        evidenceIds: recommendation.evidenceIds,
+        reason: decision === "accepted"
+          ? "Accepted for review record only; canonical geometry was not mutated."
+          : decision === "rejected"
+            ? "Rejected in browser review; canonical geometry was not mutated."
+            : "Deferred for later field or engineering review.",
+      });
+      setReviewData(nextData);
+      setStatus(`${decisionLabel(decision)} recorded for ${recommendation.id}. Project geometry was not changed.`);
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  }
 
   return (
     <View style={styles.shell}>
+      <View style={styles.reviewWorkspace}>
+        <View style={styles.importHeader}>
+          <View>
+            <Text style={styles.workspaceTitle}>Model Recommendations</Text>
+            <Text style={styles.workspaceSubtitle}>{reviewData.modelRecommendations.length} imported · {reviewData.layoutDecisions.length} decisions saved</Text>
+          </View>
+          <Text style={styles.workspaceBadge}>Adjacent storage</Text>
+        </View>
+        <TextInput
+          multiline
+          onChangeText={setImportText}
+          placeholder="Paste ModelRecommendation JSON array or projected-XY GeoJSON FeatureCollection"
+          style={styles.importInput}
+          value={importText}
+        />
+        <View style={styles.importActions}>
+          <ReviewButton icon={<Upload size={16} color="#ffffff" />} label="Import" primary onPress={importRecommendations} />
+          <Text style={styles.statusLine}>{status}</Text>
+        </View>
+        <View style={styles.recommendationList}>
+          {reviewData.modelRecommendations.length === 0 ? (
+            <Text style={styles.emptyText}>No model recommendations imported for this project.</Text>
+          ) : reviewData.modelRecommendations.map((recommendation) => (
+            <View key={recommendation.id} style={styles.recommendation}>
+              <View style={styles.recommendationHeader}>
+                <View>
+                  <Text style={styles.recommendationTitle}>{recommendation.summary}</Text>
+                  <Text style={styles.recommendationMeta}>
+                    {recommendation.modelName} {recommendation.modelVersion} · confidence {(recommendation.confidence * 100).toFixed(0)}% · score {recommendation.score?.toFixed(1) ?? "n/a"}
+                  </Text>
+                </View>
+                <Text style={styles.reviewStatus}>{deriveRecommendationReviewState(recommendation, reviewData.layoutDecisions)}</Text>
+              </View>
+              <Text style={styles.geometrySummary}>{geometrySummary(recommendation)}</Text>
+              {recommendation.warnings.map((warning) => (
+                <Text key={warning} style={styles.warningNote}>{warning}</Text>
+              ))}
+              <View style={styles.decisionActions}>
+                <ReviewButton icon={<Check size={16} color="#ffffff" />} label="Accept" primary onPress={() => recordDecision(recommendation, "accepted")} />
+                <ReviewButton icon={<X size={16} color="#254234" />} label="Reject" onPress={() => recordDecision(recommendation, "rejected")} />
+                <ReviewButton icon={<Clock3 size={16} color="#254234" />} label="Defer" onPress={() => recordDecision(recommendation, "deferred")} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+
       {findings.map((finding) => (
         <View key={finding.role} style={styles.finding}>
           <View style={styles.findingHeader}>
@@ -48,6 +154,40 @@ export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPan
       ))}
     </View>
   );
+}
+
+function ReviewButton({ icon, label, onPress, primary = false }: { icon: React.ReactNode; label: string; onPress: () => void; primary?: boolean }): React.JSX.Element {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.reviewButton, primary && styles.reviewButtonPrimary]}>
+      {icon}
+      <Text style={[styles.reviewButtonText, primary && styles.reviewButtonTextPrimary]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function emptyReviewData(): ProjectReviewData {
+  return { evidenceRecords: [], modelRecommendations: [], layoutDecisions: [] };
+}
+
+function decisionLabel(decision: LayoutDecisionRecord["decision"]): string {
+  if (decision === "accepted") return "Accept";
+  if (decision === "rejected") return "Reject";
+  return "Defer";
+}
+
+function geometrySummary(recommendation: ModelRecommendation): string {
+  const parts = [];
+  if (recommendation.proposedGeometry.pivotCenter) {
+    const point = recommendation.proposedGeometry.pivotCenter;
+    parts.push(`pivot (${point.x.toFixed(2)}, ${point.y.toFixed(2)})`);
+  }
+  if (recommendation.proposedGeometry.fieldBoundary) parts.push(`${recommendation.proposedGeometry.fieldBoundary.length} boundary vertices`);
+  if (recommendation.proposedGeometry.obstaclePolygons) parts.push(`${recommendation.proposedGeometry.obstaclePolygons.length} obstacle polygons`);
+  return parts.length > 0 ? `${recommendation.projectCrs} · ${parts.join(" · ")}` : `${recommendation.projectCrs} · metadata only`;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Review storage operation failed.";
 }
 
 function actionsForFinding(finding: ExpertReviewFinding): string[] {
@@ -97,6 +237,158 @@ function statusTextStyle(status: ExpertReviewFinding["status"]) {
 const styles = StyleSheet.create({
   shell: {
     gap: 12,
+  },
+  reviewWorkspace: {
+    backgroundColor: "#f7f3e8",
+    borderColor: "#d9ccb1",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 16,
+  },
+  importHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "space-between",
+  },
+  workspaceTitle: {
+    color: "#17241c",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  workspaceSubtitle: {
+    color: "#526257",
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  workspaceBadge: {
+    backgroundColor: "#e7f1ea",
+    borderColor: "#afc7b6",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#254234",
+    fontSize: 12,
+    fontWeight: "900",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  importInput: {
+    backgroundColor: "#ffffff",
+    borderColor: "#cfc6b3",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#1c2a21",
+    fontSize: 12,
+    fontWeight: "700",
+    minHeight: 92,
+    padding: 10,
+    textAlignVertical: "top",
+  },
+  importActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  statusLine: {
+    color: "#405146",
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+    minWidth: 220,
+  },
+  recommendationList: {
+    gap: 10,
+  },
+  recommendation: {
+    backgroundColor: "#fffdf7",
+    borderColor: "#ded4bf",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 12,
+  },
+  recommendationHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "space-between",
+  },
+  recommendationTitle: {
+    color: "#17241c",
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 19,
+  },
+  recommendationMeta: {
+    color: "#58675e",
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  reviewStatus: {
+    backgroundColor: "#eef4ef",
+    borderColor: "#b7c8bb",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#254234",
+    fontSize: 11,
+    fontWeight: "900",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    textTransform: "uppercase",
+  },
+  geometrySummary: {
+    color: "#33463a",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+  warningNote: {
+    color: "#805116",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+  decisionActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  reviewButton: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#b7c8bb",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  reviewButtonPrimary: {
+    backgroundColor: "#254234",
+    borderColor: "#254234",
+  },
+  reviewButtonText: {
+    color: "#254234",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  reviewButtonTextPrimary: {
+    color: "#ffffff",
+  },
+  emptyText: {
+    color: "#526257",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
   },
   finding: {
     backgroundColor: "#fbfcf8",

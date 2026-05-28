@@ -1,0 +1,16 @@
+[project]
+name = "cplayout-local-ml-companion"
+version = "0.1.0"
+description = "WSL-local advisory layout recommendation file bridge for CPLayout."
+requires-python = ">=3.12"
+dependencies = [
+  "pandas>=2.2",
+  "scikit-learn>=1.5",
+]
+
+[project.scripts]
+cplayout-ml = "cplayout_ml.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

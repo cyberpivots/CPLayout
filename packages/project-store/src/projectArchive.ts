@@ -227,6 +227,7 @@ export function modelRecommendationsToProjectedGeoJson(recommendations: ModelRec
   const parsedRecommendations = recommendations.map(parseModelRecommendation);
   return {
     type: "FeatureCollection",
+    schemaVersion: "cplayout-model-recommendations-v1",
     name: "cplayout-model-recommendations",
     coordinateReferenceSystem: "project_crs_xy",
     canonicalGeometryMutation: false,
@@ -272,6 +273,7 @@ function modelRecommendationFeatures(recommendation: ModelRecommendation): objec
     projectId: recommendation.projectId,
     projectCrs: recommendation.projectCrs,
     coordinateReferenceSystem: "project_crs_xy",
+    createdAt: recommendation.createdAt,
     modelName: recommendation.modelName,
     modelVersion: recommendation.modelVersion,
     confidence: recommendation.confidence,

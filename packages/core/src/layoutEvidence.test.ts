@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  deriveRecommendationReviewState,
   parseLayoutDecisionRecord,
   parseLayoutEvidenceRecord,
   parseModelRecommendation,
@@ -69,6 +70,17 @@ const decision = parseLayoutDecisionRecord({
   reason: "Needs RTK check before changing production geometry.",
 });
 assert.equal(decision.decision, "deferred");
+assert.equal(deriveRecommendationReviewState(recommendation, []), "unreviewed");
+assert.equal(deriveRecommendationReviewState(recommendation, [decision]), "deferred");
+assert.equal(deriveRecommendationReviewState(recommendation, [
+  decision,
+  {
+    ...decision,
+    id: "decision-002",
+    createdAt: "2026-05-22T12:12:00.000Z",
+    decision: "accepted",
+  },
+]), "accepted");
 
 assert.throws(
   () => parseLayoutEvidenceRecord({ ...evidence, projectCrs: "EPSG:4326" }),

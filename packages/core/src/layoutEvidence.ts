@@ -77,6 +77,8 @@ export interface ModelRecommendation {
   warnings: string[];
 }
 
+export type ModelRecommendationReviewState = EvidenceReviewStatus | LayoutDecisionRecord["decision"];
+
 const XySchema = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
@@ -195,6 +197,16 @@ export function parseLayoutDecisionRecord(input: unknown): LayoutDecisionRecord 
 
 export function parseModelRecommendation(input: unknown): ModelRecommendation {
   return ModelRecommendationSchema.parse(input);
+}
+
+export function deriveRecommendationReviewState(
+  recommendation: ModelRecommendation,
+  decisions: LayoutDecisionRecord[],
+): ModelRecommendationReviewState {
+  const latestDecision = decisions
+    .filter((decision) => decision.projectId === recommendation.projectId && decision.recommendationId === recommendation.id)
+    .at(-1);
+  return latestDecision?.decision ?? recommendation.reviewStatus;
 }
 
 function refineProjectedCrs(projectCrs: string, context: z.RefinementCtx, path: (string | number)[]): void {

@@ -4,6 +4,7 @@ export * from "./projectArchive";
 export * from "./projectArchiveIO";
 export * from "./projectKmlArchive";
 export * from "./projectPersistence";
+export * from "./projectReviewData";
 export * from "./projectRepository";
 export * from "./projectRepositoryTypes";
 export * from "./webSqliteGate";

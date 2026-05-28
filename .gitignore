@@ -10,6 +10,8 @@ reports/android-native-verification/
 *.tmp
 *.png
 *.zip
+*.py[cod]
+__pycache__/
 
 .env
 .env.*

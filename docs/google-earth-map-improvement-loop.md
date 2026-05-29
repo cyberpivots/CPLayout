@@ -104,7 +104,49 @@ Iteration 2 validation targets:
 - Generate KML/KMZ evidence and verify `doc.kml` contains shared `<Style>` definitions, `<styleUrl>` assignments, the edited map-feature name, and CPLayout `ExtendedData`.
 - Local static serve plus Playwright screenshot of the export controls when available.
 
+## Iteration 2 Result
+
+Status: complete on 2026-05-28.
+
+Implemented surfaces:
+
+- `packages/core/src/projectKml.ts` keeps `exportProjectGoogleEarthKml()` as the public API, still builds GeoJSON features first, then injects deterministic shared KML styles with `@xmldom/xmldom`.
+- Shared style definitions cover field boundary, obstacle classes, pivot/water/power points, generic survey points, towers, and map-feature point/line classes.
+- Placemark `<styleUrl>` values are assigned from existing CPLayout `ExtendedData` values and geometry type; no project schema, canonical `XY` geometry, archive format, persistence layer, dependency, or KMZ wrapper changed.
+- `packages/core/src/projectKml.test.ts` asserts style definitions, line/polygon/icon/label values, styleUrl assignment, preserved map-feature ExtendedData, map-feature point/line styling, and no remote icon href.
+- `packages/project-store/src/projectKmlArchive.test.ts` asserts styled KML remains intact inside KMZ `doc.kml`.
+
+Validation evidence:
+
+- `npm test -w @cplayout/core`: passed.
+- `npm test -w @cplayout/project-store`: passed.
+- `npm run validate`: passed all workspace typechecks and tests after the xmldom type-boundary fix.
+- `git diff --check`: passed with no output.
+- `npm audit`: passed, `0 vulnerabilities`.
+- `npm run export:web -w @cplayout/mobile`: passed and emitted `apps/mobile/dist`.
+- Local static serve: `npx serve apps/mobile/dist -l 4173` served `http://localhost:4173`.
+- Playwright browser check: loaded the exported app, opened the sample project, selected Export, and captured `cplayout-styled-kml-export-controls.png`.
+- Browser console caveat: the only console error was `GET /favicon.ico` returning 404 from the local static server.
+
+Generated KML/KMZ evidence:
+
+| Artifact | SHA-256 | Notes |
+| --- | --- | --- |
+| `/tmp/cplayout-styled-google-earth.kml` | `6ecf50e102a6f036ebcf49e04133593d1f17b7410882be59973a5d6f33528b42` | 9,605 bytes; contains 16 shared `<Style>` definitions and 9 `<styleUrl>` assignments. |
+| `/tmp/cplayout-styled-google-earth.kmz` | `aa5264db7837cc8e2c6aeb93acde5650abaca8cee878c37c66aeed4ce726adbb` | 1,813 bytes; `doc.kml` preserves styled KML. |
+
+Artifact inspection:
+
+- `doc.kml` contained `<Style>`, `<styleUrl>`, `Renamed Pipeline A`, and CPLayout `<ExtendedData>`.
+- `doc.kml` preserved `<Data name="cplayoutFeatureType"><value>map_feature</value></Data>`.
+- `doc.kml` did not contain remote HTTP/HTTPS icon hrefs.
+
+Next recommended slice:
+
+- Google Earth automation proof: open the styled KML/KMZ in Google Earth Pro and capture non-black visual evidence that the shared styles render as intended.
+- Keep this separate from native SQLite, native sharing, native MapLibre, and raw tile-package rendering claims.
+
 ## Remaining Unverified Claims
 
 - Android/iOS persistence, native file sharing, native MapLibre rendering, and raw PMTiles/MBTiles rendering remain unverified until the device/emulator checklist passes.
-- Google Earth visual fidelity remains unverified until styled KML and non-black Google Earth screenshots prove it.
+- Google Earth visual fidelity remains unverified until styled KML/KMZ is opened in Google Earth Pro and non-black screenshots prove it.

@@ -122,6 +122,18 @@ const exported = exportProjectGoogleEarthKml(sampleProject);
 assert.equal(exported.warnings.length, 0);
 assert.ok(exported.exportedFeatureCount >= sampleProject.obstacles.length + sampleProject.surveyPoints.length + 4);
 assert.match(exported.kml, /<kml xmlns="http:\/\/www\.opengis\.net\/kml\/2\.2">/);
+assert.match(exported.kml, /<Style id="cplayout-field-boundary">/);
+assert.match(exported.kml, /<LineStyle><color>ff1f5f39<\/color><width>3\.2<\/width><\/LineStyle>/);
+assert.match(exported.kml, /<PolyStyle><color>333a8f5c<\/color><fill>1<\/fill><outline>1<\/outline><\/PolyStyle>/);
+assert.match(exported.kml, /<IconStyle><color>ff0f5db8<\/color><scale>1\.15<\/scale><\/IconStyle>/);
+assert.match(exported.kml, /<LabelStyle><color>ff20372a<\/color><scale>1\.05<\/scale><\/LabelStyle>/);
+assert.match(exported.kml, /<styleUrl>#cplayout-field-boundary<\/styleUrl>/);
+assert.match(exported.kml, /<styleUrl>#cplayout-obstacle-road<\/styleUrl>/);
+assert.match(exported.kml, /<styleUrl>#cplayout-point-pivot<\/styleUrl>/);
+assert.match(exported.kml, /<styleUrl>#cplayout-point-water<\/styleUrl>/);
+assert.match(exported.kml, /<styleUrl>#cplayout-point-power<\/styleUrl>/);
+assert.match(exported.kml, /<styleUrl>#cplayout-survey-point<\/styleUrl>/);
+assert.doesNotMatch(exported.kml, /<href>https?:\/\//);
 assert.match(exported.kml, /field_boundary/);
 assert.match(exported.kml, /projectCrs/);
 assert.match(exported.kml, /EPSG:32613/);
@@ -139,7 +151,34 @@ const exportedUtility = exportProjectGoogleEarthKml({
   ],
 });
 assert.match(exportedUtility.kml, /underground_pipeline/);
+assert.match(exportedUtility.kml, /<Style id="cplayout-map-line-water">/);
+assert.match(exportedUtility.kml, /<styleUrl>#cplayout-map-line-water<\/styleUrl>/);
+assert.match(exportedUtility.kml, /<Data name="cplayoutFeatureType"><value>map_feature<\/value><\/Data>/);
 assert.equal(exportedUtility.exportedFeatureCount, exported.exportedFeatureCount + 1);
+
+const styledMapPoints = exportProjectGoogleEarthKml({
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "pump-location-a",
+      name: "Pump Location A",
+      kind: "pump_location",
+      geometry: { type: "Point", point: sampleProject.waterSource },
+      confidence: "rtk_fixed",
+    },
+    {
+      id: "power-line-a",
+      name: "Power Line A",
+      kind: "power_line",
+      geometry: { type: "LineString", vertices: obstacleRing.slice(0, 2) },
+      confidence: "imagery_digitized",
+    },
+  ],
+});
+assert.match(styledMapPoints.kml, /Pump Location A/);
+assert.match(styledMapPoints.kml, /<styleUrl>#cplayout-map-point<\/styleUrl>/);
+assert.match(styledMapPoints.kml, /Power Line A/);
+assert.match(styledMapPoints.kml, /<styleUrl>#cplayout-map-line-power<\/styleUrl>/);
 
 const renamedUtility = exportProjectGoogleEarthKml({
   ...sampleProject,

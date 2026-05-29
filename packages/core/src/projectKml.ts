@@ -1,7 +1,7 @@
 import type { Feature, FeatureCollection, Geometry, GeometryCollection, LineString, Point, Polygon, Position } from "geojson";
 import { toKML } from "@placemarkio/tokml";
 import { kml as kmlToGeoJson } from "@tmcw/togeojson";
-import { DOMParser } from "@xmldom/xmldom";
+import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 
 import { projectLonLatToXy, projectXyToLonLat } from "./coordinates";
 import { PivotProjectSchema } from "./projectDocument";
@@ -25,6 +25,153 @@ const MAP_FEATURE_KINDS = [
   "corner_swing_limit",
 ] as const;
 const CONFIDENCES = ["rtk_fixed", "rtk_float", "dgps", "autonomous_gps", "imagery_digitized", "imported_cad", "user_estimated", "optimized"] as const;
+const KML_NAMESPACE = "http://www.opengis.net/kml/2.2";
+
+interface GoogleEarthStyleDefinition {
+  id: string;
+  iconColor?: string;
+  iconScale?: string;
+  labelColor?: string;
+  labelScale?: string;
+  lineColor?: string;
+  lineWidth?: string;
+  polygonColor?: string;
+  polygonFill?: "0" | "1";
+  polygonOutline?: "0" | "1";
+}
+
+const GOOGLE_EARTH_KML_STYLES: GoogleEarthStyleDefinition[] = [
+  {
+    id: "cplayout-field-boundary",
+    labelColor: "ff20372a",
+    labelScale: "1.05",
+    lineColor: "ff1f5f39",
+    lineWidth: "3.2",
+    polygonColor: "333a8f5c",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-obstacle-road",
+    labelColor: "ff344054",
+    labelScale: "0.9",
+    lineColor: "ff475467",
+    lineWidth: "2.4",
+    polygonColor: "6657636f",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-obstacle-water",
+    labelColor: "ff164c63",
+    labelScale: "0.9",
+    lineColor: "ff0f80aa",
+    lineWidth: "2.4",
+    polygonColor: "6640a6cf",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-obstacle-structure",
+    labelColor: "ff42311f",
+    labelScale: "0.9",
+    lineColor: "ff8a572a",
+    lineWidth: "2.4",
+    polygonColor: "665c8cc7",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-obstacle-vegetation",
+    labelColor: "ff22543d",
+    labelScale: "0.9",
+    lineColor: "ff276749",
+    lineWidth: "2.4",
+    polygonColor: "6669a87d",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-obstacle-exclusion",
+    labelColor: "ff4a1d1d",
+    labelScale: "0.9",
+    lineColor: "ff9b1c1c",
+    lineWidth: "2.4",
+    polygonColor: "665f3dd9",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-point-pivot",
+    iconColor: "ff0f5db8",
+    iconScale: "1.15",
+    labelColor: "ff0f3d6e",
+    labelScale: "1.0",
+  },
+  {
+    id: "cplayout-point-water",
+    iconColor: "ff0f93b8",
+    iconScale: "1.05",
+    labelColor: "ff0f4f6e",
+    labelScale: "0.95",
+  },
+  {
+    id: "cplayout-point-power",
+    iconColor: "ff18a999",
+    iconScale: "1.05",
+    labelColor: "ff125e55",
+    labelScale: "0.95",
+  },
+  {
+    id: "cplayout-survey-point",
+    iconColor: "ff2f6fed",
+    iconScale: "0.9",
+    labelColor: "ff1d4ed8",
+    labelScale: "0.85",
+  },
+  {
+    id: "cplayout-tower",
+    iconColor: "ff5848d6",
+    iconScale: "0.85",
+    labelColor: "ff3f3cbb",
+    labelScale: "0.82",
+  },
+  {
+    id: "cplayout-map-point",
+    iconColor: "ff1fa971",
+    iconScale: "0.95",
+    labelColor: "ff17634a",
+    labelScale: "0.88",
+  },
+  {
+    id: "cplayout-map-line-water",
+    labelColor: "ff164c63",
+    labelScale: "0.85",
+    lineColor: "ff0f80aa",
+    lineWidth: "3",
+  },
+  {
+    id: "cplayout-map-line-power",
+    labelColor: "ff125e55",
+    labelScale: "0.85",
+    lineColor: "ff18a999",
+    lineWidth: "3",
+  },
+  {
+    id: "cplayout-map-line-access",
+    labelColor: "ff42311f",
+    labelScale: "0.85",
+    lineColor: "ff8a572a",
+    lineWidth: "2.6",
+  },
+  {
+    id: "cplayout-map-line-boundary",
+    labelColor: "ff4a1d1d",
+    labelScale: "0.85",
+    lineColor: "ff9b1c1c",
+    lineWidth: "2.6",
+  },
+];
 
 export type GoogleEarthKmlImportClassification = "field_boundary" | "obstacle" | "survey_point" | "map_feature" | "skipped";
 
@@ -400,12 +547,146 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
   }
 
   const featureCollection: FeatureCollection = { type: "FeatureCollection", features };
-  const kml = toKML(featureCollection);
+  const kml = addGoogleEarthKmlStyles(toKML(featureCollection));
   return {
     kml,
     exportedFeatureCount: features.length,
     warnings,
   };
+}
+
+function addGoogleEarthKmlStyles(kmlText: string): string {
+  const document = new DOMParser().parseFromString(kmlText, "text/xml");
+  if (document.getElementsByTagName("parsererror").length > 0) {
+    return kmlText;
+  }
+
+  const kmlDocument = firstElement(document.getElementsByTagName("Document"));
+  if (!kmlDocument) return kmlText;
+
+  for (const style of GOOGLE_EARTH_KML_STYLES) {
+    kmlDocument.insertBefore(createKmlStyleElement(document, style), kmlDocument.firstChild);
+  }
+
+  const placemarks = Array.from(document.getElementsByTagName("Placemark")) as XmlElement[];
+  for (const placemark of placemarks) {
+    const styleId = styleIdForPlacemark(placemark);
+    if (!styleId) continue;
+    const styleUrl = document.createElementNS(KML_NAMESPACE, "styleUrl");
+    styleUrl.appendChild(document.createTextNode(`#${styleId}`));
+    const existingStyleUrl = firstElement(placemark.getElementsByTagName("styleUrl"));
+    if (existingStyleUrl?.parentNode === placemark) {
+      placemark.replaceChild(styleUrl, existingStyleUrl);
+    } else {
+      placemark.insertBefore(styleUrl, firstPlacemarkContentAfterName(placemark));
+    }
+  }
+
+  return new XMLSerializer().serializeToString(document);
+}
+
+type XmlDocument = ReturnType<InstanceType<typeof DOMParser>["parseFromString"]>;
+type XmlElement = ReturnType<XmlDocument["createElementNS"]>;
+
+function createKmlStyleElement(document: XmlDocument, style: GoogleEarthStyleDefinition): XmlElement {
+  const styleElement = document.createElementNS(KML_NAMESPACE, "Style");
+  styleElement.setAttribute("id", style.id);
+  if (style.iconColor || style.iconScale) {
+    const iconStyle = document.createElementNS(KML_NAMESPACE, "IconStyle");
+    appendTextElement(document, iconStyle, "color", style.iconColor);
+    appendTextElement(document, iconStyle, "scale", style.iconScale);
+    styleElement.appendChild(iconStyle);
+  }
+  if (style.labelColor || style.labelScale) {
+    const labelStyle = document.createElementNS(KML_NAMESPACE, "LabelStyle");
+    appendTextElement(document, labelStyle, "color", style.labelColor);
+    appendTextElement(document, labelStyle, "scale", style.labelScale);
+    styleElement.appendChild(labelStyle);
+  }
+  if (style.lineColor || style.lineWidth) {
+    const lineStyle = document.createElementNS(KML_NAMESPACE, "LineStyle");
+    appendTextElement(document, lineStyle, "color", style.lineColor);
+    appendTextElement(document, lineStyle, "width", style.lineWidth);
+    styleElement.appendChild(lineStyle);
+  }
+  if (style.polygonColor || style.polygonFill || style.polygonOutline) {
+    const polyStyle = document.createElementNS(KML_NAMESPACE, "PolyStyle");
+    appendTextElement(document, polyStyle, "color", style.polygonColor);
+    appendTextElement(document, polyStyle, "fill", style.polygonFill);
+    appendTextElement(document, polyStyle, "outline", style.polygonOutline);
+    styleElement.appendChild(polyStyle);
+  }
+  return styleElement;
+}
+
+function appendTextElement(document: XmlDocument, parent: XmlElement, name: string, value: string | undefined): void {
+  if (!value) return;
+  const element = document.createElementNS(KML_NAMESPACE, name);
+  element.appendChild(document.createTextNode(value));
+  parent.appendChild(element);
+}
+
+function styleIdForPlacemark(placemark: XmlElement): string | null {
+  const data = extendedDataValues(placemark);
+  const layerType = normalizeStyleToken(data.layerType);
+  const role = normalizeStyleToken(data.role);
+  const kind = normalizeStyleToken(data.kind);
+  const featureType = normalizeStyleToken(data.cplayoutFeatureType);
+  const isPoint = Boolean(firstElement(placemark.getElementsByTagName("Point")));
+
+  if (layerType === "field_boundary") return "cplayout-field-boundary";
+  if (role === "pivot_center" || layerType === "pivot_center") return "cplayout-point-pivot";
+  if (role === "water_source" || layerType === "water_source") return "cplayout-point-water";
+  if (role === "power_source" || layerType === "power_source") return "cplayout-point-power";
+  if (role === "tower" || layerType === "tower") return "cplayout-tower";
+  if (featureType === "map_feature") return mapFeatureStyleId(kind, placemark);
+  if (layerType === "obstacle" && !isPoint) return obstacleStyleId(kind);
+  if (role) return "cplayout-survey-point";
+  return null;
+}
+
+function obstacleStyleId(kind: string): string {
+  if (kind === "road" || kind === "fence") return "cplayout-obstacle-road";
+  if (kind === "ditch" || kind === "canal") return "cplayout-obstacle-water";
+  if (kind === "building") return "cplayout-obstacle-structure";
+  if (kind === "tree") return "cplayout-obstacle-vegetation";
+  return "cplayout-obstacle-exclusion";
+}
+
+function mapFeatureStyleId(kind: string, placemark: XmlElement): string {
+  if (firstElement(placemark.getElementsByTagName("Point"))) return "cplayout-map-point";
+  if (kind === "underground_pipeline" || kind === "ditch" || kind === "canal") return "cplayout-map-line-water";
+  if (kind === "power_line") return "cplayout-map-line-power";
+  if (kind === "road" || kind === "access_lane") return "cplayout-map-line-access";
+  if (kind === "fence" || kind === "end_gun_arc" || kind === "corner_swing_limit") return "cplayout-map-line-boundary";
+  return "cplayout-map-line-access";
+}
+
+function extendedDataValues(placemark: XmlElement): Record<string, string> {
+  const values: Record<string, string> = {};
+  const dataElements = Array.from(placemark.getElementsByTagName("Data"));
+  for (const dataElement of dataElements) {
+    const name = dataElement.getAttribute("name");
+    if (!name) continue;
+    const valueElement = firstElement(dataElement.getElementsByTagName("value"));
+    const value = valueElement?.textContent?.trim();
+    if (value) values[name] = value;
+  }
+  return values;
+}
+
+function normalizeStyleToken(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+}
+
+function firstPlacemarkContentAfterName(placemark: XmlElement) {
+  const children = Array.from(placemark.childNodes);
+  const nameIndex = children.findIndex((child) => child.nodeType === 1 && (child as XmlElement).tagName === "name");
+  return children.find((child, index) => index > nameIndex && child.nodeType === 1) ?? null;
+}
+
+function firstElement<T>(elements: { length: number; [index: number]: T }): T | null {
+  return elements.length > 0 ? elements[0] : null;
 }
 
 function parseGoogleEarthKml(kmlText: string): FeatureCollection {

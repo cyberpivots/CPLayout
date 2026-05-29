@@ -98,6 +98,35 @@ export interface ObstacleZone {
   confidence: SourceConfidence;
 }
 
+export type ProjectMapFeatureKind =
+  | "pump_location"
+  | "underground_pipeline"
+  | "power_pole"
+  | "power_line"
+  | "tree"
+  | "road"
+  | "access_lane"
+  | "ditch"
+  | "canal"
+  | "fence"
+  | "end_gun_mark"
+  | "end_gun_arc"
+  | "corner_swing_limit";
+
+export type ProjectMapFeatureGeometry =
+  | { type: "Point"; point: XY }
+  | { type: "LineString"; vertices: XY[] };
+
+export interface ProjectMapFeature {
+  id: string;
+  name: string;
+  kind: ProjectMapFeatureKind;
+  geometry: ProjectMapFeatureGeometry;
+  confidence: SourceConfidence;
+  notes?: string;
+  properties?: Record<string, string | number | boolean | null>;
+}
+
 export interface PivotProject {
   id: string;
   name: string;
@@ -112,6 +141,7 @@ export interface PivotProject {
   obstacles: ObstacleZone[];
   surveyPoints: SurveyPoint[];
   mapPackages?: MapPackageManifest[];
+  mapFeatures?: ProjectMapFeature[];
 }
 
 export interface TowerPoint {

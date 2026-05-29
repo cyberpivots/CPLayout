@@ -17,6 +17,40 @@ assert.equal(rows[0].layerType, "field_boundary");
 assert.ok(rows[0].bounds.minX < rows[0].bounds.maxX);
 assert.ok(rows.some((row) => row.featureKind === "road"));
 
+const projectWithMapFeatures = {
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "pump-pad",
+      name: "Pump pad",
+      kind: "pump_location" as const,
+      geometry: { type: "Point" as const, point: sampleProject.waterSource },
+      confidence: "rtk_fixed" as const,
+      notes: "Confirmed at startup.",
+      properties: { inspected: true },
+    },
+    {
+      id: "buried-main",
+      name: "Buried main line",
+      kind: "underground_pipeline" as const,
+      geometry: {
+        type: "LineString" as const,
+        vertices: [sampleProject.waterSource, sampleProject.pivotCenter],
+      },
+      confidence: "user_estimated" as const,
+    },
+  ],
+};
+const mapFeatureRows = buildProjectGeometryRows(projectWithMapFeatures).filter((row) => row.layerType === "map_feature");
+assert.equal(mapFeatureRows.length, 2);
+assert.equal(mapFeatureRows[0].id, `${sampleProject.id}:map-feature:pump-pad`);
+assert.equal(mapFeatureRows[0].featureKind, "pump_location");
+assert.equal(mapFeatureRows[0].vertices.length, 1);
+assert.equal(mapFeatureRows[0].properties.geometryType, "Point");
+assert.equal(mapFeatureRows[0].properties.inspected, true);
+assert.equal(mapFeatureRows[1].featureKind, "underground_pipeline");
+assert.equal(mapFeatureRows[1].vertices.length, 2);
+
 const plan = buildSaveProjectStatementPlan(sampleProject, evaluateLayout(sampleProject));
 assert.ok(plan.some((statement) => statement.sql.includes("INSERT INTO project_snapshots")));
 assert.ok(plan.some((statement) => statement.sql.includes("INSERT INTO geometry_vertices")));
@@ -95,6 +129,21 @@ const largeProject = {
 };
 const largePlan = buildSaveProjectStatementPlan(largeProject);
 assert.ok(largePlan.filter((statement) => statement.sql.includes("INSERT INTO geometry_vertices")).length >= 1500);
+
+const mapFeaturePlan = buildSaveProjectStatementPlan(projectWithMapFeatures);
+const mapFeatureGeometryStatement = mapFeaturePlan.find((statement) => statement.params[0] === `${sampleProject.id}:map-feature:pump-pad`);
+assert.ok(mapFeatureGeometryStatement);
+assert.equal(mapFeatureGeometryStatement.params[2], "map_feature");
+assert.equal(mapFeatureGeometryStatement.params[3], "pump_location");
+assert.match(String(mapFeatureGeometryStatement.params[6]), /"geometryType":"Point"/);
+assert.ok(
+  mapFeaturePlan.some((statement) =>
+    statement.sql.includes("INSERT INTO geometry_vertices")
+    && statement.params[0] === `${sampleProject.id}:map-feature:buried-main`
+    && statement.params[2] === 1
+    && statement.params[3] === sampleProject.pivotCenter.x
+  ),
+);
 
 const evidenceRecord: LayoutEvidenceRecord = {
   id: "evidence-001",

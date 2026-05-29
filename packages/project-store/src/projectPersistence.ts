@@ -6,6 +6,7 @@ import type {
   ModelRecommendation,
   ObstacleZone,
   PivotProject,
+  ProjectMapFeature,
   SurveyPoint,
   XY,
 } from "@cplayout/core";
@@ -61,6 +62,7 @@ export function buildProjectGeometryRows(project: PivotProject): GeometryPersist
       bounds: boundsForPoints(project.fieldBoundary),
     },
     ...project.obstacles.map((obstacle) => obstacleToGeometryRow(project.id, obstacle)),
+    ...(project.mapFeatures ?? []).map((feature) => mapFeatureToGeometryRow(project.id, feature)),
   ];
 }
 
@@ -200,6 +202,25 @@ function obstacleToGeometryRow(projectId: string, obstacle: ObstacleZone): Geome
     },
     vertices: obstacle.polygon,
     bounds: boundsForPoints(obstacle.polygon),
+  };
+}
+
+function mapFeatureToGeometryRow(projectId: string, feature: ProjectMapFeature): GeometryPersistenceRow {
+  const vertices = feature.geometry.type === "Point" ? [feature.geometry.point] : feature.geometry.vertices;
+  return {
+    id: `${projectId}:map-feature:${feature.id}`,
+    layerType: "map_feature",
+    featureKind: feature.kind,
+    name: feature.name,
+    sourceConfidence: feature.confidence,
+    properties: {
+      ...(feature.properties ?? {}),
+      featureId: feature.id,
+      geometryType: feature.geometry.type,
+      notes: feature.notes ?? null,
+    },
+    vertices,
+    bounds: boundsForPoints(vertices),
   };
 }
 

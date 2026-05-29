@@ -1,7 +1,7 @@
 import { importProjectedGeoJsonToProject, importSurveyCsvToProject } from "./projectImports";
 import { PivotProjectSchema } from "./projectDocument";
 import type { ProjectSettings } from "./settings";
-import type { LonLat, ObstacleZone, PivotMachine, PivotProject, SurveyPoint, UnitSystem, XY } from "./types";
+import type { LonLat, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SurveyPoint, UnitSystem, XY } from "./types";
 
 export interface ProjectEditorState {
   project: PivotProject;
@@ -26,6 +26,9 @@ export type ProjectEditorAction =
   | { type: "add_survey_point"; point: Omit<SurveyPoint, "id" | "observedAt"> & { id?: string; observedAt?: string } }
   | { type: "update_survey_point"; point: SurveyPoint }
   | { type: "delete_survey_point"; id: string }
+  | { type: "add_map_feature"; feature: ProjectMapFeature }
+  | { type: "update_map_feature"; feature: ProjectMapFeature }
+  | { type: "delete_map_feature"; id: string }
   | { type: "promote_survey_point"; id: string; target: InfrastructurePoint }
   | { type: "update_machine"; machine: PivotMachine }
   | { type: "update_project_settings"; unitSystem: UnitSystem; settings: ProjectSettings }
@@ -83,6 +86,12 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
         return updateSurveyPoint(state, action.point);
       case "delete_survey_point":
         return deleteSurveyPoint(state, action.id);
+      case "add_map_feature":
+        return addMapFeature(state, action.feature);
+      case "update_map_feature":
+        return updateMapFeature(state, action.feature);
+      case "delete_map_feature":
+        return deleteMapFeature(state, action.id);
       case "promote_survey_point":
         return promoteSurveyPoint(state, action.id, action.target);
       case "update_machine":
@@ -200,6 +209,36 @@ function deleteSurveyPoint(state: ProjectEditorState, id: string): ProjectEditor
   return applyProjectChange(state, {
     ...state.project,
     surveyPoints: state.project.surveyPoints.filter((surveyPoint) => surveyPoint.id !== id),
+  });
+}
+
+function addMapFeature(state: ProjectEditorState, feature: ProjectMapFeature): ProjectEditorState {
+  if ((state.project.mapFeatures ?? []).some((mapFeature) => mapFeature.id === feature.id)) {
+    throw new Error(`Map feature ${feature.id} already exists.`);
+  }
+  return applyProjectChange(state, {
+    ...state.project,
+    mapFeatures: [...(state.project.mapFeatures ?? []), feature],
+  });
+}
+
+function updateMapFeature(state: ProjectEditorState, feature: ProjectMapFeature): ProjectEditorState {
+  if (!(state.project.mapFeatures ?? []).some((mapFeature) => mapFeature.id === feature.id)) {
+    throw new Error(`Map feature ${feature.id} was not found.`);
+  }
+  return applyProjectChange(state, {
+    ...state.project,
+    mapFeatures: (state.project.mapFeatures ?? []).map((mapFeature) => mapFeature.id === feature.id ? feature : mapFeature),
+  });
+}
+
+function deleteMapFeature(state: ProjectEditorState, id: string): ProjectEditorState {
+  if (!(state.project.mapFeatures ?? []).some((mapFeature) => mapFeature.id === id)) {
+    throw new Error(`Map feature ${id} was not found.`);
+  }
+  return applyProjectChange(state, {
+    ...state.project,
+    mapFeatures: (state.project.mapFeatures ?? []).filter((mapFeature) => mapFeature.id !== id),
   });
 }
 

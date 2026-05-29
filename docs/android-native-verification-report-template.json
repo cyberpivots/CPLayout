@@ -18,7 +18,7 @@
     "packagePath": ""
   },
   "sqlite": {
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "pragmaUserVersion": 0,
     "schemaMigrations": [],
     "mapPackageColumns": [],

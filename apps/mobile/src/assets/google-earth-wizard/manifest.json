@@ -1,0 +1,20 @@
+[
+  {
+    "filename": "google-earth-pro-main-window.png",
+    "label": "Google Earth Pro main window for CPLayout import tutorial",
+    "width": 2576,
+    "height": 1568,
+    "sha256": "3e29989cd42a0b536148b5ed159266ec79cf65d910833da96c4555c97c2307b4",
+    "capturedAt": "2026-05-28T23:50:45.1985883Z",
+    "source": "C:\\Program Files\\Google\\Google Earth Pro\\client\\googleearth.exe"
+  },
+  {
+    "filename": "google-earth-pro-add-menu.png",
+    "label": "Google Earth Pro Add menu for path, polygon, and placemark drawing",
+    "width": 760,
+    "height": 220,
+    "sha256": "40bd6080d1aeae36237780e46bf807b541efd7c9bbbeb8d540a9e81c62179386",
+    "capturedAt": "2026-05-28T23:50:47.0659112Z",
+    "source": "C:\\Program Files\\Google\\Google Earth Pro\\client\\googleearth.exe"
+  }
+]

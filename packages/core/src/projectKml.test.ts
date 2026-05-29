@@ -92,9 +92,21 @@ const closedLineStringKml = `<?xml version="1.0" encoding="UTF-8"?>
   </Document>
 </kml>`;
 const closedLine = importGoogleEarthKmlToProject(sampleProject, closedLineStringKml);
-assert.equal(closedLine.importedObstacleCount, 1);
-assert.equal(closedLine.project.obstacles.at(-1)?.kind, "fence");
-assert.match(closedLine.warnings.join("\n"), /closed LineString/);
+assert.equal(closedLine.importedObstacleCount, 0);
+assert.equal(closedLine.importedMapFeatureCount, 1);
+const closedLineFeature = closedLine.project.mapFeatures?.at(-1);
+assert.equal(closedLineFeature?.kind, "fence");
+assert.equal(closedLineFeature?.geometry.type, "LineString");
+assert.equal(closedLineFeature?.geometry.type === "LineString" ? closedLineFeature.geometry.vertices.length : 0, 4);
+assert.match(closedLine.warnings.join("\n"), /Closed utility LineString kept as a line/);
+
+const selectedImport = importGoogleEarthKmlToProject(sampleProject, explicitKml, {
+  observedAt: "2026-05-21T12:00:00.000Z",
+  selectedItemIds: ["boundary", "imported-control"],
+});
+assert.equal(selectedImport.importedObstacleCount, 0);
+assert.equal(selectedImport.importedSurveyPointCount, 1);
+assert.equal(selectedImport.items.some((item) => item.name === "Pump pad" && !item.selected), true);
 
 assert.throws(
   () => importGoogleEarthKmlToProject(sampleProject, `<kml xmlns="http://www.opengis.net/kml/2.2"><Document><NetworkLink><name>Remote</name></NetworkLink></Document></kml>`),
@@ -113,5 +125,43 @@ assert.match(exported.kml, /<kml xmlns="http:\/\/www\.opengis\.net\/kml\/2\.2">/
 assert.match(exported.kml, /field_boundary/);
 assert.match(exported.kml, /projectCrs/);
 assert.match(exported.kml, /EPSG:32613/);
+
+const exportedUtility = exportProjectGoogleEarthKml({
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "pipeline-a",
+      name: "Pipeline A",
+      kind: "underground_pipeline",
+      geometry: { type: "LineString", vertices: obstacleRing.slice(0, 2) },
+      confidence: "imagery_digitized",
+    },
+  ],
+});
+assert.match(exportedUtility.kml, /underground_pipeline/);
+assert.equal(exportedUtility.exportedFeatureCount, exported.exportedFeatureCount + 1);
+
+const renamedUtility = exportProjectGoogleEarthKml({
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "pipeline-a",
+      name: "Renamed Pipeline A",
+      kind: "underground_pipeline",
+      geometry: { type: "LineString", vertices: obstacleRing.slice(0, 2) },
+      confidence: "imagery_digitized",
+    },
+  ],
+});
+assert.match(renamedUtility.kml, /Renamed Pipeline A/);
+assert.doesNotMatch(renamedUtility.kml, /<name>Pipeline A<\/name>/);
+
+const deletedUtility = exportProjectGoogleEarthKml({
+  ...sampleProject,
+  mapFeatures: [],
+});
+assert.doesNotMatch(deletedUtility.kml, /pipeline-a/);
+assert.doesNotMatch(deletedUtility.kml, /Renamed Pipeline A/);
+assert.equal(deletedUtility.exportedFeatureCount, exported.exportedFeatureCount);
 
 console.log("project KML tests passed");

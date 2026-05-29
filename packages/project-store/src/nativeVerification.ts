@@ -1,9 +1,11 @@
 import { z } from "zod";
 
+import { SQLITE_MIGRATIONS, SQLITE_SCHEMA_VERSION } from "./persistenceSchema";
+
 export const ANDROID_NATIVE_REPORT_SCHEMA_VERSION = 1;
 export const ANDROID_NATIVE_PROOF_TARGET = "android-native-runtime";
-export const ANDROID_NATIVE_REQUIRED_SQLITE_VERSION = 3;
-export const ANDROID_NATIVE_REQUIRED_MIGRATIONS = [1, 2, 3] as const;
+export const ANDROID_NATIVE_REQUIRED_SQLITE_VERSION = SQLITE_SCHEMA_VERSION;
+export const ANDROID_NATIVE_REQUIRED_MIGRATIONS = SQLITE_MIGRATIONS.map((migration) => migration.id);
 export const ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS = [
   "tile_content_type",
   "tile_scheme",
@@ -219,8 +221,12 @@ export function androidNativeVerificationCompletionErrors(report: AndroidNativeV
 
   if (report.projectRoundTrip.runtime !== "native") errors.push("runtime must be native");
   if (!/sqlite/i.test(report.projectRoundTrip.backendLabel)) errors.push("backendLabel must identify SQLite");
-  if (report.sqlite.schemaVersion !== ANDROID_NATIVE_REQUIRED_SQLITE_VERSION) errors.push("SQLite schemaVersion must be 3");
-  if (report.sqlite.pragmaUserVersion !== ANDROID_NATIVE_REQUIRED_SQLITE_VERSION) errors.push("PRAGMA user_version must be 3");
+  if (report.sqlite.schemaVersion !== ANDROID_NATIVE_REQUIRED_SQLITE_VERSION) {
+    errors.push(`SQLite schemaVersion must be ${ANDROID_NATIVE_REQUIRED_SQLITE_VERSION}`);
+  }
+  if (report.sqlite.pragmaUserVersion !== ANDROID_NATIVE_REQUIRED_SQLITE_VERSION) {
+    errors.push(`PRAGMA user_version must be ${ANDROID_NATIVE_REQUIRED_SQLITE_VERSION}`);
+  }
 
   for (const migrationId of ANDROID_NATIVE_REQUIRED_MIGRATIONS) {
     if (!report.sqlite.schemaMigrations.includes(migrationId)) errors.push(`schema migration ${migrationId} is missing`);

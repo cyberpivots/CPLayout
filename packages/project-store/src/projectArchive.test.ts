@@ -67,6 +67,44 @@ const mapPackageCsv = mapPackagesToCsv({
 assert.match(mapPackageCsv, /tileContentType/);
 assert.match(mapPackageCsv, /field-imagery/);
 
+const projectWithMapFeatures = {
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "pump-pad",
+      name: "Pump pad",
+      kind: "pump_location" as const,
+      geometry: { type: "Point" as const, point: sampleProject.waterSource },
+      confidence: "rtk_fixed" as const,
+      properties: { inspected: true },
+    },
+    {
+      id: "buried-main",
+      name: "Buried main line",
+      kind: "underground_pipeline" as const,
+      geometry: {
+        type: "LineString" as const,
+        vertices: [sampleProject.waterSource, sampleProject.pivotCenter],
+      },
+      confidence: "user_estimated" as const,
+      notes: "Planning-grade route.",
+    },
+  ],
+};
+const mapFeatureBundle = buildProjectArchiveBundle(
+  projectWithMapFeatures,
+  evaluateLayout(projectWithMapFeatures),
+  exportScenarioGeoJson(projectWithMapFeatures, evaluateLayout(projectWithMapFeatures)),
+  "2026-05-19T12:00:00.000Z",
+);
+assert.match(bundle.files[PROJECT_JSON_FILENAME], /"mapFeatures": \[\]/);
+assert.match(mapFeatureBundle.files[PROJECT_JSON_FILENAME], /"mapFeatures"/);
+assert.match(mapFeatureBundle.files[PROJECT_JSON_FILENAME], /buried-main/);
+const importedMapFeatureProject = importProjectArchiveZip(exportProjectArchiveZip(mapFeatureBundle));
+assert.equal(importedMapFeatureProject.mapFeatures?.length, 2);
+assert.equal(importedMapFeatureProject.mapFeatures?.[0].kind, "pump_location");
+assert.equal(importedMapFeatureProject.mapFeatures?.[1].geometry.type, "LineString");
+
 const evidenceRecord: LayoutEvidenceRecord = {
   id: "evidence-001",
   projectId: sampleProject.id,

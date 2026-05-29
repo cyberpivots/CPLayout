@@ -10,9 +10,13 @@ import {
 
 const kml = `<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><Point><coordinates>-104,40,0</coordinates></Point></Placemark></Document></kml>`;
 const kmz = createGoogleEarthKmz(kml);
+const mapFeatureKml = `<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>Pipeline A</name><ExtendedData><Data name="cplayoutFeatureType"><value>map_feature</value></Data></ExtendedData><LineString><coordinates>-104,40,0 -104.1,40.1,0</coordinates></LineString></Placemark></Document></kml>`;
+const mapFeatureKmz = createGoogleEarthKmz(mapFeatureKml);
 
 assert.ok(kmz.byteLength > kml.length / 2);
 assert.equal(extractKmlFromKmz(kmz), kml);
+assert.match(extractKmlFromKmz(mapFeatureKmz), /Pipeline A/);
+assert.match(extractKmlFromKmz(mapFeatureKmz), /map_feature/);
 
 const readKmz = readGoogleEarthKmlFile({ filename: "field.kmz", bytes: kmz, mimeType: "application/vnd.google-earth.kmz" });
 assert.equal(readKmz.kind, "kmz");

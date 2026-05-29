@@ -12,6 +12,17 @@ Use this guide when a CPLayout panel task needs current facts, external referenc
 
 External docs verify external product facts. Local files, `git status`, tests, and line-numbered source reads verify current workspace state.
 
+## CPLayout Google Earth And KML Records
+
+For Google Earth, KML, or KMZ improvement loops, record these items before release:
+
+- Dirty-tree preflight and explicit intended staging scope from `git status --short`.
+- Primary KML sources used, usually Google KML Reference, Google shared-style tutorial, OGC KML, and repo source ledger entries.
+- KML/KMZ artifact paths, SHA-256 hashes, feature-count notes, and whether `doc.kml` contains CPLayout `ExtendedData`.
+- Browser evidence for visible workflows, including local web export, dev/static server URL, console caveats, and Playwright screenshots when available.
+- Native, Google Earth Pro, MapLibre, SQLite, ZIP sharing, and raw tile-rendering claims that remain unverified.
+- Direct-main publish evidence when applicable: `git fetch origin main`, `git rev-list --left-right --count origin/main...HEAD`, commit hash, and push result.
+
 ## OpenAI And Codex Facts
 
 Use OpenAI docs MCP tools first for OpenAI products, Codex, subagents, config, models, reasoning, APIs, SDKs, and Apps SDK facts.

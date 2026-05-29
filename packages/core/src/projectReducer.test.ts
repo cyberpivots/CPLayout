@@ -83,6 +83,36 @@ assert.equal(state.project.surveyPoints.find((point) => point.id === "survey-map
 state = reduceProjectEditorState(state, { type: "delete_survey_point", id: "survey-map-capture" });
 assert.equal(state.project.surveyPoints.some((point) => point.id === "survey-map-capture"), false);
 
+state = reduceProjectEditorState(state, {
+  type: "add_map_feature",
+  feature: {
+    id: "pipeline-a",
+    name: "Pipeline A",
+    kind: "underground_pipeline",
+    geometry: { type: "LineString", vertices: boundary.slice(0, 2) },
+    confidence: "user_estimated",
+  },
+});
+assert.equal(state.project.mapFeatures?.some((feature) => feature.id === "pipeline-a"), true);
+state = reduceProjectEditorState(state, {
+  type: "update_map_feature",
+  feature: {
+    ...state.project.mapFeatures!.find((feature) => feature.id === "pipeline-a")!,
+    name: "Updated Pipeline A",
+  },
+});
+assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "pipeline-a")?.name, "Updated Pipeline A");
+state = reduceProjectEditorState(state, { type: "undo" });
+assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "pipeline-a")?.name, "Pipeline A");
+state = reduceProjectEditorState(state, { type: "redo" });
+assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "pipeline-a")?.name, "Updated Pipeline A");
+state = reduceProjectEditorState(state, { type: "delete_map_feature", id: "pipeline-a" });
+assert.equal(state.project.mapFeatures?.some((feature) => feature.id === "pipeline-a"), false);
+state = reduceProjectEditorState(state, { type: "undo" });
+assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "pipeline-a")?.name, "Updated Pipeline A");
+state = reduceProjectEditorState(state, { type: "redo" });
+assert.equal(state.project.mapFeatures?.some((feature) => feature.id === "pipeline-a"), false);
+
 const obstacleId = state.project.obstacles.at(-1)?.id ?? "";
 state = reduceProjectEditorState(state, {
   type: "move_obstacle_vertex",

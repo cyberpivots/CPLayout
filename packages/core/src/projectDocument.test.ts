@@ -13,6 +13,21 @@ assert.deepEqual(parsed.pivotCenter, sampleProject.pivotCenter);
 assert.equal(parsed.settings?.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in (parsed.settings?.offlineMaps ?? {}), false);
 assert.equal("onlineImagery" in (parsed.settings ?? {}), false);
+assert.deepEqual(parsed.mapFeatures, []);
+
+const parsedMapFeatures = parseProjectDocument({
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "pipeline-a",
+      name: "Pipeline A",
+      kind: "underground_pipeline",
+      geometry: { type: "LineString", vertices: sampleProject.fieldBoundary.slice(0, 2) },
+      confidence: "imagery_digitized",
+    },
+  ],
+});
+assert.equal(parsedMapFeatures.mapFeatures?.[0].kind, "underground_pipeline");
 
 const parsedLegacySettings = parseProjectDocument({
   ...sampleProject,

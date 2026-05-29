@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 
 import {
   ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS,
+  ANDROID_NATIVE_REQUIRED_MIGRATIONS,
+  ANDROID_NATIVE_REQUIRED_SQLITE_VERSION,
   createAndroidNativeVerificationReportTemplate,
   parseCompleteAndroidNativeVerificationReport,
 } from "./nativeVerification";
+import { SQLITE_MIGRATIONS, SQLITE_SCHEMA_VERSION } from "./persistenceSchema";
 
 const baseReport = createAndroidNativeVerificationReportTemplate({
   generatedAt: "2026-05-19T12:00:00.000Z",
@@ -22,6 +25,13 @@ const baseReport = createAndroidNativeVerificationReportTemplate({
   logExcerptPath: "reports/android-native-verification/logcat.txt",
 });
 
+assert.equal(ANDROID_NATIVE_REQUIRED_SQLITE_VERSION, SQLITE_SCHEMA_VERSION);
+assert.deepEqual(
+  ANDROID_NATIVE_REQUIRED_MIGRATIONS,
+  SQLITE_MIGRATIONS.map((migration) => migration.id),
+);
+assert.equal(baseReport.sqlite.schemaVersion, SQLITE_SCHEMA_VERSION);
+
 assert.throws(
   () => parseCompleteAndroidNativeVerificationReport(baseReport),
   /status must be pass|checklist/,
@@ -31,9 +41,9 @@ const completed = {
   ...baseReport,
   status: "pass" as const,
   sqlite: {
-    schemaVersion: 3,
-    pragmaUserVersion: 3,
-    schemaMigrations: [1, 2, 3],
+    schemaVersion: ANDROID_NATIVE_REQUIRED_SQLITE_VERSION,
+    pragmaUserVersion: ANDROID_NATIVE_REQUIRED_SQLITE_VERSION,
+    schemaMigrations: [...ANDROID_NATIVE_REQUIRED_MIGRATIONS],
     mapPackageColumns: [...ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS],
     geometryRowsPopulated: true,
   },

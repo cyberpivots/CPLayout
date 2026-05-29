@@ -31,6 +31,18 @@ export function projectLayoutToWgs84FeatureCollection(
         towerIndex: tower.towerIndex,
         radiusMeters: tower.radiusMeters,
       })),
+      ...(project.mapFeatures ?? []).map((feature) => {
+        const properties = {
+          id: feature.id,
+          name: feature.name,
+          kind: feature.kind,
+          confidence: feature.confidence,
+          notes: feature.notes ?? "",
+        };
+        return feature.geometry.type === "Point"
+          ? pointFeature(project, "map_feature", feature.geometry.point, properties)
+          : lineFeature(project, "map_feature", feature.geometry.vertices, properties);
+      }),
       ...(draftVertices.length > 0 ? [lineFeature(project, "draft_vertices", draftVertices, { count: draftVertices.length })] : []),
     ],
   };
@@ -43,6 +55,7 @@ export function projectWgs84Bounds(project: PivotProject): [number, number, numb
     project.waterSource,
     project.powerSource,
     ...project.obstacles.flatMap((obstacle) => obstacle.polygon),
+    ...(project.mapFeatures ?? []).flatMap((feature) => feature.geometry.type === "Point" ? [feature.geometry.point] : feature.geometry.vertices),
   ].map((point) => projectXyToLonLat(point, project.projectCrs));
   const longitudes = coordinates.map((coordinate) => coordinate.longitude);
   const latitudes = coordinates.map((coordinate) => coordinate.latitude);

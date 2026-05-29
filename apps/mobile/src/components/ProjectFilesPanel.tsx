@@ -16,6 +16,7 @@ import {
 } from "@cplayout/project-store";
 import { exportProjectGoogleEarthKml, type GoogleEarthKmlImportResult, type LayoutResult, type PivotProject } from "@cplayout/core";
 import { useProjectRepository } from "../hooks/useProjectRepository";
+import { GoogleEarthImportWizard } from "./GoogleEarthImportWizard";
 
 interface ProjectFilesPanelProps {
   dirty: boolean;
@@ -23,7 +24,7 @@ interface ProjectFilesPanelProps {
   result: LayoutResult;
   onImportProjectedGeoJson: (geoJson: string) => string;
   onImportSurveyCsv: (csv: string) => string;
-  onPreviewGoogleEarthKml: (kmlText: string) => GoogleEarthKmlImportResult;
+  onPreviewGoogleEarthKml: (kmlText: string, selectedItemIds?: string[]) => GoogleEarthKmlImportResult;
   onApplyGoogleEarthKmlImport: (project: PivotProject) => void;
   onProjectLoaded: (project: PivotProject) => void;
   onSaved: () => void;
@@ -39,7 +40,9 @@ interface PanelStatus {
 interface PendingKmlImport {
   filename: string;
   kind: "kml" | "kmz";
+  kmlText: string;
   result: GoogleEarthKmlImportResult;
+  archiveWarnings: string[];
 }
 
 export function ProjectFilesPanel({
@@ -56,6 +59,7 @@ export function ProjectFilesPanel({
   const repository = useProjectRepository();
   const [status, setStatus] = useState<PanelStatus>({ tone: "info", text: "Project ZIP is the canonical project package." });
   const [pendingKmlImport, setPendingKmlImport] = useState<PendingKmlImport | null>(null);
+  const [selectedKmlReviewItemIds, setSelectedKmlReviewItemIds] = useState<string[]>([]);
   const [geoJsonImport, setGeoJsonImport] = useState("");
   const [surveyCsvImport, setSurveyCsvImport] = useState("");
 
@@ -143,7 +147,14 @@ export function ProjectFilesPanel({
       }
       const googleEarthFile = readGoogleEarthKmlFile(file);
       const result = onPreviewGoogleEarthKml(googleEarthFile.kmlText);
-      setPendingKmlImport({ filename: googleEarthFile.filename, kind: googleEarthFile.kind, result });
+      setPendingKmlImport({
+        filename: googleEarthFile.filename,
+        kind: googleEarthFile.kind,
+        kmlText: googleEarthFile.kmlText,
+        result,
+        archiveWarnings: googleEarthFile.warnings,
+      });
+      setSelectedKmlReviewItemIds(result.items.filter((item) => item.selected).map((item) => item.id));
       const tone: StatusTone = result.warnings.length > 0 || googleEarthFile.warnings.length > 0 ? "warning" : "info";
       setStatus({
         tone,
@@ -176,17 +187,28 @@ export function ProjectFilesPanel({
 
   function applyPendingKmlImport(): void {
     if (!pendingKmlImport) return;
-    onApplyGoogleEarthKmlImport(pendingKmlImport.result.project);
+    const selectedResult = onPreviewGoogleEarthKml(pendingKmlImport.kmlText, selectedKmlReviewItemIds);
+    onApplyGoogleEarthKmlImport(selectedResult.project);
     setStatus({
       tone: "success",
-      text: `Applied ${pendingKmlImport.filename}. ${kmlImportSummary(pendingKmlImport.result)}`,
+      text: `Applied ${pendingKmlImport.filename}. ${kmlImportSummary(selectedResult)}`,
     });
     setPendingKmlImport(null);
+    setSelectedKmlReviewItemIds([]);
   }
 
   function cancelPendingKmlImport(): void {
     setPendingKmlImport(null);
+    setSelectedKmlReviewItemIds([]);
     setStatus({ tone: "info", text: "Canceled Google Earth import review." });
+  }
+
+  function toggleKmlReviewItem(itemId: string): void {
+    setSelectedKmlReviewItemIds((current) =>
+      current.includes(itemId)
+        ? current.filter((candidate) => candidate !== itemId)
+        : [...current, itemId],
+    );
   }
 
   return (
@@ -219,10 +241,15 @@ export function ProjectFilesPanel({
       ))}
 
       <Text style={styles.groupTitle}>GIS Exchange</Text>
-      <View style={styles.actionRow}>
-        <FileAction icon={<Upload size={18} color="#254234" />} label="Import KML/KMZ" onPress={importKmlOrKmz} />
-        <FileAction icon={<Download size={18} color="#254234" />} label="Export KML" onPress={exportKml} />
-        <FileAction icon={<Download size={18} color="#254234" />} label="Export KMZ" onPress={exportKmz} />
+      <View style={styles.gisExchangeGrid}>
+        <View style={styles.gisActionBox}>
+          <View style={styles.actionRow}>
+            <FileAction icon={<Upload size={18} color="#254234" />} label="Import KML/KMZ" onPress={importKmlOrKmz} />
+            <FileAction icon={<Download size={18} color="#254234" />} label="Export KML" onPress={exportKml} />
+            <FileAction icon={<Download size={18} color="#254234" />} label="Export KMZ" onPress={exportKmz} />
+          </View>
+        </View>
+        <GoogleEarthImportWizard />
       </View>
       {pendingKmlImport ? (
         <View style={styles.reviewBox}>
@@ -231,10 +258,29 @@ export function ProjectFilesPanel({
             <Text style={styles.reviewText}>
               {pendingKmlImport.filename} · {kmlImportSummary(pendingKmlImport.result)}
             </Text>
+            <View style={styles.reviewItemGrid}>
+              {kmlReviewItems(pendingKmlImport.result).map((item) => {
+                const selected = selectedKmlReviewItemIds.includes(item.id);
+                return (
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="button"
+                    onPress={() => toggleKmlReviewItem(item.id)}
+                    style={[styles.reviewItem, selected && styles.reviewItemSelected]}
+                  >
+                    <Text style={[styles.reviewItemTitle, selected && styles.reviewItemTitleSelected]}>{item.title}</Text>
+                    <Text style={[styles.reviewItemMeta, selected && styles.reviewItemMetaSelected]}>{item.detail}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             {pendingKmlImport.result.importedBoundary ? (
               <Text style={styles.reviewWarning}>Existing field boundary will be replaced after projection into {project.projectCrs}.</Text>
             ) : null}
             {pendingKmlImport.result.warnings.map((warning) => (
+              <Text key={warning} style={styles.reviewWarning}>{warning}</Text>
+            ))}
+            {pendingKmlImport.archiveWarnings.map((warning) => (
               <Text key={warning} style={styles.reviewWarning}>{warning}</Text>
             ))}
           </View>
@@ -322,8 +368,24 @@ function kmlImportSummary(result: GoogleEarthKmlImportResult): string {
     `${result.importedObstacleCount} obstacle${result.importedObstacleCount === 1 ? "" : "s"}`,
     `${result.importedSurveyPointCount} point${result.importedSurveyPointCount === 1 ? "" : "s"}`,
   ];
+  if (result.importedMapFeatureCount > 0) parts.push(`${result.importedMapFeatureCount} map feature${result.importedMapFeatureCount === 1 ? "" : "s"}`);
   if (result.skippedFeatureCount > 0) parts.push(`${result.skippedFeatureCount} skipped`);
   return parts.join(", ");
+}
+
+function kmlReviewItems(result: GoogleEarthKmlImportResult): { id: string; title: string; detail: string }[] {
+  const items = result.items.map((item) => ({
+    id: item.id,
+    title: item.name,
+    detail: `${item.classification.replaceAll("_", " ")} · ${item.geometryType}${item.warning ? ` · ${item.warning}` : ""}`,
+  }));
+  return items.length > 0
+    ? items
+    : [{
+      id: "none",
+      title: "No imported project geometry",
+      detail: "The parser did not return selectable boundary, obstacle, survey, or map-feature candidates.",
+    }];
 }
 
 function formatWarnings(warnings: string[]): string {
@@ -482,6 +544,16 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
   },
+  gisExchangeGrid: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  gisActionBox: {
+    flexBasis: 280,
+    flexGrow: 1,
+  },
   importBox: {
     borderColor: "#dce3da",
     borderRadius: 8,
@@ -509,6 +581,44 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 18,
     marginTop: 4,
+  },
+  reviewItemGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  },
+  reviewItem: {
+    backgroundColor: "#f8faf4",
+    borderColor: "#d4decf",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 190,
+    flexGrow: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  reviewItemSelected: {
+    backgroundColor: "#254234",
+    borderColor: "#254234",
+  },
+  reviewItemTitle: {
+    color: "#26372c",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  reviewItemTitleSelected: {
+    color: "#ffffff",
+  },
+  reviewItemMeta: {
+    color: "#53655a",
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  reviewItemMetaSelected: {
+    color: "#e9f1e7",
   },
   reviewWarning: {
     color: "#805116",

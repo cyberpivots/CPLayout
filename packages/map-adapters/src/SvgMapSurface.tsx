@@ -4,6 +4,7 @@ import {
   ArrowRight,
   ArrowUp,
   Crosshair,
+  Fence,
   Hand,
   LocateFixed,
   Minus,
@@ -12,6 +13,7 @@ import {
   RefreshCcw,
   Ruler,
   Satellite,
+  UtilityPole,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { PanResponder, Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
@@ -31,7 +33,7 @@ import {
   visibleHeightMeters,
   visibleWidthMeters,
 } from "@cplayout/geometry";
-import type { InfrastructurePoint, MapStyle, ObstacleZone, SurveyPoint } from "@cplayout/core";
+import type { InfrastructurePoint, MapStyle, ObstacleZone, ProjectMapFeature, ProjectMapFeatureKind, SurveyPoint } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
 import type { MapSurfaceProps } from "./types";
@@ -40,10 +42,26 @@ type SelectedVertex =
   | { layer: "field_boundary"; vertexIndex: number }
   | { layer: "obstacle"; obstacleId: string; vertexIndex: number };
 
+type UtilityFeatureGeometry = ProjectMapFeature["geometry"]["type"];
+type MapPalette = ReturnType<typeof paletteForMapStyle>;
+
+const UTILITY_FEATURE_OPTIONS: { kind: ProjectMapFeatureKind; label: string; geometry: UtilityFeatureGeometry }[] = [
+  { kind: "underground_pipeline", label: "Pipe", geometry: "LineString" },
+  { kind: "power_line", label: "Power line", geometry: "LineString" },
+  { kind: "fence", label: "Fence", geometry: "LineString" },
+  { kind: "access_lane", label: "Lane", geometry: "LineString" },
+  { kind: "ditch", label: "Ditch", geometry: "LineString" },
+  { kind: "pump_location", label: "Pump", geometry: "Point" },
+  { kind: "power_pole", label: "Pole", geometry: "Point" },
+  { kind: "tree", label: "Tree", geometry: "Point" },
+  { kind: "end_gun_mark", label: "End gun", geometry: "Point" },
+];
+
 export function SvgMapSurface({
   project,
   result,
   settings,
+  selectedMapFeatureId,
   onCommitBoundaryDraft,
   onCommitObstacleDraft,
   onMoveBoundaryVertex,
@@ -53,13 +71,17 @@ export function SvgMapSurface({
   onPlacePivot,
   onMoveInfrastructurePoint,
   onAddSurveyPoint,
+  onAddMapFeature,
+  onSelectMapFeature,
 }: MapSurfaceProps): React.JSX.Element {
+  const mapFeatures = project.mapFeatures ?? [];
   const allRings = [
     project.fieldBoundary,
     ...result.allowedCoverage.flat(),
     ...result.outsideFieldCoverage.flat(),
     ...result.endGunCoverage.flat(),
     ...project.obstacles.map((obstacle) => obstacle.polygon),
+    ...mapFeatures.flatMap((feature) => feature.geometry.type === "LineString" ? [feature.geometry.vertices] : []),
   ];
   const bounds = boundsForGeometry(allRings);
   const margin = 80;
@@ -76,8 +98,12 @@ export function SvgMapSurface({
   const [mapPixelWidth, setMapPixelWidth] = useState(900);
   const [mapPixelHeight, setMapPixelHeight] = useState(440);
   const [selectedVertex, setSelectedVertex] = useState<SelectedVertex | null>(null);
+  const [localSelectedMapFeatureId, setLocalSelectedMapFeatureId] = useState<string | null>(null);
+  const [mapFeatureKind, setMapFeatureKind] = useState<ProjectMapFeatureKind>("underground_pipeline");
   const [lastSnap, setLastSnap] = useState<{ point: XY; kind: "vertex" | "feature" } | null>(null);
   const palette = paletteForMapStyle(settings.mapStyle);
+  const mapFeatureOption = featureOptionForKind(mapFeatureKind);
+  const activeSelectedMapFeatureId = selectedMapFeatureId ?? localSelectedMapFeatureId;
   const viewWidth = visibleWidthMeters(mapState.viewport);
   const viewHeight = visibleHeightMeters(mapState.viewport);
   const minX = mapState.viewport.center.x - viewWidth / 2;
@@ -160,6 +186,10 @@ export function SvgMapSurface({
       captureSurveyPoint(vertex);
       return;
     }
+    if (mapState.mode === "measure" && mapFeatureOption.geometry === "Point") {
+      commitMapFeaturePoint(vertex);
+      return;
+    }
     if (mapState.mode === "edit_vertices" && selectedVertex) {
       if (selectedVertex.layer === "field_boundary") {
         onMoveBoundaryVertex?.(selectedVertex.vertexIndex, vertex);
@@ -220,8 +250,18 @@ export function SvgMapSurface({
     const snap = snapPointToGeometry(
       point,
       {
-        vertices: [project.pivotCenter, project.waterSource, project.powerSource],
-        rings: [project.fieldBoundary, ...project.obstacles.map((obstacle) => obstacle.polygon), mapState.draftVertices],
+        vertices: [
+          project.pivotCenter,
+          project.waterSource,
+          project.powerSource,
+          ...mapFeatures.flatMap((feature) => feature.geometry.type === "Point" ? [feature.geometry.point] : []),
+        ],
+        rings: [
+          project.fieldBoundary,
+          ...project.obstacles.map((obstacle) => obstacle.polygon),
+          ...mapFeatures.flatMap((feature) => feature.geometry.type === "LineString" ? [feature.geometry.vertices] : []),
+          mapState.draftVertices,
+        ],
       },
       settings.drawing,
     );
@@ -238,6 +278,43 @@ export function SvgMapSurface({
       confidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
       notes: settings.onlineImagery.enabled ? "Captured from online imagery preview; verify by field survey." : undefined,
     });
+  }
+
+  function commitMapFeaturePoint(point: XY): void {
+    onAddMapFeature?.({
+      name: defaultMapFeatureName(mapFeatureKind, 1),
+      kind: mapFeatureKind,
+      geometry: { type: "Point", point },
+      confidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
+      notes: settings.onlineImagery.enabled ? "Captured from online imagery preview; verify by field survey." : undefined,
+    });
+  }
+
+  function commitMapFeatureLine(): void {
+    if (mapState.draftVertices.length < 2 || mapFeatureOption.geometry !== "LineString") return;
+    onAddMapFeature?.({
+      name: defaultMapFeatureName(mapFeatureKind, mapState.draftVertices.length),
+      kind: mapFeatureKind,
+      geometry: { type: "LineString", vertices: mapState.draftVertices },
+      confidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
+      notes: settings.onlineImagery.enabled ? "Traced from online imagery preview; verify by field survey." : undefined,
+    });
+    dispatch({ type: "clear_draft" });
+  }
+
+  function saveMapFeatureFromHud(): void {
+    if (mapFeatureOption.geometry === "Point") {
+      commitMapFeaturePoint(snapWorldPoint(mapState.viewport.center));
+    } else {
+      commitMapFeatureLine();
+    }
+  }
+
+  function selectMapFeature(featureId: string): void {
+    const nextId = activeSelectedMapFeatureId === featureId ? null : featureId;
+    setLocalSelectedMapFeatureId(nextId);
+    onSelectMapFeature?.(nextId);
+    dispatch({ type: "select_feature", featureId: nextId });
   }
 
   return (
@@ -316,6 +393,15 @@ export function SvgMapSurface({
               />
             </React.Fragment>
           ))}
+          {mapFeatures.map((feature) => (
+            <MapFeatureSymbol
+              key={feature.id}
+              feature={feature}
+              palette={palette}
+              selected={activeSelectedMapFeatureId === feature.id}
+              onSelect={() => selectMapFeature(feature.id)}
+            />
+          ))}
           <DraftVertices vertices={mapState.draftVertices} color={palette.draft} />
           {lastSnap ? <SnapMarker point={lastSnap.point} color={palette.snap} label={lastSnap.kind} /> : null}
           <InfrastructureSymbol point={project.pivotCenter} color={palette.pivot} kind="pivot_center" label="Pivot" />
@@ -365,6 +451,9 @@ export function SvgMapSurface({
           <Pressable accessibilityRole="button" accessibilityLabel="Commit draft geometry" disabled={!canCommitDraft(mapState)} onPress={commitDraft} style={[styles.clearDraftButton, canCommitDraft(mapState) && styles.commitDraftButton, !canCommitDraft(mapState) && styles.disabledDraftButton]}>
             <Text style={[styles.clearDraftText, canCommitDraft(mapState) && styles.commitDraftText]}>{mapState.mode === "measure" ? "Measure Only" : "Commit"}</Text>
           </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Save utility map feature" disabled={!canSaveMapFeature(mapState, mapFeatureOption.geometry)} onPress={saveMapFeatureFromHud} style={[styles.clearDraftButton, canSaveMapFeature(mapState, mapFeatureOption.geometry) && styles.commitDraftButton, !canSaveMapFeature(mapState, mapFeatureOption.geometry) && styles.disabledDraftButton]}>
+            <Text style={[styles.clearDraftText, canSaveMapFeature(mapState, mapFeatureOption.geometry) && styles.commitDraftText]}>{mapFeatureOption.geometry === "Point" ? "Save Center Feature" : "Save Feature"}</Text>
+          </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Delete selected vertex" disabled={!selectedVertex} onPress={deleteSelectedVertex} style={[styles.clearDraftButton, !selectedVertex && styles.disabledDraftButton]}>
             <Text style={styles.clearDraftText}>Delete Vertex</Text>
           </Pressable>
@@ -398,6 +487,20 @@ export function SvgMapSurface({
       />
 
       <View style={styles.layerRow}>
+        {UTILITY_FEATURE_OPTIONS.map((option) => (
+          <FeatureKindButton
+            key={option.kind}
+            active={mapFeatureKind === option.kind}
+            label={option.label}
+            onPress={() => {
+              setMapFeatureKind(option.kind);
+              setToolMode("measure");
+            }}
+          />
+        ))}
+      </View>
+
+      <View style={styles.layerRow}>
         <LayerButton active={mapState.activeLayer === "field_boundary"} label="Boundary" layer="field_boundary" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
         <LayerButton active={mapState.activeLayer === "obstacle"} label="Obstacle" layer="obstacle" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
         <LayerButton active={mapState.activeLayer === "road"} label="Road" layer="road" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
@@ -417,6 +520,7 @@ export function SvgMapSurface({
         <LegendSwatch color="#e68b58" label="Outside field" />
         <LegendSwatch color="#c64f43" label="Obstacle/no-spray" />
         <LegendSwatch color={palette.survey} label="Survey/object point" />
+        <LegendSwatch color={palette.utility} label="Utility map feature" />
       </View>
     </View>
   );
@@ -430,6 +534,10 @@ function canAddDraftVertex(mode: DrawingMapState["mode"]): boolean {
 
 function canCommitDraft(mapState: DrawingMapState): boolean {
   return mapState.draftVertices.length >= 3 && (mapState.mode === "draw_boundary" || mapState.mode === "mark_obstacle");
+}
+
+function canSaveMapFeature(mapState: DrawingMapState, geometry: UtilityFeatureGeometry): boolean {
+  return mapState.mode === "measure" && (geometry === "Point" || mapState.draftVertices.length >= 2);
 }
 
 function setToolLayerForMode(mode: DrawingMapState["mode"], layer?: DrawingLayerType): DrawingLayerType | null {
@@ -462,6 +570,14 @@ function measureText(vertices: XY[]): string {
   if (vertices.length < 2) return "";
   const distance = vertices.slice(1).reduce((sum, vertex, index) => sum + Math.hypot(vertex.x - vertices[index].x, vertex.y - vertices[index].y), 0);
   return ` · ${distance.toFixed(1)} m`;
+}
+
+function featureOptionForKind(kind: ProjectMapFeatureKind): { kind: ProjectMapFeatureKind; label: string; geometry: UtilityFeatureGeometry } {
+  return UTILITY_FEATURE_OPTIONS.find((option) => option.kind === kind) ?? UTILITY_FEATURE_OPTIONS[0];
+}
+
+function defaultMapFeatureName(kind: ProjectMapFeatureKind, vertexCount: number): string {
+  return `${kind.replaceAll("_", " ")} ${vertexCount > 1 ? "line" : "point"}`;
 }
 
 function Grid({ minX, maxX, minY, maxY, stroke }: { minX: number; maxX: number; minY: number; maxY: number; stroke: string }): React.JSX.Element {
@@ -598,6 +714,62 @@ function ObstacleSymbol({ color, obstacle }: { color: string; obstacle: Obstacle
   );
 }
 
+function MapFeatureSymbol({
+  feature,
+  onSelect,
+  palette,
+  selected,
+}: {
+  feature: ProjectMapFeature;
+  onSelect: () => void;
+  palette: MapPalette;
+  selected: boolean;
+}): React.JSX.Element {
+  const color = colorForMapFeature(feature.kind, palette);
+  const strokeWidth = selected ? 7 : 4;
+  if (feature.geometry.type === "LineString") {
+    const vertices = feature.geometry.vertices;
+    if (vertices.length < 2) return <></>;
+    const path = `M ${vertices.map((vertex) => `${vertex.x} ${-vertex.y}`).join(" L ")}`;
+    const mid = vertices[Math.floor(vertices.length / 2)];
+    return (
+      <>
+        <Path
+          d={path}
+          fill="none"
+          stroke={color}
+          strokeDasharray={dashForMapFeature(feature.kind)}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={strokeWidth}
+          {...svgElementInteractionProps(onSelect)}
+        />
+        <SvgText x={mid.x + 12} y={-mid.y - 10} fill={color} fontSize={18} fontWeight="900">
+          {feature.name}
+        </SvgText>
+      </>
+    );
+  }
+  const point = feature.geometry.point;
+  const y = -point.y;
+  return (
+    <>
+      <Circle
+        cx={point.x}
+        cy={y}
+        fill={selected ? color : "#fffef8"}
+        r={selected ? 13 : 10}
+        stroke={color}
+        strokeWidth={4}
+        {...svgElementInteractionProps(onSelect)}
+      />
+      <SvgText x={point.x + 15} y={y + 6} fill={color} fontSize={18} fontWeight="900">
+        {shortMapFeatureLabel(feature.kind)}
+      </SvgText>
+    </>
+  );
+}
+
 function shortSurveyLabel(role: SurveyPoint["role"]): string {
   switch (role) {
     case "pivot_center":
@@ -717,6 +889,16 @@ function LayerButton({ active, label, layer, onPress }: { active: boolean; label
   );
 }
 
+function FeatureKindButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }): React.JSX.Element {
+  return (
+    <Pressable onPress={onPress} style={[styles.layerButton, active && styles.layerButtonActive]}>
+      {label === "Power line" || label === "Pole" ? <UtilityPole size={15} color={active ? "#ffffff" : "#314339"} /> : null}
+      {label === "Fence" ? <Fence size={15} color={active ? "#ffffff" : "#314339"} /> : null}
+      <Text style={[styles.layerLabel, active && styles.layerLabelActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function LegendSwatch({ color, label }: { color: string; label: string }): React.JSX.Element {
   return (
     <View style={styles.legendItem}>
@@ -724,6 +906,35 @@ function LegendSwatch({ color, label }: { color: string; label: string }): React
       <Text style={styles.legendLabel}>{label}</Text>
     </View>
   );
+}
+
+function colorForMapFeature(kind: ProjectMapFeatureKind, palette: MapPalette): string {
+  if (kind === "power_line" || kind === "power_pole") return palette.power;
+  if (kind === "underground_pipeline" || kind === "pump_location") return palette.water;
+  if (kind === "tree") return palette.survey;
+  return palette.utility;
+}
+
+function dashForMapFeature(kind: ProjectMapFeatureKind): string | undefined {
+  if (kind === "underground_pipeline") return "12 8";
+  if (kind === "fence") return "5 5";
+  if (kind === "ditch" || kind === "canal") return "14 7 4 7";
+  return undefined;
+}
+
+function shortMapFeatureLabel(kind: ProjectMapFeatureKind): string {
+  switch (kind) {
+    case "pump_location":
+      return "Pump";
+    case "power_pole":
+      return "Pole";
+    case "tree":
+      return "Tree";
+    case "end_gun_mark":
+      return "EG";
+    default:
+      return kind.replaceAll("_", " ");
+  }
 }
 
 function paletteForMapStyle(style: MapStyle): {
@@ -743,6 +954,7 @@ function paletteForMapStyle(style: MapStyle): {
   draft: string;
   snap: string;
   survey: string;
+  utility: string;
 } {
   if (style === "high_contrast") {
     return {
@@ -762,6 +974,7 @@ function paletteForMapStyle(style: MapStyle): {
       draft: "#8b1e18",
       snap: "#005f52",
       survey: "#5f2e00",
+      utility: "#4d276f",
     };
   }
 
@@ -783,6 +996,7 @@ function paletteForMapStyle(style: MapStyle): {
       draft: "#7b1f5a",
       snap: "#005f52",
       survey: "#6b3e00",
+      utility: "#673f8f",
     };
   }
 
@@ -804,6 +1018,7 @@ function paletteForMapStyle(style: MapStyle): {
       draft: "#7b1f5a",
       snap: "#005f52",
       survey: "#744200",
+      utility: "#5b3b87",
     };
   }
 
@@ -824,6 +1039,7 @@ function paletteForMapStyle(style: MapStyle): {
     draft: "#7b1f5a",
     snap: "#005f52",
     survey: "#6f3f00",
+    utility: "#62418f",
   };
 }
 
@@ -1001,10 +1217,13 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   layerButton: {
+    alignItems: "center",
     backgroundColor: "#f1f5ee",
     borderColor: "#cdd8ca",
     borderRadius: 8,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
     minHeight: 40,
     paddingHorizontal: 11,
     paddingVertical: 9,

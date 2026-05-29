@@ -5,18 +5,46 @@ import { DOMParser } from "@xmldom/xmldom";
 
 import { projectLonLatToXy, projectXyToLonLat } from "./coordinates";
 import { PivotProjectSchema } from "./projectDocument";
-import type { LayoutResult, ObstacleZone, PivotProject, SourceConfidence, SurveyPoint, XY } from "./types";
+import type { LayoutResult, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "./types";
 
 const OBSTACLE_KINDS = ["road", "ditch", "fence", "building", "canal", "tree", "exclusion"] as const;
 const POINT_ROLES = ["boundary", "pivot_center", "water_source", "power_source", "obstacle", "control", "note"] as const;
+const MAP_FEATURE_KINDS = [
+  "pump_location",
+  "underground_pipeline",
+  "power_pole",
+  "power_line",
+  "tree",
+  "road",
+  "access_lane",
+  "ditch",
+  "canal",
+  "fence",
+  "end_gun_mark",
+  "end_gun_arc",
+  "corner_swing_limit",
+] as const;
 const CONFIDENCES = ["rtk_fixed", "rtk_float", "dgps", "autonomous_gps", "imagery_digitized", "imported_cad", "user_estimated", "optimized"] as const;
+
+export type GoogleEarthKmlImportClassification = "field_boundary" | "obstacle" | "survey_point" | "map_feature" | "skipped";
+
+export interface GoogleEarthKmlImportItem {
+  id: string;
+  name: string;
+  classification: GoogleEarthKmlImportClassification;
+  geometryType: "Point" | "LineString" | "Polygon";
+  selected: boolean;
+  warning?: string;
+}
 
 export interface GoogleEarthKmlImportResult {
   project: PivotProject;
   importedBoundary: boolean;
   importedObstacleCount: number;
   importedSurveyPointCount: number;
+  importedMapFeatureCount: number;
   skippedFeatureCount: number;
+  items: GoogleEarthKmlImportItem[];
   warnings: string[];
 }
 
@@ -28,6 +56,7 @@ export interface GoogleEarthKmlExportResult {
 
 export interface GoogleEarthKmlImportOptions {
   observedAt?: string;
+  selectedItemIds?: string[];
 }
 
 interface PolygonCandidate {
@@ -45,6 +74,19 @@ interface PointCandidate {
   properties: Record<string, unknown>;
 }
 
+interface LineCandidate {
+  vertices: XY[];
+  name: string;
+  properties: Record<string, unknown>;
+  source: "linestring" | "closed_linestring";
+}
+
+type ClassifiedCandidate =
+  | { item: GoogleEarthKmlImportItem; kind: "field_boundary"; ring: XY[] }
+  | { item: GoogleEarthKmlImportItem; kind: "obstacle"; candidate: PolygonCandidate }
+  | { item: GoogleEarthKmlImportItem; kind: "survey_point"; candidate: PointCandidate }
+  | { item: GoogleEarthKmlImportItem; kind: "map_feature"; feature: ProjectMapFeature };
+
 export function importGoogleEarthKmlToProject(
   project: PivotProject,
   kmlText: string,
@@ -54,6 +96,7 @@ export function importGoogleEarthKmlToProject(
   const warnings: string[] = [];
   const polygonCandidates: PolygonCandidate[] = [];
   const pointCandidates: PointCandidate[] = [];
+  const lineCandidates: LineCandidate[] = [];
   let skippedFeatureCount = 0;
 
   geoJson.features.forEach((feature, featureIndex) => {
@@ -62,38 +105,168 @@ export function importGoogleEarthKmlToProject(
     const extracted = extractCandidatesFromGeometry(feature.geometry, properties, name, project.projectCrs, warnings);
     polygonCandidates.push(...extracted.polygons);
     pointCandidates.push(...extracted.points);
+    lineCandidates.push(...extracted.lines);
     skippedFeatureCount += extracted.skipped;
   });
 
-  if (polygonCandidates.length === 0 && pointCandidates.length === 0) {
-    throw new Error("KML/KMZ import did not contain supported Polygon, closed LineString, or Point placemarks.");
+  if (polygonCandidates.length === 0 && pointCandidates.length === 0 && lineCandidates.length === 0) {
+    throw new Error("KML/KMZ import did not contain supported Polygon, LineString, or Point placemarks.");
   }
 
-  let fieldBoundary: XY[] | null = null;
-  const obstacleCandidates: PolygonCandidate[] = [];
+  const selectedItemIds = options.selectedItemIds ? new Set(options.selectedItemIds) : null;
+  const classified: ClassifiedCandidate[] = [];
+  let hasBoundaryCandidate = false;
+  let fieldBoundaryAssigned = false;
+
   for (const candidate of polygonCandidates) {
+    const itemId = candidateItemId(candidate.properties, candidate.name, classified.length + 1);
     if (isBoundaryCandidate(candidate.properties, candidate.name)) {
-      if (fieldBoundary) {
+      hasBoundaryCandidate = true;
+      const selected = selectedByDefault(itemId, selectedItemIds);
+      if (fieldBoundaryAssigned && selected) {
         skippedFeatureCount += 1;
         warnings.push(`Skipped duplicate boundary placemark "${candidate.name}".`);
       } else {
-        fieldBoundary = candidate.ring;
+        if (selected) fieldBoundaryAssigned = true;
+        classified.push({
+          item: {
+            id: itemId,
+            name: candidate.name,
+            classification: "field_boundary",
+            geometryType: "Polygon",
+            selected,
+            warning: candidate.holeCount > 0 ? `${candidate.holeCount} inner ring${candidate.holeCount === 1 ? "" : "s"} ignored.` : undefined,
+          },
+          kind: "field_boundary",
+          ring: candidate.ring,
+        });
       }
     } else {
-      obstacleCandidates.push(candidate);
+      classified.push({
+        item: {
+          id: itemId,
+          name: candidate.name,
+          classification: "obstacle",
+          geometryType: "Polygon",
+          selected: selectedByDefault(itemId, selectedItemIds),
+          warning: candidate.holeCount > 0 ? `${candidate.holeCount} inner ring${candidate.holeCount === 1 ? "" : "s"} ignored.` : undefined,
+        },
+        kind: "obstacle",
+        candidate,
+      });
     }
   }
 
-  if (!fieldBoundary && polygonCandidates.length > 0) {
-    const [first, ...remaining] = polygonCandidates;
-    fieldBoundary = first.ring;
-    obstacleCandidates.length = 0;
-    obstacleCandidates.push(...remaining);
-    warnings.push(`No explicit field_boundary metadata found; imported "${first.name}" as the field boundary.`);
+  if (!hasBoundaryCandidate && polygonCandidates.length > 0) {
+    const firstPolygon = classified.find((candidate): candidate is Extract<ClassifiedCandidate, { kind: "obstacle" }> => candidate.kind === "obstacle");
+    if (firstPolygon) {
+      classified.splice(classified.indexOf(firstPolygon), 1, {
+        item: {
+          ...firstPolygon.item,
+          classification: "field_boundary",
+          selected: selectedByDefault(firstPolygon.item.id, selectedItemIds),
+          warning: `No explicit field_boundary metadata found; "${firstPolygon.item.name}" is selected as the field boundary.`,
+        },
+        kind: "field_boundary",
+        ring: firstPolygon.candidate.ring,
+      });
+      warnings.push(`No explicit field_boundary metadata found; imported "${firstPolygon.item.name}" as the field boundary.`);
+    }
+  }
+
+  for (const candidate of pointCandidates) {
+    const itemId = candidateItemId(candidate.properties, candidate.name, classified.length + 1);
+    const mapFeatureKind = mapFeatureKindFromProperties(candidate.properties, candidate.name);
+    if (mapFeatureKind) {
+      classified.push({
+        item: {
+          id: itemId,
+          name: candidate.name,
+          classification: "map_feature",
+          geometryType: "Point",
+          selected: selectedByDefault(itemId, selectedItemIds),
+        },
+        kind: "map_feature",
+        feature: mapFeatureFromPoint(project, candidate, itemId, mapFeatureKind),
+      });
+    } else {
+      classified.push({
+        item: {
+          id: itemId,
+          name: candidate.name,
+          classification: "survey_point",
+          geometryType: "Point",
+          selected: selectedByDefault(itemId, selectedItemIds),
+        },
+        kind: "survey_point",
+        candidate,
+      });
+    }
+  }
+
+  for (const candidate of lineCandidates) {
+    const itemId = candidateItemId(candidate.properties, candidate.name, classified.length + 1);
+    const mapFeatureKind = mapFeatureKindFromProperties(candidate.properties, candidate.name) ?? lineMapFeatureKindFromName(candidate.name);
+    if (isPolygonLineCandidate(candidate.properties, candidate.name) && candidate.source === "closed_linestring") {
+      const polygonCandidate: PolygonCandidate = {
+        ring: candidate.vertices,
+        name: candidate.name,
+        properties: candidate.properties,
+        holeCount: 0,
+        source: "closed_linestring",
+      };
+      const isBoundary = isBoundaryCandidate(candidate.properties, candidate.name);
+      classified.push({
+        item: {
+          id: itemId,
+          name: candidate.name,
+          classification: isBoundary ? "field_boundary" : "obstacle",
+          geometryType: "LineString",
+          selected: selectedByDefault(itemId, selectedItemIds),
+          warning: "Closed LineString polygonized by explicit boundary/obstacle classification.",
+        },
+        ...(isBoundary
+          ? { kind: "field_boundary" as const, ring: candidate.vertices }
+          : { kind: "obstacle" as const, candidate: polygonCandidate }),
+      });
+    } else if (isPolygonLineCandidate(candidate.properties, candidate.name)) {
+      skippedFeatureCount += 1;
+      warnings.push(`Skipped open LineString "${candidate.name}" because polygon boundary/obstacle imports must be closed.`);
+    } else if (mapFeatureKind) {
+      const warning = candidate.source === "closed_linestring" ? "Closed utility LineString kept as a line and closing duplicate removed." : undefined;
+      if (warning) warnings.push(`${warning} "${candidate.name}".`);
+      classified.push({
+        item: {
+          id: itemId,
+          name: candidate.name,
+          classification: "map_feature",
+          geometryType: "LineString",
+          selected: selectedByDefault(itemId, selectedItemIds),
+          warning,
+        },
+        kind: "map_feature",
+        feature: mapFeatureFromLine(project, candidate, itemId, mapFeatureKind),
+      });
+    } else {
+      skippedFeatureCount += 1;
+      warnings.push(`Skipped LineString "${candidate.name}" because it was not classified as a utility feature, boundary, or obstacle.`);
+    }
+  }
+
+  let fieldBoundary: XY[] | null = null;
+  const selectedClassified = classified.filter((candidate) => candidate.item.selected);
+  for (const candidate of selectedClassified) {
+    if (candidate.kind !== "field_boundary") continue;
+    if (fieldBoundary) {
+      skippedFeatureCount += 1;
+      warnings.push(`Skipped duplicate selected boundary placemark "${candidate.item.name}".`);
+    } else {
+      fieldBoundary = candidate.ring;
+    }
   }
 
   const existingObstacleIds = new Set(project.obstacles.map((obstacle) => obstacle.id));
-  const obstacles = obstacleCandidates.map((candidate, index): ObstacleZone => {
+  const obstacles = selectedClassified.filter((candidate): candidate is Extract<ClassifiedCandidate, { kind: "obstacle" }> => candidate.kind === "obstacle").map(({ candidate }, index): ObstacleZone => {
     const kind = obstacleKindFromProperties(candidate.properties, candidate.name);
     const id = uniqueId(
       existingObstacleIds,
@@ -119,7 +292,7 @@ export function importGoogleEarthKmlToProject(
 
   const existingSurveyIds = new Set(project.surveyPoints.map((point) => point.id));
   const observedAt = options.observedAt ?? new Date().toISOString();
-  const surveyPoints = pointCandidates.map((candidate, index): SurveyPoint => {
+  const surveyPoints = selectedClassified.filter((candidate): candidate is Extract<ClassifiedCandidate, { kind: "survey_point" }> => candidate.kind === "survey_point").map(({ candidate }, index): SurveyPoint => {
     const id = uniqueId(
       existingSurveyIds,
       readStringProperty(candidate.properties, ["id", "@id"]) ?? `kml-point-${project.surveyPoints.length + index + 1}`,
@@ -136,12 +309,16 @@ export function importGoogleEarthKmlToProject(
       notes: readStringProperty(candidate.properties, ["description", "notes"]) ?? undefined,
     };
   });
+  const mapFeatures = selectedClassified
+    .filter((candidate): candidate is Extract<ClassifiedCandidate, { kind: "map_feature" }> => candidate.kind === "map_feature")
+    .map((candidate) => candidate.feature);
 
   const nextProject = PivotProjectSchema.parse({
     ...project,
     fieldBoundary: fieldBoundary ?? project.fieldBoundary,
     obstacles: [...project.obstacles, ...obstacles],
     surveyPoints: [...project.surveyPoints, ...surveyPoints],
+    mapFeatures: [...(project.mapFeatures ?? []), ...mapFeatures],
   });
 
   return {
@@ -149,7 +326,9 @@ export function importGoogleEarthKmlToProject(
     importedBoundary: Boolean(fieldBoundary),
     importedObstacleCount: obstacles.length,
     importedSurveyPointCount: surveyPoints.length,
+    importedMapFeatureCount: mapFeatures.length,
     skippedFeatureCount,
+    items: classified.map((candidate) => candidate.item),
     warnings: dedupe(warnings),
   };
 }
@@ -190,6 +369,23 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
       projectId: project.id,
       projectCrs: project.projectCrs,
     }));
+  }
+
+  for (const mapFeature of project.mapFeatures ?? []) {
+    const baseProperties = {
+      id: mapFeature.id,
+      kind: mapFeature.kind,
+      confidence: mapFeature.confidence,
+      notes: mapFeature.notes ?? "",
+      projectId: project.id,
+      projectCrs: project.projectCrs,
+      cplayoutFeatureType: "map_feature",
+    };
+    if (mapFeature.geometry.type === "Point") {
+      features.push(pointFeature(mapFeature.name, mapFeature.kind, mapFeature.geometry.point, project.projectCrs, baseProperties));
+    } else {
+      features.push(lineFeature(mapFeature.name, mapFeature.kind, mapFeature.geometry.vertices, project.projectCrs, baseProperties));
+    }
   }
 
   if (result) {
@@ -233,13 +429,14 @@ function extractCandidatesFromGeometry(
   name: string,
   projectCrs: string,
   warnings: string[],
-): { polygons: PolygonCandidate[]; points: PointCandidate[]; skipped: number } {
-  if (!geometry) return { polygons: [], points: [], skipped: 1 };
+): { polygons: PolygonCandidate[]; points: PointCandidate[]; lines: LineCandidate[]; skipped: number } {
+  if (!geometry) return { polygons: [], points: [], lines: [], skipped: 1 };
   switch (geometry.type) {
     case "Polygon":
       return {
         polygons: polygonCandidatesFromPolygon(geometry, properties, name, projectCrs, warnings),
         points: [],
+        lines: [],
         skipped: 0,
       };
     case "MultiPolygon":
@@ -253,21 +450,22 @@ function extractCandidatesFromGeometry(
           warnings,
         )),
         points: [],
+        lines: [],
         skipped: 0,
       };
     case "LineString": {
-      const candidate = polygonCandidateFromLineString(geometry, properties, name, projectCrs, warnings);
-      return candidate ? { polygons: [candidate], points: [], skipped: 0 } : { polygons: [], points: [], skipped: 1 };
+      const candidate = lineCandidateFromLineString(geometry, properties, name, projectCrs, warnings);
+      return candidate ? { polygons: [], points: [], lines: [candidate], skipped: 0 } : { polygons: [], points: [], lines: [], skipped: 1 };
     }
     case "Point": {
       const point = pointCandidateFromPoint(geometry, properties, name, projectCrs, warnings);
-      return point ? { polygons: [], points: [point], skipped: 0 } : { polygons: [], points: [], skipped: 1 };
+      return point ? { polygons: [], points: [point], lines: [], skipped: 0 } : { polygons: [], points: [], lines: [], skipped: 1 };
     }
     case "GeometryCollection":
       return extractCandidatesFromGeometryCollection(geometry, properties, name, projectCrs, warnings);
     case "MultiPoint":
     case "MultiLineString":
-      return { polygons: [], points: [], skipped: 1 };
+      return { polygons: [], points: [], lines: [], skipped: 1 };
   }
 }
 
@@ -277,7 +475,7 @@ function extractCandidatesFromGeometryCollection(
   name: string,
   projectCrs: string,
   warnings: string[],
-): { polygons: PolygonCandidate[]; points: PointCandidate[]; skipped: number } {
+): { polygons: PolygonCandidate[]; points: PointCandidate[]; lines: LineCandidate[]; skipped: number } {
   return geometry.geometries.reduce(
     (accumulator, childGeometry, index) => {
       const child = extractCandidatesFromGeometry(
@@ -289,10 +487,11 @@ function extractCandidatesFromGeometryCollection(
       );
       accumulator.polygons.push(...child.polygons);
       accumulator.points.push(...child.points);
+      accumulator.lines.push(...child.lines);
       accumulator.skipped += child.skipped;
       return accumulator;
     },
-    { polygons: [] as PolygonCandidate[], points: [] as PointCandidate[], skipped: 0 },
+    { polygons: [] as PolygonCandidate[], points: [] as PointCandidate[], lines: [] as LineCandidate[], skipped: 0 },
   );
 }
 
@@ -321,16 +520,21 @@ function polygonCandidatesFromCoordinates(
   return [{ ring, name, properties, holeCount: Math.max(0, coordinates.length - 1), source }];
 }
 
-function polygonCandidateFromLineString(
+function lineCandidateFromLineString(
   geometry: LineString,
   properties: Record<string, unknown>,
   name: string,
   projectCrs: string,
   warnings: string[],
-): PolygonCandidate | null {
-  if (!isClosedPositionRing(geometry.coordinates)) return null;
-  const ring = ringFromPositions(geometry.coordinates, projectCrs, name, warnings);
-  return ring ? { ring, name, properties, holeCount: 0, source: "closed_linestring" } : null;
+): LineCandidate | null {
+  const vertices = lineFromPositions(geometry.coordinates, projectCrs, name, warnings);
+  if (!vertices) return null;
+  return {
+    vertices,
+    name,
+    properties,
+    source: isClosedPositionRing(geometry.coordinates) ? "closed_linestring" : "linestring",
+  };
 }
 
 function pointCandidateFromPoint(
@@ -365,6 +569,23 @@ function ringFromPositions(
   }
   const normalized = removeClosingDuplicate(points);
   return normalized.length >= 3 ? normalized : null;
+}
+
+function lineFromPositions(
+  positions: Position[],
+  projectCrs: string,
+  name: string,
+  warnings: string[],
+): XY[] | null {
+  if (positions.length < 2) return null;
+  const points: XY[] = [];
+  for (const position of positions) {
+    const lonLat = lonLatFromPosition(position, name, warnings);
+    if (!lonLat) return null;
+    points.push(projectLonLatToXy(lonLat, projectCrs));
+  }
+  const normalized = removeClosingDuplicate(points);
+  return normalized.length >= 2 ? normalized : null;
 }
 
 function lonLatFromPosition(position: Position, name: string, warnings: string[]): { longitude: number; latitude: number } | null {
@@ -416,6 +637,20 @@ function pointFeature(name: string, role: string, point: XY, projectCrs: string,
   };
 }
 
+function lineFeature(name: string, layerType: string, vertices: XY[], projectCrs: string, properties: Record<string, string>): Feature {
+  return {
+    type: "Feature",
+    properties: { name, layerType, ...properties },
+    geometry: {
+      type: "LineString",
+      coordinates: vertices.map((point) => {
+        const lonLat = projectXyToLonLat(point, projectCrs);
+        return [lonLat.longitude, lonLat.latitude] as Position;
+      }),
+    },
+  };
+}
+
 function featureProperties(feature: Feature): Record<string, unknown> {
   return isRecord(feature.properties) ? feature.properties : {};
 }
@@ -458,12 +693,93 @@ function pointRoleFromProperties(properties: Record<string, unknown>, name: stri
   return POINT_ROLES.find((role) => normalizedName.includes(role)) ?? "note";
 }
 
+function mapFeatureFromPoint(
+  project: PivotProject,
+  candidate: PointCandidate,
+  id: string,
+  kind: ProjectMapFeatureKind,
+): ProjectMapFeature {
+  return {
+    id: uniqueId(new Set((project.mapFeatures ?? []).map((feature) => feature.id)), readStringProperty(candidate.properties, ["id", "@id"]) ?? id),
+    name: candidate.name,
+    kind,
+    geometry: { type: "Point", point: candidate.projected },
+    confidence: confidenceOrDefault(readStringProperty(candidate.properties, ["confidence", "sourceConfidence"]), "imagery_digitized"),
+    notes: readStringProperty(candidate.properties, ["description", "notes"]) ?? undefined,
+    properties: stringProperties(candidate.properties),
+  };
+}
+
+function mapFeatureFromLine(
+  project: PivotProject,
+  candidate: LineCandidate,
+  id: string,
+  kind: ProjectMapFeatureKind,
+): ProjectMapFeature {
+  return {
+    id: uniqueId(new Set((project.mapFeatures ?? []).map((feature) => feature.id)), readStringProperty(candidate.properties, ["id", "@id"]) ?? id),
+    name: candidate.name,
+    kind,
+    geometry: { type: "LineString", vertices: candidate.vertices },
+    confidence: confidenceOrDefault(readStringProperty(candidate.properties, ["confidence", "sourceConfidence"]), "imagery_digitized"),
+    notes: readStringProperty(candidate.properties, ["description", "notes"]) ?? undefined,
+    properties: stringProperties(candidate.properties),
+  };
+}
+
+function candidateItemId(properties: Record<string, unknown>, name: string, fallbackIndex: number): string {
+  return sanitizeId(readStringProperty(properties, ["id", "@id"]) ?? name) || `kml-item-${fallbackIndex}`;
+}
+
+function selectedByDefault(itemId: string, selectedItemIds: Set<string> | null): boolean {
+  return selectedItemIds ? selectedItemIds.has(itemId) : true;
+}
+
+function mapFeatureKindFromProperties(properties: Record<string, unknown>, name: string): ProjectMapFeatureKind | null {
+  const layer = normalizedLayer(properties);
+  if (MAP_FEATURE_KINDS.includes(layer as ProjectMapFeatureKind)) return layer as ProjectMapFeatureKind;
+  const cplayoutKind = readStringProperty(properties, ["mapFeatureKind", "map_feature_kind", "utilityKind", "utility_kind"]);
+  const normalizedKind = cplayoutKind?.toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+  if (MAP_FEATURE_KINDS.includes(normalizedKind as ProjectMapFeatureKind)) return normalizedKind as ProjectMapFeatureKind;
+  const normalizedName = name.toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+  return MAP_FEATURE_KINDS.find((kind) => normalizedName.includes(kind)) ?? null;
+}
+
+function lineMapFeatureKindFromName(name: string): ProjectMapFeatureKind | null {
+  const normalizedName = name.toLowerCase();
+  if (/\b(pipe|pipeline|water\s*line)\b/.test(normalizedName)) return "underground_pipeline";
+  if (/\b(power|electric|utility)\s*line\b/.test(normalizedName)) return "power_line";
+  if (/\b(access|lane)\b/.test(normalizedName)) return "access_lane";
+  if (/\broad\b/.test(normalizedName)) return "road";
+  if (/\bditch\b/.test(normalizedName)) return "ditch";
+  if (/\bcanal\b/.test(normalizedName)) return "canal";
+  if (/\bfence\b/.test(normalizedName)) return "fence";
+  if (/\bend\s*gun\b/.test(normalizedName)) return "end_gun_arc";
+  if (/\bcorner\b/.test(normalizedName)) return "corner_swing_limit";
+  return null;
+}
+
+function isPolygonLineCandidate(properties: Record<string, unknown>, name: string): boolean {
+  const layer = normalizedLayer(properties);
+  return layer === "field_boundary" || layer === "boundary" || layer === "obstacle" || layer === "exclusion" || isBoundaryCandidate(properties, name);
+}
+
 function normalizedLayer(properties: Record<string, unknown>): string {
   return (readStringProperty(properties, ["layerType", "layer_type", "role", "kind", "type"]) ?? "")
     .trim()
     .toLowerCase()
     .replaceAll("-", "_")
     .replaceAll(" ", "_");
+}
+
+function stringProperties(properties: Record<string, unknown>): Record<string, string | number | boolean | null> | undefined {
+  const result: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(properties)) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
+      result[key] = value;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function confidenceOrDefault(value: string | null, fallback: SourceConfidence): SourceConfidence {

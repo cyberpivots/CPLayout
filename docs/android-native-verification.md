@@ -19,7 +19,7 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 ## SQLite Project Store
 
 1. Open the app and navigate to `Export`.
-2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v3`.
+2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v4`.
 3. Save the sample project.
 4. Close and relaunch the app.
 5. Refresh the project list and open the saved project.
@@ -37,9 +37,10 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 
 ## Migration Evidence
 
-- `schema_migrations` contains ids `1`, `2`, and `3`.
-- `PRAGMA user_version` returns `3`.
-- `map_packages` has the v3 tile metadata columns: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `checksum_sha256`, and `install_status`.
+- `schema_migrations` contains ids `1`, `2`, `3`, and `4`.
+- `PRAGMA user_version` returns `4`.
+- `map_packages` has the tile metadata columns from migration `3`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `checksum_sha256`, and `install_status`.
+- The v4 project-adjacent evidence tables exist: `layout_evidence`, `model_recommendations`, and `layout_decisions`.
 - Geometry rows and vertices are populated after save.
 
 ## Pass Criteria

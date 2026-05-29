@@ -1,4 +1,4 @@
-import type { AppSettings, InfrastructurePoint, LayoutResult, ObstacleZone, PivotProject, SurveyPoint, XY } from "@cplayout/core";
+import type { AppSettings, InfrastructurePoint, LayoutResult, ObstacleZone, PivotProject, ProjectMapFeature, SurveyPoint, XY } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 
 export interface MapSurfaceProps {
@@ -8,6 +8,7 @@ export interface MapSurfaceProps {
   activeToolMode?: DrawingMode;
   activeLayer?: DrawingLayerType;
   draftVertices?: XY[];
+  selectedMapFeatureId?: string | null;
   onCommitBoundaryDraft?: (vertices: XY[]) => void;
   onCommitObstacleDraft?: (vertices: XY[], kind: ObstacleZone["kind"]) => void;
   onMoveBoundaryVertex?: (vertexIndex: number, point: XY) => void;
@@ -17,4 +18,6 @@ export interface MapSurfaceProps {
   onPlacePivot?: (point: XY) => void;
   onMoveInfrastructurePoint?: (pointType: InfrastructurePoint, point: XY) => void;
   onAddSurveyPoint?: (point: Omit<SurveyPoint, "id" | "observedAt"> & { id?: string; observedAt?: string }) => void;
+  onAddMapFeature?: (feature: Omit<ProjectMapFeature, "id"> & { id?: string }) => void;
+  onSelectMapFeature?: (featureId: string | null) => void;
 }

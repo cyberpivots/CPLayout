@@ -45,6 +45,7 @@ import {
   type LonLat,
   type PivotMachine,
   type PivotProject,
+  type ProjectMapFeature,
   type PivotSweep,
   type XY,
 } from "@cplayout/core";
@@ -61,9 +62,20 @@ export default function App(): React.JSX.Element {
   const project = editor.project;
   const [savedRevision, setSavedRevision] = useState(0);
   const [settings, setSettings] = useState<AppSettings>(() => mergeAppSettings(sampleProject.settings));
+  const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
   const result = useMemo(() => evaluateLayout(project), [project]);
   const machineRadius = machineRadiusMeters(project.machine);
   const isDirty = editor.revision !== savedRevision;
+  const selectedMapFeature = useMemo(
+    () => (project.mapFeatures ?? []).find((feature) => feature.id === selectedMapFeatureId) ?? null,
+    [project.mapFeatures, selectedMapFeatureId],
+  );
+
+  useEffect(() => {
+    if (selectedMapFeatureId && !(project.mapFeatures ?? []).some((feature) => feature.id === selectedMapFeatureId)) {
+      setSelectedMapFeatureId(null);
+    }
+  }, [project.mapFeatures, selectedMapFeatureId]);
 
   function updateSweep(sweep: PivotSweep): void {
     dispatchProject({ type: "update_machine", machine: { ...project.machine, sweep } });
@@ -112,12 +124,29 @@ export default function App(): React.JSX.Element {
     return `Imported ${imported.importedPointCount} survey point${imported.importedPointCount === 1 ? "" : "s"} into the current project.`;
   }
 
-  function previewGoogleEarthKml(kmlText: string): GoogleEarthKmlImportResult {
-    return importGoogleEarthKmlToProject(project, kmlText);
+  function previewGoogleEarthKml(kmlText: string, selectedItemIds?: string[]): GoogleEarthKmlImportResult {
+    return importGoogleEarthKmlToProject(project, kmlText, { selectedItemIds });
   }
 
   function applyGoogleEarthKmlImport(nextProject: PivotProject): void {
     dispatchProject({ type: "apply_project_import", project: nextProject });
+  }
+
+  function addMapFeature(feature: Omit<ProjectMapFeature, "id"> & { id?: string }): void {
+    const id = feature.id ?? `map-feature-${Date.now().toString(36)}-${(project.mapFeatures ?? []).length + 1}`;
+    dispatchProject({ type: "add_map_feature", feature: { ...feature, id } });
+    setSelectedMapFeatureId(id);
+  }
+
+  function updateMapFeatureName(feature: ProjectMapFeature, name: string): void {
+    const trimmedName = name.trim();
+    if (!trimmedName || trimmedName === feature.name) return;
+    dispatchProject({ type: "update_map_feature", feature: { ...feature, name: trimmedName } });
+  }
+
+  function deleteMapFeature(featureId: string): void {
+    dispatchProject({ type: "delete_map_feature", id: featureId });
+    setSelectedMapFeatureId(null);
   }
 
   function createNewProject(): void {
@@ -205,6 +234,7 @@ export default function App(): React.JSX.Element {
                 project={project}
                 result={result}
                 settings={settings}
+                selectedMapFeatureId={selectedMapFeatureId}
                 onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
                 onCommitObstacleDraft={(vertices, kind) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind })}
                 onMoveBoundaryVertex={(vertexIndex, point) => dispatchProject({ type: "move_boundary_vertex", vertexIndex, point })}
@@ -214,6 +244,8 @@ export default function App(): React.JSX.Element {
                 onPlacePivot={(point) => dispatchProject({ type: "place_pivot", point })}
                 onMoveInfrastructurePoint={(pointType, point) => dispatchProject({ type: "move_infrastructure", pointType, point })}
                 onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
+                onAddMapFeature={addMapFeature}
+                onSelectMapFeature={setSelectedMapFeatureId}
               />
               <View style={styles.sidePanel}>
                 <Text style={styles.sectionTitle}>Scenario Metrics</Text>
@@ -232,6 +264,12 @@ export default function App(): React.JSX.Element {
                   onApply={applyPivotCoordinate}
                   onFormatChange={(coordinateDisplayFormat) => commitSettings({ ...settings, coordinateDisplayFormat })}
                   projectCrs={project.projectCrs}
+                />
+
+                <MapFeatureEditor
+                  feature={selectedMapFeature}
+                  onDelete={deleteMapFeature}
+                  onRename={updateMapFeatureName}
                 />
 
                 <Text style={styles.sectionTitle}>Mode Controls</Text>
@@ -399,6 +437,53 @@ function SmallActionButton({ disabled = false, label, onPress }: { disabled?: bo
     <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.smallActionButton, disabled && styles.smallActionButtonDisabled]}>
       <Text style={[styles.smallActionText, disabled && styles.smallActionTextDisabled]}>{label}</Text>
     </Pressable>
+  );
+}
+
+function MapFeatureEditor({
+  feature,
+  onDelete,
+  onRename,
+}: {
+  feature: ProjectMapFeature | null;
+  onDelete: (featureId: string) => void;
+  onRename: (feature: ProjectMapFeature, name: string) => void;
+}): React.JSX.Element {
+  const [name, setName] = useState(feature?.name ?? "");
+
+  useEffect(() => {
+    setName(feature?.name ?? "");
+  }, [feature?.id, feature?.name]);
+
+  if (!feature) {
+    return (
+      <View style={styles.mapFeatureEditor}>
+        <Text style={styles.mapFeatureTitle}>Map Feature</Text>
+        <Text style={styles.mapFeatureMeta}>Select a utility feature on the map to rename or delete it.</Text>
+      </View>
+    );
+  }
+
+  const geometryLabel = feature.geometry.type === "Point" ? "Point" : `${feature.geometry.vertices.length} point line`;
+
+  return (
+    <View style={styles.mapFeatureEditor}>
+      <View>
+        <Text style={styles.mapFeatureTitle}>Map Feature</Text>
+        <Text style={styles.mapFeatureMeta}>{feature.kind.replaceAll("_", " ")} · {geometryLabel}</Text>
+      </View>
+      <TextInput
+        accessibilityLabel="Selected map feature name"
+        onChangeText={setName}
+        onSubmitEditing={() => onRename(feature, name)}
+        style={styles.textInput}
+        value={name}
+      />
+      <View style={styles.inlineActions}>
+        <SmallActionButton disabled={name.trim().length === 0 || name.trim() === feature.name} label="Rename" onPress={() => onRename(feature, name)} />
+        <SmallActionButton label="Delete" onPress={() => onDelete(feature.id)} />
+      </View>
+    </View>
   );
 }
 
@@ -650,6 +735,24 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
     marginTop: 8,
+  },
+  mapFeatureEditor: {
+    borderColor: "#dce3da",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  mapFeatureTitle: {
+    color: "#17241c",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  mapFeatureMeta: {
+    color: "#5b6b61",
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
   },
   section: {
     backgroundColor: "#fbfcf8",

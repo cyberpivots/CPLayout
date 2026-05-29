@@ -74,6 +74,43 @@ const ObstacleZoneSchema = z.object({
   confidence: z.enum(["rtk_fixed", "rtk_float", "dgps", "autonomous_gps", "imagery_digitized", "imported_cad", "user_estimated", "optimized"]),
 });
 
+const ProjectMapFeatureKindSchema = z.enum([
+  "pump_location",
+  "underground_pipeline",
+  "power_pole",
+  "power_line",
+  "tree",
+  "road",
+  "access_lane",
+  "ditch",
+  "canal",
+  "fence",
+  "end_gun_mark",
+  "end_gun_arc",
+  "corner_swing_limit",
+]);
+
+const ProjectMapFeatureGeometrySchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("Point"),
+    point: XySchema,
+  }),
+  z.object({
+    type: z.literal("LineString"),
+    vertices: z.array(XySchema).min(2),
+  }),
+]);
+
+const ProjectMapFeatureSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  kind: ProjectMapFeatureKindSchema,
+  geometry: ProjectMapFeatureGeometrySchema,
+  confidence: z.enum(["rtk_fixed", "rtk_float", "dgps", "autonomous_gps", "imagery_digitized", "imported_cad", "user_estimated", "optimized"]),
+  notes: z.string().optional(),
+  properties: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+});
+
 export const PivotProjectSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -88,6 +125,7 @@ export const PivotProjectSchema = z.object({
   obstacles: z.array(ObstacleZoneSchema),
   surveyPoints: z.array(SurveyPointSchema),
   mapPackages: z.array(MapPackageManifestSchema).optional(),
+  mapFeatures: z.array(ProjectMapFeatureSchema).optional().default([]),
 }).superRefine((project, context) => {
   try {
     assertProjectedCrs(project.projectCrs);

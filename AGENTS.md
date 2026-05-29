@@ -16,6 +16,7 @@
 - Do not add Google Maps, paid Mapbox APIs, Esri paid services, paid imagery, paid cloud backends, hidden API keys, or trial-only SDKs.
 - Do not claim React Native can directly run Python GIS packages. Python/GDAL/RTKLIB workflows belong in offline preprocessing or companion tools.
 - Preserve canonical geometry as projected/local `XY` coordinates in the project CRS. WGS84 coordinate formats are input/display layers unless a schema change explicitly says otherwise.
+- Treat KML/KMZ `Style`, `LineStyle`, `PolyStyle`, `IconStyle`, `LabelStyle`, and `styleUrl` as visual interchange metadata only; styling must not alter canonical projected `XY` geometry, project schemas, persistence, archive semantics, or imply Google Earth/native runtime proof.
 - Verify package and platform claims from primary sources before changing architecture.
 
 ## Implementation Rules

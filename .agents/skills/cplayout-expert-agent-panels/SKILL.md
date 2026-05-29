@@ -20,6 +20,7 @@ Direct user no-mutation instructions win over this workflow. For read-only tasks
 3. Inventory available skills when the user asks for all skills, when routing is ambiguous, or when the panel task depends on skill selection.
 4. Classify the task by risk, owner role, mutation scope, external evidence need, and validation gate.
 5. Close local knowledge gaps first, then research current external facts from official or primary sources.
+   - For CPLayout Google Earth/KML loops, re-check the Google KML Reference, Google shared-style tutorial, OGC KML page, and the repo source ledger before changing import/export behavior.
 6. Use bounded subagents only when the user explicitly asks for expert panels, delegation, parallel agents, specialist teams, or multi-agent work and the current runtime exposes subagent tools.
 7. Synthesize the panel result into the next concrete action, implement only when mutation is allowed, validate, and record durable findings when appropriate.
 
@@ -66,6 +67,7 @@ Every panel must preserve these boundaries:
 - Use Expo-installed native dependencies when an Expo SDK package is available.
 - Keep native SQLite, ZIP sharing, native MapLibre, and raw PMTiles/MBTiles rendering behind documented device/emulator verification gates.
 - Keep drawing viewport state separate from geometry mutation.
+- Treat KML/KMZ styling as visual interchange only: do not let `Style`, `LineStyle`, `PolyStyle`, `IconStyle`, `LabelStyle`, or `styleUrl` alter canonical projected `XY`, SQLite/web persistence, CPLayout archives, or native runtime claims.
 
 ## Reasoning Defaults
 
@@ -88,5 +90,6 @@ The panel loop is complete when:
 - relevant skills and sources were inventoried or cited,
 - required implementation is complete when mutation is allowed,
 - validation commands have run or blockers are recorded,
+- KML/KMZ loops record artifact paths, SHA-256 hashes, browser screenshots when available, and native/Google Earth proof caveats,
 - durable records are updated or explicitly skipped because the task is read-only,
 - unrelated user or pre-existing changes were preserved.

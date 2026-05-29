@@ -232,3 +232,42 @@ Remaining unverified claims:
 
 - This proof is limited to desktop Google Earth Pro in the current Windows GUI session.
 - It does not prove Android/iOS persistence, native sharing, native MapLibre, raw PMTiles/MBTiles rendering, or CPLayout mobile runtime behavior.
+
+## Iteration 4 Scope
+
+Selected slice: Saveable geometry editing proof.
+
+Implementation scope:
+
+- Hoist browser project repository state into `apps/mobile/App.tsx` so the workspace has a persistent top-bar Save action and a shared local-project list/status surface.
+- Keep `ProjectFilesPanel` as the deeper file-management and GIS exchange surface, but have it receive repository state plus save/open/delete/refresh handlers from `App.tsx`.
+- Keep canonical geometry as projected/local `XY`; do not change `PivotProject`, project archive format, KML/KMZ output schema, SQLite/native behavior, MapLibre, raw tile rendering, or project CRS policy.
+- Add focused browser repository proof that edited field boundary, obstacle, and utility map-feature geometry survives save, reload, ZIP archive round-trip, and KML export inclusion.
+
+## Iteration 4 Result
+
+Status: complete on 2026-05-28 for the web MVP localStorage save/reopen/export proof.
+
+Implemented surfaces:
+
+- `apps/mobile/App.tsx` owns the shared `useProjectRepository()` instance, top-bar Save action, saved revision tracking, saved-project open flow, and stale map-feature selection clearing after project load.
+- `apps/mobile/src/components/ProjectStartPanel.tsx` and `apps/mobile/src/components/ProjectFilesPanel.tsx` consume the shared repository state instead of creating separate repository hook instances.
+- `packages/project-store/src/projectRepository.test.ts` proves edited boundary, obstacle, and utility line map-feature geometry survives `saveProjectAsync()` then `loadProjectAsync()`, ZIP archive round-trip, and KML export content checks.
+
+Validation evidence:
+
+- `npm test -w @cplayout/project-store`: passed, including `project repository saveable geometry tests passed`.
+- `npm run typecheck -w @cplayout/mobile`: passed.
+- `npm run validate`: passed all workspace typechecks and tests.
+- `git diff --check`: passed with no output.
+- `npm audit`: passed, `0 vulnerabilities`.
+- `npm run export:web -w @cplayout/mobile`: passed and emitted `apps/mobile/dist`.
+- Local static serve: `npx serve apps/mobile/dist -l 4173` served `http://localhost:4173`.
+- Playwright browser check: loaded the exported app, opened the sample project, changed the end-gun setting to create dirty state, confirmed top-bar `Save *`, saved locally, confirmed the status returned to `Saved`, opened Export, and confirmed one saved browser-local project in the Project Files list.
+- Playwright screenshot: `cplayout-saveable-geometry-editing-proof.png`.
+- Browser console caveat: the only console error was `GET /favicon.ico` returning 404 from the local static server.
+
+Remaining unverified claims:
+
+- This proof is limited to the web MVP browser `localStorage` repository and browser ZIP/KML export generation.
+- Android/iOS persistence, native SQLite runtime behavior, native sharing, native MapLibre rendering, and raw PMTiles/MBTiles rendering remain unverified until the device/emulator checklist passes.

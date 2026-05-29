@@ -2,23 +2,16 @@ import { MapPinned } from "lucide-react-native";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { PivotProject } from "@cplayout/core";
-import { useProjectRepository } from "../hooks/useProjectRepository";
+import type { ProjectWorkspaceStatus } from "../hooks/useProjectRepository";
 
 interface ProjectStartPanelProps {
   onCreate: () => void;
-  onOpen: (project: PivotProject) => void;
+  onOpenProject: (projectId: string) => void | Promise<void>;
   onOpenSample: () => void;
+  repository: ProjectWorkspaceStatus;
 }
 
-export function ProjectStartPanel({ onCreate, onOpen, onOpenSample }: ProjectStartPanelProps): React.JSX.Element {
-  const repository = useProjectRepository();
-
-  async function open(projectId: string): Promise<void> {
-    const project = await repository.openProject(projectId);
-    if (project) onOpen(project);
-  }
-
+export function ProjectStartPanel({ onCreate, onOpenProject, onOpenSample, repository }: ProjectStartPanelProps): React.JSX.Element {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -35,10 +28,10 @@ export function ProjectStartPanel({ onCreate, onOpen, onOpenSample }: ProjectSta
         {repository.projects.length === 0 ? (
           <View style={styles.projectCard}>
             <Text style={styles.rowTitle}>No saved local projects yet</Text>
-            <Text style={styles.rowMeta}>Create a layout or open the bundled sample, then save it from Export.</Text>
+            <Text style={styles.rowMeta}>Create a layout or open the bundled sample, then save it from the workspace top bar.</Text>
           </View>
         ) : repository.projects.map((project) => (
-          <Pressable key={project.id} onPress={() => void open(project.id)} style={styles.projectCard}>
+          <Pressable key={project.id} onPress={() => void onOpenProject(project.id)} style={styles.projectCard}>
             <Text style={styles.rowTitle}>{project.name}</Text>
             <Text style={styles.rowMeta}>{project.projectCrs} · {project.unitSystem} · {project.updatedAt}</Text>
           </Pressable>

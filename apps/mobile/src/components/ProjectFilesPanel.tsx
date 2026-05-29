@@ -15,19 +15,23 @@ import {
   readGoogleEarthKmlFile,
 } from "@cplayout/project-store";
 import { exportProjectGoogleEarthKml, type GoogleEarthKmlImportResult, type LayoutResult, type PivotProject } from "@cplayout/core";
-import { useProjectRepository } from "../hooks/useProjectRepository";
+import type { ProjectWorkspaceStatus } from "../hooks/useProjectRepository";
 import { GoogleEarthImportWizard } from "./GoogleEarthImportWizard";
 
 interface ProjectFilesPanelProps {
   dirty: boolean;
   project: PivotProject;
   result: LayoutResult;
+  repository: ProjectWorkspaceStatus;
   onImportProjectedGeoJson: (geoJson: string) => string;
   onImportSurveyCsv: (csv: string) => string;
   onPreviewGoogleEarthKml: (kmlText: string, selectedItemIds?: string[]) => GoogleEarthKmlImportResult;
   onApplyGoogleEarthKmlImport: (project: PivotProject) => void;
   onProjectLoaded: (project: PivotProject) => void;
-  onSaved: () => void;
+  onSaveProject: () => void | Promise<void>;
+  onOpenProject: (projectId: string) => void | Promise<void>;
+  onDeleteProject: (projectId: string) => Promise<boolean>;
+  onRefreshProjects: () => Promise<void>;
 }
 
 type StatusTone = "info" | "success" | "warning" | "error";
@@ -49,33 +53,22 @@ export function ProjectFilesPanel({
   dirty,
   project,
   result,
+  repository,
   onImportProjectedGeoJson,
   onImportSurveyCsv,
   onPreviewGoogleEarthKml,
   onApplyGoogleEarthKmlImport,
   onProjectLoaded,
-  onSaved,
+  onSaveProject,
+  onOpenProject,
+  onDeleteProject,
+  onRefreshProjects,
 }: ProjectFilesPanelProps): React.JSX.Element {
-  const repository = useProjectRepository();
   const [status, setStatus] = useState<PanelStatus>({ tone: "info", text: "Project ZIP is the canonical project package." });
   const [pendingKmlImport, setPendingKmlImport] = useState<PendingKmlImport | null>(null);
   const [selectedKmlReviewItemIds, setSelectedKmlReviewItemIds] = useState<string[]>([]);
   const [geoJsonImport, setGeoJsonImport] = useState("");
   const [surveyCsvImport, setSurveyCsvImport] = useState("");
-
-  async function saveCurrentProject(): Promise<void> {
-    const saved = await repository.saveProject(project, result);
-    if (saved) onSaved();
-  }
-
-  async function openProject(projectId: string): Promise<void> {
-    const loaded = await repository.openProject(projectId);
-    if (loaded) onProjectLoaded(loaded);
-  }
-
-  async function deleteProject(projectId: string): Promise<void> {
-    await repository.deleteProject(projectId);
-  }
 
   async function exportZip(): Promise<void> {
     try {
@@ -219,10 +212,10 @@ export function ProjectFilesPanel({
       </View>
       <Text style={styles.groupTitle}>Canonical Project Package</Text>
       <View style={styles.actionRow}>
-        <FileAction icon={<Save size={18} color="#ffffff" />} label={dirty ? "Save Local *" : "Save Local"} primary onPress={saveCurrentProject} />
+        <FileAction icon={<Save size={18} color="#ffffff" />} label={dirty ? "Save Local *" : "Save Local"} primary onPress={onSaveProject} />
         <FileAction icon={<Download size={18} color="#254234" />} label="Export ZIP" onPress={exportZip} />
         <FileAction icon={<Upload size={18} color="#254234" />} label="Import ZIP" onPress={importZip} />
-        <FileAction icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={repository.refreshProjects} />
+        <FileAction icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={onRefreshProjects} />
       </View>
       <View style={[styles.statusBox, statusToneStyle(status.tone)]}>
         <Database size={17} color={statusToneColor(status.tone)} />
@@ -326,10 +319,10 @@ export function ProjectFilesPanel({
               <Text style={styles.projectDetail}>{summary.projectCrs} · {summary.unitSystem.replaceAll("_", " ")} · {new Date(summary.updatedAt).toLocaleString()}</Text>
             </View>
             <View style={styles.rowActions}>
-              <Pressable accessibilityLabel={`Open ${summary.name}`} onPress={() => openProject(summary.id)} style={styles.iconButton}>
+              <Pressable accessibilityLabel={`Open ${summary.name}`} onPress={() => void onOpenProject(summary.id)} style={styles.iconButton}>
                 <FolderOpen size={18} color="#254234" />
               </Pressable>
-              <Pressable accessibilityLabel={`Delete ${summary.name}`} onPress={() => deleteProject(summary.id)} style={styles.iconButtonDanger}>
+              <Pressable accessibilityLabel={`Delete ${summary.name}`} onPress={() => void onDeleteProject(summary.id)} style={styles.iconButtonDanger}>
                 <Trash2 size={18} color="#8b1e18" />
               </Pressable>
             </View>

@@ -5,6 +5,7 @@ import {
   Download,
   MapPinned,
   Ruler,
+  Save,
   Satellite,
   SlidersHorizontal,
   Settings2,
@@ -28,6 +29,7 @@ import { MetricTile } from "./src/components/MetricTile";
 import { ProjectFilesPanel } from "./src/components/ProjectFilesPanel";
 import { ProjectStartPanel } from "./src/components/ProjectStartPanel";
 import { SettingsPanel } from "./src/components/SettingsPanel";
+import { useProjectRepository } from "./src/hooks/useProjectRepository";
 import {
   COORDINATE_FORMAT_LABELS,
   createProjectEditorState,
@@ -63,6 +65,7 @@ export default function App(): React.JSX.Element {
   const [savedRevision, setSavedRevision] = useState(0);
   const [settings, setSettings] = useState<AppSettings>(() => mergeAppSettings(sampleProject.settings));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
+  const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
   const machineRadius = machineRadiusMeters(project.machine);
   const isDirty = editor.revision !== savedRevision;
@@ -105,8 +108,19 @@ export default function App(): React.JSX.Element {
     dispatchProject({ type: "load_project", project: nextProject });
     setSavedRevision(0);
     setSettings(mergeAppSettings(nextProject.settings));
+    setSelectedMapFeatureId(null);
     setTab("layout");
     setScreen("workspace");
+  }
+
+  async function saveCurrentProject(): Promise<void> {
+    const saved = await repository.saveProject(project, result);
+    if (saved) setSavedRevision(editor.revision);
+  }
+
+  async function openSavedProject(projectId: string): Promise<void> {
+    const loaded = await repository.openProject(projectId);
+    if (loaded) loadProject(loaded);
   }
 
   function importProjectedGeoJson(geoJson: string): string {
@@ -177,8 +191,9 @@ export default function App(): React.JSX.Element {
           <ScrollView contentContainerStyle={styles.content}>
             <ProjectStartPanel
               onCreate={createNewProject}
-              onOpen={loadProject}
+              onOpenProject={openSavedProject}
               onOpenSample={() => loadProject(sampleProject)}
+              repository={repository}
             />
           </ScrollView>
         </View>
@@ -212,6 +227,7 @@ export default function App(): React.JSX.Element {
             <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} />
           </View>
           <View style={styles.projectActionRow}>
+            <SmallActionButton label={isDirty ? "Save *" : "Save"} onPress={saveCurrentProject} />
             <SmallActionButton label="Projects" onPress={() => setScreen("projects")} />
             <SmallActionButton label="Undo" disabled={editor.past.length === 0} onPress={() => dispatchProject({ type: "undo" })} />
             <SmallActionButton label="Redo" disabled={editor.future.length === 0} onPress={() => dispatchProject({ type: "redo" })} />
@@ -367,12 +383,16 @@ export default function App(): React.JSX.Element {
               <ProjectFilesPanel
                 dirty={isDirty}
                 onApplyGoogleEarthKmlImport={applyGoogleEarthKmlImport}
+                onDeleteProject={repository.deleteProject}
                 onImportProjectedGeoJson={importProjectedGeoJson}
                 onImportSurveyCsv={importSurveyCsv}
+                onOpenProject={openSavedProject}
                 onPreviewGoogleEarthKml={previewGoogleEarthKml}
                 onProjectLoaded={loadProject}
-                onSaved={() => setSavedRevision(editor.revision)}
+                onRefreshProjects={repository.refreshProjects}
+                onSaveProject={saveCurrentProject}
                 project={project}
+                repository={repository}
                 result={result}
               />
               <View style={styles.metricGrid}>
@@ -432,9 +452,10 @@ function ActionButton({ label, onPress, selected = false }: { label: string; onP
   );
 }
 
-function SmallActionButton({ disabled = false, label, onPress }: { disabled?: boolean; label: string; onPress: () => void }): React.JSX.Element {
+function SmallActionButton({ disabled = false, label, onPress }: { disabled?: boolean; label: string; onPress: () => void | Promise<void> }): React.JSX.Element {
   return (
     <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.smallActionButton, disabled && styles.smallActionButtonDisabled]}>
+      {label.startsWith("Save") ? <Save size={14} color={disabled ? "#68766d" : "#254234"} /> : null}
       <Text style={[styles.smallActionText, disabled && styles.smallActionTextDisabled]}>{label}</Text>
     </Pressable>
   );
@@ -645,10 +666,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   smallActionButton: {
+    alignItems: "center",
     backgroundColor: "#f1f5ee",
     borderColor: "#cdd8ca",
     borderRadius: 8,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
     paddingHorizontal: 11,
     paddingVertical: 8,
   },

@@ -151,6 +151,36 @@ Next recommended slice:
 - Android/iOS persistence, native file sharing, native MapLibre rendering, and raw PMTiles/MBTiles rendering remain unverified until the device/emulator checklist passes.
 - Google Earth visual fidelity remains unverified until styled KML/KMZ is opened in Google Earth Pro and non-black screenshots prove it.
 
+## Google Earth Imagery Analysis Skill
+
+Status: implemented as a repo-local workflow surface in `.agents/skills/cplayout-google-earth-imagery-analysis/`.
+Date added: 2026-05-29.
+
+Use the skill for Google Earth Pro screenshot review, KML/KMZ overlay evidence, local OCR/CV companion planning, field-boundary/pivot/corner-arm/obstacle recognition review, and advisory layout-improvement recommendations.
+
+Boundaries:
+
+- Google Earth Pro screenshots and imagery observations are local companion evidence only.
+- Visible attribution must remain present when Google Earth content is captured or reviewed.
+- Screenshot-derived CV/OCR detections are planning-grade observations, not survey-grade facts.
+- Derived observations must remain advisory evidence or recommendations until an operator redraws, imports, or accepts geometry through CPLayout projected `XY` workflows.
+- Do not use Google Earth as an imagery cache, bulk-processing source, substitute mapping dataset, app runtime, or proof of native/mobile CPLayout behavior.
+
+Primary-source checks for this workflow:
+
+- Google Earth coordinate search: <https://support.google.com/earth/answer/148081>
+- Google Earth Pro data import: <https://support.google.com/earth/answer/176685>
+- Google Earth Save Image: <https://support.google.com/earth/answer/148146>
+- Google Geo Guidelines and required attribution: <https://about.google/brand-resource-center/products-and-services/geo-guidelines/>
+- Google Earth additional terms: <https://maps.google.com/help/terms_maps-earth/>
+- Google KML Reference: <https://developers.google.com/kml/documentation/kmlreference>
+- Google KML shared-style tutorial: <https://developers.google.com/kml/documentation/kml_tut>
+- Google KMZ archive guidance: <https://developers.google.com/kml/documentation/kmzarchives>
+- OGC KML standard page: <https://www.ogc.org/standards/kml/>
+- Google Earth display repair guidance: <https://support.google.com/earth/answer/6246289>
+- OpenCV local CV documentation: <https://opencv.org/about/> and <https://docs.opencv.org/4.x/d7/d4d/tutorial_py_thresholding.html>
+- Tesseract CLI documentation: <https://github.com/tesseract-ocr/tesseract/wiki/Command-Line-Usage>
+
 ## Iteration 3 Scope
 
 Selected slice: Google Earth visual-fidelity proof automation.

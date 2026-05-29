@@ -1,0 +1,4 @@
+interface:
+  display_name: "CPLayout Google Earth Imagery"
+  short_description: "Review Google Earth imagery and KML evidence"
+  default_prompt: "Use $cplayout-google-earth-imagery-analysis to review CPLayout Google Earth screenshots or KML/KMZ artifacts with evidence, caveats, and validation gates."

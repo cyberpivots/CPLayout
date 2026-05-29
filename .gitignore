@@ -5,6 +5,7 @@ dist/
 dist-android/
 web-build/
 reports/android-native-verification/
+reports/google-earth-visual-fidelity/
 
 *.log
 *.tmp

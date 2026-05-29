@@ -150,3 +150,85 @@ Next recommended slice:
 
 - Android/iOS persistence, native file sharing, native MapLibre rendering, and raw PMTiles/MBTiles rendering remain unverified until the device/emulator checklist passes.
 - Google Earth visual fidelity remains unverified until styled KML/KMZ is opened in Google Earth Pro and non-black screenshots prove it.
+
+## Iteration 3 Scope
+
+Selected slice: Google Earth visual-fidelity proof automation.
+
+Implementation scope:
+
+- Add `tools/capture_google_earth_visual_fidelity.ps1` as a separate proof script from the import-wizard screenshot script.
+- Generate a fresh styled CPLayout proof fixture from current TypeScript code, including KML and KMZ outputs under the local ignored `reports/google-earth-visual-fidelity/` directory.
+- Add proof-fixture `LookAt` metadata only in the generated artifact so Google Earth has a focused desktop view without changing `PivotProject`, canonical projected `XY`, schemas, persistence, or archive semantics.
+- Capture Google Earth Pro full-window, Places/sidebar, and map-canvas images when a Windows GUI session is available.
+- Analyze the map-canvas crop for mostly black or near-uniform output and write a JSON manifest with crop boxes, dimensions, SHA-256 hashes, process info, KML integrity checks, thresholds, and timestamp.
+
+Proof gates:
+
+- KML integrity must show shared `<Style>` definitions, `<styleUrl>` assignments, CPLayout `<ExtendedData>`, `cplayoutFeatureType`, `Renamed Pipeline A`, fixture-only `<LookAt>`, and no remote icon hrefs.
+- The map-canvas crop must pass non-black and grayscale-variance thresholds.
+- Final success still requires human visual confirmation that the map-canvas screenshot visibly includes CPLayout styled geometry. The script records this only when run with `-ConfirmOverlayVisible`; `-RequireProofPass` turns that condition into a hard failure gate.
+
+Local artifact policy:
+
+- `reports/google-earth-visual-fidelity/` is ignored so generated KML/KMZ, screenshots, generator temp file, and manifest stay local unless explicitly force-added.
+- Durable repo changes are limited to the proof script, this record, and `.gitignore`.
+
+Troubleshooting matrix:
+
+| Step | Action | Success criterion | Stop condition |
+| --- | --- | --- | --- |
+| Baseline | Run `powershell -ExecutionPolicy Bypass -File tools/capture_google_earth_visual_fidelity.ps1 -ConfirmOverlayVisible -RequireProofPass` after confirming Google Earth Pro is available. | Manifest status is `passed`; canvas crop is non-black/non-uniform; visible CPLayout styled geometry is confirmed. | If the canvas is black or uniform, do not claim fidelity. |
+| Cache repair | Use Google Earth Pro Help > Launch Repair Tool > Clear disk cache, then rerun the script. | Same as baseline. | If still black, continue to Safe Mode. |
+| Safe Mode | Use the Repair Tool to turn on Safe Mode, then rerun the script. | Same as baseline. | If still black, continue to atmosphere check. |
+| Atmosphere off | In Google Earth, deselect View > Atmosphere, then rerun the script. | Same as baseline. | If still black, continue to graphics-mode check. |
+| Graphics mode | On Windows, use the Repair Tool to switch between OpenGL and DirectX and rerun after each mode. | Either mode produces a passing manifest and visible overlays. | If all modes fail, record a Google Earth Pro or graphics-session blocker rather than a CPLayout KML defect. |
+
+Source-backed notes:
+
+- Google documents KML as an open standard used by Google Earth and lists `Placemark`, `Style`, shared-style ids, `ExtendedData`, color, and `LookAt` view elements in the KML reference: <https://developers.google.com/kml/documentation/kmlreference>.
+- Google's KML tutorial covers shared styles via `Style` and `styleUrl`: <https://developers.google.com/kml/documentation/kml_tut>.
+- OGC maintains the KML standard page: <https://www.ogc.org/standards/kml/>.
+- Google's Earth repair guidance lists cache clearing, Safe Mode, turning off atmosphere, and Windows OpenGL/DirectX switching for display problems: <https://support.google.com/earth/answer/6246289>.
+
+## Iteration 3 Result
+
+Status: complete on 2026-05-28 for desktop Google Earth Pro visual-fidelity proof only.
+
+Implemented surfaces:
+
+- `tools/capture_google_earth_visual_fidelity.ps1` generates a styled proof KML/KMZ from the current repo, opens Google Earth Pro, captures full-window/sidebar/map-canvas screenshots, analyzes map-canvas pixels, and writes `visual-fidelity-manifest.json`.
+- The script includes a Windows-to-WSL fixture-generation fallback because the current checkout's `node_modules/.bin/tsx` is WSL-shaped and Windows npm cannot execute it directly.
+- `.gitignore` ignores `reports/google-earth-visual-fidelity/` so generated proof artifacts remain local unless intentionally force-added.
+
+Proof run:
+
+- Command: `cmd.exe /c "cd /d H:\cplayout && powershell -ExecutionPolicy Bypass -File tools\capture_google_earth_visual_fidelity.ps1 -StartupSeconds 5 -RenderSeconds 8 -ConfirmOverlayVisible -RequireProofPass"`.
+- Manifest path: `reports/google-earth-visual-fidelity/visual-fidelity-manifest.json` (ignored local artifact).
+- Manifest status: `passed`; `proofPassed: true`.
+- Google Earth Pro process: `googleearth.exe`, path `C:\Program Files\Google\Google Earth Pro\client\googleearth.exe`.
+- Human-visible review: map-canvas screenshot visibly includes CPLayout styled geometry over Google Earth imagery, including the field boundary, styled red/blue/yellow linework, and point/circle overlays.
+
+Generated proof artifact hashes:
+
+| Artifact | SHA-256 | Notes |
+| --- | --- | --- |
+| `reports/google-earth-visual-fidelity/cplayout-google-earth-visual-fidelity.kml` | `9a471569edb7fe8c36c411f083c5bfdf842260fa62049e24d9db73a8c496c8d2` | Contains 16 shared `<Style>` definitions, 11 `<styleUrl>` assignments, CPLayout `<ExtendedData>`, `cplayoutFeatureType`, `Renamed Pipeline A`, fixture-only `<LookAt>`, and no remote icon hrefs. |
+| `reports/google-earth-visual-fidelity/cplayout-google-earth-visual-fidelity.kmz` | `26fe5b79aaa84e595f9e7c8a966a0d22efe2dd9107fdb9e0465214457dc2321f` | Google Earth opened this KMZ for the passed proof run. |
+| `reports/google-earth-visual-fidelity/google-earth-visual-fidelity-map-canvas.png` | `88fa17c7388b380808ca6383b1f3daa20e4936a553408b5165ca1cdc8d42f3ed` | 2118 x 1400 map-canvas crop; non-black ratio `0.996421010488259`, gray variance `2830.452`, `mostlyBlack: false`, `nearUniform: false`. |
+| `reports/google-earth-visual-fidelity/google-earth-visual-fidelity-places-sidebar.png` | `b18a72f0874f14f0138a8adb40a1feae5bd7c8c4b09a7e34c021fe3f924e977c` | 430 x 1568 sidebar crop for Places/sidebar context. |
+
+Validation evidence:
+
+- `npm test -w @cplayout/core`: passed.
+- `npm test -w @cplayout/project-store`: passed.
+- `pwsh -NoProfile -ExecutionPolicy Bypass -File tools/capture_google_earth_visual_fidelity.ps1 -GenerateOnly`: passed.
+- `cmd.exe /c "cd /d H:\cplayout && powershell -ExecutionPolicy Bypass -File tools\capture_google_earth_visual_fidelity.ps1 -StartupSeconds 5 -RenderSeconds 8 -ConfirmOverlayVisible -RequireProofPass"`: passed.
+- `git diff --check`: passed.
+- `npm run validate`: passed.
+- `npm audit`: passed, `0 vulnerabilities`.
+
+Remaining unverified claims:
+
+- This proof is limited to desktop Google Earth Pro in the current Windows GUI session.
+- It does not prove Android/iOS persistence, native sharing, native MapLibre, raw PMTiles/MBTiles rendering, or CPLayout mobile runtime behavior.

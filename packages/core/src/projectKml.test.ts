@@ -124,10 +124,10 @@ assert.ok(exported.exportedFeatureCount >= sampleProject.obstacles.length + samp
 assert.match(exported.kml, /<kml xmlns="http:\/\/www\.opengis\.net\/kml\/2\.2">/);
 assert.match(exported.kml, /<LookAt><longitude>[-0-9.]+<\/longitude><latitude>[-0-9.]+<\/latitude><altitude>0<\/altitude><heading>0<\/heading><tilt>0<\/tilt><range>[0-9.]+<\/range><altitudeMode>clampToGround<\/altitudeMode><\/LookAt>/);
 assert.match(exported.kml, /<Style id="cplayout-field-boundary">/);
-assert.match(exported.kml, /<LineStyle><color>ff1f5f39<\/color><width>3\.2<\/width><\/LineStyle>/);
-assert.match(exported.kml, /<PolyStyle><color>333a8f5c<\/color><fill>1<\/fill><outline>1<\/outline><\/PolyStyle>/);
+assert.match(exported.kml, /<LineStyle><color>ff000000<\/color><width>4<\/width><\/LineStyle>/);
+assert.match(exported.kml, /<PolyStyle><color>00000000<\/color><fill>0<\/fill><outline>1<\/outline><\/PolyStyle>/);
 assert.match(exported.kml, /<IconStyle><color>ff0f5db8<\/color><scale>1\.15<\/scale><\/IconStyle>/);
-assert.match(exported.kml, /<LabelStyle><color>ff20372a<\/color><scale>1\.05<\/scale><\/LabelStyle>/);
+assert.match(exported.kml, /<LabelStyle><color>ff000000<\/color><scale>1\.05<\/scale><\/LabelStyle>/);
 assert.match(exported.kml, /<styleUrl>#cplayout-field-boundary<\/styleUrl>/);
 assert.match(exported.kml, /<styleUrl>#cplayout-obstacle-road<\/styleUrl>/);
 assert.match(exported.kml, /<styleUrl>#cplayout-point-pivot<\/styleUrl>/);

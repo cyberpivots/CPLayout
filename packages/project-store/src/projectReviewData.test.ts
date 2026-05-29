@@ -107,7 +107,7 @@ async function run(): Promise<void> {
   );
   await assert.rejects(
     () => importModelRecommendationsAsync(sampleProject.id, { schemaVersion: "future", type: "FeatureCollection", features: [] }),
-    /Unsupported model recommendation schema version/,
+    /Unsupported review import schema version/,
   );
   await assert.rejects(
     () => importModelRecommendationsAsync(sampleProject.id, { type: "FeatureCollection", features: [] }),
@@ -139,6 +139,57 @@ async function run(): Promise<void> {
   assert.equal(geoJsonImported.length, 1);
   assert.equal(geoJsonImported[0]?.proposedGeometry.fieldBoundary?.length, sampleProject.fieldBoundary.length);
 
+  const visualReviewImported = await importModelRecommendationsAsync(sampleProject.id, {
+    schemaVersion: "cplayout-design-vision-review-v1",
+    createdAt: "2026-05-29T00:00:00.000Z",
+    projectId: sampleProject.id,
+    projectCrs: sampleProject.projectCrs,
+    canonicalGeometryMutation: false,
+    artifacts: {
+      mapCanvasCrop: { path: "map.png", sha256: "a".repeat(64), image: { width: 100, height: 80 } },
+    },
+    metrics: {
+      centerOffsetRatio: 0.007,
+      radiusMismatchRatio: 0.0477,
+      detectionConfidence: 0.72,
+    },
+    layoutEvidenceRecords: [{
+      id: "vision-evidence-001",
+      projectId: sampleProject.id,
+      sourceKind: "layout_score",
+      createdAt: "2026-05-29T00:00:00.000Z",
+      projectCrs: sampleProject.projectCrs,
+      summary: "CV packet passed image-space checks.",
+      confidence: 0.72,
+      reviewStatus: "unreviewed",
+    }],
+    modelRecommendations: [{
+      ...recommendation,
+      id: "rec-visual-review-json",
+      evidenceIds: ["vision-evidence-001"],
+      proposedGeometry: {
+        projectCrs: sampleProject.projectCrs,
+        fieldBoundary: sampleProject.fieldBoundary,
+        pivotCenter: sampleProject.pivotCenter,
+      },
+    }],
+    layoutDecisionRecords: [{
+      id: "vision-decision-placeholder",
+      projectId: sampleProject.id,
+      createdAt: "2026-05-29T00:00:00.000Z",
+      decidedBy: "test_fixture",
+      decision: "deferred",
+      recommendationId: "rec-visual-review-json",
+      evidenceIds: ["vision-evidence-001"],
+      reason: "Operator review required.",
+    }],
+  });
+  assert.equal(visualReviewImported.length, 1);
+  const visualReviewData = await loadProjectReviewDataAsync(sampleProject.id);
+  assert.equal(visualReviewData.evidenceRecords.some((record) => record.id === "vision-evidence-001"), true);
+  assert.equal(visualReviewData.layoutDecisions.some((decisionRecord) => decisionRecord.id === "vision-decision-placeholder"), true);
+  assert.equal((visualReviewData.evidenceRecords.find((record) => record.id === "vision-evidence-001")?.artifacts?.mapCanvasCrop as { sha256?: string }).sha256, "a".repeat(64));
+
   const mismatchedGroupedGeoJson = modelRecommendationsToProjectedGeoJson([{
     ...recommendation,
     id: "rec-browser-mixed-group",
@@ -168,6 +219,35 @@ async function run(): Promise<void> {
   await assert.rejects(
     () => importModelRecommendationsAsync(sampleProject.id, duplicatePivotGeoJson),
     /duplicate pivot_center/,
+  );
+
+  await assert.rejects(
+    () => importModelRecommendationsAsync(sampleProject.id, [{
+      ...recommendation,
+      id: "rec-self-intersecting-boundary",
+      proposedGeometry: {
+        projectCrs: sampleProject.projectCrs,
+        fieldBoundary: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+          { x: 0, y: 10 },
+          { x: 10, y: 0 },
+        ],
+      },
+    }]),
+    /self-intersect|degenerate/,
+  );
+
+  await assert.rejects(
+    () => importModelRecommendationsAsync(sampleProject.id, [{
+      ...recommendation,
+      id: "rec-outside-pivot",
+      proposedGeometry: {
+        projectCrs: sampleProject.projectCrs,
+        pivotCenter: { x: -999999, y: -999999 },
+      },
+    }]),
+    /inside the field boundary/,
   );
 
   const corruptStorage = "{invalid json";

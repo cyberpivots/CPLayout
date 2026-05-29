@@ -162,7 +162,12 @@ export const realCenterPivotProofProject: PivotProject = {
   projectCrs: publicProofCrs,
   unitSystem: "us_survey_feet",
   settings: defaultProjectSettings(),
-  fieldBoundary: circlePolygon(publicProofCenter, 414),
+  fieldBoundary: [
+    offset(publicProofCenter, -430, -414),
+    offset(publicProofCenter, 430, -414),
+    offset(publicProofCenter, 430, 420),
+    offset(publicProofCenter, -430, 420),
+  ],
   pivotCenter: publicProofCenter,
   waterSource: offset(publicProofCenter, 58, -330),
   powerSource: offset(publicProofCenter, 238, -324),

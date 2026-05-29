@@ -39,6 +39,8 @@ export interface LayoutEvidenceRecord {
   confidence: number;
   reviewStatus: EvidenceReviewStatus;
   notes?: string;
+  artifacts?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
 }
 
 export interface LayoutDecisionRecord {
@@ -117,6 +119,8 @@ export const LayoutEvidenceRecordSchema = z.object({
   confidence: z.number().min(0).max(1),
   reviewStatus: EvidenceReviewStatusSchema,
   notes: z.string().optional(),
+  artifacts: z.record(z.string(), z.unknown()).optional(),
+  metrics: z.record(z.string(), z.unknown()).optional(),
 }).superRefine((record, context) => {
   refineProjectedCrs(record.projectCrs, context, ["projectCrs"]);
 });

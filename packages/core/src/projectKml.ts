@@ -83,12 +83,12 @@ const GOOGLE_EARTH_KML_STYLES: GoogleEarthStyleDefinition[] = [
   },
   {
     id: "cplayout-field-boundary",
-    labelColor: "ff20372a",
+    labelColor: "ff000000",
     labelScale: "1.05",
-    lineColor: "ff1f5f39",
-    lineWidth: "3.2",
-    polygonColor: "333a8f5c",
-    polygonFill: "1",
+    lineColor: "ff000000",
+    lineWidth: "4",
+    polygonColor: "00000000",
+    polygonFill: "0",
     polygonOutline: "1",
   },
   {

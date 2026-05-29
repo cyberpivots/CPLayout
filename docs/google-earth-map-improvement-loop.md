@@ -388,7 +388,7 @@ Implemented surfaces:
 
 - `packages/core/src/sampleProject.ts` now exports `realCenterPivotProofProject` and `publicCenterPivotProofSource`.
 - `packages/core/src/projectKml.ts` exports layout-result coverage placemarks with deterministic Google Earth styles and skips those `layout_result` placemarks on re-import so coverage polygons are not mistaken for obstacles.
-- `packages/geometry/src/layoutProof.ts` validates center-pivot proof geometry: circular boundary density, pivot containment, wet-radius containment, modeled coverage presence, radial tower points, and named obstacle areas.
+- `packages/geometry/src/layoutProof.ts` validates center-pivot proof geometry: imagery-inferred polygonal field boundary, pivot containment, wet-radius containment, modeled coverage presence, radial tower points, and named obstacle areas.
 - `apps/mobile/src/components/ProjectStartPanel.tsx` exposes `Open Real Pivot Proof` so browser proof starts from the public real-pivot fixture.
 
 Automated coverage:

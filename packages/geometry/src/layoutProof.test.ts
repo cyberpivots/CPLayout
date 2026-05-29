@@ -24,8 +24,22 @@ const triangleBoundaryProject = {
   ],
 };
 const triangleErrors = validateCenterPivotProofGeometry(triangleBoundaryProject, evaluateLayout(triangleBoundaryProject));
-assert.match(triangleErrors.join("\n"), /at least 24 vertices/);
+assert.match(triangleErrors.join("\n"), /at least 4 vertices/);
 assert.match(triangleErrors.join("\n"), /not a triangle proof marker/);
+
+const circularBoundaryProject = {
+  ...realCenterPivotProofProject,
+  id: "bad-circular-proof-boundary",
+  fieldBoundary: Array.from({ length: 96 }, (_, index) => {
+    const theta = (index / 96) * Math.PI * 2;
+    return {
+      x: realCenterPivotProofProject.pivotCenter.x + Math.cos(theta) * 430,
+      y: realCenterPivotProofProject.pivotCenter.y + Math.sin(theta) * 430,
+    };
+  }),
+};
+const circularErrors = validateCenterPivotProofGeometry(circularBoundaryProject, evaluateLayout(circularBoundaryProject));
+assert.match(circularErrors.join("\n"), /not a circular pivot coverage ring/);
 
 const shiftedBoundaryProject = {
   ...realCenterPivotProofProject,

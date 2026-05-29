@@ -2,7 +2,7 @@ import { AlertTriangle, Check, ClipboardList, Clock3, Database, MapPinned, Satel
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { buildExpertReviewFindings, deriveRecommendationReviewState, type AppSettings, type ExpertReviewFinding, type LayoutDecisionRecord, type LayoutResult, type ModelRecommendation, type PivotProject } from "@cplayout/core";
+import { buildExpertReviewFindings, deriveRecommendationReviewState, type AppSettings, type ExpertReviewFinding, type LayoutDecisionRecord, type LayoutEvidenceRecord, type LayoutResult, type ModelRecommendation, type PivotProject } from "@cplayout/core";
 import {
   appendLayoutDecisionAsync,
   importModelRecommendationsAsync,
@@ -11,19 +11,20 @@ import {
 } from "@cplayout/project-store";
 
 interface ExpertReviewPanelProps {
+  onApplyRecommendation: (recommendation: ModelRecommendation) => void;
   project: PivotProject;
   result: LayoutResult;
   settings: AppSettings;
 }
 
-export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPanelProps): React.JSX.Element {
+export function ExpertReviewPanel({ onApplyRecommendation, project, result, settings }: ExpertReviewPanelProps): React.JSX.Element {
   const findings = useMemo(
     () => buildExpertReviewFindings(project, result, settings),
     [project, result, settings],
   );
   const [reviewData, setReviewData] = useState<ProjectReviewData>(() => emptyReviewData());
   const [importText, setImportText] = useState("");
-  const [status, setStatus] = useState("Review decisions are stored adjacent to this browser project and do not change geometry.");
+  const [status, setStatus] = useState("Recommendations are evidence until an operator records a decision or applies projected XY geometry.");
 
   useEffect(() => {
     let active = true;
@@ -45,7 +46,7 @@ export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPan
       const data = await loadProjectReviewDataAsync(project.id);
       setReviewData(data);
       setImportText("");
-      setStatus(`Imported ${imported.length} model recommendation${imported.length === 1 ? "" : "s"} for review.`);
+      setStatus(`Imported ${imported.length} model recommendation${imported.length === 1 ? "" : "s"} with ${data.evidenceRecords.length} evidence record${data.evidenceRecords.length === 1 ? "" : "s"}.`);
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -63,13 +64,27 @@ export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPan
         recommendationId: recommendation.id,
         evidenceIds: recommendation.evidenceIds,
         reason: decision === "accepted"
-          ? "Accepted for review record only; canonical geometry was not mutated."
+          ? "Accepted as an operator review record."
           : decision === "rejected"
             ? "Rejected in browser review; canonical geometry was not mutated."
             : "Deferred for later field or engineering review.",
       });
       setReviewData(nextData);
-      setStatus(`${decisionLabel(decision)} recorded for ${recommendation.id}. Project geometry was not changed.`);
+      setStatus(`${decisionLabel(decision)} recorded for ${recommendation.id}.`);
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  }
+
+  async function applyRecommendation(recommendation: ModelRecommendation): Promise<void> {
+    try {
+      if (!hasProjectedGeometry(recommendation)) {
+        setStatus(`Recommendation ${recommendation.id} has no projected XY geometry to apply.`);
+        return;
+      }
+      await recordDecision(recommendation, "accepted");
+      onApplyRecommendation(recommendation);
+      setStatus(`Applied projected XY geometry from ${recommendation.id}. Undo is available in the layout editor.`);
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -88,7 +103,7 @@ export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPan
         <TextInput
           multiline
           onChangeText={setImportText}
-          placeholder="Paste ModelRecommendation JSON array or projected-XY GeoJSON FeatureCollection"
+          placeholder="Paste visual-layout-review JSON, ModelRecommendation JSON array, or projected-XY GeoJSON FeatureCollection"
           style={styles.importInput}
           value={importText}
         />
@@ -99,7 +114,9 @@ export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPan
         <View style={styles.recommendationList}>
           {reviewData.modelRecommendations.length === 0 ? (
             <Text style={styles.emptyText}>No model recommendations imported for this project.</Text>
-          ) : reviewData.modelRecommendations.map((recommendation) => (
+          ) : reviewData.modelRecommendations.map((recommendation) => {
+            const evidenceRecords = evidenceForRecommendation(recommendation, reviewData.evidenceRecords);
+            return (
             <View key={recommendation.id} style={styles.recommendation}>
               <View style={styles.recommendationHeader}>
                 <View>
@@ -111,16 +128,34 @@ export function ExpertReviewPanel({ project, result, settings }: ExpertReviewPan
                 <Text style={styles.reviewStatus}>{deriveRecommendationReviewState(recommendation, reviewData.layoutDecisions)}</Text>
               </View>
               <Text style={styles.geometrySummary}>{geometrySummary(recommendation)}</Text>
+              <View style={styles.evidenceRecordList}>
+                {evidenceRecords.length === 0 ? (
+                  <Text style={styles.evidenceRecord}>Evidence: {recommendation.evidenceIds.length === 0 ? "none linked" : recommendation.evidenceIds.join(", ")}</Text>
+                ) : evidenceRecords.map((record) => (
+                  <View key={record.id} style={styles.evidenceRecordItem}>
+                    <Text style={styles.evidenceRecord}>
+                      Evidence {record.sourceKind} · confidence {(record.confidence * 100).toFixed(0)}% · {record.reviewStatus}
+                    </Text>
+                    <Text style={styles.evidenceRecord}>{record.summary}</Text>
+                    {record.notes ? <Text style={styles.evidenceRecordMuted}>{record.notes}</Text> : null}
+                    {metricsSummary(record) ? <Text style={styles.evidenceRecordMuted}>{metricsSummary(record)}</Text> : null}
+                    {artifactHashSummary(record).map((line) => (
+                      <Text key={line} style={styles.evidenceRecordMuted}>{line}</Text>
+                    ))}
+                  </View>
+                ))}
+              </View>
               {recommendation.warnings.map((warning) => (
                 <Text key={warning} style={styles.warningNote}>{warning}</Text>
               ))}
               <View style={styles.decisionActions}>
                 <ReviewButton icon={<Check size={16} color="#ffffff" />} label="Accept" primary onPress={() => recordDecision(recommendation, "accepted")} />
+                <ReviewButton icon={<MapPinned size={16} color="#ffffff" />} label="Apply" primary onPress={() => applyRecommendation(recommendation)} />
                 <ReviewButton icon={<X size={16} color="#254234" />} label="Reject" onPress={() => recordDecision(recommendation, "rejected")} />
                 <ReviewButton icon={<Clock3 size={16} color="#254234" />} label="Defer" onPress={() => recordDecision(recommendation, "deferred")} />
               </View>
             </View>
-          ))}
+          ); })}
         </View>
       </View>
 
@@ -184,6 +219,51 @@ function geometrySummary(recommendation: ModelRecommendation): string {
   if (recommendation.proposedGeometry.fieldBoundary) parts.push(`${recommendation.proposedGeometry.fieldBoundary.length} boundary vertices`);
   if (recommendation.proposedGeometry.obstaclePolygons) parts.push(`${recommendation.proposedGeometry.obstaclePolygons.length} obstacle polygons`);
   return parts.length > 0 ? `${recommendation.projectCrs} · ${parts.join(" · ")}` : `${recommendation.projectCrs} · metadata only`;
+}
+
+function hasProjectedGeometry(recommendation: ModelRecommendation): boolean {
+  const geometry = recommendation.proposedGeometry;
+  return Boolean(geometry.pivotCenter || geometry.fieldBoundary || geometry.machine || (geometry.obstaclePolygons && geometry.obstaclePolygons.length > 0));
+}
+
+function evidenceForRecommendation(
+  recommendation: ModelRecommendation,
+  records: LayoutEvidenceRecord[],
+): LayoutEvidenceRecord[] {
+  const ids = new Set(recommendation.evidenceIds);
+  return records.filter((record) => ids.has(record.id));
+}
+
+function metricsSummary(record: LayoutEvidenceRecord): string | null {
+  const metrics = record.metrics;
+  if (!metrics) return null;
+  const parts = [
+    metricPart(metrics, "centerOffsetRatio", "center offset"),
+    metricPart(metrics, "radiusMismatchRatio", "radius mismatch"),
+    metricPart(metrics, "detectionConfidence", "detection"),
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? `Image metrics: ${parts.join(" · ")}` : null;
+}
+
+function metricPart(metrics: Record<string, unknown>, key: string, label: string): string | null {
+  const value = metrics[key];
+  return typeof value === "number" && Number.isFinite(value) ? `${label} ${value.toFixed(4)}` : null;
+}
+
+function artifactHashSummary(record: LayoutEvidenceRecord): string[] {
+  const artifacts = record.artifacts;
+  if (!artifacts) return [];
+  return Object.entries(artifacts).flatMap(([name, value]) => {
+    if (!isRecord(value) || typeof value.sha256 !== "string") return [];
+    const dimensions = isRecord(value.image) && typeof value.image.width === "number" && typeof value.image.height === "number"
+      ? ` · ${value.image.width}x${value.image.height}`
+      : "";
+    return [`${name}: sha256 ${value.sha256.slice(0, 12)}...${dimensions}`];
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function errorMessage(error: unknown): string {
@@ -354,6 +434,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 17,
+  },
+  evidenceRecordList: {
+    gap: 6,
+  },
+  evidenceRecordItem: {
+    borderColor: "#d7e0d9",
+    borderLeftWidth: 3,
+    gap: 3,
+    paddingLeft: 8,
+  },
+  evidenceRecord: {
+    color: "#33463a",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+  evidenceRecordMuted: {
+    color: "#66766b",
+    fontSize: 11,
+    fontWeight: "700",
+    lineHeight: 16,
   },
   decisionActions: {
     flexDirection: "row",

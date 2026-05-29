@@ -21,6 +21,16 @@ uv run cplayout-ml probe-gpu
 
 The first recommender is deterministic and advisory. It is not a production-trained agronomy model.
 
+The imagery field-boundary detector is offline-only. OpenCV is the required scoring/refinement layer. SAM2 is optional and is used only inside this local Python companion when the operator has already installed SAM2 and supplied local files; the CLI does not download checkpoints or make cloud calls.
+
+```sh
+uv run cplayout-ml probe-boundary-detector \
+  --sam2-config "$CPLAYOUT_SAM2_CONFIG" \
+  --sam2-checkpoint "$CPLAYOUT_SAM2_CHECKPOINT"
+```
+
+`CPLAYOUT_SAM2_CONFIG` and `CPLAYOUT_SAM2_CHECKPOINT` may be used instead of flags. If SAM2 is missing or unconfigured, `probe-boundary-detector` reports it as unavailable and the review can still run the OpenCV scoring path.
+
 ## File Bridge
 
 ```sh
@@ -46,9 +56,30 @@ uv run cplayout-ml design-vision-review \
   --map-canvas ../../reports/google-earth-visual-fidelity/iteration-7-browser-study/generated-proof-clean/google-earth-visual-fidelity-map-canvas.png \
   --manifest ../../reports/google-earth-visual-fidelity/iteration-7-browser-study/generated-proof-clean/visual-fidelity-manifest.json \
   --output-dir ../../reports/google-earth-visual-fidelity/design-vision-review \
-  --project-id open-real-pivot-proof \
+  --project-id public-adams-county-center-pivot-proof \
   --project-crs EPSG:32613 \
+  --project-reference ../../exports/public-adams-county-center-pivot-proof-project.json \
   --created-at 2026-05-29T00:00:00.000Z
 ```
 
-Outputs are `visual-layout-review.json` and `visual-layout-review-annotated.png`. The JSON includes `LayoutEvidenceRecord`, `ModelRecommendation`, and deferred `LayoutDecisionRecord` payloads with `reviewStatus: "unreviewed"` and `canonicalGeometryMutation: false`. CV metrics are image-space only; they may warn about center/radius/overlay alignment, but any accepted geometry must still go through CPLayout projected-XY import, editor, validation, and operator review flows.
+Outputs are `visual-layout-review.json`, `visual-layout-review-recommendations.geojson`, and `visual-layout-review-annotated.png`. The JSON includes `LayoutEvidenceRecord`, `ModelRecommendation`, and deferred `LayoutDecisionRecord` payloads with `reviewStatus: "unreviewed"` and `canonicalGeometryMutation: false`. When `--project-reference` points to an accepted CPLayout project JSON or ZIP, projected-XY pivot and obstacle context can be copied from that reference into the recommendation for explicit browser review/apply. Field-boundary recommendations are included only when `--infer-field-boundary` finds and calibrates an imagery field outline. Without calibration, the recommendation remains metadata-only for boundary geometry and may include KML `LookAt` WGS84 display context. CV metrics are image-space only; they may warn about center/radius/overlay/boundary alignment, but any accepted geometry must still go through CPLayout projected-XY import, editor, validation, and operator review flows.
+
+Pass `--infer-field-boundary` when the review must look for a road, fenceline, treeline, or field-separation outline in the Google Earth map-canvas screenshot. This detector rejects circular crop or pivot coverage rings as field boundaries. It exports a projected-XY boundary recommendation only when a visible CPLayout overlay circle and a project reference provide calibration evidence; otherwise the detected polygon stays image-space advisory evidence.
+
+The detector must not synthesize a box around the pivot ring. If imagery-derived road, fenceline, treeline, or field-separation evidence is not strong enough, `detections.imageryFieldBoundary` is either `null` or marked `rejected: true`, and `modelRecommendations[].proposedGeometry.fieldBoundary` is omitted. Accepted detections include `source`, `imagePolygon`, optional `projectedPolygon`, `confidence`, `edgeAlignment`, `rectilinearity`, `circularity`, `containment`, `rejectionReasons`, and a `candidateMasks` audit summary.
+
+Projected boundary output remains advisory local companion evidence. Operator acceptance still has to go through the CPLayout projected-XY import/editor/validation workflows before any canonical geometry changes.
+
+For a complete local Google Earth proof packet and companion CV run, use the top-level orchestration script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ../../tools/run_google_earth_design_loop.ps1 `
+  -ProjectId public-adams-county-center-pivot-proof `
+  -ProjectCrs EPSG:32613 `
+  -ProjectReferencePath ../../exports/public-adams-county-center-pivot-proof-project.json `
+  -InferFieldBoundary `
+  -ConfirmOverlayVisible `
+  -RequireProofPass
+```
+
+The script writes a timestamped ignored folder under `reports/google-earth-visual-fidelity/`, leaves Google Earth Pro open when the proof completes, and records `design-loop-summary.json` beside the visual-fidelity manifest and CV review outputs.

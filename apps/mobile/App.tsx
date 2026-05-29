@@ -46,6 +46,7 @@ import {
   type AppSettings,
   type GoogleEarthKmlImportResult,
   type LonLat,
+  type ModelRecommendation,
   type PivotMachine,
   type PivotProject,
   type ProjectMapFeature,
@@ -97,6 +98,10 @@ export default function App(): React.JSX.Element {
 
   function applyPivotCoordinate(coordinate: XY, wgs84?: LonLat): void {
     dispatchProject({ type: "place_pivot", point: coordinate, wgs84 });
+  }
+
+  function applyModelRecommendation(recommendation: ModelRecommendation): void {
+    dispatchProject({ type: "apply_model_recommendation", recommendation });
   }
 
   function commitSettings(nextSettings: AppSettings): void {
@@ -377,7 +382,12 @@ export default function App(): React.JSX.Element {
           )}
 
           {tab === "review" && (
-            <ExpertReviewPanel project={project} result={result} settings={settings} />
+            <ExpertReviewPanel
+              onApplyRecommendation={applyModelRecommendation}
+              project={project}
+              result={result}
+              settings={settings}
+            />
           )}
 
           {tab === "export" && (

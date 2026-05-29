@@ -417,7 +417,7 @@ import { writeFileSync } from "node:fs";
 import {
   exportProjectGoogleEarthKml,
   projectXyToLonLat,
-  sampleProject,
+  realCenterPivotProofProject,
   type PivotProject,
   type XY,
 } from "@cplayout/core";
@@ -429,14 +429,14 @@ if (!kmlPath || !kmzPath || !metadataPath) {
 }
 
 const proofProject: PivotProject = {
-  ...sampleProject,
+  ...realCenterPivotProofProject,
   mapFeatures: [
-    ...(sampleProject.mapFeatures ?? []),
+    ...(realCenterPivotProofProject.mapFeatures ?? []),
     {
       id: "pipeline-a",
       name: "Renamed Pipeline A",
       kind: "underground_pipeline",
-      geometry: { type: "LineString", vertices: [sampleProject.waterSource, sampleProject.pivotCenter] },
+      geometry: { type: "LineString", vertices: [realCenterPivotProofProject.waterSource, realCenterPivotProofProject.pivotCenter] },
       confidence: "imagery_digitized",
       notes: "Styled proof fixture line for Google Earth visual fidelity.",
     },
@@ -444,7 +444,7 @@ const proofProject: PivotProject = {
       id: "power-line-a",
       name: "Proof Power Line A",
       kind: "power_line",
-      geometry: { type: "LineString", vertices: [sampleProject.powerSource, sampleProject.pivotCenter] },
+      geometry: { type: "LineString", vertices: [realCenterPivotProofProject.powerSource, realCenterPivotProofProject.pivotCenter] },
       confidence: "imagery_digitized",
       notes: "Styled proof fixture line for Google Earth visual fidelity.",
     },
@@ -452,7 +452,7 @@ const proofProject: PivotProject = {
       id: "pump-location-a",
       name: "Proof Pump Location A",
       kind: "pump_location",
-      geometry: { type: "Point", point: sampleProject.waterSource },
+      geometry: { type: "Point", point: realCenterPivotProofProject.waterSource },
       confidence: "rtk_fixed",
       notes: "Styled proof fixture point for Google Earth visual fidelity.",
     },
@@ -510,16 +510,20 @@ writeFileSync(metadataPath, JSON.stringify({
 '@ | Set-Content -LiteralPath $generatorPath -Encoding UTF8
 
   $npmExitCode = 0
-  Push-Location $RepoRoot
-  try {
-    & npm exec tsx -- $generatorPath $kmlPath $kmzPath $metadataPath
-    $npmExitCode = $LASTEXITCODE
-  } finally {
-    Pop-Location
+  $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+  if ($IsLinux -or -not $wsl) {
+    Push-Location $RepoRoot
+    try {
+      & npm exec -- tsx $generatorPath $kmlPath $kmzPath $metadataPath
+      $npmExitCode = $LASTEXITCODE
+    } finally {
+      Pop-Location
+    }
+  } else {
+    $npmExitCode = 1
   }
 
   if ($npmExitCode -ne 0) {
-    $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
     if (-not $wsl) {
       throw "Proof fixture generation failed with exit code $npmExitCode."
     }

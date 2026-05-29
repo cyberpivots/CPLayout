@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 
 import { projectXyToLonLat } from "./coordinates";
 import { exportProjectGoogleEarthKml, importGoogleEarthKmlToProject } from "./projectKml";
-import { sampleProject } from "./sampleProject";
-import type { XY } from "./types";
+import { realCenterPivotProofProject, sampleProject } from "./sampleProject";
+import type { LayoutResult, XY } from "./types";
 
 function kmlRing(points: XY[]): string {
   const closed = [...points, points[0]];
@@ -202,5 +202,44 @@ const deletedUtility = exportProjectGoogleEarthKml({
 assert.doesNotMatch(deletedUtility.kml, /pipeline-a/);
 assert.doesNotMatch(deletedUtility.kml, /Renamed Pipeline A/);
 assert.equal(deletedUtility.exportedFeatureCount, exported.exportedFeatureCount);
+
+const proofLayoutResult: LayoutResult = {
+  metrics: {
+    fieldAcres: 132,
+    irrigatedAcres: 124,
+    nonIrrigatedAcres: 8,
+    coveragePercent: 93.8,
+    endGunAcres: 7,
+    outsideFieldAcres: 0,
+    obstacleConflictCount: 2,
+  },
+  baseCoverage: [[realCenterPivotProofProject.fieldBoundary]],
+  endGunCoverage: [[realCenterPivotProofProject.fieldBoundary]],
+  allowedCoverage: [[realCenterPivotProofProject.fieldBoundary]],
+  outsideFieldCoverage: [],
+  obstacles: realCenterPivotProofProject.obstacles.map((obstacle) => [obstacle.polygon]),
+  towers: [
+    {
+      towerIndex: 1,
+      radiusMeters: realCenterPivotProofProject.machine.spanLengthsMeters[0],
+      point: {
+        x: realCenterPivotProofProject.pivotCenter.x + realCenterPivotProofProject.machine.spanLengthsMeters[0],
+        y: realCenterPivotProofProject.pivotCenter.y,
+      },
+    },
+  ],
+  warnings: [],
+};
+const exportedProofLayout = exportProjectGoogleEarthKml(realCenterPivotProofProject, proofLayoutResult);
+assert.match(exportedProofLayout.kml, /Base pivot wet circle/);
+assert.match(exportedProofLayout.kml, /End gun throw coverage/);
+assert.match(exportedProofLayout.kml, /Allowed irrigated coverage/);
+assert.match(exportedProofLayout.kml, /<Style id="cplayout-layout-allowed-coverage">/);
+assert.match(exportedProofLayout.kml, /<styleUrl>#cplayout-layout-base-coverage<\/styleUrl>/);
+assert.match(exportedProofLayout.kml, /<Data name="cplayoutFeatureType"><value>layout_result<\/value><\/Data>/);
+const importedProofLayout = importGoogleEarthKmlToProject(sampleProject, exportedProofLayout.kml);
+assert.equal(importedProofLayout.importedObstacleCount, realCenterPivotProofProject.obstacles.length);
+assert.ok(importedProofLayout.skippedFeatureCount >= 3);
+assert.equal(importedProofLayout.items.some((item) => item.name === "Allowed irrigated coverage"), false);
 
 console.log("project KML tests passed");

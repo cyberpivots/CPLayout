@@ -7,11 +7,12 @@ import type { ProjectWorkspaceStatus } from "../hooks/useProjectRepository";
 interface ProjectStartPanelProps {
   onCreate: () => void;
   onOpenProject: (projectId: string) => void | Promise<void>;
+  onOpenRealProof: () => void;
   onOpenSample: () => void;
   repository: ProjectWorkspaceStatus;
 }
 
-export function ProjectStartPanel({ onCreate, onOpenProject, onOpenSample, repository }: ProjectStartPanelProps): React.JSX.Element {
+export function ProjectStartPanel({ onCreate, onOpenProject, onOpenRealProof, onOpenSample, repository }: ProjectStartPanelProps): React.JSX.Element {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -20,6 +21,7 @@ export function ProjectStartPanel({ onCreate, onOpenProject, onOpenSample, repos
       </View>
       <View style={styles.projectActionRow}>
         <ActionButton label="Create New Layout" onPress={onCreate} selected />
+        <ActionButton label="Open Real Pivot Proof" onPress={onOpenRealProof} />
         <ActionButton label="Open Sample" onPress={onOpenSample} />
         <ActionButton label="Refresh" onPress={() => void repository.refreshProjects()} />
       </View>

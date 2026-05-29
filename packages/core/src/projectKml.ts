@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, Geometry, GeometryCollection, LineString, Point, Polygon, Position } from "geojson";
+import type { Feature, FeatureCollection, Geometry, GeometryCollection, LineString, MultiPolygon, Point, Polygon, Position } from "geojson";
 import { toKML } from "@placemarkio/tokml";
 import { kml as kmlToGeoJson } from "@tmcw/togeojson";
 import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
@@ -41,6 +41,46 @@ interface GoogleEarthStyleDefinition {
 }
 
 const GOOGLE_EARTH_KML_STYLES: GoogleEarthStyleDefinition[] = [
+  {
+    id: "cplayout-layout-base-coverage",
+    labelColor: "ff174568",
+    labelScale: "0.72",
+    lineColor: "ff1c6ba0",
+    lineWidth: "1.8",
+    polygonColor: "334f9edc",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-layout-end-gun",
+    labelColor: "ff075985",
+    labelScale: "0.72",
+    lineColor: "ff0ea5e9",
+    lineWidth: "1.6",
+    polygonColor: "2846c7e8",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-layout-allowed-coverage",
+    labelColor: "ff14532d",
+    labelScale: "0.78",
+    lineColor: "ff16a34a",
+    lineWidth: "2.2",
+    polygonColor: "3d22c55e",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
+  {
+    id: "cplayout-layout-outside-field",
+    labelColor: "ff7c2d12",
+    labelScale: "0.78",
+    lineColor: "ffea580c",
+    lineWidth: "2.4",
+    polygonColor: "55f97316",
+    polygonFill: "1",
+    polygonOutline: "1",
+  },
   {
     id: "cplayout-field-boundary",
     labelColor: "ff20372a",
@@ -267,6 +307,10 @@ export function importGoogleEarthKmlToProject(
 
   for (const candidate of polygonCandidates) {
     const itemId = candidateItemId(candidate.properties, candidate.name, classified.length + 1);
+    if (isLayoutResultCandidate(candidate.properties)) {
+      skippedFeatureCount += 1;
+      continue;
+    }
     if (isBoundaryCandidate(candidate.properties, candidate.name)) {
       hasBoundaryCandidate = true;
       const selected = selectedByDefault(itemId, selectedItemIds);
@@ -484,6 +528,10 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
   const warnings: string[] = [];
   const features: Feature[] = [];
 
+  if (result) {
+    features.push(...layoutCoverageFeatures(project, result));
+  }
+
   features.push(polygonFeature("Field boundary", "field_boundary", closeRing(project.fieldBoundary, project.projectCrs), {
     projectId: project.id,
     projectCrs: project.projectCrs,
@@ -553,6 +601,41 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
     exportedFeatureCount: features.length,
     warnings,
   };
+}
+
+function layoutCoverageFeatures(project: PivotProject, result: LayoutResult): Feature[] {
+  const baseProperties = {
+    projectId: project.id,
+    projectCrs: project.projectCrs,
+    cplayoutFeatureType: "layout_result",
+  };
+  const features: Feature[] = [];
+  if (hasRenderableMultiPolygon(result.baseCoverage)) {
+    features.push(multiPolygonFeature("Base pivot wet circle", "base_coverage", result.baseCoverage, project.projectCrs, {
+      ...baseProperties,
+      radiusType: "machine_wet_radius",
+    }));
+  }
+  if (hasRenderableMultiPolygon(result.endGunCoverage)) {
+    features.push(multiPolygonFeature("End gun throw coverage", "end_gun_coverage", result.endGunCoverage, project.projectCrs, {
+      ...baseProperties,
+      acres: result.metrics.endGunAcres.toFixed(3),
+    }));
+  }
+  if (hasRenderableMultiPolygon(result.allowedCoverage)) {
+    features.push(multiPolygonFeature("Allowed irrigated coverage", "allowed_coverage", result.allowedCoverage, project.projectCrs, {
+      ...baseProperties,
+      acres: result.metrics.irrigatedAcres.toFixed(3),
+      coveragePercent: result.metrics.coveragePercent.toFixed(2),
+    }));
+  }
+  if (hasRenderableMultiPolygon(result.outsideFieldCoverage)) {
+    features.push(multiPolygonFeature("Outside field wet coverage", "outside_field_coverage", result.outsideFieldCoverage, project.projectCrs, {
+      ...baseProperties,
+      acres: result.metrics.outsideFieldAcres.toFixed(3),
+    }));
+  }
+  return features;
 }
 
 function addGoogleEarthKmlStyles(kmlText: string): string {
@@ -639,6 +722,10 @@ function styleIdForPlacemark(placemark: XmlElement): string | null {
   if (role === "water_source" || layerType === "water_source") return "cplayout-point-water";
   if (role === "power_source" || layerType === "power_source") return "cplayout-point-power";
   if (role === "tower" || layerType === "tower") return "cplayout-tower";
+  if (layerType === "base_coverage") return "cplayout-layout-base-coverage";
+  if (layerType === "end_gun_coverage") return "cplayout-layout-end-gun";
+  if (layerType === "allowed_coverage") return "cplayout-layout-allowed-coverage";
+  if (layerType === "outside_field_coverage") return "cplayout-layout-outside-field";
   if (featureType === "map_feature") return mapFeatureStyleId(kind, placemark);
   if (layerType === "obstacle" && !isPoint) return obstacleStyleId(kind);
   if (role) return "cplayout-survey-point";
@@ -906,6 +993,23 @@ function polygonFeature(name: string, layerType: string, coordinates: Position[]
   };
 }
 
+function multiPolygonFeature(name: string, layerType: string, multiPolygon: XY[][][], projectCrs: string, properties: Record<string, string>): Feature {
+  return {
+    type: "Feature",
+    properties: { name, layerType, ...properties },
+    geometry: {
+      type: "MultiPolygon",
+      coordinates: multiPolygon
+        .filter((polygon) => polygon.length > 0 && polygon[0].length >= 3)
+        .map((polygon) => polygon.map((ring) => closeRing(ring, projectCrs))),
+    } satisfies MultiPolygon,
+  };
+}
+
+function hasRenderableMultiPolygon(multiPolygon: XY[][][]): boolean {
+  return multiPolygon.some((polygon) => polygon.some((ring) => ring.length >= 3));
+}
+
 function pointFeature(name: string, role: string, point: XY, projectCrs: string, properties: Record<string, string>): Feature {
   const lonLat = projectXyToLonLat(point, projectCrs);
   return {
@@ -958,6 +1062,20 @@ function isBoundaryCandidate(properties: Record<string, unknown>, name: string):
   if (layer === "field_boundary" || layer === "boundary") return true;
   const normalizedName = name.toLowerCase();
   return /\b(field|boundary)\b/.test(normalizedName);
+}
+
+function isLayoutResultCandidate(properties: Record<string, unknown>): boolean {
+  const featureType = (readStringProperty(properties, ["cplayoutFeatureType", "cplayout_feature_type"]) ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("-", "_")
+    .replaceAll(" ", "_");
+  const layer = normalizedLayer(properties);
+  return featureType === "layout_result"
+    || layer === "base_coverage"
+    || layer === "end_gun_coverage"
+    || layer === "allowed_coverage"
+    || layer === "outside_field_coverage";
 }
 
 function obstacleKindFromProperties(properties: Record<string, unknown>, name: string): ObstacleZone["kind"] {

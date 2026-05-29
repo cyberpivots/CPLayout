@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { evaluateLayout, exportScenarioGeoJson } from "@cplayout/geometry";
+import { evaluateLayout, exportScenarioGeoJson, validateCenterPivotProofGeometry } from "@cplayout/geometry";
 import {
   PROJECT_GEOJSON_FILENAME,
   PROJECT_GOOGLE_EARTH_KML_FILENAME,
@@ -20,7 +20,7 @@ import {
   modelRecommendationsToProjectedGeoJson,
   surveyPointsToCsv,
 } from "./projectArchive";
-import { sampleProject, type LayoutDecisionRecord, type LayoutEvidenceRecord, type ModelRecommendation } from "@cplayout/core";
+import { realCenterPivotProofProject, sampleProject, type LayoutDecisionRecord, type LayoutEvidenceRecord, type ModelRecommendation } from "@cplayout/core";
 
 const result = evaluateLayout(sampleProject);
 const bundle = buildProjectArchiveBundle(sampleProject, result, exportScenarioGeoJson(sampleProject, result), "2026-05-19T12:00:00.000Z");
@@ -190,6 +190,26 @@ assert.equal(imported.id, sampleProject.id);
 assert.equal(imported.projectCrs, "EPSG:32613");
 assert.equal(imported.fieldBoundary.length, sampleProject.fieldBoundary.length);
 assert.equal(imported.machine.spanLengthsMeters.length, sampleProject.machine.spanLengthsMeters.length);
+
+const proofResult = evaluateLayout(realCenterPivotProofProject);
+assert.deepEqual(validateCenterPivotProofGeometry(realCenterPivotProofProject, proofResult), []);
+const proofBundle = buildProjectArchiveBundle(
+  realCenterPivotProofProject,
+  proofResult,
+  exportScenarioGeoJson(realCenterPivotProofProject, proofResult),
+  "2026-05-29T12:00:00.000Z",
+);
+assert.match(proofBundle.files[PROJECT_JSON_FILENAME], /Public Adams County Center Pivot Proof/);
+assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Base pivot wet circle/);
+assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Allowed irrigated coverage/);
+assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /End gun throw coverage/);
+assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Diagonal service track no-spray/);
+assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /cplayout-layout-allowed-coverage/);
+const proofRoundTrip = importProjectArchiveZip(exportProjectArchiveZip(proofBundle));
+assert.equal(proofRoundTrip.id, realCenterPivotProofProject.id);
+assert.equal(proofRoundTrip.fieldBoundary.length, realCenterPivotProofProject.fieldBoundary.length);
+assert.equal(proofRoundTrip.obstacles.length, realCenterPivotProofProject.obstacles.length);
+assert.equal(proofRoundTrip.mapFeatures?.length, realCenterPivotProofProject.mapFeatures?.length);
 
 const badVersionBundle = {
   ...bundle,

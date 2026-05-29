@@ -41,6 +41,7 @@ import {
   importGoogleEarthKmlToProject,
   importProjectedGeoJsonToProject,
   importSurveyCsvToProject,
+  realCenterPivotProofProject,
   sampleProject,
   type AppSettings,
   type GoogleEarthKmlImportResult,
@@ -192,6 +193,7 @@ export default function App(): React.JSX.Element {
             <ProjectStartPanel
               onCreate={createNewProject}
               onOpenProject={openSavedProject}
+              onOpenRealProof={() => loadProject(realCenterPivotProofProject)}
               onOpenSample={() => loadProject(sampleProject)}
               repository={repository}
             />

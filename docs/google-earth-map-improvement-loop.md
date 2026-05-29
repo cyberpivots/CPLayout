@@ -328,3 +328,80 @@ Remaining unverified claims:
 - This proof is limited to the web MVP browser `localStorage` repository and browser ZIP/KML export generation.
 - Android/iOS persistence, native SQLite runtime behavior, native sharing, native MapLibre rendering, and raw PMTiles/MBTiles rendering remain unverified until the device/emulator checklist passes.
 - Native raw PMTiles/MBTiles archive rendering remains unverified; raw tile packages still need a local protocol, conversion, or tile-serving adapter plus device verification.
+
+## Iteration 6 Scope
+
+Selected slice: Real Center-Pivot Google Earth Proof.
+
+Failure being corrected:
+
+- Iteration 5 proved editor callbacks, save/reopen, ZIP round-trip, and KML inclusion, but its visible Google Earth geometry was not a credible center-pivot layout.
+- The Iteration 5 proof used arbitrary proof-helper triangles/rectangles and did not export actual modeled wet coverage, end-gun coverage, or a radial machine layout surface.
+
+Implementation scope:
+
+- Add a public real-pivot proof project anchored to the Wikimedia Commons Adams County, Colorado center-pivot reference coordinate, with the Google Earth-calibrated proof center at approximately `39.902125, -104.070061`.
+- Keep canonical geometry in projected/local `XY` under `EPSG:32613`; WGS84 remains source/display/export metadata only.
+- Export layout-result geometry to Google Earth KML: base wet circle, end-gun coverage, allowed irrigated coverage, outside-field coverage when present, field boundary, obstacles, utilities, pivot/source points, and towers.
+- Add proof sanity checks so a real-pivot proof can reject triangle/rectangle-only geometry, missing coverage, non-radial tower points, missing obstacles, or a field boundary that does not contain the modeled wet radius.
+- Do not change project schemas, archive semantics, paid-service posture, SQLite/native behavior, MapLibre/native claims, or raw PMTiles/MBTiles rendering claims.
+
+Public source:
+
+- Wikimedia Commons: `File:Center pivot irrigation in Colorado.JPG`, camera/location coordinate `39.899125, -104.070061`, author Jeffrey Beall, CC BY 4.0, URL `https://commons.wikimedia.org/wiki/File:Center_pivot_irrigation_in_Colorado.JPG`.
+
+## Iteration 6 Result
+
+Status: complete on 2026-05-29 for browser-exported real center-pivot Google Earth proof.
+
+Implemented surfaces:
+
+- `packages/core/src/sampleProject.ts` now exports `realCenterPivotProofProject` and `publicCenterPivotProofSource`.
+- `packages/core/src/projectKml.ts` exports layout-result coverage placemarks with deterministic Google Earth styles and skips those `layout_result` placemarks on re-import so coverage polygons are not mistaken for obstacles.
+- `packages/geometry/src/layoutProof.ts` validates center-pivot proof geometry: circular boundary density, pivot containment, wet-radius containment, modeled coverage presence, radial tower points, and named obstacle areas.
+- `apps/mobile/src/components/ProjectStartPanel.tsx` exposes `Open Real Pivot Proof` so browser proof starts from the public real-pivot fixture.
+
+Automated coverage:
+
+- `packages/geometry/src/layoutProof.test.ts` proves the public proof passes and triangle/shifted-boundary cases fail.
+- `packages/core/src/projectKml.test.ts` proves KML includes layout coverage styles/data and skips layout-result placemarks during import review.
+- `packages/project-store/src/projectRepository.test.ts` proves the real proof survives browser localStorage save/reopen and KML export content checks.
+- `packages/project-store/src/projectArchive.test.ts` proves ZIP round-trip keeps the real proof project and archived `exports/google-earth.kml` includes layout coverage, towers, and obstacle content.
+
+Browser proof:
+
+- Local static serve: `npx serve apps/mobile/dist -l 4173` served `http://localhost:4173`.
+- Playwright opened `Open Real Pivot Proof`, saved it to browser localStorage, reopened `Public Adams County Center Pivot Proof` from the local project list, opened Export, downloaded ZIP and KML, and captured the export surface.
+- Browser console caveat: the only reported console error was `GET /favicon.ico` returning 404 from the local static server.
+
+Google Earth Pro proof:
+
+- Google Earth Pro on this Windows 11 PC opened the browser-exported KML at `H:\cplayout\reports\google-earth-visual-fidelity\iteration-6-browser-real-pivot-proof.kml`.
+- Human-visible review passed: the screenshot shows the modeled center point on the visible pivot, a circular wet coverage footprint aligned to crop rings, the field/wet-radius rings, radial tower labels 1-7, a diagonal service-track no-spray obstacle, a south road setback, and water/power/source labels.
+- Pixel analysis passed as non-black and non-uniform; visual inspection, not pixel analysis alone, is the acceptance evidence.
+
+Generated proof artifacts:
+
+| Artifact | SHA-256 | Notes |
+| --- | --- | --- |
+| `reports/google-earth-visual-fidelity/iteration-6-browser-real-pivot-proof.kml` | `29315ab67b3a408c444640d100863f10b7bc77faeb28d147bc0d7f89f00a81c1` | Browser-exported KML; contains base wet circle, end-gun coverage, allowed coverage, obstacles, source points, and `Tower 7`. |
+| `reports/google-earth-visual-fidelity/iteration-6-browser-real-pivot-proof.zip` | `e1aa2e0ad7d0ffb065b4664092227c0387c8699705b7bb0d99bebb4d9aabcd56` | Browser-exported ZIP; archive includes `project.json`, `exports/scenario.geojson`, `exports/google-earth.kml`, survey CSV, metrics CSV, map package CSV, and manifest. |
+| `reports/google-earth-visual-fidelity/iteration-6-browser-real-pivot-proof.png` | `1b3f75f783d66f67e8ad3731200184e2908e3295e8d1ac02dde83487139f4540` | Browser export surface after save/reopen and KML download; status reports 20 Google Earth features. |
+| `reports/google-earth-visual-fidelity/iteration-6-real-center-pivot-google-earth-proof.png` | `0560d30264fa163d1232b7ea81a54642e3774989887fbeed0e16eabf5fa17b97` | Google Earth Pro map-canvas proof from the browser-exported KML. |
+| `reports/google-earth-visual-fidelity/iteration-6-real-center-pivot-google-earth-full-window.png` | `43e114e51370b420f486236aba98eadd58c3618bd2233c995cda4e4a763950e3` | Full-window Google Earth Pro proof from the browser-exported KML. |
+
+Validation evidence:
+
+- `npm test -w @cplayout/core`: passed.
+- `npm test -w @cplayout/geometry`: passed.
+- `npm test -w @cplayout/project-store`: passed.
+- `npm run typecheck -w @cplayout/mobile`: passed.
+- `npm run validate`: passed all workspace typechecks and tests.
+- `npm audit`: passed, `0 vulnerabilities`.
+- `npm run export:web -w @cplayout/mobile`: passed and emitted `apps/mobile/dist`.
+- `git diff --check`: passed with no output.
+
+Remaining unverified claims:
+
+- This proof is limited to the web MVP browser `localStorage` repository, browser ZIP/KML export generation, and Google Earth Pro desktop rendering of the exported KML.
+- Native SQLite runtime behavior, native sharing, native MapLibre rendering, Android/iOS persistence, and raw PMTiles/MBTiles archive rendering remain unverified until the device/emulator checklist passes.

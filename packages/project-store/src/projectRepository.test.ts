@@ -4,10 +4,11 @@ import {
   createProjectEditorState,
   exportProjectGoogleEarthKml,
   reduceProjectEditorState,
+  realCenterPivotProofProject,
   sampleProject,
   type PivotProject,
 } from "@cplayout/core";
-import { evaluateLayout, exportScenarioGeoJson } from "@cplayout/geometry";
+import { evaluateLayout, exportScenarioGeoJson, validateCenterPivotProofGeometry } from "@cplayout/geometry";
 import {
   PROJECT_GOOGLE_EARTH_KML_FILENAME,
   PROJECT_JSON_FILENAME,
@@ -80,6 +81,24 @@ async function run(): Promise<void> {
   assert.match(kml.kml, /Iteration 5 utility line/);
   assert.match(kml.kml, /iteration-5-utility-line/);
   assert.ok(kml.exportedFeatureCount >= reloaded.obstacles.length + (reloaded.mapFeatures?.length ?? 0) + 4);
+
+  const proofResult = evaluateLayout(realCenterPivotProofProject);
+  assert.deepEqual(validateCenterPivotProofGeometry(realCenterPivotProofProject, proofResult), []);
+  await projectRepository.saveProjectAsync(realCenterPivotProofProject, proofResult);
+  const proofReloaded = await projectRepository.loadProjectAsync(realCenterPivotProofProject.id);
+  assert.ok(proofReloaded);
+  assert.equal(proofReloaded.fieldBoundary.length, realCenterPivotProofProject.fieldBoundary.length);
+  assert.equal(proofReloaded.obstacles.length, realCenterPivotProofProject.obstacles.length);
+  assert.deepEqual(validateCenterPivotProofGeometry(proofReloaded, evaluateLayout(proofReloaded)), []);
+  const proofBundle = buildProjectArchiveBundle(
+    proofReloaded,
+    evaluateLayout(proofReloaded),
+    exportScenarioGeoJson(proofReloaded, evaluateLayout(proofReloaded)),
+    "2026-05-29T12:00:00.000Z",
+  );
+  assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Base pivot wet circle/);
+  assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Allowed irrigated coverage/);
+  assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Public proof pivot center/);
 
   console.log("project repository saveable geometry tests passed");
 }

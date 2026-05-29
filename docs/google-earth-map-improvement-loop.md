@@ -1,7 +1,7 @@
 # Google Earth Map Improvement Loop
 
 Date: 2026-05-28
-Status: Iteration 1 complete; Iteration 2 selected
+Status: Iteration 5 complete
 
 ## Scope
 
@@ -271,3 +271,60 @@ Remaining unverified claims:
 
 - This proof is limited to the web MVP browser `localStorage` repository and browser ZIP/KML export generation.
 - Android/iOS persistence, native SQLite runtime behavior, native sharing, native MapLibre rendering, and raw PMTiles/MBTiles rendering remain unverified until the device/emulator checklist passes.
+
+## Iteration 5 Scope
+
+Selected slice: Editor Proof.
+
+Implementation scope:
+
+- Preserve the existing `MapSurfaceProps` callback boundary for boundary draft commits, obstacle draft commits, map-feature saves, vertex moves/deletes, undo, redo, save, reopen, ZIP round-trip, and KML export inclusion.
+- Add only browser-proof support needed by the visible workflow: stable map/vertex labels, a map test id, edit-mode selected-vertex status, and compact edit-mode controls for selecting the first boundary vertex and nudging it east.
+- Keep viewport state as map-local UI state; pan, reset, zoom, and Add Center controls do not mutate project geometry until a draft commit, map-feature save, or vertex edit callback is invoked.
+- Do not change project schemas, canonical projected `XY` geometry, project archive format, KML/KMZ schema, SQLite/native behavior, MapLibre, raw tile rendering, or dependency architecture.
+
+## Iteration 5 Result
+
+Status: complete on 2026-05-28 for browser editor workflow proof only.
+
+Implemented surfaces:
+
+- `packages/map-adapters/src/SvgMapSurface.tsx` exposes stable browser proof targets and edit-mode vertex controls while still routing geometry mutation through the existing `MapSurfaceProps` callbacks.
+- `packages/project-store/src/projectRepository.test.ts` now builds the save/reopen/export proof project through real reducer actions before asserting browser localStorage persistence, ZIP archive round-trip, and KML inclusion.
+
+Automated coverage:
+
+- Reducer action path covers boundary draft commit, obstacle draft commit, utility line map-feature save, boundary vertex move/delete, obstacle vertex move/delete, undo, and redo.
+- Repository/archive/export path covers browser localStorage save/reopen, CPLayout ZIP round-trip, archived `exports/google-earth.kml`, and KML content for the edited obstacle and utility feature.
+
+Browser proof:
+
+- Local static serve: `npx serve apps/mobile/dist -l 4173` served `http://localhost:4173`.
+- Playwright opened the sample project, used Draw plus Add Center/pan controls to commit a replacement boundary, used Obstacle plus Add Center/pan controls to commit a new obstacle, saved a `Power line` utility map feature, renamed it `Iteration 5 utility line`, used Edit controls to select/nudge/delete a boundary vertex, confirmed dirty state, used Undo/Redo, saved, reopened from the local project list, confirmed edited geometry remained visible, and exported ZIP/KML.
+- Reopened browser-local project proof: `savedProjectCount: 1`, `fieldBoundaryVertices: 3`, `obstacleCount: 3`, `mapFeatureNames: ["Iteration 5 utility line"]`.
+- Playwright screenshot: `/tmp/cplayout-iteration-5-browser-editor-proof.png`.
+- Browser console caveat: the only console error was `GET /favicon.ico` returning 404 from the local static server.
+
+Generated browser proof artifacts:
+
+| Artifact | SHA-256 | Notes |
+| --- | --- | --- |
+| `/tmp/cplayout-iteration-5-browser-editor-proof.png` | `a37207be31497310738bbb9fc2c134a8fe4582b0df75661991638f85f074c53e` | Export surface after reopening the saved edited project; status shows KML download and 14 Google Earth features. |
+| `/tmp/cplayout-iteration-5-browser-editor-proof.zip` | `2afe0e3cc7e1c9fc2a83a6b844cfd68dc9e0fbe953572cd83c5f55fb6175723c` | 9,412 bytes; archive contains `project.json`, `exports/scenario.geojson`, `exports/google-earth.kml`, survey/metrics/map-package CSVs, and manifest. |
+| `/tmp/cplayout-iteration-5-browser-editor-proof.kml` | `1726778006ee321713dca543c41e778cfadb76cc44284674055be47c5eba622c` | 12,594 bytes; contains `Field boundary`, `Exclusion 3`, `Iteration 5 utility line`, `styleUrl`, and map-feature ExtendedData. |
+
+Validation evidence:
+
+- `npm test -w @cplayout/project-store`: passed, including the reducer-driven browser editor workflow proof.
+- `npm run typecheck -w @cplayout/map-adapters`: passed.
+- `npm run typecheck -w @cplayout/mobile`: passed.
+- `npm run export:web -w @cplayout/mobile`: passed and emitted `apps/mobile/dist`.
+- `npm run validate`: passed all workspace typechecks and tests.
+- `git diff --check`: passed with no output.
+- `npm audit`: passed, `0 vulnerabilities`.
+
+Remaining unverified claims:
+
+- This proof is limited to the web MVP browser `localStorage` repository and browser ZIP/KML export generation.
+- Android/iOS persistence, native SQLite runtime behavior, native sharing, native MapLibre rendering, and raw PMTiles/MBTiles rendering remain unverified until the device/emulator checklist passes.
+- Native raw PMTiles/MBTiles archive rendering remains unverified; raw tile packages still need a local protocol, conversion, or tile-serving adapter plus device verification.

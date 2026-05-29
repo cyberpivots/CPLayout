@@ -246,6 +246,28 @@ export function SvgMapSurface({
     setSelectedVertex(null);
   }
 
+  function selectFirstBoundaryVertex(): void {
+    if (project.fieldBoundary.length === 0) return;
+    selectVertex({ layer: "field_boundary", vertexIndex: 0 });
+  }
+
+  function nudgeSelectedVertex(delta: XY): void {
+    if (!selectedVertex) return;
+    const currentPoint = selectedVertexPoint(selectedVertex);
+    if (!currentPoint) return;
+    const nextPoint = { x: currentPoint.x + delta.x, y: currentPoint.y + delta.y };
+    if (selectedVertex.layer === "field_boundary") {
+      onMoveBoundaryVertex?.(selectedVertex.vertexIndex, nextPoint);
+    } else {
+      onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, nextPoint);
+    }
+  }
+
+  function selectedVertexPoint(vertex: SelectedVertex): XY | null {
+    if (vertex.layer === "field_boundary") return project.fieldBoundary[vertex.vertexIndex] ?? null;
+    return project.obstacles.find((obstacle) => obstacle.id === vertex.obstacleId)?.polygon[vertex.vertexIndex] ?? null;
+  }
+
   function snapWorldPoint(point: XY): XY {
     const snap = snapPointToGeometry(
       point,
@@ -338,7 +360,9 @@ export function SvgMapSurface({
       </View>
 
       <View
+        accessibilityLabel="Layout map drawing surface"
         style={[styles.mapSurface, { backgroundColor: palette.background }]}
+        testID="layout-map-drawing-surface"
         onLayout={(event) => {
           setMapPixelWidth(Math.max(1, event.nativeEvent.layout.width));
           setMapPixelHeight(Math.max(1, event.nativeEvent.layout.height));
@@ -348,6 +372,7 @@ export function SvgMapSurface({
         <Svg
           viewBox={viewportToSvgViewBox(mapState.viewport)}
           style={styles.svg}
+          testID="layout-map-svg"
           {...svgInteractionProps}
         >
           <Rect
@@ -378,6 +403,7 @@ export function SvgMapSurface({
           <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
           <EditableRing
             color={palette.fieldStroke}
+            layerLabel="Boundary"
             selected={selectedVertex?.layer === "field_boundary" ? selectedVertex.vertexIndex : null}
             vertices={project.fieldBoundary}
             onSelect={(vertexIndex) => selectVertex({ layer: "field_boundary", vertexIndex })}
@@ -387,6 +413,7 @@ export function SvgMapSurface({
               <ObstacleSymbol obstacle={obstacle} color={palette.obstacleStroke} />
               <EditableRing
                 color={palette.obstacleStroke}
+                layerLabel={`${obstacle.name} obstacle`}
                 selected={selectedVertex?.layer === "obstacle" && selectedVertex.obstacleId === obstacle.id ? selectedVertex.vertexIndex : null}
                 vertices={obstacle.polygon}
                 onSelect={(vertexIndex) => selectVertex({ layer: "obstacle", obstacleId: obstacle.id, vertexIndex })}
@@ -444,10 +471,22 @@ export function SvgMapSurface({
           <IconControl icon={<ArrowDown size={20} />} label="Pan south" onPress={() => dispatch({ type: "pan", delta: { x: 0, y: -settings.drawing.panStepMeters } })} />
         </View>
         <View style={styles.draftHud}>
-          <Text style={styles.draftHudText}>{mapState.activeLayer.replaceAll("_", " ")} · {mapState.draftVertices.length} pts{measureText(mapState.draftVertices)}</Text>
+          <Text style={styles.draftHudText}>
+            {mapState.activeLayer.replaceAll("_", " ")} · {mapState.draftVertices.length} pts{measureText(mapState.draftVertices)}{selectedVertex ? ` · ${selectedVertexText(selectedVertex)}` : ""}
+          </Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Add draft vertex at view center" onPress={addDraftVertexAtViewCenter} style={styles.clearDraftButton}>
             <Text style={styles.clearDraftText}>{mapState.mode === "capture_point" ? "Capture Center" : "Add Center"}</Text>
           </Pressable>
+          {mapState.mode === "edit_vertices" ? (
+            <>
+              <Pressable accessibilityRole="button" accessibilityLabel="Select first boundary vertex" onPress={selectFirstBoundaryVertex} style={styles.clearDraftButton}>
+                <Text style={styles.clearDraftText}>First Vertex</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Move selected vertex east" disabled={!selectedVertex} onPress={() => nudgeSelectedVertex({ x: Math.max(1, settings.drawing.panStepMeters / 4), y: 0 })} style={[styles.clearDraftButton, !selectedVertex && styles.disabledDraftButton]}>
+                <Text style={styles.clearDraftText}>Nudge E</Text>
+              </Pressable>
+            </>
+          ) : null}
           <Pressable accessibilityRole="button" accessibilityLabel="Commit draft geometry" disabled={!canCommitDraft(mapState)} onPress={commitDraft} style={[styles.clearDraftButton, canCommitDraft(mapState) && styles.commitDraftButton, !canCommitDraft(mapState) && styles.disabledDraftButton]}>
             <Text style={[styles.clearDraftText, canCommitDraft(mapState) && styles.commitDraftText]}>{mapState.mode === "measure" ? "Measure Only" : "Commit"}</Text>
           </Pressable>
@@ -570,6 +609,11 @@ function measureText(vertices: XY[]): string {
   if (vertices.length < 2) return "";
   const distance = vertices.slice(1).reduce((sum, vertex, index) => sum + Math.hypot(vertex.x - vertices[index].x, vertex.y - vertices[index].y), 0);
   return ` · ${distance.toFixed(1)} m`;
+}
+
+function selectedVertexText(vertex: SelectedVertex): string {
+  if (vertex.layer === "field_boundary") return `selected boundary vertex ${vertex.vertexIndex + 1}`;
+  return `selected obstacle vertex ${vertex.vertexIndex + 1}`;
 }
 
 function featureOptionForKind(kind: ProjectMapFeatureKind): { kind: ProjectMapFeatureKind; label: string; geometry: UtilityFeatureGeometry } {
@@ -814,11 +858,13 @@ function DraftVertices({ vertices, color }: { vertices: XY[]; color: string }): 
 
 function EditableRing({
   color,
+  layerLabel,
   onSelect,
   selected,
   vertices,
 }: {
   color: string;
+  layerLabel: string;
   onSelect: (vertexIndex: number) => void;
   selected: number | null;
   vertices: XY[];
@@ -828,6 +874,7 @@ function EditableRing({
       {vertices.map((vertex, index) => (
         <Circle
           key={`${vertex.x}-${vertex.y}-${index}`}
+          accessibilityLabel={`${layerLabel} vertex ${index + 1}`}
           cx={vertex.x}
           cy={-vertex.y}
           fill={selected === index ? color : "#fffef8"}

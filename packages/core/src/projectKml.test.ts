@@ -122,6 +122,7 @@ const exported = exportProjectGoogleEarthKml(sampleProject);
 assert.equal(exported.warnings.length, 0);
 assert.ok(exported.exportedFeatureCount >= sampleProject.obstacles.length + sampleProject.surveyPoints.length + 4);
 assert.match(exported.kml, /<kml xmlns="http:\/\/www\.opengis\.net\/kml\/2\.2">/);
+assert.match(exported.kml, /<LookAt><longitude>[-0-9.]+<\/longitude><latitude>[-0-9.]+<\/latitude><altitude>0<\/altitude><heading>0<\/heading><tilt>0<\/tilt><range>[0-9.]+<\/range><altitudeMode>clampToGround<\/altitudeMode><\/LookAt>/);
 assert.match(exported.kml, /<Style id="cplayout-field-boundary">/);
 assert.match(exported.kml, /<LineStyle><color>ff1f5f39<\/color><width>3\.2<\/width><\/LineStyle>/);
 assert.match(exported.kml, /<PolyStyle><color>333a8f5c<\/color><fill>1<\/fill><outline>1<\/outline><\/PolyStyle>/);
@@ -232,6 +233,7 @@ const proofLayoutResult: LayoutResult = {
 };
 const exportedProofLayout = exportProjectGoogleEarthKml(realCenterPivotProofProject, proofLayoutResult);
 assert.match(exportedProofLayout.kml, /Base pivot wet circle/);
+assert.match(exportedProofLayout.kml, /<LookAt><longitude>-104\.0700[0-9]+<\/longitude><latitude>39\.9021[0-9]+<\/latitude>/);
 assert.match(exportedProofLayout.kml, /End gun throw coverage/);
 assert.match(exportedProofLayout.kml, /Allowed irrigated coverage/);
 assert.match(exportedProofLayout.kml, /<Style id="cplayout-layout-allowed-coverage">/);

@@ -435,3 +435,120 @@ Remaining unverified claims:
 
 - This proof is limited to the web MVP browser `localStorage` repository, browser ZIP/KML export generation, and Google Earth Pro desktop rendering of the exported KML.
 - Native SQLite runtime behavior, native sharing, native MapLibre rendering, Android/iOS persistence, and raw PMTiles/MBTiles archive rendering remain unverified until the device/emulator checklist passes.
+
+## Iteration 7 Scope
+
+Selected slice: Browser Export Study.
+
+Study goal:
+
+- Prove that the existing `Open Real Pivot Proof` browser workflow can save, reopen, export KML/ZIP, and feed the browser-exported KML directly into the Google Earth visual-fidelity proof tool.
+- Keep canonical project geometry in projected/local `XY`; KML/KMZ remains WGS84 visual interchange and desktop Google Earth Pro remains companion evidence only.
+- Do not change app schemas, persistence/archive semantics, paid-service posture, native runtime claims, MapLibre/native claims, or raw PMTiles/MBTiles behavior.
+
+Implementation scope:
+
+- `tools/capture_google_earth_visual_fidelity.ps1` now accepts `-InputArtifactPath` for browser-exported `.kml` or `.kmz` artifacts. When set, the script skips fixture generation, inventories the supplied artifact, records its SHA-256, opens it in Google Earth Pro through File > Open automation, uses the KML `LookAt` coordinate for Google Earth search/focus, captures full-window/sidebar/map-canvas screenshots, and records file-open/search state in the manifest.
+- `packages/core/src/projectKml.ts` adds a document-level `LookAt` derived from project and layout-result extents so exported Google Earth KML carries a local view hint without changing canonical `XY` geometry or persistence.
+- `packages/core/src/projectKml.test.ts` proves KML exports include `LookAt`, including a real-pivot proof focus near the Adams County center-pivot coordinate.
+
+## Iteration 7 Result
+
+Status: complete on 2026-05-29 for browser-exported KML proof through the extended Google Earth tool.
+
+Browser proof:
+
+- Local static serve: `npx serve apps/mobile/dist -l 4173` served `http://localhost:4173`.
+- Playwright opened `Open Real Pivot Proof`, saved it to browser localStorage, reopened `Public Adams County Center Pivot Proof`, opened Export, downloaded KML and ZIP, and captured the export surface.
+- Browser console caveat: local static serve may report the existing favicon 404; no workflow-blocking browser error was observed.
+
+Google Earth Pro proof:
+
+- Google Earth Pro exists at `C:\Program Files\Google\Google Earth Pro\client\googleearth.exe`.
+- The extended script opened the browser-exported KML at `H:\CPLayout\reports\google-earth-visual-fidelity\iteration-7-browser-study\iteration-7-browser-real-pivot-proof.kml`.
+- Human-visible review passed: the map-canvas screenshot visibly includes CPLayout styled geometry over Google Earth imagery, including the field/wet coverage rings, pivot-center label, tower labels 1-7, water/power labels, diagonal service-track no-spray obstacle, and utility/coverage linework.
+- Pixel analysis passed as non-black and non-uniform; visual inspection, not pixel analysis alone, is the acceptance evidence.
+
+Panel findings:
+
+- Product/UX: P1 found and fixed. Browser KML initially opened at globe scale with no visible overlay; the exporter now includes `LookAt`.
+- GIS/KML: P1 found and fixed. The proof script initially accepted a path but did not reliably load the supplied KML into the active Google Earth session; it now uses File > Open automation and records the artifact inventory/hash.
+- QA/Automation: P2 found and fixed. Coordinate focus initially typed into the Places filter; the proof script now clicks Google Earth Search before submitting the `LookAt` coordinate.
+- Safety/Gates: no remaining P1/P2 finding. KML styling and view metadata remain visual interchange only and do not alter canonical projected `XY`, project schemas, persistence, or archive semantics.
+
+Generated proof artifacts:
+
+| Artifact | SHA-256 | Notes |
+| --- | --- | --- |
+| `reports/google-earth-visual-fidelity/iteration-7-browser-study/iteration-7-browser-real-pivot-proof.kml` | `2c0c00938021d90abe0f1e7918b5e3256fc6089313c1d3e26948f206bf4364b1` | Browser-exported KML; inventory shows 20 styles, 20 `styleUrl`s, 20 placemarks, 20 `ExtendedData` elements, 1 `LookAt`, and `Tower 7`. |
+| `reports/google-earth-visual-fidelity/iteration-7-browser-study/iteration-7-browser-real-pivot-proof.zip` | `25ad98a1ffc6a00cea73f8893ce2e83c25a755866a5ac218a317412a14c91002` | Browser-exported project ZIP from the same saved/reopened project. |
+| `reports/google-earth-visual-fidelity/iteration-7-browser-study/iteration-7-browser-real-pivot-proof.png` | `634e2028ef0aff2cbf6af91844a3e784c3600acbc9affd72c42940186ebb8250` | Browser export surface after save/reopen and downloads. |
+| `reports/google-earth-visual-fidelity/iteration-7-browser-study/google-earth-proof-passed/google-earth-visual-fidelity-map-canvas.png` | `201aff5936ac9171e28b54505bf52da5323aba411f934c2eff1d2d614413bbe2` | Passing Google Earth Pro map-canvas proof from the browser-exported KML. |
+| `reports/google-earth-visual-fidelity/iteration-7-browser-study/google-earth-proof-passed/google-earth-visual-fidelity-full-window.png` | `e2bbc90e94feb45f65049af3b350859c1caa24ac232cdcb12d4d69ea5a1bb15f` | Full-window Google Earth Pro proof from the browser-exported KML. |
+| `reports/google-earth-visual-fidelity/iteration-7-browser-study/google-earth-proof-passed/visual-fidelity-manifest.json` | `72091585fc722d7f35a6dd16fb5e0dacc4f82d880e4c07c39edccfde8e4d3bfb` | Passing manifest; `proofPassed: true`, `overlayVisibleConfirmed: true`, canvas non-black ratio `0.998259`, gray variance `1432.84`. |
+
+Validation evidence:
+
+- `python3 /home/cyber/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/cplayout-google-earth-imagery-analysis`: passed.
+- `python3 .agents/skills/cplayout-google-earth-imagery-analysis/scripts/inventory_ge_artifacts.py ...`: passed for browser KML/ZIP/screenshot and Google Earth proof screenshots/manifest.
+- `npm test -w @cplayout/core`: passed.
+- `npm run export:web -w @cplayout/mobile`: passed and emitted `apps/mobile/dist`.
+- Playwright static-serve browser proof: passed and downloaded KML/ZIP.
+- `cmd.exe /c "cd /d H:\cplayout && powershell -ExecutionPolicy Bypass -File tools\capture_google_earth_visual_fidelity.ps1 -OutputDir reports\google-earth-visual-fidelity\iteration-7-browser-study\google-earth-proof-passed -InputArtifactPath reports\google-earth-visual-fidelity\iteration-7-browser-study\iteration-7-browser-real-pivot-proof.kml -StartupSeconds 8 -RenderSeconds 18 -ConfirmOverlayVisible -RequireProofPass"`: passed.
+- `git diff --check`: passed with no output.
+- `npm run validate`: passed all workspace typechecks and tests.
+- `npm audit`: passed, `0 vulnerabilities`.
+
+Remaining unverified claims:
+
+- This proof is limited to the web MVP browser `localStorage` repository, browser ZIP/KML export generation, and Google Earth Pro desktop rendering of the exported KML in the current Windows GUI session.
+- Native SQLite runtime behavior, native sharing, native MapLibre rendering, Android/iOS persistence, and raw PMTiles/MBTiles archive rendering remain unverified until the device/emulator checklist passes.
+
+## Design-Only CV Evidence Lane
+
+Status: implemented on 2026-05-29 as a local companion review workflow.
+
+Scope:
+
+- `tools/local-ml-companion` now exposes `cplayout-ml design-vision-review` for advisory review of existing Google Earth Pro proof packets.
+- Inputs are exact local paths for a CPLayout KML, CPLayout KMZ, full-window Google Earth screenshot, map-canvas crop, and visual-fidelity manifest.
+- The command records SHA-256 hashes for every input artifact, verifies screenshot linkage against the manifest, verifies the local OpenCV build exposes `HoughCircles`, and writes `visual-layout-review.json` plus `visual-layout-review-annotated.png` under ignored `reports/google-earth-visual-fidelity/design-vision-review/`.
+- The report emits existing review-contract payloads: `LayoutEvidenceRecord`, `ModelRecommendation`, and a deferred `LayoutDecisionRecord`. Generated records use `reviewStatus: "unreviewed"` and `canonicalGeometryMutation: false`.
+
+Design-only boundaries:
+
+- CV metrics are image-space evidence only: detected pivot ring, CPLayout overlay ring/linework, center offset ratio, radius mismatch ratio, overlay visibility, attribution cue, and detection confidence.
+- The report may warn about center, radius, obstacle, or overlay alignment for design review. It must not infer projected coordinates from Google Earth imagery and must not mutate `PivotProject`, schemas, persistence, archives, or canonical projected `XY` geometry.
+- Full-window evidence is required because cropped map-canvas imagery alone does not preserve attribution evidence.
+- Google Earth screenshots remain local companion evidence only: no imagery cache, hidden key, embedded app imagery, substitute mapping dataset, bulk screenshot mining, survey-grade claim, commercial/promotional imagery claim, or native/mobile runtime proof.
+
+Default warning thresholds:
+
+- Center offset above 5% of detected pivot radius.
+- Radius mismatch above 8%.
+- Missing CPLayout overlay.
+- Missing or unclear full-window attribution cue.
+- Detection confidence below 0.65.
+
+Representative local run:
+
+- Command: `python3 tools/local-ml-companion/src/cplayout_ml/cli.py design-vision-review --kml reports/google-earth-visual-fidelity/iteration-7-browser-study/iteration-7-browser-real-pivot-proof.kml --kmz reports/google-earth-visual-fidelity/iteration-7-browser-study/generated-proof-clean/cplayout-google-earth-visual-fidelity.kmz --full-window reports/google-earth-visual-fidelity/iteration-7-browser-study/google-earth-proof-passed/google-earth-visual-fidelity-full-window.png --map-canvas reports/google-earth-visual-fidelity/iteration-7-browser-study/google-earth-proof-passed/google-earth-visual-fidelity-map-canvas.png --manifest reports/google-earth-visual-fidelity/iteration-7-browser-study/google-earth-proof-passed/visual-fidelity-manifest.json --output-dir reports/google-earth-visual-fidelity/design-vision-review --project-id sample-burgundy-quarter-section --project-crs EPSG:32613 --created-at 2026-05-29T00:00:00.000Z`.
+- Output report: `reports/google-earth-visual-fidelity/design-vision-review/visual-layout-review.json`, SHA-256 `b65bc14f151f17476dfbd8bae2417a957473f5a169b70f2c945705223c73a2e5`.
+- Annotated PNG: `reports/google-earth-visual-fidelity/design-vision-review/visual-layout-review-annotated.png`, SHA-256 `e6715ddcc7226608020803d6a7fa1ff2cb94c407bc52adabaff7f80aa2f77bac`.
+- Linked passed manifest: `reports/google-earth-visual-fidelity/iteration-7-browser-study/google-earth-proof-passed/visual-fidelity-manifest.json`, SHA-256 `72091585fc722d7f35a6dd16fb5e0dacc4f82d880e4c07c39edccfde8e4d3bfb`, `proofPassed: true`, `overlayVisibleConfirmed: true`.
+- Metrics from this run: center offset ratio `0.0073`, radius mismatch ratio `0.1739`, detection confidence `0.72`, attribution cue present, overlay visible. The advisory report warned on radius mismatch above the default 8% threshold.
+
+Validation evidence:
+
+- Local OpenCV check: `cv2 4.13.0`, `HoughCircles` available.
+- `python3 tools/local-ml-companion/src/cplayout_ml/cli.py design-vision-review --help`: passed.
+- `python3 tools/local-ml-companion/src/cplayout_ml/cli.py design-vision-review ...`: passed and emitted JSON/PNG outputs.
+- `npx tsx -e "...parseLayoutEvidenceRecord...parseModelRecommendation...parseLayoutDecisionRecord..."`: passed for generated report records.
+- `python3 .agents/skills/cplayout-google-earth-imagery-analysis/scripts/inventory_ge_artifacts.py reports/google-earth-visual-fidelity/design-vision-review/visual-layout-review.json reports/google-earth-visual-fidelity/design-vision-review/visual-layout-review-annotated.png`: passed.
+- `npm test -w @cplayout/geometry`: passed, including visual-review threshold tests.
+
+Remaining unverified claims:
+
+- The current CV detector is heuristic and advisory; it is not a survey, not a geodetic extraction process, and not a production vision model.
+- Attribution detection is a local image cue and still requires human visual confirmation before relying on a Google Earth proof packet.
+- Native SQLite runtime behavior, native sharing, native MapLibre rendering, Android/iOS persistence, and raw PMTiles/MBTiles archive rendering remain unverified until the device/emulator checklist passes.

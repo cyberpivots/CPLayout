@@ -40,6 +40,7 @@ SQLite support:
 | DVC | Version local datasets and model artifacts outside the React Native runtime. | DVC data/model versioning docs: https://doc.dvc.org/example-scenarios/versioning-data-and-models |
 | MLflow | Track local experiments, parameters, metrics, and artifacts. | MLflow tracking docs: https://www.mlflow.org/docs/latest/ml/tracking |
 | scikit-learn | Baseline ranking/classification and cross-validation for tabular layout features. | Cross-validation docs: https://scikit-learn.org/stable/modules/cross_validation.html |
+| OpenCV Python | Local companion review of existing Google Earth proof screenshots: circle, contour, edge, and overlay visibility checks. Outputs stay advisory and image-space only. | OpenCV Hough circle detection docs: https://docs.opencv.org/4.x/d3/de5/tutorial_js_houghcircles.html |
 | Raster Vision | Imagery model experiments over raster/vector labels in offline Python tooling. | Raster Vision docs: https://docs.rastervision.io/ |
 | TorchGeo | PyTorch geospatial datasets, samplers, transforms, and trainers for research. | TorchGeo docs: https://torchgeo.org/ |
 | eo-learn | Earth-observation workflow experiments. | eo-learn docs: https://eo-learn.readthedocs.io/ |
@@ -58,3 +59,4 @@ SQLite support:
 - No cloud telemetry, automatic upload, hidden keys, or paid hosted ML service.
 - No production claim for on-device ONNX until Expo dev-build and device/emulator verification pass.
 - No canonical geometry mutation from model output without explicit review, validation, and acceptance.
+- No survey-grade claim from CV over Google Earth screenshots; any accepted geometry must route through projected-XY import, editor, validation, and operator decision records.

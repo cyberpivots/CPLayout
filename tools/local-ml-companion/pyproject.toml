@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "WSL-local advisory layout recommendation file bridge for CPLayout."
 requires-python = ">=3.12"
 dependencies = [
+  "opencv-python-headless>=4.10",
   "pandas>=2.2",
   "scikit-learn>=1.5",
 ]

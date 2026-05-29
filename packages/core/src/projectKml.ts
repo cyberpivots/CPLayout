@@ -5,7 +5,7 @@ import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 
 import { projectLonLatToXy, projectXyToLonLat } from "./coordinates";
 import { PivotProjectSchema } from "./projectDocument";
-import type { LayoutResult, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "./types";
+import type { LayoutResult, MultiPolygonXY, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "./types";
 
 const OBSTACLE_KINDS = ["road", "ditch", "fence", "building", "canal", "tree", "exclusion"] as const;
 const POINT_ROLES = ["boundary", "pivot_center", "water_source", "power_source", "obstacle", "control", "note"] as const;
@@ -244,6 +244,12 @@ export interface GoogleEarthKmlExportResult {
 export interface GoogleEarthKmlImportOptions {
   observedAt?: string;
   selectedItemIds?: string[];
+}
+
+interface GoogleEarthLookAt {
+  longitude: number;
+  latitude: number;
+  range: number;
 }
 
 interface PolygonCandidate {
@@ -595,12 +601,66 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
   }
 
   const featureCollection: FeatureCollection = { type: "FeatureCollection", features };
-  const kml = addGoogleEarthKmlStyles(toKML(featureCollection));
+  const kml = addGoogleEarthKmlStyles(toKML(featureCollection), googleEarthLookAt(project, result));
   return {
     kml,
     exportedFeatureCount: features.length,
     warnings,
   };
+}
+
+function googleEarthLookAt(project: PivotProject, result?: LayoutResult): GoogleEarthLookAt {
+  const points = allProjectLookAtPoints(project, result);
+  const lonLats = points.map((point) => projectXyToLonLat(point, project.projectCrs));
+  const longitudes = lonLats.map((point) => point.longitude);
+  const latitudes = lonLats.map((point) => point.latitude);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const longitude = (minLongitude + maxLongitude) / 2;
+  const latitude = (minLatitude + maxLatitude) / 2;
+  const longitudeMeters = Math.abs(maxLongitude - minLongitude) * 111320 * Math.cos(latitude * Math.PI / 180);
+  const latitudeMeters = Math.abs(maxLatitude - minLatitude) * 110540;
+  const range = Math.max(1200, Math.max(longitudeMeters, latitudeMeters) * 3.5);
+  return { longitude, latitude, range };
+}
+
+function allProjectLookAtPoints(project: PivotProject, result?: LayoutResult): XY[] {
+  const points: XY[] = [
+    ...project.fieldBoundary,
+    project.pivotCenter,
+    project.waterSource,
+    project.powerSource,
+    ...project.surveyPoints.map((point) => point.projected),
+  ];
+  for (const obstacle of project.obstacles) {
+    points.push(...obstacle.polygon);
+  }
+  for (const feature of project.mapFeatures ?? []) {
+    if (feature.geometry.type === "Point") {
+      points.push(feature.geometry.point);
+    } else {
+      points.push(...feature.geometry.vertices);
+    }
+  }
+  if (result) {
+    appendMultiPolygonPoints(points, result.baseCoverage);
+    appendMultiPolygonPoints(points, result.endGunCoverage);
+    appendMultiPolygonPoints(points, result.allowedCoverage);
+    appendMultiPolygonPoints(points, result.outsideFieldCoverage);
+    appendMultiPolygonPoints(points, result.obstacles);
+    points.push(...result.towers.map((tower) => tower.point));
+  }
+  return points;
+}
+
+function appendMultiPolygonPoints(points: XY[], multiPolygon: MultiPolygonXY): void {
+  for (const polygon of multiPolygon) {
+    for (const ring of polygon) {
+      points.push(...ring);
+    }
+  }
 }
 
 function layoutCoverageFeatures(project: PivotProject, result: LayoutResult): Feature[] {
@@ -638,7 +698,7 @@ function layoutCoverageFeatures(project: PivotProject, result: LayoutResult): Fe
   return features;
 }
 
-function addGoogleEarthKmlStyles(kmlText: string): string {
+function addGoogleEarthKmlStyles(kmlText: string, lookAt: GoogleEarthLookAt): string {
   const document = new DOMParser().parseFromString(kmlText, "text/xml");
   if (document.getElementsByTagName("parsererror").length > 0) {
     return kmlText;
@@ -647,6 +707,7 @@ function addGoogleEarthKmlStyles(kmlText: string): string {
   const kmlDocument = firstElement(document.getElementsByTagName("Document"));
   if (!kmlDocument) return kmlText;
 
+  kmlDocument.insertBefore(createLookAtElement(document, lookAt), kmlDocument.firstChild);
   for (const style of GOOGLE_EARTH_KML_STYLES) {
     kmlDocument.insertBefore(createKmlStyleElement(document, style), kmlDocument.firstChild);
   }
@@ -670,6 +731,18 @@ function addGoogleEarthKmlStyles(kmlText: string): string {
 
 type XmlDocument = ReturnType<InstanceType<typeof DOMParser>["parseFromString"]>;
 type XmlElement = ReturnType<XmlDocument["createElementNS"]>;
+
+function createLookAtElement(document: XmlDocument, lookAt: GoogleEarthLookAt): XmlElement {
+  const lookAtElement = document.createElementNS(KML_NAMESPACE, "LookAt");
+  appendTextElement(document, lookAtElement, "longitude", lookAt.longitude.toFixed(8));
+  appendTextElement(document, lookAtElement, "latitude", lookAt.latitude.toFixed(8));
+  appendTextElement(document, lookAtElement, "altitude", "0");
+  appendTextElement(document, lookAtElement, "heading", "0");
+  appendTextElement(document, lookAtElement, "tilt", "0");
+  appendTextElement(document, lookAtElement, "range", lookAt.range.toFixed(2));
+  appendTextElement(document, lookAtElement, "altitudeMode", "clampToGround");
+  return lookAtElement;
+}
 
 function createKmlStyleElement(document: XmlDocument, style: GoogleEarthStyleDefinition): XmlElement {
   const styleElement = document.createElementNS(KML_NAMESPACE, "Style");

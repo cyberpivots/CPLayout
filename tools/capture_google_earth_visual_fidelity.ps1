@@ -1,6 +1,7 @@
 param(
   [string]$GoogleEarthPath = "C:\Program Files\Google\Google Earth Pro\client\googleearth.exe",
   [string]$OutputDir = "reports\google-earth-visual-fidelity",
+  [string]$InputArtifactPath = "",
   [ValidateSet("kmz", "kml")]
   [string]$OpenArtifact = "kmz",
   [int]$StartupSeconds = 10,
@@ -28,6 +29,12 @@ public static class WindowApi {
   [DllImport("user32.dll")]
   public static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
 
+  [DllImport("user32.dll")]
+  public static extern bool SetCursorPos(int X, int Y);
+
+  [DllImport("user32.dll")]
+  public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+
   [StructLayout(LayoutKind.Sequential)]
   public struct Rect {
     public int Left;
@@ -42,6 +49,11 @@ function Initialize-WindowsCaptureAssemblies {
   Add-Type -AssemblyName System.Drawing
   Add-Type -AssemblyName System.Windows.Forms
   Add-Type -TypeDefinition $signature
+}
+
+function Initialize-ZipAssemblies {
+  Add-Type -AssemblyName System.IO.Compression
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
 }
 
 function Convert-ToWindowsPath([string]$Path) {
@@ -77,6 +89,28 @@ function Convert-ToRepoRelativePath([string]$Path, [string]$RepoRoot) {
     return $resolvedPath.Substring($resolvedRoot.Length).TrimStart([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
   }
   return $resolvedPath
+}
+
+function Resolve-ArtifactPath([string]$Path, [string]$RepoRoot) {
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  $candidate = $Path
+  if (-not $IsLinux) {
+    $candidate = Convert-ToWindowsPath $candidate
+  }
+  if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+    $candidate = Join-Path $RepoRoot $candidate
+  }
+
+  $resolved = Resolve-Path -LiteralPath $candidate -ErrorAction Stop
+  $extension = [System.IO.Path]::GetExtension($resolved.Path).ToLowerInvariant()
+  if ($extension -ne ".kml" -and $extension -ne ".kmz") {
+    throw "InputArtifactPath must point to a .kml or .kmz file."
+  }
+
+  return $resolved.Path
 }
 
 function Get-GoogleEarthProcess([string]$Path) {
@@ -198,6 +232,65 @@ function Analyze-Image([string]$Path) {
   }
 }
 
+function Get-LookAtCoordinateFromKmlText([string]$Text) {
+  $options = [System.Text.RegularExpressions.RegexOptions]::Singleline -bor [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+  $lookAtMatch = [regex]::Match($Text, "<LookAt\b[^>]*>.*?<longitude>\s*([-0-9.]+)\s*</longitude>.*?<latitude>\s*([-0-9.]+)\s*</latitude>.*?</LookAt>", $options)
+  if (-not $lookAtMatch.Success) {
+    return $null
+  }
+
+  return [pscustomobject]@{
+    longitude = [double]::Parse($lookAtMatch.Groups[1].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+    latitude = [double]::Parse($lookAtMatch.Groups[2].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+  }
+}
+
+function Invoke-GoogleEarthCoordinateSearch([IntPtr]$Handle, $Coordinate) {
+  if (-not $Coordinate) {
+    return $null
+  }
+
+  [WindowApi]::ShowWindow($Handle, 3) | Out-Null
+  [WindowApi]::SetForegroundWindow($Handle) | Out-Null
+  Start-Sleep -Milliseconds 750
+
+  $query = "{0}, {1}" -f $Coordinate.latitude.ToString("0.00000000", [System.Globalization.CultureInfo]::InvariantCulture), $Coordinate.longitude.ToString("0.00000000", [System.Globalization.CultureInfo]::InvariantCulture)
+  $bounds = Get-WindowBounds -Handle $Handle
+  [WindowApi]::SetCursorPos($bounds.left + 140, $bounds.top + 92) | Out-Null
+  [WindowApi]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+  [WindowApi]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 250
+  [System.Windows.Forms.SendKeys]::SendWait("^a")
+  Start-Sleep -Milliseconds 100
+  [System.Windows.Forms.SendKeys]::SendWait($query)
+  Start-Sleep -Milliseconds 250
+  [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+
+  return [pscustomobject]@{
+    query = $query
+    latitude = $Coordinate.latitude
+    longitude = $Coordinate.longitude
+    searchedAt = (Get-Date).ToUniversalTime().ToString("o")
+  }
+}
+
+function Invoke-GoogleEarthFileOpen([IntPtr]$Handle, [string]$ArtifactPath) {
+  [WindowApi]::ShowWindow($Handle, 3) | Out-Null
+  [WindowApi]::SetForegroundWindow($Handle) | Out-Null
+  Start-Sleep -Milliseconds 750
+
+  [System.Windows.Forms.SendKeys]::SendWait("^o")
+  Start-Sleep -Seconds 1
+  [System.Windows.Forms.SendKeys]::SendWait($ArtifactPath)
+  Start-Sleep -Milliseconds 250
+  [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+
+  return [pscustomobject]@{
+    path = $ArtifactPath
+    openedAt = (Get-Date).ToUniversalTime().ToString("o")
+  }
+}
+
 function New-CaptureManifestEntry([string]$Path, [string]$Label, $CropBox, $Analysis) {
   $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $Path
   $image = [System.Drawing.Image]::FromFile($Path)
@@ -217,8 +310,77 @@ function New-CaptureManifestEntry([string]$Path, [string]$Label, $CropBox, $Anal
   }
 }
 
-function Assert-KmlIntegrity([string]$KmlPath) {
-  $text = Get-Content -LiteralPath $KmlPath -Raw
+function Get-KmlTextFromArtifact([string]$ArtifactPath) {
+  $extension = [System.IO.Path]::GetExtension($ArtifactPath).ToLowerInvariant()
+  if ($extension -eq ".kml") {
+    return Get-Content -LiteralPath $ArtifactPath -Raw
+  }
+
+  Initialize-ZipAssemblies
+  $archive = [System.IO.Compression.ZipFile]::OpenRead($ArtifactPath)
+  try {
+    $kmlEntries = @($archive.Entries | Where-Object { $_.FullName.ToLowerInvariant().EndsWith(".kml") } | Sort-Object FullName)
+    if ($kmlEntries.Count -eq 0) {
+      throw "KMZ artifact does not contain a KML file."
+    }
+    $entry = $kmlEntries | Where-Object { $_.FullName -eq "doc.kml" } | Select-Object -First 1
+    if (-not $entry) {
+      $entry = $kmlEntries | Select-Object -First 1
+    }
+    $stream = $entry.Open()
+    $reader = New-Object System.IO.StreamReader $stream
+    try {
+      return $reader.ReadToEnd()
+    } finally {
+      $reader.Dispose()
+      $stream.Dispose()
+    }
+  } finally {
+    $archive.Dispose()
+  }
+}
+
+function Get-ArtifactInventory([string]$ArtifactPath) {
+  $extension = [System.IO.Path]::GetExtension($ArtifactPath).ToLowerInvariant()
+  $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $ArtifactPath
+  $inventory = [pscustomobject]@{
+    path = $ArtifactPath
+    filename = Split-Path -Leaf $ArtifactPath
+    extension = $extension.TrimStart(".")
+    sha256 = $hash.Hash.ToLowerInvariant()
+    byteLength = (Get-Item -LiteralPath $ArtifactPath).Length
+    kmzEntries = @()
+    primaryKmlEntry = $null
+  }
+
+  if ($extension -eq ".kmz") {
+    Initialize-ZipAssemblies
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ArtifactPath)
+    try {
+      $entries = @()
+      foreach ($entry in ($archive.Entries | Sort-Object FullName)) {
+        $entries += [pscustomobject]@{
+          name = $entry.FullName
+          compressedLength = $entry.CompressedLength
+          length = $entry.Length
+        }
+      }
+      $primary = $archive.Entries | Where-Object { $_.FullName -eq "doc.kml" } | Select-Object -First 1
+      if (-not $primary) {
+        $primary = $archive.Entries | Where-Object { $_.FullName.ToLowerInvariant().EndsWith(".kml") } | Sort-Object FullName | Select-Object -First 1
+      }
+      $inventory.kmzEntries = $entries
+      $inventory.primaryKmlEntry = if ($primary) { $primary.FullName } else { $null }
+    } finally {
+      $archive.Dispose()
+    }
+  }
+
+  return $inventory
+}
+
+function Assert-KmlIntegrityFromText([string]$Text, [switch]$RequireFixtureMarkers) {
+  $text = $Text
   $styleCount = ([regex]::Matches($text, "<Style\b")).Count
   $styleUrlCount = ([regex]::Matches($text, "<styleUrl>")).Count
   $hasExtendedData = $text.Contains("<ExtendedData>")
@@ -235,8 +397,12 @@ function Assert-KmlIntegrity([string]$KmlPath) {
     hasRemoteIconHref = $hasRemoteIconHref
     hasCplayoutFeatureType = $hasCplayoutFeatureType
     hasKnownMapFeature = $hasKnownMapFeature
-    passed = $styleCount -gt 0 -and $styleUrlCount -gt 0 -and $hasExtendedData -and $hasLookAt -and $hasCplayoutFeatureType -and $hasKnownMapFeature -and -not $hasRemoteIconHref
+    passed = $styleCount -gt 0 -and $styleUrlCount -gt 0 -and $hasExtendedData -and $hasCplayoutFeatureType -and -not $hasRemoteIconHref -and (-not $RequireFixtureMarkers -or ($hasLookAt -and $hasKnownMapFeature))
   }
+}
+
+function Assert-KmlIntegrity([string]$KmlPath) {
+  return Assert-KmlIntegrityFromText -Text (Get-Content -LiteralPath $KmlPath -Raw) -RequireFixtureMarkers
 }
 
 function Invoke-ProofFixtureGenerator([string]$RepoRoot, [string]$OutputPath) {
@@ -384,13 +550,29 @@ if (-not $IsLinux) {
 }
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
 
-$fixture = Invoke-ProofFixtureGenerator -RepoRoot $repoRoot -OutputPath $outputPath
-$kmlIntegrity = Assert-KmlIntegrity -KmlPath $fixture.kml
-$artifactPath = if ($OpenArtifact -eq "kmz") { $fixture.kmz } else { $fixture.kml }
+$inputArtifact = Resolve-ArtifactPath -Path $InputArtifactPath -RepoRoot $repoRoot
+$fixture = $null
+$artifactPath = $null
+$artifactMode = "generated_fixture"
+if ($inputArtifact) {
+  $artifactMode = "input_artifact"
+  $artifactPath = $inputArtifact
+  $kmlText = Get-KmlTextFromArtifact -ArtifactPath $artifactPath
+  $kmlIntegrity = Assert-KmlIntegrityFromText -Text $kmlText
+} else {
+  $fixture = Invoke-ProofFixtureGenerator -RepoRoot $repoRoot -OutputPath $outputPath
+  $kmlText = Get-Content -LiteralPath $fixture.kml -Raw
+  $kmlIntegrity = Assert-KmlIntegrityFromText -Text $kmlText -RequireFixtureMarkers
+  $artifactPath = if ($OpenArtifact -eq "kmz") { $fixture.kmz } else { $fixture.kml }
+}
+$openedArtifactInventory = Get-ArtifactInventory -ArtifactPath $artifactPath
+$lookAtCoordinate = Get-LookAtCoordinateFromKmlText -Text $kmlText
 
 $captures = @()
 $processInfo = $null
 $windowBounds = $null
+$fileOpen = $null
+$coordinateSearch = $null
 $canvasPass = $false
 $captureError = $null
 
@@ -407,7 +589,14 @@ if (-not $GenerateOnly) {
     $handle = Wait-ForMainWindow -Process $process
     [WindowApi]::ShowWindow($handle, 3) | Out-Null
     [WindowApi]::SetForegroundWindow($handle) | Out-Null
+    $fileOpen = Invoke-GoogleEarthFileOpen -Handle $handle -ArtifactPath $artifactPath
+    Start-Sleep -Seconds ([Math]::Max(1, [Math]::Floor($RenderSeconds / 3)))
+    $process = Get-GoogleEarthProcess -Path $GoogleEarthPath
+    $handle = Wait-ForMainWindow -Process $process
+    $coordinateSearch = Invoke-GoogleEarthCoordinateSearch -Handle $handle -Coordinate $lookAtCoordinate
     Start-Sleep -Seconds $RenderSeconds
+    $process = Get-GoogleEarthProcess -Path $GoogleEarthPath
+    $handle = Wait-ForMainWindow -Process $process
 
     $windowBounds = Get-WindowBounds -Handle $handle
     $processInfo = [pscustomobject]@{
@@ -420,12 +609,12 @@ if (-not $GenerateOnly) {
 
     $fullPath = Join-Path $outputPath "google-earth-visual-fidelity-full-window.png"
     $fullCrop = Capture-Window -Handle $handle -Path $fullPath -Crop (New-Object System.Drawing.Rectangle 0, 0, 0, 0)
-    $captures += New-CaptureManifestEntry -Path $fullPath -Label "Google Earth Pro full window after opening CPLayout styled proof fixture" -CropBox $fullCrop -Analysis $null
+    $captures += New-CaptureManifestEntry -Path $fullPath -Label "Google Earth Pro full window after opening CPLayout artifact" -CropBox $fullCrop -Analysis $null
 
     $sidebarWidth = [Math]::Min(430, [Math]::Max(260, [Math]::Floor($windowBounds.width * 0.34)))
     $sidebarPath = Join-Path $outputPath "google-earth-visual-fidelity-places-sidebar.png"
     $sidebarCrop = Capture-Window -Handle $handle -Path $sidebarPath -Crop (New-Object System.Drawing.Rectangle 0, 0, $sidebarWidth, $windowBounds.height)
-    $captures += New-CaptureManifestEntry -Path $sidebarPath -Label "Google Earth Pro Places/sidebar crop for loaded CPLayout proof fixture" -CropBox $sidebarCrop -Analysis (Analyze-Image -Path $sidebarPath)
+    $captures += New-CaptureManifestEntry -Path $sidebarPath -Label "Google Earth Pro Places/sidebar crop for loaded CPLayout artifact" -CropBox $sidebarCrop -Analysis (Analyze-Image -Path $sidebarPath)
 
     $canvasX = [Math]::Min($sidebarWidth, [Math]::Floor($windowBounds.width * 0.38))
     $canvasY = [Math]::Min(120, [Math]::Floor($windowBounds.height * 0.16))
@@ -441,9 +630,15 @@ if (-not $GenerateOnly) {
   }
 }
 
-$artifactHashes = [pscustomobject]@{
-  kml = (Get-FileHash -Algorithm SHA256 -LiteralPath $fixture.kml).Hash.ToLowerInvariant()
-  kmz = (Get-FileHash -Algorithm SHA256 -LiteralPath $fixture.kmz).Hash.ToLowerInvariant()
+$artifactHashes = if ($fixture) {
+  [pscustomobject]@{
+    kml = (Get-FileHash -Algorithm SHA256 -LiteralPath $fixture.kml).Hash.ToLowerInvariant()
+    kmz = (Get-FileHash -Algorithm SHA256 -LiteralPath $fixture.kmz).Hash.ToLowerInvariant()
+  }
+} else {
+  [pscustomobject]@{
+    openedArtifact = $openedArtifactInventory.sha256
+  }
 }
 
 $overlayConfirmed = [bool]$ConfirmOverlayVisible
@@ -469,9 +664,12 @@ $manifest = [pscustomobject]@{
   outputDir = Convert-ToRepoRelativePath -Path $outputPath -RepoRoot $repoRoot
   googleEarth = [pscustomobject]@{
     requestedPath = $GoogleEarthPath
-    openedArtifact = $OpenArtifact
+    openedArtifact = if ($inputArtifact) { Convert-ToRepoRelativePath -Path $artifactPath -RepoRoot $repoRoot } else { $OpenArtifact }
     startupSeconds = $StartupSeconds
     renderSeconds = $RenderSeconds
+    lookAtCoordinate = $lookAtCoordinate
+    fileOpen = $fileOpen
+    coordinateSearch = $coordinateSearch
     process = $processInfo
     windowBounds = $windowBounds
     captureError = $captureError
@@ -481,10 +679,14 @@ $manifest = [pscustomobject]@{
     minimumGrayVariance = $MinimumGrayVariance
   }
   artifacts = [pscustomobject]@{
-    kml = Convert-ToRepoRelativePath -Path $fixture.kml -RepoRoot $repoRoot
-    kmz = Convert-ToRepoRelativePath -Path $fixture.kmz -RepoRoot $repoRoot
-    generator = Convert-ToRepoRelativePath -Path $fixture.generator -RepoRoot $repoRoot
-    metadata = Convert-ToRepoRelativePath -Path $fixture.metadata -RepoRoot $repoRoot
+    mode = $artifactMode
+    inputArtifact = if ($inputArtifact) { Convert-ToRepoRelativePath -Path $inputArtifact -RepoRoot $repoRoot } else { $null }
+    openedArtifact = Convert-ToRepoRelativePath -Path $artifactPath -RepoRoot $repoRoot
+    inventory = $openedArtifactInventory
+    kml = if ($fixture) { Convert-ToRepoRelativePath -Path $fixture.kml -RepoRoot $repoRoot } else { $null }
+    kmz = if ($fixture) { Convert-ToRepoRelativePath -Path $fixture.kmz -RepoRoot $repoRoot } else { $null }
+    generator = if ($fixture) { Convert-ToRepoRelativePath -Path $fixture.generator -RepoRoot $repoRoot } else { $null }
+    metadata = if ($fixture) { Convert-ToRepoRelativePath -Path $fixture.metadata -RepoRoot $repoRoot } else { $null }
     sha256 = $artifactHashes
     kmlIntegrity = $kmlIntegrity
   }

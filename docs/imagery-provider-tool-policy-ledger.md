@@ -29,6 +29,7 @@ The v1 built-in live provider remains USGS The National Map Imagery Only. Custom
 | OpenAerialMap or user-owned tiles | Allowed as custom open imagery when attribution/license are supplied and credential-free. | OAM legal page: https://openaerialmap.org/legal/ |
 | OpenStreetMap public raster tiles | Excluded for CPLayout live imagery and offline/bulk use. | OSMF tile policy restricts bulk download and prefetch patterns. https://operations.osmfoundation.org/policies/tiles/ |
 | Google, Bing, paid Mapbox, paid Esri/ArcGIS, keyed trial providers | Excluded. | Repo hard constraint in `AGENTS.md`; no paid maps, hidden keys, or trial-only SDKs. |
+| Google Earth Pro screenshots | Local companion design-review evidence only when attribution remains visible. Do not cache imagery as a dataset, embed Google Earth imagery in CPLayout, bulk mine screenshots, or treat screenshot-derived CV as survey data. | Google Geo Guidelines require proper attribution and restrict commercial/promotional use; Google Maps/Earth terms prohibit bulk feeds, mass download, and substitute mapping datasets. https://about.google/brand-resource-center/products-and-services/geo-guidelines/ and https://maps.google.com/help/terms_maps-earth/ |
 
 ## Tool Ledger
 
@@ -39,9 +40,11 @@ The v1 built-in live provider remains USGS The National Map Imagery Only. Custom
 | MBTiles | Advanced offline/native lane; needs a local serving/protocol adapter before raw archive rendering claims. | Keep under `packages/project-store` metadata until adapter work is explicit. |
 | COG/GeoTIFF | Offline preprocessing and companion-tool lane, not React Native runtime GIS. | GDAL COG docs: https://gdal.org/en/latest/drivers/raster/cog.html |
 | OpenLayers | Deferred browser-only raster reprojection option. Do not add until MapLibre plus current SVG preview cannot meet requirements. | OpenLayers raster reprojection tutorial: https://openlayers.org/doc/tutorials/raster-reprojection.html |
+| OpenCV Python/OpenCV.js | Local/offline companion CV lane for edge, contour, and circle detection over proof screenshots. Do not add to React Native runtime or use to derive canonical projected `XY` from Google imagery. | OpenCV Hough circle and OpenCV.js docs: https://docs.opencv.org/4.x/d3/de5/tutorial_js_houghcircles.html and https://docs.opencv.org/4.x/df/d0a/tutorial_js_intro.html |
 
 ## Non-Goals
 
 - No Google, Bing, paid Mapbox, paid Esri/ArcGIS, hidden API keys, scraping, public OSM bulk tile use, or trial-only hosted imagery.
 - No claim that native MapLibre, raw PMTiles/MBTiles rendering, or native ZIP sharing is production-verified before device/emulator evidence.
 - No automatic geometry mutation from imagery. Imagery-derived vertices are planning evidence until field-verified and explicitly accepted.
+- No verified Google Earth headless screenshot API, no permission claim for bulk automated CV extraction from Earth imagery, and no product-facing Google Earth comparison dataset rights.

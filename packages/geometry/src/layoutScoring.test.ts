@@ -39,4 +39,18 @@ assert.equal(ranked[0].id, "current-layout");
 assert.ok(ranked[0].metrics.outsideFieldAcres <= ranked[1].metrics.outsideFieldAcres);
 assert.deepEqual(sampleProject.pivotCenter, originalPivotCenter);
 
+const hardBoundaryRanked = rankLayoutAlternatives([
+  { id: "outside-field", project: outsideFieldAlternative, confidence: 1, source: "model" },
+  { id: "current-layout", project: sampleProject, confidence: 0.1, source: "operator" },
+], {
+  hardBoundary: true,
+  boundaryEpsilonSquareMeters: 0.01,
+  maxOutsideFieldAcres: 0.0001,
+  minCoveragePercent: 1,
+});
+
+assert.equal(hardBoundaryRanked.at(-1)?.id, "outside-field");
+assert.equal(hardBoundaryRanked.at(-1)?.feasible, false);
+assert.ok((hardBoundaryRanked.at(-1)?.disqualificationReasons.length ?? 0) > 0);
+
 console.log("layout scoring tests passed");

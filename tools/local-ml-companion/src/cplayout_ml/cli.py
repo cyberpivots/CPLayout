@@ -471,6 +471,7 @@ def detect_field_circle(cv: Any, image: Any) -> dict[str, Any] | None:
     gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     blurred = cv.medianBlur(gray, 7)
     height, width = gray.shape[:2]
+    min_dimension = min(width, height)
     circles = cv.HoughCircles(
         blurred,
         cv.HOUGH_GRADIENT,
@@ -479,7 +480,7 @@ def detect_field_circle(cv: Any, image: Any) -> dict[str, Any] | None:
         param1=80,
         param2=28,
         minRadius=max(30, min(width, height) // 12),
-        maxRadius=max(60, min(width, height) // 2),
+        maxRadius=max(60, int(min_dimension * 0.68)),
     )
     if circles is None:
         return None
@@ -489,8 +490,8 @@ def detect_field_circle(cv: Any, image: Any) -> dict[str, Any] | None:
         if radius <= 0:
             continue
         centeredness = 1 - min(1, math.hypot(x - width / 2, y - height / 2) / max(width, height))
-        size_score = min(1, radius / max(1, min(width, height) * 0.35))
-        candidates.append((centeredness + size_score, x, y, radius))
+        size_score = min(1, radius / max(1, min_dimension * 0.55))
+        candidates.append((centeredness * 1.2 + size_score * 0.8, x, y, radius))
     if not candidates:
         return None
     _, x, y, radius = sorted(candidates, reverse=True)[0]

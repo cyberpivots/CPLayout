@@ -1,0 +1,324 @@
+import type { ModelRecommendation, PivotProject, XY } from "@cplayout/core";
+
+import { DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS, boundsForGeometry, evaluateLayout, validateWetCoverageWithinField } from "./geometry";
+import { scoreLayoutAlternative, type RankedLayoutAlternative } from "./layoutScoring";
+
+export interface PivotCenterOptimizerOptions {
+  gridDivisions?: number;
+  maxAlternatives?: number;
+  boundaryEpsilonSquareMeters?: number;
+  includeVisualCenterSeed?: boolean;
+}
+
+export interface PivotCenterAlternative {
+  id: string;
+  pivotCenter: XY;
+  project: PivotProject;
+  metrics: RankedLayoutAlternative["metrics"];
+  score: number;
+  feasible: boolean;
+  disqualificationReasons: string[];
+  warnings: string[];
+  sourceSeed: PivotCenterSeedKind;
+  distanceFromCurrentMeters: number;
+}
+
+export type PivotCenterSeedKind = "current" | "centroid" | "visual_center" | "bbox_grid";
+
+interface PivotCenterSeed {
+  point: XY;
+  kind: PivotCenterSeedKind;
+}
+
+const DEFAULT_GRID_DIVISIONS = 7;
+const DEFAULT_MAX_ALTERNATIVES = 8;
+
+export function optimizePivotCenter(
+  project: PivotProject,
+  options: PivotCenterOptimizerOptions = {},
+): PivotCenterAlternative[] {
+  const gridDivisions = Math.max(2, Math.floor(options.gridDivisions ?? DEFAULT_GRID_DIVISIONS));
+  const maxAlternatives = Math.max(1, Math.floor(options.maxAlternatives ?? DEFAULT_MAX_ALTERNATIVES));
+  const boundaryEpsilonSquareMeters = options.boundaryEpsilonSquareMeters ?? DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS;
+  const seeds = dedupeSeeds([
+    { point: project.pivotCenter, kind: "current" },
+    { point: polygonCentroid(project.fieldBoundary), kind: "centroid" },
+    ...(options.includeVisualCenterSeed === false ? [] : [{ point: approximateVisualCenter(project.fieldBoundary, gridDivisions), kind: "visual_center" as const }]),
+    ...generateBoundingBoxGrid(project.fieldBoundary, gridDivisions),
+  ]);
+
+  return seeds
+    .map((seed, index) => tryBuildAlternative(project, seed, index, boundaryEpsilonSquareMeters))
+    .filter((alternative): alternative is PivotCenterAlternative => alternative !== null)
+    .sort(compareAlternatives)
+    .slice(0, maxAlternatives);
+}
+
+export function buildPivotCenterModelRecommendation(
+  project: PivotProject,
+  alternative: PivotCenterAlternative,
+  createdAt: string,
+): ModelRecommendation {
+  return {
+    id: `pivot-center-${alternative.id}`,
+    projectId: project.id,
+    modelName: "cplayout-deterministic-pivot-center-optimizer",
+    modelVersion: "0.1.0",
+    createdAt,
+    projectCrs: project.projectCrs,
+    summary: alternative.feasible
+      ? `Move pivot center to (${alternative.pivotCenter.x.toFixed(2)}, ${alternative.pivotCenter.y.toFixed(2)}) for a hard-boundary-feasible layout.`
+      : `Review pivot center candidate at (${alternative.pivotCenter.x.toFixed(2)}, ${alternative.pivotCenter.y.toFixed(2)}); it is not hard-boundary feasible.`,
+    proposedGeometry: {
+      projectCrs: project.projectCrs,
+      pivotCenter: alternative.pivotCenter,
+    },
+    confidence: alternative.feasible ? 0.8 : 0.35,
+    evidenceIds: [],
+    reviewStatus: "unreviewed",
+    score: alternative.score,
+    warnings: [
+      ...alternative.warnings,
+      ...alternative.disqualificationReasons,
+      "Advisory optimizer output only; accepting this recommendation must go through project review before geometry changes.",
+    ],
+  };
+}
+
+function buildAlternative(
+  project: PivotProject,
+  seed: PivotCenterSeed,
+  index: number,
+  boundaryEpsilonSquareMeters: number,
+): PivotCenterAlternative {
+  const candidateProject: PivotProject = {
+    ...project,
+    pivotCenter: seed.point,
+  };
+  const ranked = scoreLayoutAlternative({
+    id: candidateId(seed, index),
+    project: candidateProject,
+    confidence: seed.kind === "current" ? 0.65 : 0.8,
+    source: "deterministic",
+  }, {
+    hardBoundary: true,
+    boundaryEpsilonSquareMeters,
+    maxOutsideFieldAcres: 0.0001,
+    maxObstacleConflicts: 0,
+    minCoveragePercent: 1,
+  }, {
+    coverage: 0.5,
+    outsideField: 0.25,
+    obstacleConflicts: 0.15,
+    machineConstraint: 0.05,
+    confidence: 0.05,
+  });
+  const boundary = validateWetCoverageWithinField(candidateProject, boundaryEpsilonSquareMeters);
+  const result = evaluateLayout(candidateProject);
+
+  return {
+    id: ranked.id,
+    pivotCenter: seed.point,
+    project: candidateProject,
+    metrics: ranked.metrics,
+    score: scorePivotCenterCandidate(ranked, project.pivotCenter, seed.point, result.metrics.irrigatedAcres, boundary.feasible),
+    feasible: boundary.feasible,
+    disqualificationReasons: ranked.disqualificationReasons,
+    warnings: ranked.warnings,
+    sourceSeed: seed.kind,
+    distanceFromCurrentMeters: distance(project.pivotCenter, seed.point),
+  };
+}
+
+function tryBuildAlternative(
+  project: PivotProject,
+  seed: PivotCenterSeed,
+  index: number,
+  boundaryEpsilonSquareMeters: number,
+): PivotCenterAlternative | null {
+  try {
+    return buildAlternative(project, seed, index, boundaryEpsilonSquareMeters);
+  } catch {
+    return null;
+  }
+}
+
+function scorePivotCenterCandidate(
+  ranked: RankedLayoutAlternative,
+  current: XY,
+  candidate: XY,
+  irrigatedAcres: number,
+  boundaryFeasible: boolean,
+): number {
+  if (!boundaryFeasible) return 0;
+  const distancePenalty = Math.min(25, distance(current, candidate) / 20);
+  return Number((ranked.score + irrigatedAcres - distancePenalty).toFixed(6));
+}
+
+function compareAlternatives(left: PivotCenterAlternative, right: PivotCenterAlternative): number {
+  if (left.feasible !== right.feasible) return left.feasible ? -1 : 1;
+  if (right.score !== left.score) return right.score - left.score;
+  if (right.metrics.irrigatedAcres !== left.metrics.irrigatedAcres) {
+    return right.metrics.irrigatedAcres - left.metrics.irrigatedAcres;
+  }
+  if (left.metrics.obstacleConflictCount !== right.metrics.obstacleConflictCount) {
+    return left.metrics.obstacleConflictCount - right.metrics.obstacleConflictCount;
+  }
+  if (left.distanceFromCurrentMeters !== right.distanceFromCurrentMeters) {
+    return left.distanceFromCurrentMeters - right.distanceFromCurrentMeters;
+  }
+  return left.id.localeCompare(right.id);
+}
+
+function generateBoundingBoxGrid(fieldBoundary: XY[], gridDivisions: number): PivotCenterSeed[] {
+  const bounds = boundsForGeometry([fieldBoundary]);
+  const xStep = (bounds.maxX - bounds.minX) / gridDivisions;
+  const yStep = (bounds.maxY - bounds.minY) / gridDivisions;
+  const seeds: PivotCenterSeed[] = [];
+
+  for (let yIndex = 0; yIndex <= gridDivisions; yIndex += 1) {
+    for (let xIndex = 0; xIndex <= gridDivisions; xIndex += 1) {
+      const point = {
+        x: bounds.minX + xStep * xIndex,
+        y: bounds.minY + yStep * yIndex,
+      };
+      if (pointInPolygon(point, fieldBoundary) && distanceToRing(point, fieldBoundary) > 0.001) {
+        seeds.push({ point, kind: "bbox_grid" });
+      }
+    }
+  }
+
+  return seeds;
+}
+
+function approximateVisualCenter(fieldBoundary: XY[], gridDivisions: number): XY {
+  let best = polygonCentroid(fieldBoundary);
+  let bestDistance = pointInPolygon(best, fieldBoundary) ? distanceToRing(best, fieldBoundary) : -1;
+  const bounds = boundsForGeometry([fieldBoundary]);
+  const passes = [
+    { minX: bounds.minX, minY: bounds.minY, maxX: bounds.maxX, maxY: bounds.maxY, divisions: Math.max(4, gridDivisions) },
+    { minX: best.x - (bounds.maxX - bounds.minX) / gridDivisions, minY: best.y - (bounds.maxY - bounds.minY) / gridDivisions, maxX: best.x + (bounds.maxX - bounds.minX) / gridDivisions, maxY: best.y + (bounds.maxY - bounds.minY) / gridDivisions, divisions: 8 },
+  ];
+
+  for (const pass of passes) {
+    const xStep = (pass.maxX - pass.minX) / pass.divisions;
+    const yStep = (pass.maxY - pass.minY) / pass.divisions;
+    for (let yIndex = 0; yIndex <= pass.divisions; yIndex += 1) {
+      for (let xIndex = 0; xIndex <= pass.divisions; xIndex += 1) {
+        const point = { x: pass.minX + xStep * xIndex, y: pass.minY + yStep * yIndex };
+        if (!pointInPolygon(point, fieldBoundary)) continue;
+        const candidateDistance = distanceToRing(point, fieldBoundary);
+        if (candidateDistance > bestDistance) {
+          best = point;
+          bestDistance = candidateDistance;
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
+function polygonCentroid(ring: XY[]): XY {
+  const signedArea = signedPolygonArea(ring);
+  if (Math.abs(signedArea) < 0.000001) {
+    return averagePoint(ring);
+  }
+
+  let x = 0;
+  let y = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const current = ring[index];
+    const next = ring[(index + 1) % ring.length];
+    const cross = current.x * next.y - next.x * current.y;
+    x += (current.x + next.x) * cross;
+    y += (current.y + next.y) * cross;
+  }
+
+  const centroid = {
+    x: x / (6 * signedArea),
+    y: y / (6 * signedArea),
+  };
+  return pointInPolygon(centroid, ring) ? centroid : averagePoint(ring);
+}
+
+function signedPolygonArea(ring: XY[]): number {
+  if (ring.length < 3) return 0;
+  let sum = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const current = ring[index];
+    const next = ring[(index + 1) % ring.length];
+    sum += current.x * next.y - next.x * current.y;
+  }
+  return sum / 2;
+}
+
+function averagePoint(points: XY[]): XY {
+  if (points.length === 0) return { x: 0, y: 0 };
+  const total = points.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
+  return { x: total.x / points.length, y: total.y / points.length };
+}
+
+function dedupeSeeds(seeds: PivotCenterSeed[]): PivotCenterSeed[] {
+  const seen = new Set<string>();
+  const unique: PivotCenterSeed[] = [];
+
+  for (const seed of seeds) {
+    const key = `${seed.point.x.toFixed(6)},${seed.point.y.toFixed(6)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(seed);
+  }
+
+  return unique;
+}
+
+function candidateId(seed: PivotCenterSeed, index: number): string {
+  return `${seed.kind}-${index}-${seed.point.x.toFixed(2)}-${seed.point.y.toFixed(2)}`;
+}
+
+function pointInPolygon(point: XY, ring: XY[]): boolean {
+  if (ring.some((vertex) => distance(vertex, point) < 0.000001)) return true;
+
+  let inside = false;
+  for (let currentIndex = 0, previousIndex = ring.length - 1; currentIndex < ring.length; previousIndex = currentIndex, currentIndex += 1) {
+    const current = ring[currentIndex];
+    const previous = ring[previousIndex];
+    if (pointOnSegment(point, previous, current)) return true;
+    const intersects = ((current.y > point.y) !== (previous.y > point.y))
+      && point.x < ((previous.x - current.x) * (point.y - current.y)) / (previous.y - current.y) + current.x;
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function pointOnSegment(point: XY, start: XY, end: XY): boolean {
+  const cross = (point.y - start.y) * (end.x - start.x) - (point.x - start.x) * (end.y - start.y);
+  if (Math.abs(cross) > 0.000001) return false;
+  const dot = (point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (end.y - start.y);
+  if (dot < 0) return false;
+  const segmentLengthSquared = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
+  return dot <= segmentLengthSquared;
+}
+
+function distanceToRing(point: XY, ring: XY[]): number {
+  return ring.reduce((minimum, start, index) => {
+    const end = ring[(index + 1) % ring.length];
+    return Math.min(minimum, distanceToSegment(point, start, end));
+  }, Number.POSITIVE_INFINITY);
+}
+
+function distanceToSegment(point: XY, start: XY, end: XY): number {
+  const segmentLengthSquared = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
+  if (segmentLengthSquared === 0) return distance(point, start);
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (end.y - start.y)) / segmentLengthSquared));
+  return distance(point, {
+    x: start.x + t * (end.x - start.x),
+    y: start.y + t * (end.y - start.y),
+  });
+}
+
+function distance(left: XY, right: XY): number {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}

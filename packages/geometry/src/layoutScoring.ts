@@ -1,4 +1,4 @@
-import { evaluateLayout } from "./geometry";
+import { DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS, evaluateLayout, validateWetCoverageWithinField } from "./geometry";
 import type { LayoutMetrics, PivotProject } from "@cplayout/core";
 
 export interface LayoutScoreWeights {
@@ -14,6 +14,8 @@ export interface LayoutScoreConstraints {
   maxObstacleConflicts: number;
   minCoveragePercent: number;
   maxMachineRadiusMeters?: number;
+  hardBoundary?: boolean;
+  boundaryEpsilonSquareMeters?: number;
 }
 
 export interface LayoutAlternative {
@@ -37,6 +39,8 @@ export interface RankedLayoutAlternative {
   metrics: LayoutMetrics;
   score: number;
   breakdown: LayoutScoreBreakdown;
+  feasible: boolean;
+  disqualificationReasons: string[];
   warnings: string[];
   source: LayoutAlternative["source"];
 }
@@ -63,9 +67,20 @@ export function scoreLayoutAlternative(
   const effectiveConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
   const effectiveWeights = normalizeWeights({ ...DEFAULT_WEIGHTS, ...weights });
   const result = evaluateLayout(alternative.project);
+  const boundary = effectiveConstraints.hardBoundary
+    ? validateWetCoverageWithinField(
+      alternative.project,
+      effectiveConstraints.boundaryEpsilonSquareMeters ?? DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS,
+    )
+    : null;
   const machineRadius = alternative.project.machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0)
     + alternative.project.machine.overhangMeters;
   const maxMachineRadius = effectiveConstraints.maxMachineRadiusMeters ?? machineRadius;
+  const disqualificationReasons: string[] = [];
+
+  if (boundary && !boundary.feasible) {
+    disqualificationReasons.push(`Wet coverage exceeds field boundary by ${boundary.outsideFieldAreaSquareMeters.toFixed(3)} square meters.`);
+  }
 
   const breakdown: LayoutScoreBreakdown = {
     coverage: clamp01(result.metrics.coveragePercent / Math.max(effectiveConstraints.minCoveragePercent, 1)),
@@ -75,13 +90,15 @@ export function scoreLayoutAlternative(
     confidence: clamp01(alternative.confidence),
   };
 
-  const score = (
+  const feasible = disqualificationReasons.length === 0;
+  const weightedScore = (
     breakdown.coverage * effectiveWeights.coverage
     + breakdown.outsideField * effectiveWeights.outsideField
     + breakdown.obstacleConflicts * effectiveWeights.obstacleConflicts
     + breakdown.machineConstraint * effectiveWeights.machineConstraint
     + breakdown.confidence * effectiveWeights.confidence
   ) * 100;
+  const score = feasible ? weightedScore : 0;
 
   return {
     id: alternative.id,
@@ -89,6 +106,8 @@ export function scoreLayoutAlternative(
     metrics: result.metrics,
     score,
     breakdown,
+    feasible,
+    disqualificationReasons,
     warnings: result.warnings,
     source: alternative.source,
   };
@@ -102,6 +121,7 @@ export function rankLayoutAlternatives(
   return alternatives
     .map((alternative) => scoreLayoutAlternative(alternative, constraints, weights))
     .sort((left, right) => {
+      if (left.feasible !== right.feasible) return left.feasible ? -1 : 1;
       if (right.score !== left.score) return right.score - left.score;
       if (right.metrics.coveragePercent !== left.metrics.coveragePercent) {
         return right.metrics.coveragePercent - left.metrics.coveragePercent;

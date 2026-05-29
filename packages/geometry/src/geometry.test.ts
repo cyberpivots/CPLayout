@@ -6,6 +6,7 @@ import {
   evaluateLayout,
   machineRadiusMeters,
   polygonAreaSquareMeters,
+  validateWetCoverageWithinField,
 } from "./geometry";
 import { sampleProject } from "@cplayout/core";
 
@@ -37,6 +38,31 @@ assert.ok(result.metrics.fieldAcres > 120);
 assert.ok(result.metrics.irrigatedAcres > 25);
 assert.ok(result.metrics.coveragePercent > 15);
 assert.ok(result.warnings.length >= 1);
+
+const fieldBoundedProject = {
+  ...sampleProject,
+  projectCrs: "LOCAL:TEST",
+  fieldBoundary: square,
+  pivotCenter: { x: 50, y: 50 },
+  machine: {
+    ...sampleProject.machine,
+    spanLengthsMeters: [20],
+    overhangMeters: 0,
+    endGunThrowMeters: 0,
+    sweep: { mode: "full_circle" as const },
+  },
+  obstacles: [],
+  surveyPoints: [],
+};
+
+assert.equal(validateWetCoverageWithinField(fieldBoundedProject).feasible, true);
+
+const boundaryCrossing = validateWetCoverageWithinField({
+  ...fieldBoundedProject,
+  pivotCenter: { x: 90, y: 50 },
+});
+assert.equal(boundaryCrossing.feasible, false);
+assert.ok(boundaryCrossing.outsideFieldAreaSquareMeters > 0);
 
 assert.throws(
   () => evaluateLayout({ ...sampleProject, projectCrs: "EPSG:4326" }),

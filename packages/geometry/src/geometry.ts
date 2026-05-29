@@ -18,6 +18,7 @@ type ClipMultiPolygon = ClipPolygon[];
 
 const DEFAULT_SEGMENTS = 288;
 const EPSILON_AREA = 0.000001;
+export const DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS = 0.01;
 
 export function machineRadiusMeters(machine: PivotMachine): number {
   return machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0) + machine.overhangMeters;
@@ -94,20 +95,12 @@ export function calculateTowerPoints(center: XY, machine: PivotMachine, angleDeg
 export function evaluateLayout(project: PivotProject): LayoutResult {
   assertProjectedCrs(project.projectCrs);
 
-  const machineRadius = machineRadiusMeters(project.machine);
-  const endGunRadius = endGunRadiusMeters(project.machine);
+  const coverage = calculateWetCoverage(project);
   const field = toClipMultiPolygon([[project.fieldBoundary]]);
-  const base = toClipMultiPolygon([[createSectorPolygon(project.pivotCenter, machineRadius, project.machine.sweep)]]);
-  const endGun = createAnnularSector(project.pivotCenter, machineRadius, endGunRadius, project.machine.sweep);
-  const endGunClip = toClipMultiPolygon(endGun);
-  const wetRaw = endGun.length > 0
-    ? polygonClipping.union(base, endGunClip) as ClipMultiPolygon
-    : base;
-
   const obstaclePolygons = project.obstacles.map((obstacle) => [obstacle.polygon]);
   const obstacleMulti = toClipMultiPolygon(obstaclePolygons);
-  const insideField = polygonClipping.intersection(wetRaw, field) as ClipMultiPolygon | null;
-  const outsideField = polygonClipping.difference(wetRaw, field) as ClipMultiPolygon;
+  const insideField = polygonClipping.intersection(coverage.wetRaw, field) as ClipMultiPolygon | null;
+  const outsideField = polygonClipping.difference(coverage.wetRaw, field) as ClipMultiPolygon;
   const allowed = insideField
     ? (project.obstacles.length > 0
       ? polygonClipping.difference(insideField, obstacleMulti) as ClipMultiPolygon
@@ -116,10 +109,10 @@ export function evaluateLayout(project: PivotProject): LayoutResult {
 
   const fieldArea = polygonAreaSquareMeters(project.fieldBoundary);
   const allowedArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(allowed));
-  const endGunArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(polygonClipping.intersection(endGunClip, field) as ClipMultiPolygon | null ?? []));
+  const endGunArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(polygonClipping.intersection(coverage.endGunClip, field) as ClipMultiPolygon | null ?? []));
   const outsideArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(outsideField));
   const obstacleConflictCount = project.obstacles.filter((obstacle) => {
-    const intersection = polygonClipping.intersection(wetRaw, toClipMultiPolygon([[obstacle.polygon]])) as ClipMultiPolygon | null;
+    const intersection = polygonClipping.intersection(coverage.wetRaw, toClipMultiPolygon([[obstacle.polygon]])) as ClipMultiPolygon | null;
     return multiPolygonAreaSquareMeters(fromClipMultiPolygon(intersection ?? [])) > EPSILON_AREA;
   }).length;
 
@@ -138,14 +131,61 @@ export function evaluateLayout(project: PivotProject): LayoutResult {
       outsideFieldAcres: squareMetersToAcres(outsideArea),
       obstacleConflictCount,
     },
-    baseCoverage: fromClipMultiPolygon(base),
-    endGunCoverage: endGun,
+    baseCoverage: fromClipMultiPolygon(coverage.base),
+    endGunCoverage: coverage.endGun,
     allowedCoverage: fromClipMultiPolygon(allowed),
     outsideFieldCoverage: fromClipMultiPolygon(outsideField),
     obstacles: fromClipMultiPolygon(obstacleMulti),
     towers: calculateTowerPoints(project.pivotCenter, project.machine, towerAngle),
     warnings,
   };
+}
+
+export interface BoundaryConstraintResult {
+  feasible: boolean;
+  outsideFieldAreaSquareMeters: number;
+  outsideFieldAcres: number;
+  epsilonSquareMeters: number;
+  outsideFieldCoverage: MultiPolygonXY;
+}
+
+export function validateWetCoverageWithinField(
+  project: PivotProject,
+  epsilonSquareMeters = DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS,
+): BoundaryConstraintResult {
+  assertProjectedCrs(project.projectCrs);
+
+  const coverage = calculateWetCoverage(project);
+  const field = toClipMultiPolygon([[project.fieldBoundary]]);
+  const outsideField = polygonClipping.difference(coverage.wetRaw, field) as ClipMultiPolygon;
+  const outsideFieldCoverage = fromClipMultiPolygon(outsideField);
+  const outsideFieldAreaSquareMeters = multiPolygonAreaSquareMeters(outsideFieldCoverage);
+
+  return {
+    feasible: outsideFieldAreaSquareMeters <= epsilonSquareMeters,
+    outsideFieldAreaSquareMeters,
+    outsideFieldAcres: squareMetersToAcres(outsideFieldAreaSquareMeters),
+    epsilonSquareMeters,
+    outsideFieldCoverage,
+  };
+}
+
+function calculateWetCoverage(project: PivotProject): {
+  base: ClipMultiPolygon;
+  endGun: MultiPolygonXY;
+  endGunClip: ClipMultiPolygon;
+  wetRaw: ClipMultiPolygon;
+} {
+  const machineRadius = machineRadiusMeters(project.machine);
+  const endGunRadius = endGunRadiusMeters(project.machine);
+  const base = toClipMultiPolygon([[createSectorPolygon(project.pivotCenter, machineRadius, project.machine.sweep)]]);
+  const endGun = createAnnularSector(project.pivotCenter, machineRadius, endGunRadius, project.machine.sweep);
+  const endGunClip = toClipMultiPolygon(endGun);
+  const wetRaw = endGun.length > 0
+    ? polygonClipping.union(base, endGunClip) as ClipMultiPolygon
+    : base;
+
+  return { base, endGun, endGunClip, wetRaw };
 }
 
 export function exportScenarioGeoJson(project: PivotProject, result: LayoutResult): object {

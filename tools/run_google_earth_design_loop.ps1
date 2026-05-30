@@ -8,13 +8,18 @@ param(
   [string]$InputArtifactPath = "",
   [string]$KmlPath = "",
   [string]$KmzPath = "",
+  [string]$OperatorBoundaryKmlPath = "",
+  [string]$OperatorBoundaryName = "USER DRAWN FIELD BOUNDARY",
   [ValidateSet("kmz", "kml")]
   [string]$OpenArtifact = "kmz",
   [int]$StartupSeconds = 10,
   [int]$RenderSeconds = 18,
   [switch]$InferFieldBoundary,
   [switch]$ConfirmOverlayVisible,
-  [switch]$RequireProofPass
+  [switch]$RequireProofPass,
+  [switch]$LeaveGoogleEarthOpen,
+  [int]$CleanupTimeoutSeconds = 10,
+  [switch]$DisableForceCleanup
 )
 
 $ErrorActionPreference = "Stop"
@@ -124,6 +129,13 @@ if ($ConfirmOverlayVisible) {
 if ($RequireProofPass) {
   $captureArgs.RequireProofPass = $true
 }
+if ($LeaveGoogleEarthOpen) {
+  $captureArgs.LeaveGoogleEarthOpen = $true
+}
+if ($DisableForceCleanup) {
+  $captureArgs.DisableForceCleanup = $true
+}
+$captureArgs.CleanupTimeoutSeconds = $CleanupTimeoutSeconds
 
 & $captureScript @captureArgs
 if (-not $?) {
@@ -178,6 +190,10 @@ $resolvedProjectReference = Resolve-LoopPath -Path $ProjectReferencePath -RepoRo
 if (-not [string]::IsNullOrWhiteSpace($resolvedProjectReference)) {
   $visionArgs += @("--project-reference", $resolvedProjectReference)
 }
+$resolvedOperatorBoundaryKmlPath = Resolve-LoopPath -Path $OperatorBoundaryKmlPath -RepoRoot $repoRoot
+if (-not [string]::IsNullOrWhiteSpace($resolvedOperatorBoundaryKmlPath)) {
+  $visionArgs += @("--operator-boundary-kml", $resolvedOperatorBoundaryKmlPath, "--operator-boundary-name", $OperatorBoundaryName)
+}
 
 Invoke-PythonVisionReview -RepoRoot $repoRoot -Arguments $visionArgs
 
@@ -192,7 +208,8 @@ $summary = [pscustomobject]@{
   designVisionReview = Join-Path $reviewOutputPath "visual-layout-review.json"
   designVisionRecommendations = Join-Path $reviewOutputPath "visual-layout-review-recommendations.geojson"
   proofPassed = $manifest.proofPassed
-  googleEarthLeftOpen = $true
+  googleEarthCleanup = $manifest.googleEarth.cleanup
+  googleEarthLeftOpen = [bool]($manifest.googleEarth.cleanup.status -eq "skipped_leave_open" -or $manifest.googleEarth.cleanup.status -eq "blocked")
   canonicalGeometryMutation = $false
   reviewGate = "Import recommendations in the Review tab, then use Accept or Apply as an explicit operator action."
 }

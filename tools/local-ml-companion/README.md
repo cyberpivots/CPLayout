@@ -66,9 +66,46 @@ Outputs are `visual-layout-review.json`, `visual-layout-review-recommendations.g
 
 Pass `--infer-field-boundary` when the review must look for a road, fenceline, treeline, or field-separation outline in the Google Earth map-canvas screenshot. This detector rejects circular crop or pivot coverage rings as field boundaries. It exports a projected-XY boundary recommendation only when a visible CPLayout overlay circle and a project reference provide calibration evidence; otherwise the detected polygon stays image-space advisory evidence.
 
+Pass `--operator-boundary-kml <path>` when Google Earth Pro contains a human-drawn Polygon Placemark for comparison. Use `--operator-boundary-kml -` to pipe pasted KML on stdin, or `--operator-boundary-kml-text "$KML"` when a caller already has raw KML text. The default placemark name is `USER DRAWN FIELD BOUNDARY`; override it with `--operator-boundary-name`. The command accepts `.kml`, `.kmz`, stdin, or raw text, extracts exactly one matching Polygon, rejects missing, line-only, unclosed, or duplicate matches with warnings, and writes it only to `detections.operatorFieldBoundary` with `source: "operator_kml"`. Operator labels are scoring and learning feedback; they are not written to `detections.imageryFieldBoundary` and do not create `modelRecommendations[].proposedGeometry.fieldBoundary`.
+
 The detector must not synthesize a box around the pivot ring. If imagery-derived road, fenceline, treeline, or field-separation evidence is not strong enough, `detections.imageryFieldBoundary` is either `null` or marked `rejected: true`, and `modelRecommendations[].proposedGeometry.fieldBoundary` is omitted. Accepted detections include `source`, `imagePolygon`, optional `projectedPolygon`, `confidence`, `edgeAlignment`, `rectilinearity`, `circularity`, `containment`, `rejectionReasons`, and a `candidateMasks` audit summary.
 
+When an operator label can be pixel-aligned through the proof KML, project reference, and overlay-circle calibration, `visual-layout-review.json` also includes `operatorComparison` metrics for imagery candidates: `iou`, `boundaryMeanDistancePixels`, `boundaryMaxDistancePixels`, `falsePositiveAreaRatio`, and `falseNegativeAreaRatio`. `learningRecommendations[]` records detector/ranking issues such as weak candidate generation, low overlap, or unusable operator-label calibration.
+
 Projected boundary output remains advisory local companion evidence. Operator acceptance still has to go through the CPLayout projected-XY import/editor/validation workflows before any canonical geometry changes.
+
+## Boundary Improvement Loop
+
+Use `improve-boundary-detector` when a proof packet has imagery plus an optional operator-drawn boundary label and weak detector output must not be accepted. The command always runs at least five detector iterations, including baseline Canny/Hough, low-threshold fenceline search, high-contrast road/structure search, surface color variation, and operator-ranked surface-edge feedback.
+
+```sh
+uv run cplayout-ml improve-boundary-detector \
+  --map-canvas ../../reports/google-earth-visual-fidelity/adams-operator-boundary-proof-20260529T-local/google-earth-visual-fidelity-map-canvas.png \
+  --full-window ../../reports/google-earth-visual-fidelity/adams-operator-boundary-proof-20260529T-local/google-earth-visual-fidelity-full-window.png \
+  --kml ../../reports/google-earth-visual-fidelity/adams-operator-boundary-proof-20260529T-local/cplayout-google-earth-visual-fidelity.kml \
+  --project-reference ../../reports/google-earth-visual-fidelity/public-adams-county-center-pivot-proof-project.json \
+  --operator-boundary-kml ../../reports/google-earth-visual-fidelity/operator-user-drawn-field-boundary.kml \
+  --output-dir ../../reports/google-earth-visual-fidelity/boundary-improvement-loop/manual-run \
+  --min-iterations 5
+```
+
+Outputs are `boundary-improvement-loop.json`, `boundary-improvement-iterations.jsonl`, and `boundary-improvement-annotated.png`. The JSON records every iteration, candidate counts, rejection reasons, operator IoU when labels are available, and whether the result is accepted as local companion evidence. It still does not mutate projected `XY` project geometry.
+
+When CUDA PyTorch is installed and `uv run cplayout-ml probe-gpu` passes, the command runs a CUDA tensor preflight over the map image and records the device and tensor statistics. OpenCV scoring remains CPU-bound unless the local OpenCV build itself exposes CUDA.
+
+## Vision Fixture Evaluation
+
+Use `evaluate-vision-fixtures` for repeatable local regression checks over operator-approved proof packets:
+
+```sh
+uv run cplayout-ml evaluate-vision-fixtures \
+  --manifest ../../reports/google-earth-visual-fidelity/fixtures/vision-fixtures.json \
+  --output-dir ../../reports/google-earth-visual-fidelity/fixture-evaluation
+```
+
+The manifest contains `fixtures[]` entries with local paths for `fullWindowScreenshot`, `mapCanvasCrop`, optional `kml`, optional `kmz`, optional `visualFidelityManifest`, optional `projectReference`, and expected booleans such as `expected.boundaryPresent`, `expected.overlayPresent`, and `expected.blackCanvas`. Outputs are `vision-evaluation-summary.json`, `vision-evaluation-cases.jsonl`, and per-case annotated PNGs. The evaluation reports precision, recall, IoU-style boundary detection metrics, overlay detection metrics, false-positive categories, and semantic advisory cues such as pivot ring, overlay, service/access lines, radial/corner-arm cues, and advisory boundaries.
+
+This command is offline/local only. It does not download SAM2 checkpoints, call a network service, cache Google imagery, or write canonical `PivotProject` geometry.
 
 For a complete local Google Earth proof packet and companion CV run, use the top-level orchestration script:
 
@@ -82,4 +119,4 @@ powershell -ExecutionPolicy Bypass -File ../../tools/run_google_earth_design_loo
   -RequireProofPass
 ```
 
-The script writes a timestamped ignored folder under `reports/google-earth-visual-fidelity/`, leaves Google Earth Pro open when the proof completes, and records `design-loop-summary.json` beside the visual-fidelity manifest and CV review outputs.
+The script writes a timestamped ignored folder under `reports/google-earth-visual-fidelity/`, cleans up the targeted Google Earth Pro session by default, and records `design-loop-summary.json` beside the visual-fidelity manifest and CV review outputs. Pass `-LeaveGoogleEarthOpen` only when an operator needs manual review; the summary then records `googleEarthLeftOpen: true`.

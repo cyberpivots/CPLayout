@@ -227,7 +227,7 @@ Status: complete on 2026-05-28 for desktop Google Earth Pro visual-fidelity proo
 
 Implemented surfaces:
 
-- `tools/capture_google_earth_visual_fidelity.ps1` generates a styled proof KML/KMZ from the current repo, opens Google Earth Pro, captures full-window/sidebar/map-canvas screenshots, analyzes map-canvas pixels, and writes `visual-fidelity-manifest.json`.
+- `tools/capture_google_earth_visual_fidelity.ps1` generates a styled proof KML/KMZ from the current repo, opens Google Earth Pro, captures full-window/sidebar/map-canvas screenshots, analyzes map-canvas pixels, writes `visual-fidelity-manifest.json`, and cleans up the targeted Google Earth Pro session by default unless `-LeaveGoogleEarthOpen` is used.
 - The script includes a Windows-to-WSL fixture-generation fallback because the current checkout's `node_modules/.bin/tsx` is WSL-shaped and Windows npm cannot execute it directly.
 - `.gitignore` ignores `reports/google-earth-visual-fidelity/` so generated proof artifacts remain local unless intentionally force-added.
 
@@ -237,6 +237,7 @@ Proof run:
 - Manifest path: `reports/google-earth-visual-fidelity/visual-fidelity-manifest.json` (ignored local artifact).
 - Manifest status: `passed`; `proofPassed: true`.
 - Google Earth Pro process: `googleearth.exe`, path `C:\Program Files\Google\Google Earth Pro\client\googleearth.exe`.
+- Google Earth Pro cleanup: automation closes the targeted session by default after proof evidence is written, records `googleEarth.cleanup`, and uses `-LeaveGoogleEarthOpen` only for explicit manual review.
 - Human-visible review: map-canvas screenshot visibly includes CPLayout styled geometry over Google Earth imagery, including the field boundary, styled red/blue/yellow linework, and point/circle overlays.
 
 Generated proof artifact hashes:
@@ -448,7 +449,7 @@ Study goal:
 
 Implementation scope:
 
-- `tools/capture_google_earth_visual_fidelity.ps1` now accepts `-InputArtifactPath` for browser-exported `.kml` or `.kmz` artifacts. When set, the script skips fixture generation, inventories the supplied artifact, records its SHA-256, opens it in Google Earth Pro through File > Open automation, uses the KML `LookAt` coordinate for Google Earth search/focus, captures full-window/sidebar/map-canvas screenshots, and records file-open/search state in the manifest.
+- `tools/capture_google_earth_visual_fidelity.ps1` accepts `-InputArtifactPath` for browser-exported `.kml` or `.kmz` artifacts. When set, the script skips fixture generation, inventories the supplied artifact, records its SHA-256, opens it in Google Earth Pro through File > Open automation, uses the KML `LookAt` coordinate for Google Earth search/focus, captures full-window/sidebar/map-canvas screenshots, records file-open/search state in the manifest, and then records cleanup status for the targeted Google Earth process.
 - `packages/core/src/projectKml.ts` adds a document-level `LookAt` derived from project and layout-result extents so exported Google Earth KML carries a local view hint without changing canonical `XY` geometry or persistence.
 - `packages/core/src/projectKml.test.ts` proves KML exports include `LookAt`, including a real-pivot proof focus near the Adams County center-pivot coordinate.
 
@@ -552,3 +553,21 @@ Remaining unverified claims:
 - The current CV detector is heuristic and advisory; it is not a survey, not a geodetic extraction process, and not a production vision model.
 - Attribution detection is a local image cue and still requires human visual confirmation before relying on a Google Earth proof packet.
 - Native SQLite runtime behavior, native sharing, native MapLibre rendering, Android/iOS persistence, and raw PMTiles/MBTiles archive rendering remain unverified until the device/emulator checklist passes.
+
+## Browser Advisory Candidate And Fixture Evaluation Slice
+
+Status: implementation slice added on 2026-05-29.
+
+Scope:
+
+- Browser Review can generate deterministic pivot-center candidates from the current project using the shared TypeScript optimizer. Recommendations stay adjacent review data with `reviewStatus: "unreviewed"` until an operator accepts/applies them.
+- The Layout map can preview one selected `ModelRecommendation` as advisory candidate coverage, pivot center, boundary, and obstacle overlays. Preview state is UI-only; geometry mutation still goes through the existing reducer action and projected-XY validation.
+- Pivot-center alternatives now carry score breakdown and feasibility metadata for coverage, outside-field area, obstacle conflicts, distance from current center, and feasibility.
+- Google Earth KML exports include review-only style definitions for current center, candidate center, candidate coverage, warning coverage, and advisory CV boundaries. These styles are visual interchange metadata only.
+- `cplayout-ml evaluate-vision-fixtures` evaluates local proof-packet fixture manifests and reports deterministic precision/recall/IoU-style metrics plus annotated PNGs.
+
+Non-goals and unverified claims:
+
+- This slice does not make Google Earth evidence native/mobile proof and does not build a Google imagery dataset.
+- This slice does not add React Native Python, GDAL, SAM2, ONNX Runtime, cloud ML, hidden keys, or paid imagery.
+- Google Earth desktop render proof still requires full-window and map-canvas evidence when making visual-fidelity claims.

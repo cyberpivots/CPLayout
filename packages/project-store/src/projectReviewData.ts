@@ -14,6 +14,7 @@ import { projectRepository } from "./projectRepository";
 const REVIEW_STORAGE_PREFIX = "center-pivot-layout-review-data-v1";
 const MODEL_RECOMMENDATION_SCHEMA_VERSION = "cplayout-model-recommendations-v1";
 const DESIGN_VISION_REVIEW_SCHEMA_VERSION = "cplayout-design-vision-review-v1";
+const BOUNDARY_IMPROVEMENT_LOOP_SCHEMA_VERSION = "cplayout-boundary-improvement-loop-v1";
 export const PROJECT_REVIEW_DATA_SCHEMA_VERSION = "cplayout-project-review-data-v1";
 
 export interface ProjectReviewData {
@@ -79,17 +80,50 @@ export async function appendLayoutDecisionAsync(
   return nextData;
 }
 
+export async function appendGeneratedModelRecommendationsAsync(
+  project: PivotProject,
+  recommendations: ModelRecommendation[],
+): Promise<ProjectReviewData> {
+  const parsedRecommendations = recommendations.map(parseModelRecommendation);
+  for (const recommendation of parsedRecommendations) {
+    if (recommendation.projectId !== project.id) {
+      throw new Error(`Model recommendation ${recommendation.id} belongs to ${recommendation.projectId}, not ${project.id}.`);
+    }
+    if (recommendation.projectCrs !== project.projectCrs || recommendation.proposedGeometry.projectCrs !== project.projectCrs) {
+      throw new Error(`Model recommendation ${recommendation.id} does not match project CRS ${project.projectCrs}.`);
+    }
+    validateRecommendationGeometryForProject(recommendation, project);
+  }
+  const data = await loadProjectReviewDataAsync(project.id);
+  const byId = new Map(data.modelRecommendations.map((recommendation) => [recommendation.id, recommendation]));
+  parsedRecommendations.forEach((recommendation) => byId.set(recommendation.id, recommendation));
+  const nextData = {
+    ...data,
+    modelRecommendations: [...byId.values()],
+  };
+  await saveProjectReviewDataAsync(project.id, nextData);
+  return nextData;
+}
+
 export async function importModelRecommendationsAsync(
   projectId: string,
   input: RecommendationImportInput,
 ): Promise<ModelRecommendation[]> {
   const project = await projectRepository.loadProjectAsync(projectId);
   if (!project) throw new Error(`Project ${projectId} must be saved locally before model recommendations can be imported.`);
+  return importModelRecommendationsForProjectAsync(project, input);
+}
+
+export async function importModelRecommendationsForProjectAsync(
+  project: PivotProject,
+  input: RecommendationImportInput,
+): Promise<ModelRecommendation[]> {
+  const projectId = project.id;
   const parsedInput = typeof input === "string" ? JSON.parse(input) : input;
   rejectHiddenKeyProvenance(parsedInput);
   rejectUnsupportedSchemaVersion(parsedInput);
 
-  const importedData = parseReviewImportInput(parsedInput);
+  const importedData = parseReviewImportInput(parsedInput, project);
   const evidenceRecords = importedData.evidenceRecords.map(parseLayoutEvidenceRecord);
   const layoutDecisions = importedData.layoutDecisions.map(parseLayoutDecisionRecord);
   const recommendations = importedData.modelRecommendations.map(parseModelRecommendation);
@@ -150,7 +184,7 @@ function parseProjectReviewData(projectId: string, input: unknown): ProjectRevie
   return data;
 }
 
-function parseReviewImportInput(input: unknown): RawProjectReviewImport {
+function parseReviewImportInput(input: unknown, project: PivotProject): RawProjectReviewImport {
   if (Array.isArray(input)) {
     return { evidenceRecords: [], modelRecommendations: input, layoutDecisions: [] };
   }
@@ -163,6 +197,9 @@ function parseReviewImportInput(input: unknown): RawProjectReviewImport {
       modelRecommendations: arrayValue(value.modelRecommendations),
       layoutDecisions: arrayValue(value.layoutDecisionRecords),
     };
+  }
+  if (value.schemaVersion === BOUNDARY_IMPROVEMENT_LOOP_SCHEMA_VERSION) {
+    return parseBoundaryImprovementLoopImport(value, project);
   }
   if (
     value.modelRecommendations !== undefined
@@ -262,11 +299,95 @@ function withVisionReviewEvidence(record: unknown, artifacts: unknown, metrics: 
   };
 }
 
+function parseBoundaryImprovementLoopImport(
+  loop: Record<string, unknown>,
+  project: PivotProject,
+): RawProjectReviewImport {
+  if (loop.projectId !== project.id) {
+    throw new Error(`Boundary improvement loop belongs to ${String(loop.projectId)}, not ${project.id}.`);
+  }
+  if (loop.projectCrs !== project.projectCrs) {
+    throw new Error(`Boundary improvement loop uses ${String(loop.projectCrs)}, not ${project.projectCrs}.`);
+  }
+  if (loop.canonicalGeometryMutation !== false) {
+    throw new Error("Boundary improvement loop import must declare canonicalGeometryMutation: false.");
+  }
+
+  const createdAt = stringValue(loop.createdAt, "Boundary improvement loop must include createdAt.");
+  const evidenceId = `${project.id}:boundary-improvement-loop:${createdAt.replace(/[^0-9]/g, "").slice(0, 17) || "undated"}`;
+  const acceptance = recordValue(loop.acceptance, "Boundary improvement loop must include acceptance.");
+  const gpu = recordValue(loop.gpu, "Boundary improvement loop must include gpu status.");
+  const bestIteration = objectOrUndefined(loop.bestIteration);
+  const bestCandidate = bestIteration ? objectOrUndefined(bestIteration.bestCandidate) : undefined;
+  const accepted = acceptance.accepted === true && acceptance.gpuBacked === true && gpu.cudaAvailable === true;
+  const projectedBoundary = accepted && bestCandidate
+    ? arrayValue(bestCandidate.projectedPolygon).map((point) => xyValue(point, "Boundary loop projectedPolygon point is invalid."))
+    : [];
+  const metrics = boundaryLoopMetrics(loop, bestIteration, bestCandidate, acceptance, gpu);
+  const evidenceRecord: LayoutEvidenceRecord = parseLayoutEvidenceRecord({
+    id: evidenceId,
+    projectId: project.id,
+    sourceKind: "model_output",
+    createdAt,
+    projectCrs: project.projectCrs,
+    summary: accepted
+      ? "GPU-backed local boundary-improvement loop accepted a calibrated projected-XY field boundary candidate."
+      : "Local boundary-improvement loop evidence was imported but did not pass GPU-backed projected-boundary acceptance gates.",
+    confidence: numberOrDefault(bestCandidate?.confidence, 0),
+    reviewStatus: accepted ? "accepted" : "unreviewed",
+    notes: "Experimental local companion output; not survey-grade and not a React Native Python/PyTorch runtime.",
+    artifacts: objectOrUndefined(loop.artifacts),
+    metrics,
+  });
+  if (!accepted || !bestCandidate) {
+    return { evidenceRecords: [evidenceRecord], modelRecommendations: [], layoutDecisions: [] };
+  }
+
+  const recommendation: ModelRecommendation = parseModelRecommendation({
+    id: `${project.id}:boundary-improvement-loop:${createdAt.replace(/[^0-9]/g, "").slice(0, 17) || "accepted"}`,
+    projectId: project.id,
+    modelName: "local-rtx-boundary-improvement-loop",
+    modelVersion: String(loop.minimumIterationsRequired ?? "v1"),
+    createdAt,
+    projectCrs: project.projectCrs,
+    summary: "Apply GPU-backed ML boundary assist candidate to the current editor workspace.",
+    proposedGeometry: {
+      projectCrs: project.projectCrs,
+      fieldBoundary: projectedBoundary,
+    },
+    confidence: numberOrDefault(bestCandidate.confidence, 0),
+    evidenceIds: [evidenceId],
+    reviewStatus: "accepted",
+    score: numberOrUndefined(bestCandidate.confidence),
+    scoreBreakdown: boundaryCandidateScoreBreakdown(bestCandidate),
+    metadata: {
+      schemaVersion: BOUNDARY_IMPROVEMENT_LOOP_SCHEMA_VERSION,
+      experimentalBoundaryAssist: true,
+      gpuBacked: true,
+      autoApplyEligible: true,
+      iterationCount: numberOrUndefined(loop.iterationCount),
+      acceptanceStatus: acceptance.status,
+      surveyGrade: false,
+    },
+    warnings: [
+      "Experimental ML Boundary Assist; verify against field evidence before construction or survey decisions.",
+      ...arrayValue(acceptance.reasons).map(String),
+    ],
+  });
+  return { evidenceRecords: [evidenceRecord], modelRecommendations: [recommendation], layoutDecisions: [] };
+}
+
 function rejectUnsupportedSchemaVersion(input: unknown): void {
   if (Array.isArray(input)) return;
   if (!input || typeof input !== "object") return;
   const version = (input as { schemaVersion?: unknown }).schemaVersion;
-  if (version !== undefined && version !== MODEL_RECOMMENDATION_SCHEMA_VERSION && version !== DESIGN_VISION_REVIEW_SCHEMA_VERSION && version !== PROJECT_REVIEW_DATA_SCHEMA_VERSION) {
+  if (
+    version !== undefined
+    && version !== MODEL_RECOMMENDATION_SCHEMA_VERSION
+    && version !== DESIGN_VISION_REVIEW_SCHEMA_VERSION
+    && version !== BOUNDARY_IMPROVEMENT_LOOP_SCHEMA_VERSION
+    && version !== PROJECT_REVIEW_DATA_SCHEMA_VERSION
+  ) {
     throw new Error(`Unsupported review import schema version: ${String(version)}.`);
   }
 }
@@ -500,6 +621,68 @@ function stringValue(input: unknown, message: string): string {
 function numberValue(input: unknown, message: string): number {
   if (typeof input !== "number" || !Number.isFinite(input)) throw new Error(message);
   return input;
+}
+
+function xyValue(input: unknown, message: string): XY {
+  const value = recordValue(input, message);
+  return {
+    x: numberValue(value.x, message),
+    y: numberValue(value.y, message),
+  };
+}
+
+function numberOrDefault(input: unknown, fallback: number): number {
+  return typeof input === "number" && Number.isFinite(input) ? input : fallback;
+}
+
+function numberOrUndefined(input: unknown): number | undefined {
+  return typeof input === "number" && Number.isFinite(input) ? input : undefined;
+}
+
+function objectOrUndefined(input: unknown): Record<string, unknown> | undefined {
+  return input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : undefined;
+}
+
+function boundaryLoopMetrics(
+  loop: Record<string, unknown>,
+  bestIteration: Record<string, unknown> | undefined,
+  bestCandidate: Record<string, unknown> | undefined,
+  acceptance: Record<string, unknown>,
+  gpu: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    schemaVersion: BOUNDARY_IMPROVEMENT_LOOP_SCHEMA_VERSION,
+    iterationCount: loop.iterationCount,
+    minimumIterationsRequired: loop.minimumIterationsRequired,
+    accepted: acceptance.accepted,
+    acceptanceStatus: acceptance.status,
+    gpuCudaAvailable: gpu.cudaAvailable,
+    gpuDeviceCount: gpu.deviceCount,
+    gpuDevices: gpu.devices,
+    usedForTorchTensorPreflight: gpu.usedForTorchTensorPreflight,
+    tensorPreflight: gpu.tensorPreflight,
+    bestIteration: bestIteration?.iteration,
+    bestOperatorIoU: bestIteration?.bestOperatorIoU,
+    confidence: bestCandidate?.confidence,
+    edgeAlignment: bestCandidate?.edgeAlignment,
+    rectilinearity: bestCandidate?.rectilinearity,
+    circularity: bestCandidate?.circularity,
+    containment: bestCandidate?.containment,
+    operatorLabelAlignment: bestCandidate?.operatorLabelAlignment,
+    areaRatio: bestCandidate?.areaRatio,
+    rejectionReasons: bestCandidate?.rejectionReasons,
+  };
+}
+
+function boundaryCandidateScoreBreakdown(bestCandidate: Record<string, unknown>): Record<string, number> | undefined {
+  const entries = [
+    ["edgeAlignment", numberOrUndefined(bestCandidate.edgeAlignment)],
+    ["rectilinearity", numberOrUndefined(bestCandidate.rectilinearity)],
+    ["nonCircularity", typeof bestCandidate.circularity === "number" ? 1 - bestCandidate.circularity : undefined],
+    ["containment", numberOrUndefined(bestCandidate.containment)],
+    ["operatorLabelAlignment", numberOrUndefined(bestCandidate.operatorLabelAlignment)],
+  ].filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function errorMessage(error: unknown): string {

@@ -32,6 +32,8 @@ const squareAlternatives = optimizePivotCenter(squareProject, { gridDivisions: 1
 assert.ok(squareAlternatives.length > 0);
 assert.equal(squareAlternatives[0].feasible, true);
 assert.ok(squareAlternatives[0].metrics.outsideFieldAcres <= 0.0001);
+assert.equal(typeof squareAlternatives[0].scoreBreakdown.coverage, "number");
+assert.equal(squareAlternatives[0].scoreBreakdown.feasibility > 0, true);
 assert.deepEqual(squareProject.pivotCenter, { x: 8, y: 50 });
 
 const repeatedSquareAlternatives = optimizePivotCenter(squareProject, { gridDivisions: 10, maxAlternatives: 5 });
@@ -72,11 +74,14 @@ const obstacleAlternatives = optimizePivotCenter(makeProject("obstacle", square,
 });
 assert.equal(obstacleAlternatives[0].feasible, true);
 assert.equal(obstacleAlternatives[0].metrics.obstacleConflictCount, 0);
+assert.ok(obstacleAlternatives.some((alternative) => alternative.sourceSeed === "local_refinement"));
 
 const recommendation = buildPivotCenterModelRecommendation(squareProject, squareAlternatives[0], "2026-05-29T00:00:00.000Z");
 assert.equal(recommendation.projectId, squareProject.id);
 assert.deepEqual(recommendation.proposedGeometry.pivotCenter, squareAlternatives[0].pivotCenter);
 assert.equal(recommendation.reviewStatus, "unreviewed");
+assert.deepEqual(recommendation.scoreBreakdown, squareAlternatives[0].scoreBreakdown);
+assert.equal((recommendation.metadata as { feasible?: boolean }).feasible, squareAlternatives[0].feasible);
 assert.ok(recommendation.warnings.some((warning) => warning.includes("Advisory optimizer output only")));
 
 console.log("pivot center optimizer tests passed");

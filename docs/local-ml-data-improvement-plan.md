@@ -46,6 +46,18 @@ SQLite support:
 | eo-learn | Earth-observation workflow experiments. | eo-learn docs: https://eo-learn.readthedocs.io/ |
 | ONNX Runtime React Native | Deferred device-runtime lane only after Expo dev-build and Android/iOS proof. | ONNX Runtime RN docs: https://onnxruntime.ai/docs/get-started/with-javascript/react-native.html |
 
+## Browser Candidate Generation
+
+- The Review tab can generate local deterministic pivot-center candidates from the current projected `XY` project with `gridDivisions: 13`, `maxAlternatives: 8`, and visual-center seeding enabled.
+- Generated recommendations are saved to adjacent browser review data with `reviewStatus: "unreviewed"`, score breakdown metadata, feasibility signals, and warnings. They are not applied automatically.
+- Preview overlays are advisory only. Apply requires an explicit before/after metrics confirmation and then uses the existing `apply_model_recommendation` reducer validation path.
+
+## Vision Fixture Evaluation
+
+- `cplayout-ml evaluate-vision-fixtures --manifest <path> --output-dir <path>` reads local operator-approved proof-packet manifests and writes `vision-evaluation-summary.json`, `vision-evaluation-cases.jsonl`, and annotated PNGs.
+- Fixture entries reference local full-window screenshot, map-canvas crop, optional KML/KMZ, visual-fidelity manifest, project reference, and expected labels such as boundary/overlay/black-canvas presence.
+- Metrics are precision/recall/IoU-style evidence for advisory boundary and overlay detections. They are local experiment evidence only and do not create survey-grade geometry or mutate canonical project data.
+
 ## Analogous Repositories To Study
 
 - Fields2Cover: coverage path planning methods for agricultural vehicles. https://fields2cover.github.io/

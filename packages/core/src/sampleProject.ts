@@ -117,6 +117,10 @@ const publicProofPivotCenter = {
   longitude: -104.070061,
 };
 const publicProofCenter = projectLonLatToXy(publicProofPivotCenter, publicProofCrs);
+const improvedPublicProofCenter: XY = {
+  x: 579493.1558109762,
+  y: 4417310.984825163,
+};
 
 function offset(center: XY, x: number, y: number): XY {
   return { x: center.x + x, y: center.y + y };
@@ -257,4 +261,32 @@ export const realCenterPivotProofProject: PivotProject = {
       notes: "Camera/location coordinate from the public Wikimedia Commons source page; used as a reproducible reference, not as the pivot center.",
     },
   ],
+};
+
+export const improvedCenterPivotReviewProject: PivotProject = {
+  ...realCenterPivotProofProject,
+  id: "public-adams-county-center-pivot-improved-review",
+  name: "Public Adams County Improved Pivot Review",
+  pivotCenter: improvedPublicProofCenter,
+  obstacles: realCenterPivotProofProject.obstacles.filter((obstacle) => obstacle.id === "south-county-road-setback"),
+  mapFeatures: (realCenterPivotProofProject.mapFeatures ?? []).map((feature) => {
+    if (feature.id === "power-feed-from-112th" && feature.geometry.type === "LineString") {
+      return {
+        ...feature,
+        geometry: {
+          type: "LineString",
+          vertices: [realCenterPivotProofProject.powerSource, improvedPublicProofCenter],
+        },
+      };
+    }
+    return feature;
+  }),
+  surveyPoints: realCenterPivotProofProject.surveyPoints.map((point) => {
+    if (point.role !== "pivot_center") return point;
+    return {
+      ...point,
+      projected: improvedPublicProofCenter,
+      notes: "Improved visual-review pivot center for Google Earth companion proof; projected XY remains canonical.",
+    };
+  }),
 };

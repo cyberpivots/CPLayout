@@ -1,7 +1,10 @@
 param(
   [string]$GoogleEarthPath = "C:\Program Files\Google\Google Earth Pro\client\googleearth.exe",
   [string]$OutputDir = "apps\mobile\src\assets\google-earth-wizard",
-  [int]$StartupSeconds = 10
+  [int]$StartupSeconds = 10,
+  [switch]$LeaveGoogleEarthOpen,
+  [int]$CleanupTimeoutSeconds = 10,
+  [switch]$DisableForceCleanup
 )
 
 $ErrorActionPreference = "Stop"
@@ -101,6 +104,61 @@ function Capture-Window([IntPtr]$Handle, [string]$Path, [System.Drawing.Rectangl
   }
 }
 
+function Invoke-GoogleEarthCleanup([string]$RepoRoot, [string]$OutputPath, [int]$TargetProcessId) {
+  if ($LeaveGoogleEarthOpen) {
+    return [pscustomobject]@{
+      requested = $true
+      leaveOpen = $true
+      targetProcessId = $TargetProcessId
+      closeMethod = "none"
+      modalHandled = $false
+      forceUsed = $false
+      status = "skipped_leave_open"
+      error = $null
+      recordPath = $null
+    }
+  }
+
+  $recordPath = Join-Path $OutputPath "google-earth-cleanup.json"
+  $cleanupScript = Join-Path (Join-Path $RepoRoot "tools") "cleanup_google_earth.ps1"
+  try {
+    $cleanupArgs = @{
+      TargetProcessId = $TargetProcessId
+      GoogleEarthPath = $GoogleEarthPath
+      OutputRecordPath = $recordPath
+      CleanupTimeoutSeconds = $CleanupTimeoutSeconds
+    }
+    if ($DisableForceCleanup) {
+      $cleanupArgs.DisableForceCleanup = $true
+    }
+    $cleanupJson = & $cleanupScript @cleanupArgs
+    $cleanup = $cleanupJson | ConvertFrom-Json
+    return [pscustomobject]@{
+      requested = $true
+      leaveOpen = $false
+      targetProcessId = $cleanup.targetProcessId
+      closeMethod = $cleanup.closeMethod
+      modalHandled = [bool]$cleanup.modalHandled
+      forceUsed = [bool]$cleanup.forceUsed
+      status = $cleanup.status
+      error = $cleanup.error
+      recordPath = $recordPath
+    }
+  } catch {
+    return [pscustomobject]@{
+      requested = $true
+      leaveOpen = $false
+      targetProcessId = $TargetProcessId
+      closeMethod = "none"
+      modalHandled = $false
+      forceUsed = $false
+      status = "blocked"
+      error = $_.Exception.Message
+      recordPath = $null
+    }
+  }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $outputPath = Convert-ToWindowsPath (Join-Path $repoRoot $OutputDir)
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
@@ -123,7 +181,7 @@ $captures = @(
   }
 )
 
-$manifest = foreach ($capture in $captures) {
+$captureManifest = foreach ($capture in $captures) {
   if ($capture.keys) {
     [WindowApi]::SetForegroundWindow($handle) | Out-Null
     Start-Sleep -Milliseconds 300
@@ -146,6 +204,41 @@ $manifest = foreach ($capture in $captures) {
     }
   } finally {
     $image.Dispose()
+  }
+}
+
+$cleanup = Invoke-GoogleEarthCleanup -RepoRoot $repoRoot -OutputPath $outputPath -TargetProcessId $process.Id
+$processPath = $null
+$processResponding = $null
+$processStartTime = $null
+try {
+  $processPath = $process.Path
+} catch {
+}
+try {
+  $processResponding = $process.Responding
+} catch {
+}
+try {
+  $processStartTime = $process.StartTime.ToUniversalTime().ToString("o")
+} catch {
+}
+
+$manifest = [pscustomobject]@{
+  schemaVersion = "cplayout-google-earth-import-wizard-capture-v2"
+  generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+  captures = $captureManifest
+  googleEarth = [pscustomobject]@{
+    requestedPath = $GoogleEarthPath
+    process = [pscustomobject]@{
+      id = $process.Id
+      processName = $process.ProcessName
+      mainWindowTitle = $process.MainWindowTitle
+      path = $processPath
+      responding = $processResponding
+      startTime = $processStartTime
+    }
+    cleanup = $cleanup
   }
 }
 

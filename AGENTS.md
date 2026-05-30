@@ -33,6 +33,7 @@
 - Keep drawing viewport state separate from geometry mutation so pan/zoom cannot corrupt vertices.
 - Store project-relevant settings in project export data; keep local machine paths as local-only settings.
 - Use repo-local skills in `.agents/skills/` when they match the task; they are reusable workflow surfaces, not product runtime code.
+- Every CPLayout Google Earth Pro automation pass must clean up the targeted Google Earth session by default, or explicitly use and report `-LeaveGoogleEarthOpen` for manual review. Cleanup closes generated Temporary Places/import prompts without saving them into persistent My Places; it must not clear caches, delete saved places, or change Google Earth settings unless an explicit repair task requests that.
 
 ## Reasoning Policy
 

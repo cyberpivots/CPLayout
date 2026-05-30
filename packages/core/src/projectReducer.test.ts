@@ -300,4 +300,32 @@ const outsidePivotRecommendationState = reduceProjectEditorState(createProjectEd
 assert.match(outsidePivotRecommendationState.lastError ?? "", /inside the field boundary/);
 assert.deepEqual(outsidePivotRecommendationState.project.pivotCenter, sampleProject.pivotCenter);
 
+const outsideCurrentPivotBoundaryState = reduceProjectEditorState(createProjectEditorState(sampleProject), {
+  type: "apply_model_recommendation",
+  recommendation: {
+    id: "rec-boundary-excludes-current-pivot",
+    projectId: sampleProject.id,
+    modelName: "test-review-gated-recommender",
+    modelVersion: "0.1.0",
+    createdAt: "2026-05-30T00:00:00.000Z",
+    projectCrs: sampleProject.projectCrs,
+    summary: "Invalid boundary for current pivot.",
+    proposedGeometry: {
+      projectCrs: sampleProject.projectCrs,
+      fieldBoundary: [
+        { x: -1000, y: -1000 },
+        { x: -900, y: -1000 },
+        { x: -900, y: -900 },
+        { x: -1000, y: -900 },
+      ],
+    },
+    confidence: 0.6,
+    evidenceIds: [],
+    reviewStatus: "accepted",
+    warnings: [],
+  },
+});
+assert.match(outsideCurrentPivotBoundaryState.lastError ?? "", /inside the field boundary/);
+assert.deepEqual(outsideCurrentPivotBoundaryState.project.fieldBoundary, sampleProject.fieldBoundary);
+
 console.log("project reducer/import tests passed");

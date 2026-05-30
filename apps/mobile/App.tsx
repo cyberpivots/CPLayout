@@ -41,6 +41,7 @@ import {
   importGoogleEarthKmlToProject,
   importProjectedGeoJsonToProject,
   importSurveyCsvToProject,
+  improvedCenterPivotReviewProject,
   realCenterPivotProofProject,
   sampleProject,
   type AppSettings,
@@ -67,6 +68,7 @@ export default function App(): React.JSX.Element {
   const [savedRevision, setSavedRevision] = useState(0);
   const [settings, setSettings] = useState<AppSettings>(() => mergeAppSettings(sampleProject.settings));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
+  const [advisoryRecommendationPreview, setAdvisoryRecommendationPreview] = useState<ModelRecommendation | null>(null);
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
   const machineRadius = machineRadiusMeters(project.machine);
@@ -100,8 +102,12 @@ export default function App(): React.JSX.Element {
     dispatchProject({ type: "place_pivot", point: coordinate, wgs84 });
   }
 
-  function applyModelRecommendation(recommendation: ModelRecommendation): void {
+  function applyModelRecommendation(recommendation: ModelRecommendation): string | null {
+    const nextEditor = reduceProjectEditorState(editor, { type: "apply_model_recommendation", recommendation });
+    if (nextEditor.lastError) return nextEditor.lastError;
     dispatchProject({ type: "apply_model_recommendation", recommendation });
+    setAdvisoryRecommendationPreview(null);
+    return null;
   }
 
   function commitSettings(nextSettings: AppSettings): void {
@@ -115,6 +121,7 @@ export default function App(): React.JSX.Element {
     setSavedRevision(0);
     setSettings(mergeAppSettings(nextProject.settings));
     setSelectedMapFeatureId(null);
+    setAdvisoryRecommendationPreview(null);
     setTab("layout");
     setScreen("workspace");
   }
@@ -197,6 +204,7 @@ export default function App(): React.JSX.Element {
           <ScrollView contentContainerStyle={styles.content}>
             <ProjectStartPanel
               onCreate={createNewProject}
+              onOpenImprovedProof={() => loadProject(improvedCenterPivotReviewProject)}
               onOpenProject={openSavedProject}
               onOpenRealProof={() => loadProject(realCenterPivotProofProject)}
               onOpenSample={() => loadProject(sampleProject)}
@@ -258,6 +266,7 @@ export default function App(): React.JSX.Element {
                 result={result}
                 settings={settings}
                 selectedMapFeatureId={selectedMapFeatureId}
+                advisoryRecommendationPreview={advisoryRecommendationPreview}
                 onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
                 onCommitObstacleDraft={(vertices, kind) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind })}
                 onMoveBoundaryVertex={(vertexIndex, point) => dispatchProject({ type: "move_boundary_vertex", vertexIndex, point })}
@@ -384,8 +393,10 @@ export default function App(): React.JSX.Element {
           {tab === "review" && (
             <ExpertReviewPanel
               onApplyRecommendation={applyModelRecommendation}
+              onPreviewRecommendation={setAdvisoryRecommendationPreview}
               project={project}
               result={result}
+              selectedPreviewRecommendationId={advisoryRecommendationPreview?.id ?? null}
               settings={settings}
             />
           )}

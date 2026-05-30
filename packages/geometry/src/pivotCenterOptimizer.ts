@@ -16,6 +16,7 @@ export interface PivotCenterAlternative {
   project: PivotProject;
   metrics: RankedLayoutAlternative["metrics"];
   score: number;
+  scoreBreakdown: PivotCenterScoreBreakdown;
   feasible: boolean;
   disqualificationReasons: string[];
   warnings: string[];
@@ -23,7 +24,16 @@ export interface PivotCenterAlternative {
   distanceFromCurrentMeters: number;
 }
 
-export type PivotCenterSeedKind = "current" | "centroid" | "visual_center" | "bbox_grid";
+export interface PivotCenterScoreBreakdown {
+  [key: string]: number;
+  coverage: number;
+  outsideField: number;
+  obstacle: number;
+  distance: number;
+  feasibility: number;
+}
+
+export type PivotCenterSeedKind = "current" | "centroid" | "visual_center" | "bbox_grid" | "local_refinement";
 
 interface PivotCenterSeed {
   point: XY;
@@ -47,9 +57,15 @@ export function optimizePivotCenter(
     ...generateBoundingBoxGrid(project.fieldBoundary, gridDivisions),
   ]);
 
-  return seeds
+  const seedAlternatives = seeds
     .map((seed, index) => tryBuildAlternative(project, seed, index, boundaryEpsilonSquareMeters))
-    .filter((alternative): alternative is PivotCenterAlternative => alternative !== null)
+    .filter((alternative): alternative is PivotCenterAlternative => alternative !== null);
+  const refinedAlternatives = seedAlternatives
+    .sort(compareAlternatives)
+    .slice(0, Math.max(maxAlternatives, 6))
+    .flatMap((alternative, index) => refineAlternative(project, alternative, index, gridDivisions, boundaryEpsilonSquareMeters));
+
+  return dedupeAlternatives([...seedAlternatives, ...refinedAlternatives])
     .sort(compareAlternatives)
     .slice(0, maxAlternatives);
 }
@@ -77,6 +93,15 @@ export function buildPivotCenterModelRecommendation(
     evidenceIds: [],
     reviewStatus: "unreviewed",
     score: alternative.score,
+    scoreBreakdown: alternative.scoreBreakdown,
+    metadata: {
+      sourceSeed: alternative.sourceSeed,
+      feasible: alternative.feasible,
+      distanceFromCurrentMeters: Number(alternative.distanceFromCurrentMeters.toFixed(3)),
+      coveragePercent: Number(alternative.metrics.coveragePercent.toFixed(3)),
+      outsideFieldAcres: Number(alternative.metrics.outsideFieldAcres.toFixed(6)),
+      obstacleConflictCount: alternative.metrics.obstacleConflictCount,
+    },
     warnings: [
       ...alternative.warnings,
       ...alternative.disqualificationReasons,
@@ -115,14 +140,22 @@ function buildAlternative(
   });
   const boundary = validateWetCoverageWithinField(candidateProject, boundaryEpsilonSquareMeters);
   const result = evaluateLayout(candidateProject);
+  const scoreBreakdown = scorePivotCenterCandidateBreakdown(
+    ranked,
+    project.pivotCenter,
+    seed.point,
+    result.metrics.irrigatedAcres,
+    boundary.feasible,
+  );
 
   return {
     id: ranked.id,
     pivotCenter: seed.point,
     project: candidateProject,
     metrics: ranked.metrics,
-    score: scorePivotCenterCandidate(ranked, project.pivotCenter, seed.point, result.metrics.irrigatedAcres, boundary.feasible),
-    feasible: boundary.feasible,
+    score: totalScore(scoreBreakdown),
+    scoreBreakdown,
+    feasible: boundary.feasible && ranked.disqualificationReasons.length === 0,
     disqualificationReasons: ranked.disqualificationReasons,
     warnings: ranked.warnings,
     sourceSeed: seed.kind,
@@ -143,16 +176,29 @@ function tryBuildAlternative(
   }
 }
 
-function scorePivotCenterCandidate(
+function scorePivotCenterCandidateBreakdown(
   ranked: RankedLayoutAlternative,
   current: XY,
   candidate: XY,
   irrigatedAcres: number,
   boundaryFeasible: boolean,
-): number {
-  if (!boundaryFeasible) return 0;
-  const distancePenalty = Math.min(25, distance(current, candidate) / 20);
-  return Number((ranked.score + irrigatedAcres - distancePenalty).toFixed(6));
+): PivotCenterScoreBreakdown {
+  const coverage = irrigatedAcres;
+  const outsideField = -Math.min(45, ranked.metrics.outsideFieldAcres * 12);
+  const obstacle = -ranked.metrics.obstacleConflictCount * 18;
+  const distancePenalty = -Math.min(25, distance(current, candidate) / 20);
+  const feasibility = boundaryFeasible && ranked.disqualificationReasons.length === 0 ? 35 : -65;
+  return {
+    coverage: Number(coverage.toFixed(6)),
+    outsideField: Number(outsideField.toFixed(6)),
+    obstacle: Number(obstacle.toFixed(6)),
+    distance: Number(distancePenalty.toFixed(6)),
+    feasibility,
+  };
+}
+
+function totalScore(breakdown: PivotCenterScoreBreakdown): number {
+  return Number(Object.values(breakdown).reduce((sum, value) => sum + value, 0).toFixed(6));
 }
 
 function compareAlternatives(left: PivotCenterAlternative, right: PivotCenterAlternative): number {
@@ -189,6 +235,50 @@ function generateBoundingBoxGrid(fieldBoundary: XY[], gridDivisions: number): Pi
   }
 
   return seeds;
+}
+
+function refineAlternative(
+  project: PivotProject,
+  alternative: PivotCenterAlternative,
+  index: number,
+  gridDivisions: number,
+  boundaryEpsilonSquareMeters: number,
+): PivotCenterAlternative[] {
+  const bounds = boundsForGeometry([project.fieldBoundary]);
+  const step = Math.max(
+    1,
+    Math.min(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / Math.max(8, gridDivisions * 2),
+  );
+  const offsets = [
+    { x: -step, y: 0 },
+    { x: step, y: 0 },
+    { x: 0, y: -step },
+    { x: 0, y: step },
+    { x: -step, y: -step },
+    { x: step, y: step },
+  ];
+  return offsets
+    .map((offset, offsetIndex) => ({
+      point: {
+        x: alternative.pivotCenter.x + offset.x,
+        y: alternative.pivotCenter.y + offset.y,
+      },
+      kind: "local_refinement" as PivotCenterSeedKind,
+      index: index * 10 + offsetIndex,
+    }))
+    .filter((seed) => pointInPolygon(seed.point, project.fieldBoundary) && distanceToRing(seed.point, project.fieldBoundary) > 0.001)
+    .map((seed) => tryBuildAlternative(project, seed, seed.index, boundaryEpsilonSquareMeters))
+    .filter((candidate): candidate is PivotCenterAlternative => candidate !== null);
+}
+
+function dedupeAlternatives(alternatives: PivotCenterAlternative[]): PivotCenterAlternative[] {
+  const byPoint = new Map<string, PivotCenterAlternative>();
+  for (const alternative of alternatives) {
+    const key = `${alternative.pivotCenter.x.toFixed(4)},${alternative.pivotCenter.y.toFixed(4)}`;
+    const current = byPoint.get(key);
+    if (!current || compareAlternatives(alternative, current) < 0) byPoint.set(key, alternative);
+  }
+  return [...byPoint.values()];
 }
 
 function approximateVisualCenter(fieldBoundary: XY[], gridDivisions: number): XY {

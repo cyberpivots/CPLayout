@@ -25,7 +25,9 @@ Do not use this skill to create a Google imagery cache, scrape or bulk-process G
 - **Screenshot evidence:** Preserve visible attribution and provider labels. Do not crop attribution away. Store screenshots as local proof artifacts unless the user explicitly approves product-facing use after legal/policy review.
 - **KML/KMZ overlay review:** Inspect exported CPLayout KML/KMZ for `doc.kml`, `Placemark`, `Style`, `styleUrl`, `ExtendedData`, and feature-count evidence. Treat `Style`, `LineStyle`, `PolyStyle`, `IconStyle`, `LabelStyle`, and `styleUrl` as visual interchange metadata only.
 - **CV/OCR analysis:** Keep OpenCV, Tesseract, Python, GDAL, and similar tooling in local/offline companion scripts or preprocessing. Do not claim React Native can directly run these tools.
+- **Fixture evaluation:** Use `tools/local-ml-companion` and `cplayout-ml evaluate-vision-fixtures` for repeatable local proof-packet checks. Inputs must be operator-approved local artifacts; outputs are advisory metrics and annotated PNGs, not geometry mutation or a Google imagery dataset.
 - **Advisory output:** Express detections as planning-grade evidence or model recommendations. Do not mutate `PivotProject`, project schemas, persistence, archives, or canonical geometry unless a later implementation explicitly routes accepted geometry through existing CPLayout validation.
+- **Session cleanup:** Inventory Google Earth Pro process metadata before closing. Preserve screenshots, manifests, attribution evidence, and source artifact hashes already captured. Close CPLayout-owned or CPLayout-reused generated Temporary Places/import prompts without saving them into persistent My Places, unless the run explicitly used `-LeaveGoogleEarthOpen` for manual review. Never clear Google Earth caches, delete user saved places, or change Google Earth settings except in a separate explicit repair task. Report cleanup status and blockers.
 
 ## Recognition Checklist
 

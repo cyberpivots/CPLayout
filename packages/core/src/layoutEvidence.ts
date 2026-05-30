@@ -76,6 +76,8 @@ export interface ModelRecommendation {
   evidenceIds: string[];
   reviewStatus: EvidenceReviewStatus;
   score?: number;
+  scoreBreakdown?: Record<string, number>;
+  metadata?: Record<string, unknown>;
   warnings: string[];
 }
 
@@ -179,6 +181,8 @@ export const ModelRecommendationSchema = z.object({
   evidenceIds: z.array(z.string().min(1)),
   reviewStatus: EvidenceReviewStatusSchema,
   score: z.number().finite().optional(),
+  scoreBreakdown: z.record(z.string(), z.number().finite()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   warnings: z.array(z.string()),
 }).superRefine((recommendation, context) => {
   refineProjectedCrs(recommendation.projectCrs, context, ["projectCrs"]);

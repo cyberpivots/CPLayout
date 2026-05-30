@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { deriveRecommendationReviewState, sampleProject, type LayoutDecisionRecord, type ModelRecommendation } from "@cplayout/core";
 import {
   appendLayoutDecisionAsync,
+  appendGeneratedModelRecommendationsAsync,
   importModelRecommendationsAsync,
   loadProjectReviewDataAsync,
   modelRecommendationsToProjectedGeoJson,
@@ -93,6 +94,34 @@ async function run(): Promise<void> {
   const reloadedProject = await projectRepository.loadProjectAsync(sampleProject.id);
   assert.deepEqual(reloadedProject?.pivotCenter, sampleProject.pivotCenter);
 
+  const generatedData = await appendGeneratedModelRecommendationsAsync(sampleProject, [{
+    ...recommendation,
+    id: "rec-generated-browser",
+    scoreBreakdown: {
+      coverage: 10,
+      outsideField: 0,
+      obstacle: 0,
+      distance: -1,
+      feasibility: 35,
+    },
+    metadata: {
+      feasible: true,
+      sourceSeed: "visual_center",
+    },
+  }]);
+  assert.equal(generatedData.modelRecommendations.some((item) => item.id === "rec-generated-browser"), true);
+  assert.equal(generatedData.modelRecommendations.find((item) => item.id === "rec-generated-browser")?.reviewStatus, "unreviewed");
+
+  await assert.rejects(
+    () => appendGeneratedModelRecommendationsAsync(sampleProject, [{
+      ...recommendation,
+      id: "rec-generated-wrong-crs",
+      projectCrs: "EPSG:3857",
+      proposedGeometry: { projectCrs: "EPSG:3857", pivotCenter: sampleProject.pivotCenter },
+    }]),
+    /does not match project CRS/,
+  );
+
   await assert.rejects(
     () => importModelRecommendationsAsync(sampleProject.id, [{ ...recommendation, id: "wrong-project", projectId: "other" }]),
     /belongs to other/,
@@ -124,7 +153,7 @@ async function run(): Promise<void> {
     reviewStatus: "unreviewed",
   }]));
   assert.equal(imported.length, 1);
-  assert.equal((await loadProjectReviewDataAsync(sampleProject.id)).modelRecommendations.length, 2);
+  assert.equal((await loadProjectReviewDataAsync(sampleProject.id)).modelRecommendations.length, 3);
 
   const geoJson = modelRecommendationsToProjectedGeoJson([{
     ...recommendation,
@@ -189,6 +218,42 @@ async function run(): Promise<void> {
   assert.equal(visualReviewData.evidenceRecords.some((record) => record.id === "vision-evidence-001"), true);
   assert.equal(visualReviewData.layoutDecisions.some((decisionRecord) => decisionRecord.id === "vision-decision-placeholder"), true);
   assert.equal((visualReviewData.evidenceRecords.find((record) => record.id === "vision-evidence-001")?.artifacts?.mapCanvasCrop as { sha256?: string }).sha256, "a".repeat(64));
+
+  const boundaryLoopImported = await importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
+    accepted: true,
+    gpuBacked: true,
+    cudaAvailable: true,
+    projectedPolygon: sampleProject.fieldBoundary,
+  }));
+  assert.equal(boundaryLoopImported.length, 1);
+  assert.equal(boundaryLoopImported[0]?.proposedGeometry.fieldBoundary?.length, sampleProject.fieldBoundary.length);
+  assert.equal(boundaryLoopImported[0]?.metadata?.schemaVersion, "cplayout-boundary-improvement-loop-v1");
+  assert.equal(boundaryLoopImported[0]?.metadata?.autoApplyEligible, true);
+  const boundaryLoopData = await loadProjectReviewDataAsync(sampleProject.id);
+  const boundaryEvidence = boundaryLoopData.evidenceRecords.find((record) => record.id.includes("boundary-improvement-loop"));
+  assert.equal(boundaryEvidence?.metrics?.gpuCudaAvailable, true);
+  assert.equal(boundaryEvidence?.artifacts?.mapCanvas, "fixture-map.png");
+
+  const rejectedBoundaryLoopImported = await importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
+    accepted: false,
+    gpuBacked: false,
+    cudaAvailable: false,
+    projectedPolygon: sampleProject.fieldBoundary,
+    createdAt: "2026-05-30T12:05:00.000Z",
+  }));
+  assert.equal(rejectedBoundaryLoopImported.length, 0);
+
+  await assert.rejects(
+    () => importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
+      accepted: true,
+      gpuBacked: true,
+      cudaAvailable: true,
+      projectCrs: "EPSG:3857",
+      projectedPolygon: sampleProject.fieldBoundary,
+      createdAt: "2026-05-30T12:10:00.000Z",
+    })),
+    /uses EPSG:3857/,
+  );
 
   const mismatchedGroupedGeoJson = modelRecommendationsToProjectedGeoJson([{
     ...recommendation,
@@ -263,6 +328,61 @@ async function run(): Promise<void> {
 
 function reviewStorageKey(projectId: string): string {
   return `center-pivot-layout-review-data-v1:${projectId}`;
+}
+
+function boundaryLoopReport(options: {
+  accepted: boolean;
+  gpuBacked: boolean;
+  cudaAvailable: boolean;
+  projectedPolygon: Array<{ x: number; y: number }>;
+  createdAt?: string;
+  projectCrs?: string;
+}): object {
+  const createdAt = options.createdAt ?? "2026-05-30T12:00:00.000Z";
+  return {
+    schemaVersion: "cplayout-boundary-improvement-loop-v1",
+    createdAt,
+    projectId: sampleProject.id,
+    projectCrs: options.projectCrs ?? sampleProject.projectCrs,
+    designOnly: true,
+    surveyGrade: false,
+    canonicalGeometryMutation: false,
+    minimumIterationsRequired: 5,
+    iterationCount: 5,
+    gpu: {
+      cudaAvailable: options.cudaAvailable,
+      deviceCount: options.cudaAvailable ? 1 : 0,
+      devices: options.cudaAvailable ? ["NVIDIA GeForce RTX 4070 Laptop GPU"] : [],
+      usedForTorchTensorPreflight: options.cudaAvailable,
+      tensorPreflight: options.cudaAvailable ? { device: "NVIDIA GeForce RTX 4070 Laptop GPU", shape: [100, 100, 3] } : null,
+    },
+    artifacts: {
+      mapCanvas: "fixture-map.png",
+    },
+    bestIteration: {
+      iteration: 5,
+      bestOperatorIoU: 0.82,
+      bestCandidate: {
+        source: "opencv",
+        confidence: 0.78,
+        edgeAlignment: 0.71,
+        rectilinearity: 0.93,
+        circularity: 0.31,
+        containment: 1,
+        operatorLabelAlignment: 0.82,
+        areaRatio: 0.44,
+        rejected: !options.accepted,
+        rejectionReasons: options.accepted ? [] : ["candidate confidence is below accepted imagery-derived boundary threshold"],
+        projectedPolygon: options.projectedPolygon,
+      },
+    },
+    acceptance: {
+      accepted: options.accepted,
+      status: options.accepted ? "accepted" : "not accepted",
+      gpuBacked: options.gpuBacked,
+      reasons: options.accepted ? [] : ["PyTorch CUDA was not available; report is not GPU-backed"],
+    },
+  };
 }
 
 run().catch((error: unknown) => {

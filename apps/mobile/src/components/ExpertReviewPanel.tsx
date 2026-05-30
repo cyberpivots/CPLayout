@@ -1,29 +1,34 @@
-import { AlertTriangle, Check, ClipboardList, Clock3, Database, MapPinned, Satellite, Upload, X } from "lucide-react-native";
+import { AlertTriangle, Check, ClipboardList, Clock3, Database, Eye, MapPinned, Satellite, Sparkles, Upload, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { buildExpertReviewFindings, deriveRecommendationReviewState, type AppSettings, type ExpertReviewFinding, type LayoutDecisionRecord, type LayoutEvidenceRecord, type LayoutResult, type ModelRecommendation, type PivotProject } from "@cplayout/core";
+import { buildPivotCenterModelRecommendation, evaluateLayout, optimizePivotCenter } from "@cplayout/geometry";
 import {
   appendLayoutDecisionAsync,
-  importModelRecommendationsAsync,
+  appendGeneratedModelRecommendationsAsync,
+  importModelRecommendationsForProjectAsync,
   loadProjectReviewDataAsync,
   type ProjectReviewData,
 } from "@cplayout/project-store";
 
 interface ExpertReviewPanelProps {
-  onApplyRecommendation: (recommendation: ModelRecommendation) => void;
+  onApplyRecommendation: (recommendation: ModelRecommendation) => string | null;
+  onPreviewRecommendation?: (recommendation: ModelRecommendation | null) => void;
   project: PivotProject;
   result: LayoutResult;
+  selectedPreviewRecommendationId?: string | null;
   settings: AppSettings;
 }
 
-export function ExpertReviewPanel({ onApplyRecommendation, project, result, settings }: ExpertReviewPanelProps): React.JSX.Element {
+export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendation, project, result, selectedPreviewRecommendationId, settings }: ExpertReviewPanelProps): React.JSX.Element {
   const findings = useMemo(
     () => buildExpertReviewFindings(project, result, settings),
     [project, result, settings],
   );
   const [reviewData, setReviewData] = useState<ProjectReviewData>(() => emptyReviewData());
   const [importText, setImportText] = useState("");
+  const [pendingApply, setPendingApply] = useState<ModelRecommendation | null>(null);
   const [status, setStatus] = useState("Recommendations are evidence until an operator records a decision or applies projected XY geometry.");
 
   useEffect(() => {
@@ -42,11 +47,30 @@ export function ExpertReviewPanel({ onApplyRecommendation, project, result, sett
 
   async function importRecommendations(): Promise<void> {
     try {
-      const imported = await importModelRecommendationsAsync(project.id, importText);
+      const imported = await importModelRecommendationsForProjectAsync(project, importText);
       const data = await loadProjectReviewDataAsync(project.id);
       setReviewData(data);
       setImportText("");
-      setStatus(`Imported ${imported.length} model recommendation${imported.length === 1 ? "" : "s"} with ${data.evidenceRecords.length} evidence record${data.evidenceRecords.length === 1 ? "" : "s"}.`);
+      const autoApplied = await autoApplyBoundaryAssist(imported);
+      if (!autoApplied) {
+        setStatus(`Imported ${imported.length} model recommendation${imported.length === 1 ? "" : "s"} with ${data.evidenceRecords.length} evidence record${data.evidenceRecords.length === 1 ? "" : "s"}.`);
+      }
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  }
+
+  async function generatePivotCandidates(): Promise<void> {
+    try {
+      const createdAt = new Date().toISOString();
+      const recommendations = optimizePivotCenter(project, {
+        gridDivisions: 13,
+        maxAlternatives: 8,
+        includeVisualCenterSeed: true,
+      }).map((alternative) => buildPivotCenterModelRecommendation(project, alternative, createdAt));
+      const data = await appendGeneratedModelRecommendationsAsync(project, recommendations);
+      setReviewData(data);
+      setStatus(`Generated ${recommendations.length} pivot candidate${recommendations.length === 1 ? "" : "s"} for review. No geometry was applied.`);
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -82,12 +106,53 @@ export function ExpertReviewPanel({ onApplyRecommendation, project, result, sett
         setStatus(`Recommendation ${recommendation.id} has no projected XY geometry to apply.`);
         return;
       }
+      setPendingApply(recommendation);
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  }
+
+  async function confirmApplyRecommendation(): Promise<void> {
+    if (!pendingApply) return;
+    try {
+      const recommendation = pendingApply;
+      const applyError = onApplyRecommendation(recommendation);
+      if (applyError) {
+        setStatus(applyError);
+        return;
+      }
       await recordDecision(recommendation, "accepted");
-      onApplyRecommendation(recommendation);
+      onPreviewRecommendation?.(null);
+      setPendingApply(null);
       setStatus(`Applied projected XY geometry from ${recommendation.id}. Undo is available in the layout editor.`);
     } catch (error) {
       setStatus(errorMessage(error));
     }
+  }
+
+  async function autoApplyBoundaryAssist(imported: ModelRecommendation[]): Promise<boolean> {
+    const recommendation = sortedRecommendations(imported).find(isAutoApplyBoundaryAssist);
+    if (!recommendation) return false;
+    const applyError = onApplyRecommendation(recommendation);
+    if (applyError) {
+      setStatus(`Imported ML Boundary Assist evidence, but auto-apply was blocked: ${applyError}`);
+      return true;
+    }
+    const createdAt = new Date().toISOString();
+    const nextData = await appendLayoutDecisionAsync(project.id, {
+      id: `${recommendation.id}:auto-accepted:${createdAt.replace(/[^0-9]/g, "").slice(0, 17)}`,
+      projectId: project.id,
+      createdAt,
+      decidedBy: "import",
+      decision: "accepted",
+      recommendationId: recommendation.id,
+      evidenceIds: recommendation.evidenceIds,
+      reason: "Auto-applied GPU-backed experimental ML Boundary Assist projected-XY boundary to the current unsaved editor workspace; Save remains explicit.",
+    });
+    setReviewData(nextData);
+    onPreviewRecommendation?.(null);
+    setStatus(`Imported and auto-applied ML Boundary Assist boundary from ${recommendation.id}. Undo is available; Save remains explicit.`);
+    return true;
   }
 
   return (
@@ -95,7 +160,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, project, result, sett
       <View style={styles.reviewWorkspace}>
         <View style={styles.importHeader}>
           <View>
-            <Text style={styles.workspaceTitle}>Model Recommendations</Text>
+            <Text style={styles.workspaceTitle}>ML Boundary Assist</Text>
             <Text style={styles.workspaceSubtitle}>{reviewData.modelRecommendations.length} imported · {reviewData.layoutDecisions.length} decisions saved</Text>
           </View>
           <Text style={styles.workspaceBadge}>Adjacent storage</Text>
@@ -103,19 +168,33 @@ export function ExpertReviewPanel({ onApplyRecommendation, project, result, sett
         <TextInput
           multiline
           onChangeText={setImportText}
-          placeholder="Paste visual-layout-review JSON, ModelRecommendation JSON array, or projected-XY GeoJSON FeatureCollection"
+          placeholder="Paste boundary-improvement-loop JSON, visual-layout-review JSON, ModelRecommendation JSON array, or projected-XY GeoJSON FeatureCollection"
           style={styles.importInput}
           value={importText}
         />
         <View style={styles.importActions}>
+          <ReviewButton icon={<Sparkles size={16} color="#ffffff" />} label="Generate Pivot Candidates" primary onPress={generatePivotCandidates} />
           <ReviewButton icon={<Upload size={16} color="#ffffff" />} label="Import" primary onPress={importRecommendations} />
           <Text style={styles.statusLine}>{status}</Text>
         </View>
+        {pendingApply ? (
+          <View style={styles.applyConfirm}>
+            <View style={styles.applyConfirmText}>
+              <Text style={styles.confirmTitle}>Confirm Apply</Text>
+              <Text style={styles.geometrySummary}>{applyMetricsSummary(project, result, pendingApply)}</Text>
+            </View>
+            <View style={styles.decisionActions}>
+              <ReviewButton icon={<Check size={16} color="#ffffff" />} label="Apply XY" primary onPress={confirmApplyRecommendation} />
+              <ReviewButton icon={<X size={16} color="#254234" />} label="Cancel" onPress={() => setPendingApply(null)} />
+            </View>
+          </View>
+        ) : null}
         <View style={styles.recommendationList}>
           {reviewData.modelRecommendations.length === 0 ? (
             <Text style={styles.emptyText}>No model recommendations imported for this project.</Text>
-          ) : reviewData.modelRecommendations.map((recommendation) => {
+          ) : sortedRecommendations(reviewData.modelRecommendations).map((recommendation) => {
             const evidenceRecords = evidenceForRecommendation(recommendation, reviewData.evidenceRecords);
+            const previewSelected = recommendation.id === selectedPreviewRecommendationId;
             return (
             <View key={recommendation.id} style={styles.recommendation}>
               <View style={styles.recommendationHeader}>
@@ -128,6 +207,8 @@ export function ExpertReviewPanel({ onApplyRecommendation, project, result, sett
                 <Text style={styles.reviewStatus}>{deriveRecommendationReviewState(recommendation, reviewData.layoutDecisions)}</Text>
               </View>
               <Text style={styles.geometrySummary}>{geometrySummary(recommendation)}</Text>
+              {gpuSummary(recommendation, evidenceRecords) ? <Text style={styles.geometrySummary}>{gpuSummary(recommendation, evidenceRecords)}</Text> : null}
+              {scoreBreakdownSummary(recommendation) ? <Text style={styles.geometrySummary}>{scoreBreakdownSummary(recommendation)}</Text> : null}
               <View style={styles.evidenceRecordList}>
                 {evidenceRecords.length === 0 ? (
                   <Text style={styles.evidenceRecord}>Evidence: {recommendation.evidenceIds.length === 0 ? "none linked" : recommendation.evidenceIds.join(", ")}</Text>
@@ -149,6 +230,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, project, result, sett
                 <Text key={warning} style={styles.warningNote}>{warning}</Text>
               ))}
               <View style={styles.decisionActions}>
+                <ReviewButton icon={<Eye size={16} color={previewSelected ? "#ffffff" : "#254234"} />} label={previewSelected ? "Previewing" : "Preview"} primary={previewSelected} onPress={() => onPreviewRecommendation?.(previewSelected ? null : recommendation)} />
                 <ReviewButton icon={<Check size={16} color="#ffffff" />} label="Accept" primary onPress={() => recordDecision(recommendation, "accepted")} />
                 <ReviewButton icon={<MapPinned size={16} color="#ffffff" />} label="Apply" primary onPress={() => applyRecommendation(recommendation)} />
                 <ReviewButton icon={<X size={16} color="#254234" />} label="Reject" onPress={() => recordDecision(recommendation, "rejected")} />
@@ -221,9 +303,79 @@ function geometrySummary(recommendation: ModelRecommendation): string {
   return parts.length > 0 ? `${recommendation.projectCrs} · ${parts.join(" · ")}` : `${recommendation.projectCrs} · metadata only`;
 }
 
+function scoreBreakdownSummary(recommendation: ModelRecommendation): string | null {
+  const breakdown = recommendation.scoreBreakdown;
+  if (!breakdown) return null;
+  if (breakdown.edgeAlignment !== undefined || breakdown.rectilinearity !== undefined || breakdown.nonCircularity !== undefined) {
+    return `Boundary score: edge ${formatScorePart(breakdown.edgeAlignment)} · rectilinearity ${formatScorePart(breakdown.rectilinearity)} · non-circular ${formatScorePart(breakdown.nonCircularity)} · containment ${formatScorePart(breakdown.containment)} · operator ${formatScorePart(breakdown.operatorLabelAlignment)}`;
+  }
+  return `Score: coverage ${formatScorePart(breakdown.coverage)} · outside ${formatScorePart(breakdown.outsideField)} · obstacles ${formatScorePart(breakdown.obstacle)} · distance ${formatScorePart(breakdown.distance)} · feasibility ${formatScorePart(breakdown.feasibility)}`;
+}
+
+function sortedRecommendations(recommendations: ModelRecommendation[]): ModelRecommendation[] {
+  return [...recommendations].sort((left, right) => {
+    const leftFeasible = recommendationFeasible(left);
+    const rightFeasible = recommendationFeasible(right);
+    if (leftFeasible !== rightFeasible) return leftFeasible ? -1 : 1;
+    if ((right.score ?? Number.NEGATIVE_INFINITY) !== (left.score ?? Number.NEGATIVE_INFINITY)) {
+      return (right.score ?? Number.NEGATIVE_INFINITY) - (left.score ?? Number.NEGATIVE_INFINITY);
+    }
+    if (left.reviewStatus !== right.reviewStatus) return left.reviewStatus.localeCompare(right.reviewStatus);
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function recommendationFeasible(recommendation: ModelRecommendation): boolean {
+  const metadata = recommendation.metadata;
+  return Boolean(metadata && typeof metadata.feasible === "boolean" && metadata.feasible);
+}
+
+function applyMetricsSummary(project: PivotProject, currentResult: LayoutResult, recommendation: ModelRecommendation): string {
+  const proposedProject = {
+    ...project,
+    ...(recommendation.proposedGeometry.fieldBoundary ? { fieldBoundary: recommendation.proposedGeometry.fieldBoundary } : {}),
+    ...(recommendation.proposedGeometry.pivotCenter ? { pivotCenter: recommendation.proposedGeometry.pivotCenter } : {}),
+    ...(recommendation.proposedGeometry.machine ? { machine: recommendation.proposedGeometry.machine } : {}),
+    ...(recommendation.proposedGeometry.obstaclePolygons ? {
+      obstacles: [
+        ...project.obstacles,
+        ...recommendation.proposedGeometry.obstaclePolygons.map((polygon, index) => ({
+          id: `${recommendation.id.replace(/[^a-zA-Z0-9_-]/g, "-")}-preview-obstacle-${index + 1}`,
+          name: `Recommendation Obstacle ${index + 1}`,
+          kind: "exclusion" as const,
+          polygon,
+          bufferMeters: 0,
+          hardConflict: true,
+          noSpray: true,
+          confidence: "optimized" as const,
+        })),
+      ],
+    } : {}),
+  };
+  try {
+    const nextResult = evaluateLayout(proposedProject);
+    return `Before: coverage ${currentResult.metrics.coveragePercent.toFixed(1)}%, outside ${currentResult.metrics.outsideFieldAcres.toFixed(3)} ac, conflicts ${currentResult.metrics.obstacleConflictCount}. After: coverage ${nextResult.metrics.coveragePercent.toFixed(1)}%, outside ${nextResult.metrics.outsideFieldAcres.toFixed(3)} ac, conflicts ${nextResult.metrics.obstacleConflictCount}.`;
+  } catch (error) {
+    return `Unable to evaluate before/after metrics: ${errorMessage(error)}`;
+  }
+}
+
+function formatScorePart(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(1) : "n/a";
+}
+
 function hasProjectedGeometry(recommendation: ModelRecommendation): boolean {
   const geometry = recommendation.proposedGeometry;
   return Boolean(geometry.pivotCenter || geometry.fieldBoundary || geometry.machine || (geometry.obstaclePolygons && geometry.obstaclePolygons.length > 0));
+}
+
+function isAutoApplyBoundaryAssist(recommendation: ModelRecommendation): boolean {
+  const metadata = recommendation.metadata ?? {};
+  return recommendation.reviewStatus === "accepted"
+    && recommendation.proposedGeometry.fieldBoundary !== undefined
+    && metadata.schemaVersion === "cplayout-boundary-improvement-loop-v1"
+    && metadata.autoApplyEligible === true
+    && metadata.gpuBacked === true;
 }
 
 function evidenceForRecommendation(
@@ -238,9 +390,12 @@ function metricsSummary(record: LayoutEvidenceRecord): string | null {
   const metrics = record.metrics;
   if (!metrics) return null;
   const parts = [
+    metricBooleanPart(metrics, "gpuCudaAvailable", "GPU CUDA"),
+    metricPart(metrics, "bestOperatorIoU", "operator IoU"),
     metricPart(metrics, "centerOffsetRatio", "center offset"),
     metricPart(metrics, "radiusMismatchRatio", "radius mismatch"),
     metricPart(metrics, "detectionConfidence", "detection"),
+    metricPart(metrics, "confidence", "boundary confidence"),
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? `Image metrics: ${parts.join(" · ")}` : null;
 }
@@ -248,6 +403,20 @@ function metricsSummary(record: LayoutEvidenceRecord): string | null {
 function metricPart(metrics: Record<string, unknown>, key: string, label: string): string | null {
   const value = metrics[key];
   return typeof value === "number" && Number.isFinite(value) ? `${label} ${value.toFixed(4)}` : null;
+}
+
+function metricBooleanPart(metrics: Record<string, unknown>, key: string, label: string): string | null {
+  const value = metrics[key];
+  return typeof value === "boolean" ? `${label} ${value ? "yes" : "no"}` : null;
+}
+
+function gpuSummary(recommendation: ModelRecommendation, evidenceRecords: LayoutEvidenceRecord[]): string | null {
+  const metadata = recommendation.metadata ?? {};
+  const metrics = evidenceRecords.find((record) => record.metrics?.schemaVersion === "cplayout-boundary-improvement-loop-v1")?.metrics;
+  if (metadata.schemaVersion !== "cplayout-boundary-improvement-loop-v1" && !metrics) return null;
+  const gpuBacked = metadata.gpuBacked === true || metrics?.gpuCudaAvailable === true;
+  const iterations = typeof metadata.iterationCount === "number" ? metadata.iterationCount : metrics?.iterationCount;
+  return `Boundary loop: ${gpuBacked ? "GPU-backed" : "no CUDA evidence"} · ${String(iterations ?? "n/a")} iterations · ${String(metadata.acceptanceStatus ?? metrics?.acceptanceStatus ?? "unknown")}`;
 }
 
 function artifactHashSummary(record: LayoutEvidenceRecord): string[] {
@@ -372,6 +541,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
+  },
+  applyConfirm: {
+    backgroundColor: "#eef4ef",
+    borderColor: "#9fb9a7",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    justifyContent: "space-between",
+    padding: 12,
+  },
+  applyConfirmText: {
+    flex: 1,
+    gap: 4,
+    minWidth: 260,
+  },
+  confirmTitle: {
+    color: "#17241c",
+    fontSize: 13,
+    fontWeight: "900",
   },
   statusLine: {
     color: "#405146",

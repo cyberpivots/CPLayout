@@ -10,7 +10,10 @@ param(
   [double]$MinimumGrayVariance = 80,
   [switch]$GenerateOnly,
   [switch]$ConfirmOverlayVisible,
-  [switch]$RequireProofPass
+  [switch]$RequireProofPass,
+  [switch]$LeaveGoogleEarthOpen,
+  [int]$CleanupTimeoutSeconds = 10,
+  [switch]$DisableForceCleanup
 )
 
 $ErrorActionPreference = "Stop"
@@ -310,6 +313,64 @@ function New-CaptureManifestEntry([string]$Path, [string]$Label, $CropBox, $Anal
   }
 }
 
+function New-GoogleEarthCleanupRecord([bool]$Requested, [bool]$LeaveOpen, $TargetProcessId, [string]$Status, $ErrorMessage, [string]$CloseMethod = "none") {
+  return [pscustomobject]@{
+    requested = $Requested
+    leaveOpen = $LeaveOpen
+    targetProcessId = $TargetProcessId
+    closeMethod = $CloseMethod
+    modalHandled = $false
+    forceUsed = $false
+    status = $Status
+    error = $ErrorMessage
+    recordPath = $null
+  }
+}
+
+function Invoke-GoogleEarthCleanup([string]$RepoRoot, [string]$OutputPath, $TargetProcessId) {
+  if ($GenerateOnly) {
+    return New-GoogleEarthCleanupRecord -Requested $false -LeaveOpen $false -TargetProcessId $TargetProcessId -Status "not_requested" -ErrorMessage $null
+  }
+  if (-not $TargetProcessId) {
+    return New-GoogleEarthCleanupRecord -Requested $true -LeaveOpen $false -TargetProcessId $TargetProcessId -Status "closed_gracefully" -ErrorMessage $null -CloseMethod "already_closed"
+  }
+  if ($LeaveGoogleEarthOpen) {
+    return New-GoogleEarthCleanupRecord -Requested $true -LeaveOpen $true -TargetProcessId $TargetProcessId -Status "skipped_leave_open" -ErrorMessage $null
+  }
+
+  $recordPath = Join-Path $OutputPath "google-earth-cleanup.json"
+  $cleanupScript = Join-Path (Join-Path $RepoRoot "tools") "cleanup_google_earth.ps1"
+  try {
+    $cleanupArgs = @{
+      TargetProcessId = $TargetProcessId
+      GoogleEarthPath = $GoogleEarthPath
+      OutputRecordPath = $recordPath
+      CleanupTimeoutSeconds = $CleanupTimeoutSeconds
+    }
+    if ($DisableForceCleanup) {
+      $cleanupArgs.DisableForceCleanup = $true
+    }
+    $cleanupJson = & $cleanupScript @cleanupArgs
+    if (-not $?) {
+      throw "Google Earth cleanup helper failed."
+    }
+    $cleanup = $cleanupJson | ConvertFrom-Json
+    return [pscustomobject]@{
+      requested = $true
+      leaveOpen = $false
+      targetProcessId = $cleanup.targetProcessId
+      closeMethod = $cleanup.closeMethod
+      modalHandled = [bool]$cleanup.modalHandled
+      forceUsed = [bool]$cleanup.forceUsed
+      status = $cleanup.status
+      error = $cleanup.error
+      recordPath = Convert-ToRepoRelativePath -Path $recordPath -RepoRoot $RepoRoot
+    }
+  } catch {
+    return New-GoogleEarthCleanupRecord -Requested $true -LeaveOpen $false -TargetProcessId $TargetProcessId -Status "blocked" -ErrorMessage $_.Exception.Message
+  }
+}
+
 function Get-KmlTextFromArtifact([string]$ArtifactPath) {
   $extension = [System.IO.Path]::GetExtension($ArtifactPath).ToLowerInvariant()
   if ($extension -eq ".kml") {
@@ -574,6 +635,7 @@ $lookAtCoordinate = Get-LookAtCoordinateFromKmlText -Text $kmlText
 
 $captures = @()
 $processInfo = $null
+$cleanupTargetProcessId = $null
 $windowBounds = $null
 $fileOpen = $null
 $coordinateSearch = $null
@@ -610,6 +672,7 @@ if (-not $GenerateOnly) {
       path = $process.Path
       startTime = if ($process.StartTime) { $process.StartTime.ToUniversalTime().ToString("o") } else { $null }
     }
+    $cleanupTargetProcessId = $process.Id
 
     $fullPath = Join-Path $outputPath "google-earth-visual-fidelity-full-window.png"
     $fullCrop = Capture-Window -Handle $handle -Path $fullPath -Crop (New-Object System.Drawing.Rectangle 0, 0, 0, 0)
@@ -659,6 +722,8 @@ $status = if ($GenerateOnly) {
   "manual_overlay_review_required"
 }
 
+$cleanup = Invoke-GoogleEarthCleanup -RepoRoot $repoRoot -OutputPath $outputPath -TargetProcessId $cleanupTargetProcessId
+
 $manifest = [pscustomobject]@{
   schemaVersion = "cplayout-google-earth-visual-fidelity-proof-v1"
   status = $status
@@ -677,6 +742,7 @@ $manifest = [pscustomobject]@{
     process = $processInfo
     windowBounds = $windowBounds
     captureError = $captureError
+    cleanup = $cleanup
   }
   thresholds = [pscustomobject]@{
     minimumNonBlackRatio = $MinimumNonBlackRatio

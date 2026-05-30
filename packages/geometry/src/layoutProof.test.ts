@@ -1,16 +1,30 @@
 import assert from "node:assert/strict";
 
-import { realCenterPivotProofProject } from "@cplayout/core";
+import { improvedCenterPivotReviewProject, realCenterPivotProofProject } from "@cplayout/core";
 
 import { evaluateLayout } from "./geometry";
 import { validateCenterPivotProofGeometry } from "./layoutProof";
 
-const result = evaluateLayout(realCenterPivotProofProject);
-assert.deepEqual(validateCenterPivotProofGeometry(realCenterPivotProofProject, result), []);
-assert.ok(result.baseCoverage.length > 0);
-assert.ok(result.allowedCoverage.length > 0);
-assert.ok(result.endGunCoverage.length > 0);
-assert.equal(result.towers.length, realCenterPivotProofProject.machine.spanLengthsMeters.length);
+function assertValidProofFixture(project: typeof realCenterPivotProofProject): ReturnType<typeof evaluateLayout> {
+  const result = evaluateLayout(project);
+  assert.deepEqual(validateCenterPivotProofGeometry(project, result), []);
+  assert.ok(result.baseCoverage.length > 0);
+  assert.ok(result.allowedCoverage.length > 0);
+  assert.ok(result.endGunCoverage.length > 0);
+  assert.equal(result.towers.length, project.machine.spanLengthsMeters.length);
+  return result;
+}
+
+const result = assertValidProofFixture(realCenterPivotProofProject);
+const improvedResult = assertValidProofFixture(improvedCenterPivotReviewProject);
+assert.equal(improvedCenterPivotReviewProject.id, "public-adams-county-center-pivot-improved-review");
+assert.equal(improvedCenterPivotReviewProject.name, "Public Adams County Improved Pivot Review");
+assert.equal(improvedCenterPivotReviewProject.obstacles.length, 1);
+assert.equal(improvedCenterPivotReviewProject.obstacles[0].id, "south-county-road-setback");
+assert.equal(improvedResult.metrics.obstacleConflictCount, 1);
+assert.equal(improvedResult.metrics.outsideFieldAcres, 0);
+assert.ok(Math.abs(improvedResult.metrics.irrigatedAcres - 127.13) < 0.01);
+assert.ok(Math.abs(improvedResult.metrics.coveragePercent - 71.73) < 0.01);
 
 const triangleBoundaryProject = {
   ...realCenterPivotProofProject,

@@ -163,10 +163,16 @@ async function run(): Promise<void> {
       pivotCenter: { x: sampleProject.pivotCenter.x + 7, y: sampleProject.pivotCenter.y },
       fieldBoundary: sampleProject.fieldBoundary,
     },
+    metadata: {
+      feasible: false,
+      hardFailures: ["SOUTH_ROAD_EXCLUSION crossing."],
+      roadConflict: true,
+    },
   }]);
   const geoJsonImported = await importModelRecommendationsAsync(sampleProject.id, geoJson);
   assert.equal(geoJsonImported.length, 1);
   assert.equal(geoJsonImported[0]?.proposedGeometry.fieldBoundary?.length, sampleProject.fieldBoundary.length);
+  assert.equal(geoJsonImported[0]?.metadata?.roadConflict, true);
 
   const visualReviewImported = await importModelRecommendationsAsync(sampleProject.id, {
     schemaVersion: "cplayout-design-vision-review-v1",

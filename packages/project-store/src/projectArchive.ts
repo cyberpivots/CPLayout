@@ -279,6 +279,8 @@ function modelRecommendationFeatures(recommendation: ModelRecommendation): objec
     confidence: recommendation.confidence,
     reviewStatus: recommendation.reviewStatus,
     score: recommendation.score ?? null,
+    scoreBreakdown: recommendation.scoreBreakdown ?? null,
+    metadata: recommendation.metadata ?? null,
     summary: recommendation.summary,
     warnings: recommendation.warnings,
     evidenceIds: recommendation.evidenceIds,

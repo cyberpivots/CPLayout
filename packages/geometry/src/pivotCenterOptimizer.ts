@@ -97,10 +97,14 @@ export function buildPivotCenterModelRecommendation(
     metadata: {
       sourceSeed: alternative.sourceSeed,
       feasible: alternative.feasible,
+      hardFailures: alternative.feasible ? [] : alternative.disqualificationReasons,
       distanceFromCurrentMeters: Number(alternative.distanceFromCurrentMeters.toFixed(3)),
       coveragePercent: Number(alternative.metrics.coveragePercent.toFixed(3)),
       outsideFieldAcres: Number(alternative.metrics.outsideFieldAcres.toFixed(6)),
       obstacleConflictCount: alternative.metrics.obstacleConflictCount,
+      roadConflict: false,
+      buildingTreeConflict: false,
+      boundaryFalsePositiveRatio: 0,
     },
     warnings: [
       ...alternative.warnings,
@@ -140,12 +144,17 @@ function buildAlternative(
   });
   const boundary = validateWetCoverageWithinField(candidateProject, boundaryEpsilonSquareMeters);
   const result = evaluateLayout(candidateProject);
+  const disqualificationReasons = [
+    ...ranked.disqualificationReasons,
+    ...(ranked.metrics.obstacleConflictCount > 0 ? ["Obstacle conflicts are hard infeasible for pivot-center alternatives."] : []),
+  ];
+  const feasible = boundary.feasible && disqualificationReasons.length === 0;
   const scoreBreakdown = scorePivotCenterCandidateBreakdown(
     ranked,
     project.pivotCenter,
     seed.point,
     result.metrics.irrigatedAcres,
-    boundary.feasible,
+    feasible,
   );
 
   return {
@@ -155,8 +164,8 @@ function buildAlternative(
     metrics: ranked.metrics,
     score: totalScore(scoreBreakdown),
     scoreBreakdown,
-    feasible: boundary.feasible && ranked.disqualificationReasons.length === 0,
-    disqualificationReasons: ranked.disqualificationReasons,
+    feasible,
+    disqualificationReasons,
     warnings: ranked.warnings,
     sourceSeed: seed.kind,
     distanceFromCurrentMeters: distance(project.pivotCenter, seed.point),
@@ -181,13 +190,13 @@ function scorePivotCenterCandidateBreakdown(
   current: XY,
   candidate: XY,
   irrigatedAcres: number,
-  boundaryFeasible: boolean,
+  feasible: boolean,
 ): PivotCenterScoreBreakdown {
   const coverage = irrigatedAcres;
   const outsideField = -Math.min(45, ranked.metrics.outsideFieldAcres * 12);
   const obstacle = -ranked.metrics.obstacleConflictCount * 18;
   const distancePenalty = -Math.min(25, distance(current, candidate) / 20);
-  const feasibility = boundaryFeasible && ranked.disqualificationReasons.length === 0 ? 35 : -65;
+  const feasibility = feasible ? 35 : -65;
   return {
     coverage: Number(coverage.toFixed(6)),
     outsideField: Number(outsideField.toFixed(6)),

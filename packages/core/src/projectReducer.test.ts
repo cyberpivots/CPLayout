@@ -229,6 +229,35 @@ assert.equal(appliedRecommendationState.project.fieldBoundary.length, sampleProj
 assert.equal(appliedRecommendationState.project.obstacles.at(-1)?.id, "rec-apply-001-obstacle-1");
 assert.equal(appliedRecommendationState.past.length, 1);
 
+const hardInfeasibleRecommendationState = reduceProjectEditorState(createProjectEditorState(sampleProject), {
+  type: "apply_model_recommendation",
+  recommendation: {
+    id: "rec-hard-infeasible",
+    projectId: sampleProject.id,
+    modelName: "test-review-gated-recommender",
+    modelVersion: "0.1.0",
+    createdAt: "2026-05-30T00:00:00.000Z",
+    projectCrs: sampleProject.projectCrs,
+    summary: "Blocked road conflict recommendation.",
+    proposedGeometry: {
+      projectCrs: sampleProject.projectCrs,
+      pivotCenter: { x: sampleProject.pivotCenter.x + 2, y: sampleProject.pivotCenter.y + 2 },
+    },
+    confidence: 0.4,
+    evidenceIds: [],
+    reviewStatus: "unreviewed",
+    metadata: {
+      feasible: false,
+      hardFailures: ["South-road exclusion crossing."],
+      roadConflict: true,
+      obstacleConflictCount: 1,
+    },
+    warnings: ["Hard infeasible."],
+  },
+});
+assert.match(hardInfeasibleRecommendationState.lastError ?? "", /hard infeasible/);
+assert.deepEqual(hardInfeasibleRecommendationState.project.pivotCenter, sampleProject.pivotCenter);
+
 const metadataOnlyRecommendationState = reduceProjectEditorState(createProjectEditorState(sampleProject), {
   type: "apply_model_recommendation",
   recommendation: {

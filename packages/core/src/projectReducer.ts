@@ -1,5 +1,5 @@
 import { importProjectedGeoJsonToProject, importSurveyCsvToProject } from "./projectImports";
-import type { ModelRecommendation } from "./layoutEvidence";
+import { modelRecommendationHardFailures, type ModelRecommendation } from "./layoutEvidence";
 import { PivotProjectSchema } from "./projectDocument";
 import type { ProjectSettings } from "./settings";
 import type { LonLat, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SurveyPoint, UnitSystem, XY } from "./types";
@@ -254,6 +254,10 @@ function promoteSurveyPoint(state: ProjectEditorState, id: string, target: Infra
 
 function applyModelRecommendation(state: ProjectEditorState, recommendation: ModelRecommendation): ProjectEditorState {
   const geometry = recommendation.proposedGeometry;
+  const hardFailures = modelRecommendationHardFailures(recommendation);
+  if (hardFailures.length > 0) {
+    throw new Error(`Recommendation ${recommendation.id} is hard infeasible: ${hardFailures.join("; ")}`);
+  }
   if (recommendation.projectId !== state.project.id) {
     throw new Error(`Recommendation ${recommendation.id} belongs to ${recommendation.projectId}, not ${state.project.id}.`);
   }

@@ -2,7 +2,7 @@ import { AlertTriangle, Check, ClipboardList, Clock3, Database, Eye, MapPinned, 
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { buildExpertReviewFindings, deriveRecommendationReviewState, type AppSettings, type ExpertReviewFinding, type LayoutDecisionRecord, type LayoutEvidenceRecord, type LayoutResult, type ModelRecommendation, type PivotProject } from "@cplayout/core";
+import { buildExpertReviewFindings, deriveRecommendationReviewState, modelRecommendationHardFailures, type AppSettings, type ExpertReviewFinding, type LayoutDecisionRecord, type LayoutEvidenceRecord, type LayoutResult, type ModelRecommendation, type PivotProject } from "@cplayout/core";
 import { buildPivotCenterModelRecommendation, evaluateLayout, optimizePivotCenter } from "@cplayout/geometry";
 import {
   appendLayoutDecisionAsync,
@@ -106,6 +106,11 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
         setStatus(`Recommendation ${recommendation.id} has no projected XY geometry to apply.`);
         return;
       }
+      const hardFailures = modelRecommendationHardFailures(recommendation);
+      if (hardFailures.length > 0) {
+        setStatus(`Apply XY blocked for ${recommendation.id}: ${hardFailures.join("; ")}`);
+        return;
+      }
       setPendingApply(recommendation);
     } catch (error) {
       setStatus(errorMessage(error));
@@ -195,6 +200,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
           ) : sortedRecommendations(reviewData.modelRecommendations).map((recommendation) => {
             const evidenceRecords = evidenceForRecommendation(recommendation, reviewData.evidenceRecords);
             const previewSelected = recommendation.id === selectedPreviewRecommendationId;
+            const hardFailures = modelRecommendationHardFailures(recommendation);
             return (
             <View key={recommendation.id} style={styles.recommendation}>
               <View style={styles.recommendationHeader}>
@@ -207,6 +213,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
                 <Text style={styles.reviewStatus}>{deriveRecommendationReviewState(recommendation, reviewData.layoutDecisions)}</Text>
               </View>
               <Text style={styles.geometrySummary}>{geometrySummary(recommendation)}</Text>
+              {hardFailures.length > 0 ? <Text style={styles.infeasibleNote}>Apply XY blocked: {hardFailures.join("; ")}</Text> : null}
               {gpuSummary(recommendation, evidenceRecords) ? <Text style={styles.geometrySummary}>{gpuSummary(recommendation, evidenceRecords)}</Text> : null}
               {scoreBreakdownSummary(recommendation) ? <Text style={styles.geometrySummary}>{scoreBreakdownSummary(recommendation)}</Text> : null}
               <View style={styles.evidenceRecordList}>
@@ -232,7 +239,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
               <View style={styles.decisionActions}>
                 <ReviewButton icon={<Eye size={16} color={previewSelected ? "#ffffff" : "#254234"} />} label={previewSelected ? "Previewing" : "Preview"} primary={previewSelected} onPress={() => onPreviewRecommendation?.(previewSelected ? null : recommendation)} />
                 <ReviewButton icon={<Check size={16} color="#ffffff" />} label="Accept" primary onPress={() => recordDecision(recommendation, "accepted")} />
-                <ReviewButton icon={<MapPinned size={16} color="#ffffff" />} label="Apply" primary onPress={() => applyRecommendation(recommendation)} />
+                <ReviewButton icon={<MapPinned size={16} color={hardFailures.length > 0 ? "#8b1e18" : "#ffffff"} />} label="Apply" primary={hardFailures.length === 0} disabled={hardFailures.length > 0} onPress={() => applyRecommendation(recommendation)} />
                 <ReviewButton icon={<X size={16} color="#254234" />} label="Reject" onPress={() => recordDecision(recommendation, "rejected")} />
                 <ReviewButton icon={<Clock3 size={16} color="#254234" />} label="Defer" onPress={() => recordDecision(recommendation, "deferred")} />
               </View>
@@ -273,11 +280,11 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
   );
 }
 
-function ReviewButton({ icon, label, onPress, primary = false }: { icon: React.ReactNode; label: string; onPress: () => void; primary?: boolean }): React.JSX.Element {
+function ReviewButton({ disabled = false, icon, label, onPress, primary = false }: { disabled?: boolean; icon: React.ReactNode; label: string; onPress: () => void; primary?: boolean }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.reviewButton, primary && styles.reviewButtonPrimary]}>
+    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.reviewButton, primary && styles.reviewButtonPrimary, disabled && styles.reviewButtonDisabled]}>
       {icon}
-      <Text style={[styles.reviewButtonText, primary && styles.reviewButtonTextPrimary]}>{label}</Text>
+      <Text style={[styles.reviewButtonText, primary && styles.reviewButtonTextPrimary, disabled && styles.reviewButtonTextDisabled]}>{label}</Text>
     </Pressable>
   );
 }
@@ -625,6 +632,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 17,
   },
+  infeasibleNote: {
+    color: "#8b1e18",
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 17,
+  },
   evidenceRecordList: {
     gap: 6,
   },
@@ -667,6 +680,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#254234",
     borderColor: "#254234",
   },
+  reviewButtonDisabled: {
+    backgroundColor: "#f7eeee",
+    borderColor: "#d8b4ad",
+  },
   reviewButtonText: {
     color: "#254234",
     fontSize: 12,
@@ -674,6 +691,9 @@ const styles = StyleSheet.create({
   },
   reviewButtonTextPrimary: {
     color: "#ffffff",
+  },
+  reviewButtonTextDisabled: {
+    color: "#8b1e18",
   },
   emptyText: {
     color: "#526257",

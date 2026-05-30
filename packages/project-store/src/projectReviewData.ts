@@ -286,6 +286,8 @@ function parseRecommendationGeoJson(input: Record<string, unknown>): unknown[] {
     evidenceIds: arrayValue(base.evidenceIds),
     reviewStatus: base.reviewStatus,
     score: base.score === null ? undefined : base.score,
+    scoreBreakdown: base.scoreBreakdown === null ? undefined : base.scoreBreakdown,
+    metadata: base.metadata === null ? undefined : base.metadata,
     warnings: arrayValue(base.warnings),
   }));
 }
@@ -440,6 +442,8 @@ function validateGroupedRecommendationProperties(
     "summary",
     "warnings",
     "evidenceIds",
+    "metadata",
+    "scoreBreakdown",
     "displayWgs84",
   ];
   for (const key of keys) {

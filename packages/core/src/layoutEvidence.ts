@@ -207,6 +207,31 @@ export function parseModelRecommendation(input: unknown): ModelRecommendation {
   return ModelRecommendationSchema.parse(input);
 }
 
+export function modelRecommendationHardFailures(recommendation: ModelRecommendation): string[] {
+  const metadata = recommendation.metadata ?? {};
+  const failures = metadata.hardFailures;
+  const reasons = Array.isArray(failures)
+    ? failures.filter((failure): failure is string => typeof failure === "string" && failure.trim().length > 0)
+    : [];
+  if (metadata.feasible === false && reasons.length === 0) {
+    reasons.push("Recommendation metadata marks this candidate infeasible.");
+  }
+  if (metadata.roadConflict === true) reasons.push("Recommendation crosses a south-road exclusion.");
+  if (metadata.buildingTreeConflict === true) reasons.push("Recommendation crosses a building/tree exclusion.");
+  if (metadata.roadBuildingTreeConflict === true) reasons.push("Recommendation crosses road, building, or tree exclusion masks.");
+  if (typeof metadata.obstacleConflictCount === "number" && metadata.obstacleConflictCount > 0) {
+    reasons.push("Recommendation has hard obstacle conflicts.");
+  }
+  if (typeof metadata.outsideFieldAcres === "number" && metadata.outsideFieldAcres > 0.0001) {
+    reasons.push("Recommendation leaves wet coverage outside the target field.");
+  }
+  return [...new Set(reasons)];
+}
+
+export function isModelRecommendationHardInfeasible(recommendation: ModelRecommendation): boolean {
+  return modelRecommendationHardFailures(recommendation).length > 0;
+}
+
 export function deriveRecommendationReviewState(
   recommendation: ModelRecommendation,
   decisions: LayoutDecisionRecord[],

@@ -10,17 +10,28 @@ import numpy as np
 
 from cplayout_ml.cli import (
     DEFAULT_VISION_THRESHOLDS,
+    best_boundary_candidate,
     boundary_improvement_acceptance,
+    boundary_improvement_failure_mode,
+    build_obstruction_masks,
+    circle_obstruction_conflicts,
     detect_imagery_field_boundary,
+    design_hard_failures,
     evaluate_vision_fixtures,
     extract_named_polygon_from_kml,
+    extract_named_point_from_kml,
     field_boundary_from_hough_lines,
     improve_boundary_detector,
+    load_operator_truth_labels,
     operator_comparison_metrics,
+    pivot_truth_metrics,
     project_image_boundary_to_xy,
+    score_boundary_candidate,
     read_kml_or_kmz_text,
     read_operator_kml_source,
-    score_boundary_candidate,
+    run_boundary_improvement_iterations,
+    truth_labels_from_operator_boundary,
+    vision_recommendation_geometry,
 )
 
 
@@ -42,6 +53,46 @@ def polygon_kml(name: str, coordinates: str, geometry: str = "Polygon") -> str:
     </Document></kml>"""
 
 
+TARGET_FIELD_BOUNDARY = "-104.0748668576167,39.89927718177743,0 -104.0748003065396,39.8991358739091,0 -104.074557674454,39.89916189917877,0 -104.0683361072595,39.89912667267359,0 -104.0682509986798,39.89929867389615,0 -104.0682557581712,39.89943674492907,0 -104.0681205294466,39.89949594403656,0 -104.0677859296929,39.89961546897757,0 -104.067494069811,39.89975702666375,0 -104.0671600654333,39.89993675632151,0 -104.0668098105665,39.90019192015236,0 -104.0665851825506,39.90037554859754,0 -104.0662883345574,39.90018017265919,0 -104.0661526426344,39.90008321388978,0 -104.0660965520057,39.90014630420742,0 -104.0661019491623,39.90066551543062,0 -104.065331187446,39.90176190656482,0 -104.0653673382966,39.90624908884386,0 -104.074689890918,39.90630137543089,0 -104.0748668576167,39.89927718177743,0"
+
+
+def target_field_boundary_kml() -> str:
+    return polygon_kml("TARGET_FIELD_BOUNDARY", TARGET_FIELD_BOUNDARY)
+
+
+def fixed_label_kml() -> str:
+    return """<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+      <Placemark><name>TRUE_PIVOT_CENTER</name><Point><coordinates>-104.5,40.5,0</coordinates></Point></Placemark>
+      <Placemark><name>TARGET_FIELD_BOUNDARY</name><Polygon><outerBoundaryIs><LinearRing><coordinates>""" + TARGET_FIELD_BOUNDARY + """</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+      <Placemark><name>SOUTH_ROAD_EXCLUSION</name><Polygon><outerBoundaryIs><LinearRing><coordinates>-104.8,40.1,0 -104.2,40.1,0 -104.2,40.2,0 -104.8,40.2,0 -104.8,40.1,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+      <Placemark><name>SE_BUILDING_TREE_EXCLUSION</name><Polygon><outerBoundaryIs><LinearRing><coordinates>-104.2,40.2,0 -104.1,40.2,0 -104.1,40.3,0 -104.2,40.3,0 -104.2,40.2,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+    </Document></kml>"""
+
+
+def target_field_boundary_image_polygon() -> list[dict[str, float]]:
+    return [
+        {"x": 52.0, "y": 950.0},
+        {"x": 58.0, "y": 968.0},
+        {"x": 82.0, "y": 964.0},
+        {"x": 694.0, "y": 969.0},
+        {"x": 704.0, "y": 946.0},
+        {"x": 704.0, "y": 928.0},
+        {"x": 718.0, "y": 920.0},
+        {"x": 751.0, "y": 904.0},
+        {"x": 780.0, "y": 886.0},
+        {"x": 813.0, "y": 862.0},
+        {"x": 848.0, "y": 828.0},
+        {"x": 870.0, "y": 804.0},
+        {"x": 899.0, "y": 830.0},
+        {"x": 913.0, "y": 843.0},
+        {"x": 918.0, "y": 835.0},
+        {"x": 918.0, "y": 766.0},
+        {"x": 994.0, "y": 622.0},
+        {"x": 990.0, "y": 32.0},
+        {"x": 70.0, "y": 25.0},
+    ]
+
+
 GOOGLE_EARTH_TEMPORARY_PLACES_OPERATOR_KML = """<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
 <Document>
@@ -60,7 +111,7 @@ GOOGLE_EARTH_TEMPORARY_PLACES_OPERATOR_KML = """<?xml version="1.0" encoding="UT
       <outerBoundaryIs>
         <LinearRing>
           <coordinates>
-            -104.0748668576167,39.89927718177743,0 -104.0748003065396,39.8991358739091,0 -104.074557674454,39.89916189917877,0 -104.0683361072595,39.89912667267359,0 -104.0682509986798,39.89929867389615,0 -104.0682557581712,39.89943674492907,0 -104.0681205294466,39.89949594403656,0 -104.0677859296929,39.89961546897757,0 -104.067494069811,39.89975702666375,0 -104.0671600654333,39.89993675632151,0 -104.0668098105665,39.90019192015236,0 -104.0665851825506,39.90037554859754,0 -104.0662883345574,39.90018017265919,0 -104.0661526426344,39.90008321388978,0 -104.0660965520057,39.90014630420742,0 -104.0661019491623,39.90066551543062,0 -104.065331187446,39.90176190656482,0 -104.0653673382966,39.90624908884386,0 -104.074689890918,39.90630137543089,0 -104.0748668576167,39.89927718177743,0
+            """ + TARGET_FIELD_BOUNDARY + """
           </coordinates>
         </LinearRing>
       </outerBoundaryIs>
@@ -129,6 +180,69 @@ class BoundaryDetectorTests(unittest.TestCase):
 
         self.assertTrue(scored["rejected"])
         self.assertIn("candidate resembles an extent box around the pivot ring rather than imagery edges", scored["rejectionReasons"])
+
+    def test_screenshot_extent_candidate_is_rejected(self) -> None:
+        edges = np.zeros((500, 500), dtype=np.uint8)
+        cv2.rectangle(edges, (1, 1), (499, 499), 255, 2)
+        candidate = {
+            "source": "opencv",
+            "method": "unit_test_screenshot_extent",
+            "polygon": [
+                {"x": 1.0, "y": 1.0},
+                {"x": 499.0, "y": 1.0},
+                {"x": 499.0, "y": 499.0},
+                {"x": 1.0, "y": 499.0},
+            ],
+        }
+
+        scored = score_boundary_candidate(cv2, edges, candidate, 500, 500, pivot_ring())
+
+        self.assertTrue(scored["rejected"])
+        self.assertIn("candidate resembles the screenshot extent rather than the target field boundary", scored["rejectionReasons"])
+
+    def test_operator_label_false_positive_and_distance_reject_boundary(self) -> None:
+        edges = np.zeros((500, 500), dtype=np.uint8)
+        cv2.rectangle(edges, (40, 40), (460, 460), 255, 4)
+        operator = [
+            {"x": 120.0, "y": 120.0},
+            {"x": 380.0, "y": 120.0},
+            {"x": 380.0, "y": 380.0},
+            {"x": 120.0, "y": 380.0},
+        ]
+        candidate = {
+            "source": "opencv",
+            "method": "unit_test_adjacent_field_and_road_inclusion",
+            "polygon": [
+                {"x": 40.0, "y": 40.0},
+                {"x": 460.0, "y": 40.0},
+                {"x": 460.0, "y": 460.0},
+                {"x": 40.0, "y": 460.0},
+            ],
+        }
+
+        scored = score_boundary_candidate(cv2, edges, candidate, 500, 500, pivot_ring(), operator)
+
+        self.assertTrue(scored["rejected"])
+        self.assertGreater(scored["operatorFalsePositiveAreaRatio"], DEFAULT_VISION_THRESHOLDS["maxBoundaryFalsePositiveRatio"])
+        self.assertIn("candidate includes too much area outside the operator TARGET_FIELD_BOUNDARY label", scored["rejectionReasons"])
+
+    def test_boundary_candidate_requires_edge_support(self) -> None:
+        edges = np.zeros((500, 500), dtype=np.uint8)
+        candidate = {
+            "source": "opencv",
+            "method": "unit_test_no_edge_support",
+            "polygon": [
+                {"x": 70.0, "y": 80.0},
+                {"x": 430.0, "y": 80.0},
+                {"x": 430.0, "y": 420.0},
+                {"x": 70.0, "y": 420.0},
+            ],
+        }
+
+        scored = score_boundary_candidate(cv2, edges, candidate, 500, 500, pivot_ring())
+
+        self.assertTrue(scored["rejected"])
+        self.assertIn("candidate lacks edge support along road, fenceline, or treeline cues", scored["rejectionReasons"])
 
     def test_road_fenceline_edges_score_rectangular_field(self) -> None:
         edges = np.zeros((500, 500), dtype=np.uint8)
@@ -201,6 +315,21 @@ class BoundaryDetectorTests(unittest.TestCase):
         self.assertEqual(len(parsed["polygon"]), 19)
         self.assertEqual(parsed["polygon"][0], {"longitude": -104.0748668576167, "latitude": 39.89927718177743})
         self.assertEqual(parsed["polygon"][-1], {"longitude": -104.074689890918, "latitude": 39.90630137543089})
+
+    def test_fixed_truth_labels_are_ingested_by_name(self) -> None:
+        labels = load_operator_truth_labels(None, fixed_label_kml(), "", None, None)
+
+        self.assertEqual(labels["truePivotCenter"]["wgs84Point"], {"longitude": -104.5, "latitude": 40.5})
+        self.assertEqual(len(labels["targetFieldBoundary"]["wgs84Polygon"]), 19)
+        self.assertEqual(len(labels["southRoadExclusion"]["wgs84Polygon"]), 4)
+        self.assertEqual(len(labels["seBuildingTreeExclusion"]["wgs84Polygon"]), 4)
+        self.assertIn("TRUE_PIVOT_CENTER parsed but cannot be rasterized", labels["truePivotCenter"]["warnings"][0])
+
+    def test_fixed_truth_label_point_rejects_missing_name(self) -> None:
+        parsed = extract_named_point_from_kml(fixed_label_kml(), "MISSING_CENTER")
+
+        self.assertIsNone(parsed["point"])
+        self.assertIn('No valid Point Placemark named "MISSING_CENTER" was found.', parsed["warnings"])
 
     def test_raw_operator_kml_text_source_records_hash_and_remote_icon(self) -> None:
         text, artifact = read_operator_kml_source(None, GOOGLE_EARTH_TEMPORARY_PLACES_OPERATOR_KML)
@@ -284,6 +413,212 @@ class BoundaryDetectorTests(unittest.TestCase):
         self.assertGreater(good_metrics["iou"], crop_metrics["iou"])
         self.assertLess(good_metrics["boundaryMeanDistancePixels"], crop_metrics["boundaryMeanDistancePixels"])
 
+    def test_old_large_rectangle_is_rejected_despite_high_operator_iou(self) -> None:
+        edges = np.zeros((1000, 1000), dtype=np.uint8)
+        cv2.rectangle(edges, (0, 0), (999, 999), 255, 4)
+        candidate = {
+            "source": "opencv",
+            "method": "unit_test_old_large_extent_rectangle",
+            "polygon": [
+                {"x": 0.0, "y": 0.0},
+                {"x": 999.0, "y": 0.0},
+                {"x": 999.0, "y": 999.0},
+                {"x": 0.0, "y": 999.0},
+            ],
+        }
+        operator = [
+            {"x": 40.0, "y": 40.0},
+            {"x": 959.0, "y": 40.0},
+            {"x": 959.0, "y": 959.0},
+            {"x": 500.0, "y": 930.0},
+            {"x": 40.0, "y": 959.0},
+        ]
+
+        scored = score_boundary_candidate(cv2, edges, candidate, 1000, 1000, {"center": {"x": 500.0, "y": 500.0}, "radius": 95.0}, operator)
+
+        self.assertGreater(scored["operatorLabelAlignment"], DEFAULT_VISION_THRESHOLDS["minOperatorBoundaryIoU"])
+        self.assertGreater(scored["operatorFalsePositiveAreaRatio"], 0.16)
+        self.assertLess(scored["operatorFalsePositiveAreaRatio"], 0.18)
+        self.assertTrue(scored["rejected"])
+        self.assertIn("candidate resembles the screenshot extent rather than the target field boundary", scored["rejectionReasons"])
+        self.assertIn("candidate includes too much area outside the operator TARGET_FIELD_BOUNDARY label", scored["rejectionReasons"])
+        self.assertIn(
+            "candidate is a 4-point axis-aligned rectangle and does not preserve irregular south/southeast TARGET_FIELD_BOUNDARY features",
+            scored["rejectionReasons"],
+        )
+
+    def test_19_point_target_boundary_rejects_rectangular_distractor(self) -> None:
+        edges = np.zeros((1000, 1000), dtype=np.uint8)
+        cv2.rectangle(edges, (40, 20), (999, 980), 255, 4)
+        operator = target_field_boundary_image_polygon()
+        candidate = {
+            "source": "opencv",
+            "method": "unit_test_adams_clipped_axis_aligned_extent_box",
+            "polygon": [
+                {"x": 40.0, "y": 20.0},
+                {"x": 999.0, "y": 20.0},
+                {"x": 999.0, "y": 980.0},
+                {"x": 40.0, "y": 980.0},
+            ],
+            "candidateWarnings": ["candidate is clipped by the screenshot edge and cannot be accepted as a complete imagery field boundary"],
+        }
+
+        scored = score_boundary_candidate(cv2, edges, candidate, 1000, 1000, {"center": {"x": 500.0, "y": 500.0}, "radius": 95.0}, operator)
+
+        self.assertEqual(len(operator), 19)
+        self.assertGreater(scored["operatorLabelAlignment"], DEFAULT_VISION_THRESHOLDS["minOperatorBoundaryIoU"])
+        self.assertTrue(scored["rejected"])
+        self.assertIn("candidate is a 4-point axis-aligned rectangle and does not preserve irregular south/southeast TARGET_FIELD_BOUNDARY features", scored["rejectionReasons"])
+        self.assertIn("candidate is clipped by the screenshot edge and cannot be accepted as a complete imagery field boundary", scored["rejectionReasons"])
+
+    def test_rejected_high_iou_rectangle_is_learning_evidence_not_cv_candidate(self) -> None:
+        rejected_rectangle = {
+            "source": "opencv",
+            "cues": ["unit_test_adams_clipped_axis_aligned_extent_box"],
+            "confidence": 0.771,
+            "rejected": True,
+            "rejectionReasons": [
+                "candidate is clipped by the screenshot edge and cannot be accepted as a complete imagery field boundary",
+                "candidate is a 4-point axis-aligned rectangle and does not preserve irregular south/southeast TARGET_FIELD_BOUNDARY features",
+            ],
+            "operatorLabelAlignment": 0.8358,
+            "operatorFalsePositiveAreaRatio": 0.1636,
+            "operatorBoundaryMeanDistancePixels": 110.5,
+            "imagePolygon": [
+                {"x": 40.0, "y": 20.0},
+                {"x": 999.0, "y": 20.0},
+                {"x": 999.0, "y": 980.0},
+                {"x": 40.0, "y": 980.0},
+            ],
+        }
+        accepted_irregular = {
+            "source": "opencv",
+            "cues": ["unit_test_irregular_edge_candidate"],
+            "confidence": 0.61,
+            "rejected": False,
+            "rejectionReasons": [],
+            "operatorLabelAlignment": 0.74,
+            "imagePolygon": target_field_boundary_image_polygon(),
+        }
+        iterations = [{
+            "iteration": 1,
+            "bestCandidate": accepted_irregular,
+            "bestAcceptedCandidate": accepted_irregular,
+            "bestRejectedCandidate": rejected_rectangle,
+            "operatorComparison": [],
+        }]
+
+        self.assertIs(best_boundary_candidate(iterations, rejected=False), accepted_irregular)
+        self.assertIs(best_boundary_candidate(iterations, rejected=True), rejected_rectangle)
+        self.assertIsNone(boundary_improvement_failure_mode(accepted_irregular, rejected_rectangle, iterations))
+
+        no_cv_failure = boundary_improvement_failure_mode(None, rejected_rectangle, iterations)
+        self.assertIsNotNone(no_cv_failure)
+        assert no_cv_failure is not None
+        self.assertEqual(no_cv_failure["code"], "clipped_axis_aligned_extent_box")
+
+    def test_mean_boundary_distance_above_gate_rejects_candidate(self) -> None:
+        edges = np.zeros((1000, 1000), dtype=np.uint8)
+        cv2.rectangle(edges, (100, 100), (900, 900), 255, 4)
+        operator = [
+            {"x": 220.0, "y": 220.0},
+            {"x": 780.0, "y": 220.0},
+            {"x": 780.0, "y": 780.0},
+            {"x": 220.0, "y": 780.0},
+            {"x": 340.0, "y": 720.0},
+            {"x": 300.0, "y": 620.0},
+        ]
+        candidate = {
+            "source": "opencv",
+            "method": "unit_test_far_rectangle",
+            "polygon": [
+                {"x": 100.0, "y": 100.0},
+                {"x": 900.0, "y": 100.0},
+                {"x": 900.0, "y": 900.0},
+                {"x": 100.0, "y": 900.0},
+            ],
+        }
+
+        scored = score_boundary_candidate(cv2, edges, candidate, 1000, 1000, {"center": {"x": 500.0, "y": 500.0}, "radius": 95.0}, operator)
+
+        self.assertGreater(scored["operatorBoundaryMeanDistancePixels"], DEFAULT_VISION_THRESHOLDS["maxBoundaryMeanDistancePx"])
+        self.assertTrue(scored["rejected"])
+        self.assertIn("candidate boundary is too far from the operator TARGET_FIELD_BOUNDARY label", scored["rejectionReasons"])
+
+    def test_target_field_boundary_fixture_is_operator_truth_not_cv_prediction(self) -> None:
+        parsed = extract_named_polygon_from_kml(target_field_boundary_kml(), "TARGET_FIELD_BOUNDARY")
+
+        self.assertEqual(parsed["warnings"], [])
+        self.assertIsNotNone(parsed["polygon"])
+        assert parsed["polygon"] is not None
+        self.assertEqual(len(parsed["polygon"]), 19)
+        truth = truth_labels_from_operator_boundary({
+            "source": "operator_kml",
+            "name": "TARGET_FIELD_BOUNDARY",
+            "wgs84Polygon": parsed["polygon"],
+            "projectedPolygon": [{"x": index, "y": index * 2.0} for index, _ in enumerate(parsed["polygon"])],
+            "imagePolygon": None,
+            "warnings": [],
+        })
+
+        self.assertIsNotNone(truth)
+        assert truth is not None
+        self.assertEqual(truth["targetFieldBoundary"]["name"], "TARGET_FIELD_BOUNDARY")
+        self.assertEqual(truth["targetFieldBoundary"]["wgs84Polygon"], parsed["polygon"])
+
+    def test_pivot_truth_offset_radius_mismatch_and_obstruction_conflict_are_hard_failures(self) -> None:
+        image = np.zeros((500, 500, 3), dtype=np.uint8)
+        truth_labels = {
+            "truePivotCenter": {"imagePoint": {"x": 280.0, "y": 250.0}},
+            "southRoadExclusion": {"name": "SOUTH_ROAD_EXCLUSION", "imagePolygon": [
+                {"x": 220.0, "y": 320.0},
+                {"x": 320.0, "y": 320.0},
+                {"x": 320.0, "y": 350.0},
+                {"x": 220.0, "y": 350.0},
+            ]},
+            "seBuildingTreeExclusion": {"name": "SE_BUILDING_TREE_EXCLUSION", "imagePolygon": [
+                {"x": 310.0, "y": 250.0},
+                {"x": 340.0, "y": 250.0},
+                {"x": 340.0, "y": 280.0},
+                {"x": 310.0, "y": 280.0},
+            ]},
+        }
+        overlay_circle = {"center": {"x": 250.0, "y": 250.0}, "radius": 105.0}
+
+        truth = pivot_truth_metrics(pivot_ring(), overlay_circle, truth_labels)
+        masks = build_obstruction_masks(cv2, image, truth_labels)
+        conflicts = circle_obstruction_conflicts(cv2, image, overlay_circle, masks)
+        failures = design_hard_failures(None, [], truth, conflicts)
+
+        self.assertGreater(truth["centerTruthOffsetPx"], DEFAULT_VISION_THRESHOLDS["maxCenterTruthOffsetPx"])
+        self.assertGreater(truth["radiusTruthMismatchRatio"], DEFAULT_VISION_THRESHOLDS["maxRadiusMismatchRatio"])
+        self.assertTrue(conflicts["southRoad"])
+        self.assertTrue(conflicts["seBuildingTree"])
+        self.assertIn("CPLayout wet circle crosses SOUTH_ROAD_EXCLUSION.", failures)
+        self.assertIn("CPLayout wet circle crosses SE_BUILDING_TREE_EXCLUSION.", failures)
+
+    def test_project_reference_obstacles_are_not_reemitted_as_untrusted_vision_obstacles(self) -> None:
+        geometry = vision_recommendation_geometry(
+            "LOCAL:TEST",
+            {
+                "projectCrs": "LOCAL:TEST",
+                "pivotCenter": {"x": 250.0, "y": 250.0},
+                "machine": {"spanLengthsMeters": [95.0], "overhangMeters": 0.0, "endGunThrowMeters": 0.0},
+                "obstacles": [{
+                    "id": "odd-center-square",
+                    "polygon": [
+                        {"x": 240.0, "y": 240.0},
+                        {"x": 260.0, "y": 240.0},
+                        {"x": 260.0, "y": 260.0},
+                    ],
+                }],
+            },
+            None,
+            [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}, {"x": 1.0, "y": 1.0}],
+        )
+
+        self.assertNotIn("obstaclePolygons", geometry)
+
     def test_evaluate_vision_fixtures_writes_deterministic_metrics(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -330,19 +665,21 @@ class BoundaryDetectorTests(unittest.TestCase):
             cv2.circle(image, (250, 250), 95, (105, 150, 100), 3)
             map_canvas = root / "map.png"
             full_window = root / "full.png"
+            proof_kml = root / "proof.kml"
             cv2.imwrite(str(map_canvas), image)
             cv2.imwrite(str(full_window), image)
+            proof_kml.write_text("<kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document /></kml>", encoding="utf-8")
             output_dir = root / "loop"
 
             self.assertEqual(
                 improve_boundary_detector(
                     map_canvas,
                     full_window,
+                    proof_kml,
                     None,
                     None,
-                    None,
-                    None,
-                    "USER DRAWN FIELD BOUNDARY",
+                    target_field_boundary_kml(),
+                    "TARGET_FIELD_BOUNDARY",
                     output_dir,
                     2,
                     "2026-05-30T00:00:00.000Z",
@@ -353,8 +690,32 @@ class BoundaryDetectorTests(unittest.TestCase):
             report = json.loads((output_dir / "boundary-improvement-loop.json").read_text(encoding="utf-8"))
             self.assertEqual(report["iterationCount"], 5)
             self.assertFalse(report["canonicalGeometryMutation"])
+            self.assertFalse(report["acceptance"]["accepted"])
+            self.assertIn("targetFieldBoundary", report["detections"]["truthLabels"])
+            self.assertEqual(report["detections"]["truthBoundary"]["name"], "TARGET_FIELD_BOUNDARY")
+            self.assertIn("cvCandidateBoundary", report["detections"])
+            self.assertIn("bestAcceptedCandidate", report["detections"])
+            self.assertIn("bestRejectedCandidate", report["detections"])
+            self.assertEqual(report["operatorGuidedLearning"]["role"], "training_and_scoring_evidence_only")
+            if report["detections"]["cvCandidateBoundary"] is None:
+                self.assertIsNotNone(report["failureMode"])
+            else:
+                self.assertFalse(report["detections"]["cvCandidateBoundary"]["rejected"])
             self.assertIn("surface_color_variation", [iteration["config"]["name"] for iteration in report["iterations"]])
             self.assertTrue((output_dir / "boundary-improvement-annotated.png").exists())
+
+    def test_improvement_iteration_runner_records_requested_100_iterations(self) -> None:
+        image = np.full((500, 500, 3), (82, 120, 74), dtype=np.uint8)
+        cv2.rectangle(image, (72, 84), (428, 416), (35, 35, 35), 4)
+        cv2.line(image, (95, 410), (210, 450), (35, 35, 35), 3)
+        cv2.circle(image, (250, 250), 95, (105, 150, 100), 3)
+
+        iterations = run_boundary_improvement_iterations(cv2, image, pivot_ring(), None, 100)
+
+        self.assertEqual(len(iterations), 100)
+        self.assertEqual(iterations[-1]["iteration"], 100)
+        self.assertIn("bestRejectedCandidate", iterations[0])
+        self.assertIn("bestAcceptedCandidate", iterations[0])
 
     def test_boundary_acceptance_requires_gpu_and_projected_boundary(self) -> None:
         candidate = {

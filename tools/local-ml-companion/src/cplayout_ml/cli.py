@@ -21,9 +21,20 @@ VISION_SCHEMA_VERSION = "cplayout-design-vision-review-v1"
 DEFAULT_CREATED_AT = "1970-01-01T00:00:00.000Z"
 DEFAULT_VISION_THRESHOLDS = {
     "maxCenterOffsetRatio": 0.05,
-    "maxRadiusMismatchRatio": 0.08,
+    "maxCenterTruthOffsetPx": 20.0,
+    "maxRadiusMismatchRatio": 0.05,
+    "maxBoundaryFalsePositiveRatio": 0.08,
+    "maxBoundaryMeanDistancePx": 80.0,
+    "minOperatorBoundaryIoU": 0.72,
+    "minBoundaryEdgeAlignment": 0.12,
     "minDetectionConfidence": 0.65,
     "minFieldBoundaryConfidence": 0.58,
+}
+TRUTH_LABEL_NAMES = {
+    "truePivotCenter": "TRUE_PIVOT_CENTER",
+    "targetFieldBoundary": "TARGET_FIELD_BOUNDARY",
+    "southRoadExclusion": "SOUTH_ROAD_EXCLUSION",
+    "seBuildingTreeExclusion": "SE_BUILDING_TREE_EXCLUSION",
 }
 SAM2_CONFIG_ENV = "CPLAYOUT_SAM2_CONFIG"
 SAM2_CHECKPOINT_ENV = "CPLAYOUT_SAM2_CHECKPOINT"
@@ -70,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     vision.add_argument("--operator-boundary-kml", help='Optional KML/KMZ containing one named operator-drawn field boundary Polygon. Use "-" to read KML from stdin.')
     vision.add_argument("--operator-boundary-kml-text", help="Optional raw KML text for one named operator-drawn field boundary Polygon.")
+    vision.add_argument("--operator-labels-kml", help="Optional KML/KMZ containing fixed operator labels: TRUE_PIVOT_CENTER, TARGET_FIELD_BOUNDARY, SOUTH_ROAD_EXCLUSION, and SE_BUILDING_TREE_EXCLUSION.")
+    vision.add_argument("--operator-labels-kml-text", help="Optional raw KML text containing fixed operator labels.")
     vision.add_argument(
       "--operator-boundary-name",
       default="USER DRAWN FIELD BOUNDARY",
@@ -120,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
             args.infer_field_boundary,
             args.operator_boundary_kml,
             args.operator_boundary_kml_text,
+            args.operator_labels_kml,
+            args.operator_labels_kml_text,
             args.operator_boundary_name,
             args.sam2_config,
             args.sam2_checkpoint,
@@ -211,6 +226,7 @@ def improve_boundary_detector(
             project_reference,
             overlay_circle,
         )
+    truth_labels = truth_labels_from_operator_boundary(operator_field_boundary)
 
     operator_polygon = operator_field_boundary.get("imagePolygon") if operator_field_boundary is not None else None
     gpu_status = probe_cuda()
@@ -218,10 +234,13 @@ def improve_boundary_detector(
     iteration_count = max(5, min_iterations)
     iterations = run_boundary_improvement_iterations(cv, image, pivot_crop_ring, operator_polygon, iteration_count)
     best_iteration = best_boundary_iteration(iterations)
-    best_candidate = best_iteration.get("bestCandidate") if best_iteration else None
-    projected_best_boundary = project_image_boundary_to_xy(best_candidate, overlay_circle, project_reference) if project_reference is not None else None
-    if best_candidate is not None and projected_best_boundary is not None:
-        best_candidate["projectedPolygon"] = projected_best_boundary
+    best_accepted_candidate = best_boundary_candidate(iterations, rejected=False)
+    best_rejected_candidate = best_boundary_candidate(iterations, rejected=True)
+    cv_candidate_boundary = best_accepted_candidate
+    projected_best_boundary = project_image_boundary_to_xy(cv_candidate_boundary, overlay_circle, project_reference) if project_reference is not None else None
+    if cv_candidate_boundary is not None and projected_best_boundary is not None:
+        cv_candidate_boundary["projectedPolygon"] = projected_best_boundary
+    failure_mode = boundary_improvement_failure_mode(cv_candidate_boundary, best_rejected_candidate, iterations)
     attribution = detect_attribution_cue(cv, full_window_image) if full_window_image is not None else {"present": None}
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -232,7 +251,7 @@ def improve_boundary_detector(
         annotated_path,
         pivot_crop_ring,
         overlay_circle,
-        best_candidate,
+        cv_candidate_boundary if cv_candidate_boundary is not None else best_rejected_candidate,
         operator_field_boundary,
         best_iteration.get("operatorComparison", []) if best_iteration else [],
     )
@@ -264,12 +283,19 @@ def improve_boundary_detector(
         "detections": {
             "pivotCropRing": pivot_crop_ring,
             "overlayCircle": overlay_circle,
+            "truthBoundary": operator_field_boundary,
+            "cvCandidateBoundary": cv_candidate_boundary,
+            "bestAcceptedCandidate": best_accepted_candidate,
+            "bestRejectedCandidate": best_rejected_candidate,
             "operatorFieldBoundary": operator_field_boundary,
+            "truthLabels": truth_labels,
             "attribution": attribution,
         },
         "iterations": iterations,
         "bestIteration": best_iteration,
-        "acceptance": boundary_improvement_acceptance(best_candidate, best_iteration, operator_polygon, gpu_status, projected_best_boundary),
+        "operatorGuidedLearning": operator_guided_learning_summary(operator_polygon, iterations, best_rejected_candidate),
+        "failureMode": failure_mode,
+        "acceptance": boundary_improvement_acceptance(cv_candidate_boundary, best_iteration, operator_polygon, gpu_status, projected_best_boundary, failure_mode),
         "researchBasis": [
             "OpenCV edge, contour, morphology, Hough-line, and color-threshold cues are combined because field boundaries are often roads, fences, tree lines, straight property separations, structures, or crop/soil color transitions.",
             "Operator labels are scoring feedback only; they do not become model predictions or mutate projected XY geometry.",
@@ -285,7 +311,8 @@ def improve_boundary_detector(
         "iterations": str(cases_path),
         "annotatedPng": str(annotated_path),
         "iterationCount": len(iterations),
-        "bestConfidence": best_candidate.get("confidence") if best_candidate else None,
+        "bestConfidence": cv_candidate_boundary.get("confidence") if cv_candidate_boundary else None,
+        "bestRejectedConfidence": best_rejected_candidate.get("confidence") if best_rejected_candidate else None,
         "bestOperatorIoU": best_iteration.get("bestOperatorIoU") if best_iteration else None,
         "accepted": report["acceptance"]["accepted"],
         "gpuCudaAvailable": gpu_status.get("cudaAvailable"),
@@ -433,6 +460,8 @@ def run_boundary_improvement_iterations(
         if config.get("operatorAssistedRanking") and operator_image_polygon is not None:
             scored = [operator_assisted_candidate(candidate) for candidate in scored]
         scored = sorted(scored, key=lambda item: item["confidence"], reverse=True)
+        accepted_candidates = [candidate for candidate in scored if not candidate["rejected"]]
+        rejected_candidates = [candidate for candidate in scored if candidate["rejected"]]
         comparisons = []
         if operator_image_polygon is not None:
             comparisons = [
@@ -444,12 +473,15 @@ def run_boundary_improvement_iterations(
                 if candidate.get("imagePolygon")
             ]
             comparisons = sorted(comparisons, key=lambda item: (item["iou"], -item["boundaryMeanDistancePixels"]), reverse=True)
-        best = next((candidate for candidate in scored if not candidate["rejected"]), scored[0] if scored else None)
+        best = accepted_candidates[0] if accepted_candidates else (rejected_candidates[0] if rejected_candidates else None)
+        best_rejected = rejected_candidates[0] if rejected_candidates else None
         iterations.append({
             "iteration": index,
             "config": config,
             "candidateCount": len(scored),
             "bestCandidate": best,
+            "bestAcceptedCandidate": accepted_candidates[0] if accepted_candidates else None,
+            "bestRejectedCandidate": best_rejected,
             "topCandidates": [candidate_audit_summary(candidate) for candidate in scored[:8]],
             "operatorComparison": comparisons[:8],
             "bestOperatorIoU": comparisons[0]["iou"] if comparisons else None,
@@ -547,6 +579,7 @@ def boundary_candidates_for_edges(
         })
     if config.get("surface"):
         candidates.extend(surface_feature_boundary_candidates(cv, image, edges, width, height, pivot_crop_ring, config["name"]))
+    candidates.extend(irregular_edge_boundary_candidates(cv, edges, width, height, pivot_crop_ring, config["name"]))
     return dedupe_boundary_candidates(candidates)
 
 
@@ -585,6 +618,48 @@ def surface_feature_boundary_candidates(
     return candidates
 
 
+def irregular_edge_boundary_candidates(
+    cv: Any,
+    edges: Any,
+    width: int,
+    height: int,
+    pivot_crop_ring: dict[str, Any] | None,
+    config_name: str,
+) -> list[dict[str, Any]]:
+    closed = cv.morphologyEx(edges, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_RECT, (17, 17)), iterations=1)
+    closed = cv.dilate(closed, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)), iterations=1)
+    contours, _ = cv.findContours(closed, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    candidates = []
+    center = None
+    if pivot_crop_ring is not None:
+        center = {
+            "x": float(pivot_crop_ring["center"]["x"]),
+            "y": float(pivot_crop_ring["center"]["y"]),
+        }
+    for contour in sorted(contours, key=cv.contourArea, reverse=True)[:10]:
+        area = float(cv.contourArea(contour))
+        area_ratio = area / max(1, width * height)
+        if area_ratio < 0.035 or area_ratio > 0.88:
+            continue
+        perimeter = float(cv.arcLength(contour, True))
+        if perimeter <= 0:
+            continue
+        approx = cv.approxPolyDP(contour, 0.012 * perimeter, True)
+        if len(approx) < 5 or len(approx) > 28:
+            continue
+        polygon = clamp_image_polygon([{"x": float(point[0][0]), "y": float(point[0][1])} for point in approx], width, height)
+        if center is not None and not image_point_in_polygon(center, polygon):
+            continue
+        if looks_like_axis_aligned_rectangle(polygon) or looks_like_screenshot_extent_box(polygon, width, height):
+            continue
+        candidates.append({
+            "source": "opencv",
+            "method": f"{config_name}:irregular_road_fenceline_treeline_edge_contour",
+            "polygon": polygon,
+        })
+    return candidates
+
+
 def operator_assisted_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     alignment = candidate.get("operatorLabelAlignment")
     if alignment is None:
@@ -592,7 +667,7 @@ def operator_assisted_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     adjusted = dict(candidate)
     adjusted["confidence"] = round(max(candidate["confidence"], min(0.92, 0.42 + alignment * 0.42)), 3)
     adjusted["cues"] = [*candidate.get("cues", []), "operator_feedback_ranked_not_predicted"]
-    if adjusted["rejected"] and alignment >= 0.72 and adjusted["rejectionReasons"] == ["candidate is clipped by the screenshot edge and cannot be accepted as a complete imagery field boundary"]:
+    if adjusted["rejected"] and alignment >= DEFAULT_VISION_THRESHOLDS["minOperatorBoundaryIoU"] and adjusted["rejectionReasons"] == ["candidate is clipped by the screenshot edge and cannot be accepted as a complete imagery field boundary"]:
         adjusted["rejectionReasons"] = [
             "candidate overlaps operator label but remains rejected because screenshot clipping prevents complete imagery-only acceptance"
         ]
@@ -614,14 +689,91 @@ def dedupe_boundary_candidates(candidates: list[dict[str, Any]]) -> list[dict[st
 def best_boundary_iteration(iterations: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not iterations:
         return None
+    with_accepted = [iteration for iteration in iterations if iteration.get("bestAcceptedCandidate") is not None]
+    pool = with_accepted if with_accepted else iterations
     return sorted(
-        iterations,
+        pool,
         key=lambda item: (
-            item.get("bestOperatorIoU") if item.get("bestOperatorIoU") is not None else -1,
+            best_iteration_operator_iou(item),
             item.get("bestCandidate", {}).get("confidence", 0) if item.get("bestCandidate") else 0,
         ),
         reverse=True,
     )[0]
+
+
+def best_iteration_operator_iou(iteration: dict[str, Any]) -> float:
+    best = iteration.get("bestCandidate")
+    if best is None:
+        return -1
+    for comparison in iteration.get("operatorComparison", []):
+        if comparison.get("imagePolygon") == best.get("imagePolygon"):
+            return float(comparison["iou"])
+    value = best.get("operatorLabelAlignment")
+    return float(value) if isinstance(value, (int, float)) else -1
+
+
+def best_boundary_candidate(iterations: list[dict[str, Any]], rejected: bool) -> dict[str, Any] | None:
+    candidates = []
+    for iteration in iterations:
+        candidate = iteration.get("bestRejectedCandidate" if rejected else "bestAcceptedCandidate")
+        if candidate is not None:
+            candidates.append(candidate)
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            candidate.get("operatorLabelAlignment") if candidate.get("operatorLabelAlignment") is not None else -1,
+            candidate.get("confidence", 0),
+        ),
+        reverse=True,
+    )[0]
+
+
+def boundary_improvement_failure_mode(
+    cv_candidate: dict[str, Any] | None,
+    best_rejected_candidate: dict[str, Any] | None,
+    iterations: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if cv_candidate is not None:
+        return None
+    if best_rejected_candidate is None:
+        return {
+            "code": "no_cv_candidate",
+            "summary": "No local CV field-boundary candidate was produced.",
+            "iterationCount": len(iterations),
+        }
+    reasons = best_rejected_candidate.get("rejectionReasons", [])
+    if (
+        "candidate is clipped by the screenshot edge and cannot be accepted as a complete imagery field boundary" in reasons
+        or "candidate resembles the screenshot extent rather than the target field boundary" in reasons
+    ) and looks_like_axis_aligned_rectangle(best_rejected_candidate.get("imagePolygon", [])):
+        code = "clipped_axis_aligned_extent_box"
+    else:
+        code = "rejected_cv_candidate"
+    return {
+        "code": code,
+        "summary": "Best local CV evidence was retained as rejected learning evidence, not as a detector result.",
+        "rejectionReasons": reasons,
+        "confidence": best_rejected_candidate.get("confidence"),
+        "operatorLabelAlignment": best_rejected_candidate.get("operatorLabelAlignment"),
+        "operatorFalsePositiveAreaRatio": best_rejected_candidate.get("operatorFalsePositiveAreaRatio"),
+        "operatorBoundaryMeanDistancePixels": best_rejected_candidate.get("operatorBoundaryMeanDistancePixels"),
+    }
+
+
+def operator_guided_learning_summary(
+    operator_polygon: list[dict[str, Any]] | None,
+    iterations: list[dict[str, Any]],
+    best_rejected_candidate: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "enabled": operator_polygon is not None,
+        "usedForGeometryMutation": False,
+        "role": "training_and_scoring_evidence_only",
+        "iterationCount": len(iterations),
+        "bestRejectedCandidateTracked": best_rejected_candidate is not None,
+    }
 
 
 def learning_action_for_iteration(index: int, best: dict[str, Any] | None, comparisons: list[dict[str, Any]]) -> dict[str, Any]:
@@ -645,6 +797,7 @@ def boundary_improvement_acceptance(
     operator_polygon: list[dict[str, Any]] | None,
     gpu_status: dict[str, Any] | None = None,
     projected_boundary: list[dict[str, float]] | None = None,
+    failure_mode: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reasons = []
     accepted = True
@@ -659,13 +812,27 @@ def boundary_improvement_acceptance(
         accepted = False
         reasons.append("best candidate confidence is below strict boundary threshold")
     if operator_polygon is not None:
-        best_iou = best_iteration.get("bestOperatorIoU") if best_iteration else None
-        if best_iou is None or best_iou < 0.72:
+        best_iou = best_candidate.get("operatorLabelAlignment") if best_candidate is not None else None
+        if best_iou is None:
+            best_iou = best_iteration.get("bestOperatorIoU") if best_iteration else None
+        if best_iou is None or best_iou < DEFAULT_VISION_THRESHOLDS["minOperatorBoundaryIoU"]:
             accepted = False
-            reasons.append("best candidate does not meet operator-label IoU gate of 0.72")
+            reasons.append(f"best candidate does not meet operator-label IoU gate of {DEFAULT_VISION_THRESHOLDS['minOperatorBoundaryIoU']}")
+        if best_candidate is not None:
+            false_positive = best_candidate.get("operatorFalsePositiveAreaRatio")
+            if isinstance(false_positive, (int, float)) and false_positive > DEFAULT_VISION_THRESHOLDS["maxBoundaryFalsePositiveRatio"]:
+                accepted = False
+                reasons.append(f"best candidate false-positive area ratio {false_positive:.4f} exceeds {DEFAULT_VISION_THRESHOLDS['maxBoundaryFalsePositiveRatio']:.2f}")
+            mean_distance = best_candidate.get("operatorBoundaryMeanDistancePixels")
+            if isinstance(mean_distance, (int, float)) and mean_distance > DEFAULT_VISION_THRESHOLDS["maxBoundaryMeanDistancePx"]:
+                accepted = False
+                reasons.append(f"best candidate mean boundary distance {mean_distance:.1f} px exceeds {DEFAULT_VISION_THRESHOLDS['maxBoundaryMeanDistancePx']:.0f} px")
     if projected_boundary is None:
         accepted = False
-        reasons.append("no calibrated projected-XY boundary was produced")
+        reasons.append("no calibrated projected-XY CV candidate boundary was produced")
+    if failure_mode is not None:
+        accepted = False
+        reasons.append(f"failure mode: {failure_mode['code']}")
     if not gpu_backed:
         accepted = False
         reasons.append("PyTorch CUDA was not available; report is not GPU-backed")
@@ -674,6 +841,11 @@ def boundary_improvement_acceptance(
         "status": "accepted" if accepted else "not accepted",
         "gpuBacked": gpu_backed,
         "reasons": reasons,
+        "hardFailures": reasons,
+        "cvCandidateAccepted": accepted,
+        "truthBoundaryAccepted": operator_polygon is not None,
+        "truthBoundaryMode": "operator_truth_reconstruction" if operator_polygon is not None else None,
+        "failureMode": failure_mode,
         "importantCaveat": "Acceptance here is local companion evidence only and still does not mutate projected XY geometry.",
     }
 
@@ -892,6 +1064,8 @@ def design_vision_review(
     infer_field_boundary: bool,
     operator_boundary_path: str | None,
     operator_boundary_text: str | None,
+    operator_labels_path: str | None,
+    operator_labels_text: str | None,
     operator_boundary_name: str,
     sam2_config_arg: Path | None,
     sam2_checkpoint_arg: Path | None,
@@ -941,6 +1115,20 @@ def design_vision_review(
             project_reference,
             overlay_circle,
         )
+    truth_labels = None
+    if operator_labels_path is not None or operator_labels_text is not None:
+        truth_labels = load_operator_truth_labels(
+            operator_labels_path,
+            operator_labels_text,
+            kml_text,
+            project_reference,
+            overlay_circle,
+        )
+        target_boundary = truth_labels.get("targetFieldBoundary", {})
+        if target_boundary.get("wgs84Polygon") is not None:
+            operator_field_boundary = target_boundary
+    elif operator_field_boundary is not None:
+        truth_labels = truth_labels_from_operator_boundary(operator_field_boundary)
     boundary_detector_status = boundary_detector_runtime_status(sam2_config_arg, sam2_checkpoint_arg) if infer_field_boundary else None
     sam2_adapter = load_sam2_adapter(boundary_detector_status) if infer_field_boundary else None
     operator_image_polygon = operator_field_boundary.get("imagePolygon") if operator_field_boundary is not None else None
@@ -975,7 +1163,16 @@ def design_vision_review(
         imagery_field_boundary,
         operator_field_boundary,
     )
+    obstruction_masks = build_obstruction_masks(cv, map_canvas_image, truth_labels)
+    truth_metrics = pivot_truth_metrics(pivot_crop_ring, overlay_circle, truth_labels)
+    road_building_tree_conflict = circle_obstruction_conflicts(cv, map_canvas_image, overlay_circle, obstruction_masks)
     learning_recommendations = learning_recommendations_from_comparison(imagery_field_boundary, operator_field_boundary, operator_comparison)
+    hard_failures = design_hard_failures(
+        imagery_field_boundary,
+        operator_comparison,
+        truth_metrics,
+        road_building_tree_conflict,
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     annotated_path = output_dir / "visual-layout-review-annotated.png"
@@ -995,6 +1192,13 @@ def design_vision_review(
         "confidence": assessment["confidence"],
         "reviewStatus": "unreviewed",
         "notes": "Advisory image-space evidence only; does not create survey data or mutate canonical projected XY geometry.",
+        "artifacts": {"truthLabels": truth_labels.get("artifact") if truth_labels else None},
+        "metrics": {
+            "centerTruthOffsetPx": truth_metrics.get("centerTruthOffsetPx"),
+            "radiusTruthMismatchRatio": truth_metrics.get("radiusTruthMismatchRatio"),
+            "roadBuildingTreeConflict": road_building_tree_conflict["any"],
+            "boundaryFalsePositiveRatio": best_operator_metric(operator_comparison, "falsePositiveAreaRatio"),
+        },
     }
     recommendation = {
         "id": recommendation_id,
@@ -1009,7 +1213,18 @@ def design_vision_review(
         "evidenceIds": [evidence_id],
         "reviewStatus": "unreviewed",
         "score": assessment["score"],
+        "metadata": {
+            "imageryConstraintAssessment": assessment,
+            "truthCenterOffsetMeters": None,
+            "roadConflict": road_building_tree_conflict["southRoad"],
+            "buildingTreeConflict": road_building_tree_conflict["seBuildingTree"],
+            "roadBuildingTreeConflict": road_building_tree_conflict["any"],
+            "boundaryFalsePositiveRatio": best_operator_metric(operator_comparison, "falsePositiveAreaRatio"),
+            "hardFailures": hard_failures,
+            "feasible": len(hard_failures) == 0,
+        },
         "warnings": assessment["warnings"] + [
+            *hard_failures,
             "Design-only review; acceptance must route through projected-XY import/editor/operator workflows.",
             "Google Earth imagery is local companion evidence only and is not cached, embedded, or used as a substitute dataset.",
             *([] if projected_field_boundary is not None else ["No calibrated imagery field-boundary polygon was exported; recommendation remains metadata/display-only for boundary geometry."]),
@@ -1046,8 +1261,12 @@ def design_vision_review(
         "detections": {
             "pivotCropRing": pivot_crop_ring,
             "overlayCircle": overlay_circle,
+            "truthBoundary": operator_field_boundary,
+            "cvCandidateBoundary": imagery_field_boundary,
             "imageryFieldBoundary": imagery_field_boundary,
             "operatorFieldBoundary": operator_field_boundary,
+            "truthLabels": truth_labels,
+            "obstructionMasks": obstruction_masks,
             "overlayVisible": overlay_visible,
             "attribution": attribution,
         },
@@ -1056,7 +1275,18 @@ def design_vision_review(
         "metrics": {
             "centerOffsetRatio": center_offset_ratio,
             "radiusMismatchRatio": radius_mismatch_ratio,
+            "centerTruthOffsetPx": truth_metrics.get("centerTruthOffsetPx"),
+            "radiusTruthMismatchRatio": truth_metrics.get("radiusTruthMismatchRatio"),
+            "roadBuildingTreeConflict": road_building_tree_conflict["any"],
             "detectionConfidence": assessment["confidence"],
+        },
+        "acceptance": {
+            "accepted": cv_boundary_accepted(imagery_field_boundary, operator_comparison, hard_failures),
+            "cvCandidateAccepted": cv_boundary_accepted(imagery_field_boundary, operator_comparison, hard_failures),
+            "truthBoundaryPresent": operator_field_boundary is not None,
+            "truthBoundaryAccepted": operator_field_boundary is not None,
+            "truthBoundaryMode": "operator_truth_reconstruction" if operator_field_boundary is not None else None,
+            "hardFailures": hard_failures,
         },
         "assessment": assessment,
         "layoutEvidenceRecords": [evidence_record],
@@ -1176,6 +1406,8 @@ def recommendations_to_geojson(recommendations: list[dict[str, Any]]) -> dict[st
           "summary": recommendation["summary"],
           "warnings": recommendation["warnings"],
           "evidenceIds": recommendation["evidenceIds"],
+          "metadata": recommendation.get("metadata"),
+          "scoreBreakdown": recommendation.get("scoreBreakdown"),
           "displayWgs84": recommendation["proposedGeometry"].get("displayWgs84"),
         }
         pivot = recommendation["proposedGeometry"].get("pivotCenter")
@@ -1225,9 +1457,6 @@ def vision_recommendation_geometry(
         geometry["pivotCenter"] = project_reference["pivotCenter"]
         if detected_field_boundary is not None:
             geometry["fieldBoundary"] = detected_field_boundary
-        obstacles = [obstacle["polygon"] for obstacle in project_reference.get("obstacles", []) if isinstance(obstacle.get("polygon"), list)]
-        if obstacles:
-            geometry["obstaclePolygons"] = obstacles
     elif look_at is not None:
         geometry["displayWgs84"] = [{"longitude": look_at["longitude"], "latitude": look_at["latitude"]}]
     return geometry
@@ -1284,6 +1513,94 @@ def load_operator_field_boundary(
     payload["imagePolygon"] = project_xy_boundary_to_image(projected, overlay_circle, project_reference)
     payload["calibration"] = {
         "method": "affine_wgs84_to_project_xy_from_proof_field_boundary_and_overlay_circle",
+        "projectCrs": project_reference["projectCrs"],
+        "imageSpace": "map_canvas_pixels",
+    }
+    return payload
+
+
+def load_operator_truth_labels(
+    path_value: str | None,
+    text_value: str | None,
+    proof_kml_text: str,
+    project_reference: dict[str, Any] | None,
+    overlay_circle: dict[str, Any] | None,
+) -> dict[str, Any]:
+    text, artifact = read_operator_kml_source(path_value, text_value)
+    labels: dict[str, Any] = {"source": "operator_kml", "artifact": artifact, "warnings": []}
+    center = extract_named_point_from_kml(text, TRUTH_LABEL_NAMES["truePivotCenter"])
+    labels["truePivotCenter"] = truth_point_payload(center, proof_kml_text, project_reference, overlay_circle)
+    for key in ["targetFieldBoundary", "southRoadExclusion", "seBuildingTreeExclusion"]:
+        parsed = extract_named_polygon_from_kml(text, TRUTH_LABEL_NAMES[key])
+        payload = {
+            "source": "operator_kml",
+            "name": TRUTH_LABEL_NAMES[key],
+            "warnings": parsed["warnings"],
+            "wgs84Polygon": parsed["polygon"],
+            "imagePolygon": None,
+            "projectedPolygon": None,
+            "calibration": None,
+        }
+        if parsed["polygon"] is not None and project_reference is not None and overlay_circle is not None:
+            transform = fit_wgs84_to_xy_from_reference(proof_kml_text, project_reference)
+            if transform is not None:
+                payload["projectedPolygon"] = [apply_affine_lonlat_to_xy(transform, point) for point in parsed["polygon"]]
+                payload["imagePolygon"] = project_xy_boundary_to_image(payload["projectedPolygon"], overlay_circle, project_reference)
+                payload["calibration"] = {
+                    "method": "fixed_operator_truth_label_affine_wgs84_to_project_xy",
+                    "projectCrs": project_reference["projectCrs"],
+                    "imageSpace": "map_canvas_pixels",
+                }
+            else:
+                payload["warnings"].append("Fixed operator label parsed but no WGS84-to-project-XY calibration could be fitted.")
+        elif parsed["polygon"] is not None:
+            payload["warnings"].append("Fixed operator label parsed but cannot be rasterized without --project-reference and visible overlay-circle calibration.")
+        labels[key] = payload
+        labels["warnings"].extend(payload["warnings"])
+    labels["warnings"].extend(center["warnings"])
+    return labels
+
+
+def truth_labels_from_operator_boundary(operator_field_boundary: dict[str, Any] | None) -> dict[str, Any] | None:
+    if operator_field_boundary is None:
+        return None
+    return {
+        "source": operator_field_boundary.get("source", "operator_kml"),
+        "artifact": operator_field_boundary.get("artifact"),
+        "warnings": operator_field_boundary.get("warnings", []),
+        "targetFieldBoundary": operator_field_boundary,
+    }
+
+
+def truth_point_payload(
+    parsed: dict[str, Any],
+    proof_kml_text: str,
+    project_reference: dict[str, Any] | None,
+    overlay_circle: dict[str, Any] | None,
+) -> dict[str, Any]:
+    payload = {
+        "source": "operator_kml",
+        "name": TRUTH_LABEL_NAMES["truePivotCenter"],
+        "warnings": parsed["warnings"],
+        "wgs84Point": parsed["point"],
+        "imagePoint": None,
+        "projectedPoint": None,
+        "calibration": None,
+    }
+    if parsed["point"] is None:
+        return payload
+    if project_reference is None or overlay_circle is None:
+        payload["warnings"].append("TRUE_PIVOT_CENTER parsed but cannot be rasterized without --project-reference and visible overlay-circle calibration.")
+        return payload
+    transform = fit_wgs84_to_xy_from_reference(proof_kml_text, project_reference)
+    if transform is None:
+        payload["warnings"].append("TRUE_PIVOT_CENTER parsed but no WGS84-to-project-XY calibration could be fitted.")
+        return payload
+    projected = apply_affine_lonlat_to_xy(transform, parsed["point"])
+    payload["projectedPoint"] = projected
+    payload["imagePoint"] = project_xy_point_to_image(projected, overlay_circle, project_reference)
+    payload["calibration"] = {
+        "method": "fixed_operator_truth_label_affine_wgs84_to_project_xy",
         "projectCrs": project_reference["projectCrs"],
         "imageSpace": "map_canvas_pixels",
     }
@@ -1377,6 +1694,35 @@ def extract_named_polygon_from_kml(kml_text: str, placemark_name: str) -> dict[s
     else:
         warnings.append(f'No valid Polygon Placemark named "{placemark_name}" was found.')
     return {"polygon": None, "warnings": warnings}
+
+
+def extract_named_point_from_kml(kml_text: str, placemark_name: str) -> dict[str, Any]:
+    warnings = []
+    try:
+        root = ElementTree.fromstring(kml_text)
+    except ElementTree.ParseError as exc:
+        return {"point": None, "warnings": [f"Operator label KML could not be parsed: {exc}."]}
+    matches = []
+    for placemark in root.findall(".//{*}Placemark"):
+        name = placemark.findtext("{*}name")
+        if (name or "").strip() != placemark_name:
+            continue
+        points = placemark.findall(".//{*}Point")
+        if len(points) != 1:
+            warnings.append(f'Placemark "{placemark_name}" must contain exactly one Point; found {len(points)}.')
+            continue
+        coordinates = parse_kml_coordinates(points[0].findtext(".//{*}coordinates") or "")
+        if len(coordinates) != 1:
+            warnings.append(f'Placemark "{placemark_name}" point must contain exactly one coordinate; found {len(coordinates)}.')
+            continue
+        matches.append(coordinates[0])
+    if len(matches) == 1:
+        return {"point": matches[0], "warnings": warnings}
+    if len(matches) > 1:
+        warnings.append(f'Expected one Placemark named "{placemark_name}" but found {len(matches)} valid matching Points.')
+    else:
+        warnings.append(f'No valid Point Placemark named "{placemark_name}" was found.')
+    return {"point": None, "warnings": warnings}
 
 
 def parse_kml_coordinates(text: str) -> list[dict[str, float]]:
@@ -1674,6 +2020,7 @@ def detect_imagery_field_boundary(
             "polygon": contour_candidate,
         })
     candidates.extend(surface_feature_boundary_candidates(cv, image, edges, width, height, pivot_crop_ring, "default_surface_feature_pass"))
+    candidates.extend(irregular_edge_boundary_candidates(cv, edges, width, height, pivot_crop_ring, "default_irregular_edge_pass"))
     if not candidates:
         return None
 
@@ -1734,6 +2081,7 @@ def score_boundary_candidate(
     area_ratio = abs(image_polygon_area(polygon)) / max(1, width * height)
     edge_alignment = polygon_edge_alignment(cv, edges, polygon)
     operator_alignment = image_polygon_iou(cv, width, height, operator_image_polygon, polygon) if operator_image_polygon is not None else None
+    operator_metrics = operator_comparison_metrics(cv, edges, operator_image_polygon, polygon) if operator_image_polygon is not None else None
     containment = pivot_containment_score(polygon, pivot_crop_ring)
     rejection_reasons = []
     if len(polygon) < 4:
@@ -1746,6 +2094,17 @@ def score_boundary_candidate(
         rejection_reasons.append("candidate does not contain the visible pivot center")
     if looks_like_extent_box(polygon, width, height, pivot_crop_ring):
         rejection_reasons.append("candidate resembles an extent box around the pivot ring rather than imagery edges")
+    if looks_like_screenshot_extent_box(polygon, width, height):
+        rejection_reasons.append("candidate resembles the screenshot extent rather than the target field boundary")
+    if operator_image_polygon is not None and looks_like_axis_aligned_rectangle(polygon):
+        rejection_reasons.append("candidate is a 4-point axis-aligned rectangle and does not preserve irregular south/southeast TARGET_FIELD_BOUNDARY features")
+    if edge_alignment < DEFAULT_VISION_THRESHOLDS["minBoundaryEdgeAlignment"]:
+        rejection_reasons.append("candidate lacks edge support along road, fenceline, or treeline cues")
+    if operator_metrics is not None:
+        if operator_metrics["falsePositiveAreaRatio"] > DEFAULT_VISION_THRESHOLDS["maxBoundaryFalsePositiveRatio"]:
+            rejection_reasons.append("candidate includes too much area outside the operator TARGET_FIELD_BOUNDARY label")
+        if operator_metrics["boundaryMeanDistancePixels"] is not None and operator_metrics["boundaryMeanDistancePixels"] > DEFAULT_VISION_THRESHOLDS["maxBoundaryMeanDistancePx"]:
+            rejection_reasons.append("candidate boundary is too far from the operator TARGET_FIELD_BOUNDARY label")
     for warning in candidate.get("candidateWarnings", []):
         rejection_reasons.append(warning)
     confidence = (
@@ -1772,6 +2131,8 @@ def score_boundary_candidate(
         "circularity": round(circularity, 4),
         "containment": round(containment, 4),
         "operatorLabelAlignment": round(operator_alignment, 4) if operator_alignment is not None else None,
+        "operatorFalsePositiveAreaRatio": operator_metrics["falsePositiveAreaRatio"] if operator_metrics is not None else None,
+        "operatorBoundaryMeanDistancePixels": operator_metrics["boundaryMeanDistancePixels"] if operator_metrics is not None else None,
         "areaRatio": round(area_ratio, 4),
         "rejected": bool(rejection_reasons),
         "rejectionReasons": rejection_reasons,
@@ -1790,6 +2151,8 @@ def candidate_audit_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         "circularity": candidate["circularity"],
         "containment": candidate["containment"],
         "operatorLabelAlignment": candidate.get("operatorLabelAlignment"),
+        "operatorFalsePositiveAreaRatio": candidate.get("operatorFalsePositiveAreaRatio"),
+        "operatorBoundaryMeanDistancePixels": candidate.get("operatorBoundaryMeanDistancePixels"),
         "areaRatio": candidate["areaRatio"],
         "vertexCount": len(candidate["imagePolygon"]),
         "imagePolygon": candidate["imagePolygon"],
@@ -2009,6 +2372,28 @@ def looks_like_extent_box(polygon: list[dict[str, float]], width: int, height: i
     )
 
 
+def looks_like_screenshot_extent_box(polygon: list[dict[str, float]], width: int, height: int) -> bool:
+    if len(polygon) != 4:
+        return False
+    xs = [float(point["x"]) for point in polygon]
+    ys = [float(point["y"]) for point in polygon]
+    left, right = min(xs), max(xs)
+    top, bottom = min(ys), max(ys)
+    return left <= width * 0.03 and top <= height * 0.03 and right >= width * 0.97 and bottom >= height * 0.97
+
+
+def looks_like_axis_aligned_rectangle(polygon: list[dict[str, float]]) -> bool:
+    if len(polygon) != 4:
+        return False
+    xs = {round(float(point["x"]), 3) for point in polygon}
+    ys = {round(float(point["y"]), 3) for point in polygon}
+    if len(xs) != 2 or len(ys) != 2:
+        return False
+    corners = {(x, y) for x in xs for y in ys}
+    points = {(round(float(point["x"]), 3), round(float(point["y"]), 3)) for point in polygon}
+    return points == corners
+
+
 def detect_overlay_linework(cv: Any, image: Any) -> bool:
     mask = overlay_mask(cv, image)
     return int(cv.countNonZero(mask)) > max(120, image.shape[0] * image.shape[1] * 0.00012)
@@ -2096,6 +2481,15 @@ def project_xy_boundary_to_image(
     ]
 
 
+def project_xy_point_to_image(
+    projected_point: dict[str, float],
+    overlay_circle: dict[str, Any],
+    project_reference: dict[str, Any],
+) -> dict[str, float] | None:
+    points = project_xy_boundary_to_image([projected_point], overlay_circle, project_reference)
+    return points[0] if points else None
+
+
 def compare_candidates_to_operator(
     cv: Any,
     image: Any,
@@ -2125,6 +2519,114 @@ def compare_candidates_to_operator(
             **metrics,
         })
     return sorted(comparisons, key=lambda item: (item["iou"], -item["boundaryMeanDistancePixels"]), reverse=True)
+
+
+def build_obstruction_masks(cv: Any, image: Any, truth_labels: dict[str, Any] | None) -> dict[str, Any]:
+    if truth_labels is None:
+        return {"southRoad": None, "seBuildingTree": None, "available": False}
+    height, width = image.shape[:2]
+    import numpy as np  # type: ignore
+
+    masks: dict[str, Any] = {"available": True}
+    for output_key, label_key in [("southRoad", "southRoadExclusion"), ("seBuildingTree", "seBuildingTreeExclusion")]:
+        polygon = truth_labels.get(label_key, {}).get("imagePolygon")
+        if polygon:
+            mask = polygon_mask(cv, np, width, height, polygon)
+            masks[output_key] = {
+                "label": truth_labels[label_key]["name"],
+                "pixelArea": int(cv.countNonZero(mask)),
+                "imagePolygon": polygon,
+            }
+        else:
+            masks[output_key] = None
+    return masks
+
+
+def pivot_truth_metrics(
+    pivot_crop_ring: dict[str, Any] | None,
+    overlay_circle: dict[str, Any] | None,
+    truth_labels: dict[str, Any] | None,
+) -> dict[str, Any]:
+    metrics = {"centerTruthOffsetPx": None, "radiusTruthMismatchRatio": None}
+    truth_point = None if truth_labels is None else truth_labels.get("truePivotCenter", {}).get("imagePoint")
+    if truth_point is not None and pivot_crop_ring is not None:
+        metrics["centerTruthOffsetPx"] = round(math.hypot(
+            float(truth_point["x"]) - float(pivot_crop_ring["center"]["x"]),
+            float(truth_point["y"]) - float(pivot_crop_ring["center"]["y"]),
+        ), 3)
+    if pivot_crop_ring is not None and overlay_circle is not None and float(pivot_crop_ring["radius"]) > 0:
+        metrics["radiusTruthMismatchRatio"] = round(abs(float(overlay_circle["radius"]) - float(pivot_crop_ring["radius"])) / float(pivot_crop_ring["radius"]), 4)
+    return metrics
+
+
+def circle_obstruction_conflicts(cv: Any, image: Any, overlay_circle: dict[str, Any] | None, obstruction_masks: dict[str, Any]) -> dict[str, Any]:
+    result = {"southRoad": False, "seBuildingTree": False, "any": False}
+    if overlay_circle is None:
+        return result
+    height, width = image.shape[:2]
+    import numpy as np  # type: ignore
+
+    circle_mask = np.zeros((height, width), dtype=np.uint8)
+    center = overlay_circle["center"]
+    cv.circle(circle_mask, (int(round(float(center["x"]))), int(round(float(center["y"])))), int(round(float(overlay_circle["radius"]))), 255, -1)
+    for key in ["southRoad", "seBuildingTree"]:
+        mask_payload = obstruction_masks.get(key)
+        if not mask_payload:
+            continue
+        mask = polygon_mask(cv, np, width, height, mask_payload["imagePolygon"])
+        result[key] = int(cv.countNonZero(cv.bitwise_and(circle_mask, mask))) > 0
+    result["any"] = result["southRoad"] or result["seBuildingTree"]
+    return result
+
+
+def best_operator_metric(operator_comparison: list[dict[str, Any]], key: str) -> float | None:
+    if not operator_comparison:
+        return None
+    value = operator_comparison[0].get(key)
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def design_hard_failures(
+    imagery_field_boundary: dict[str, Any] | None,
+    operator_comparison: list[dict[str, Any]],
+    truth_metrics: dict[str, Any],
+    road_building_tree_conflict: dict[str, Any],
+) -> list[str]:
+    failures = []
+    if imagery_field_boundary is not None and imagery_field_boundary.get("rejected"):
+        failures.extend(imagery_field_boundary.get("rejectionReasons", []))
+    false_positive = best_operator_metric(operator_comparison, "falsePositiveAreaRatio")
+    if false_positive is not None and false_positive > DEFAULT_VISION_THRESHOLDS["maxBoundaryFalsePositiveRatio"]:
+        failures.append(f"Boundary false-positive area ratio {false_positive:.4f} exceeds {DEFAULT_VISION_THRESHOLDS['maxBoundaryFalsePositiveRatio']:.2f}.")
+    mean_distance = best_operator_metric(operator_comparison, "boundaryMeanDistancePixels")
+    if mean_distance is not None and mean_distance > DEFAULT_VISION_THRESHOLDS["maxBoundaryMeanDistancePx"]:
+        failures.append(f"Boundary mean distance {mean_distance:.1f} px exceeds {DEFAULT_VISION_THRESHOLDS['maxBoundaryMeanDistancePx']:.0f} px.")
+    center_offset = truth_metrics.get("centerTruthOffsetPx")
+    if isinstance(center_offset, (int, float)) and center_offset > DEFAULT_VISION_THRESHOLDS["maxCenterTruthOffsetPx"]:
+        failures.append(f"Visible pivot center is {center_offset:.1f} px from TRUE_PIVOT_CENTER.")
+    radius_mismatch = truth_metrics.get("radiusTruthMismatchRatio")
+    if isinstance(radius_mismatch, (int, float)) and radius_mismatch > DEFAULT_VISION_THRESHOLDS["maxRadiusMismatchRatio"]:
+        failures.append(f"Pivot radius mismatch ratio {radius_mismatch:.4f} exceeds {DEFAULT_VISION_THRESHOLDS['maxRadiusMismatchRatio']:.2f}.")
+    if road_building_tree_conflict.get("southRoad"):
+        failures.append("CPLayout wet circle crosses SOUTH_ROAD_EXCLUSION.")
+    if road_building_tree_conflict.get("seBuildingTree"):
+        failures.append("CPLayout wet circle crosses SE_BUILDING_TREE_EXCLUSION.")
+    return list(dict.fromkeys(failures))
+
+
+def cv_boundary_accepted(
+    imagery_field_boundary: dict[str, Any] | None,
+    operator_comparison: list[dict[str, Any]],
+    hard_failures: list[str],
+) -> bool:
+    if imagery_field_boundary is None or imagery_field_boundary.get("rejected"):
+        return False
+    if hard_failures:
+        return False
+    best_iou = best_operator_metric(operator_comparison, "iou")
+    if best_iou is not None and best_iou < DEFAULT_VISION_THRESHOLDS["minOperatorBoundaryIoU"]:
+        return False
+    return True
 
 
 def operator_comparison_metrics(cv: Any, image: Any, operator_polygon: list[dict[str, Any]], candidate_polygon: list[dict[str, Any]]) -> dict[str, Any]:

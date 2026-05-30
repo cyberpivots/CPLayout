@@ -4,7 +4,8 @@ param(
   [string]$OutputRecordPath = "",
   [int]$CleanupTimeoutSeconds = 10,
   [switch]$DisableForceCleanup,
-  [switch]$InventoryOnly
+  [switch]$InventoryOnly,
+  [switch]$Strict
 )
 
 $ErrorActionPreference = "Stop"
@@ -151,6 +152,7 @@ function Test-ProcessRunning([int]$ProcessId) {
 
 $target = Get-TargetGoogleEarthProcess -ProcessId $TargetProcessId -Path $GoogleEarthPath
 $inventory = Get-ProcessInventory -Process $target
+$preflightProcessPresent = $null -ne $inventory
 $modalResult = [pscustomobject]@{
   handled = $false
   buttonName = $null
@@ -163,7 +165,11 @@ $status = "not_requested"
 $errorMessage = $null
 
 if ($InventoryOnly) {
-  $status = "not_requested"
+  if ($target) {
+    $status = "inventory_found_target"
+  } else {
+    $status = "clean"
+  }
 } elseif (-not $target) {
   $status = "closed_gracefully"
   $closeMethod = "already_closed"
@@ -215,20 +221,45 @@ if ($InventoryOnly) {
 }
 
 $targetProcessId = if ($inventory) { $inventory.id } elseif ($TargetProcessId -gt 0) { $TargetProcessId } else { $null }
+$postflightProcess = if ($targetProcessId) { Get-Process -Id $targetProcessId -ErrorAction SilentlyContinue } else { $null }
+$postflightInventory = Get-ProcessInventory -Process $postflightProcess
+$postflightProcessRemaining = $null -ne $postflightInventory
+$cleanupRequired = [bool]((-not [bool]$InventoryOnly) -and $preflightProcessPresent)
+$contaminated = [bool]((-not [bool]$InventoryOnly) -and ($postflightProcessRemaining -or $status -eq "blocked"))
+$failureReason = $null
+if ($contaminated) {
+  if ($postflightProcessRemaining) {
+    $failureReason = "Target Google Earth Pro process remains after cleanup."
+  } elseif (-not [string]::IsNullOrWhiteSpace($errorMessage)) {
+    $failureReason = $errorMessage
+  } else {
+    $failureReason = "Google Earth Pro cleanup was blocked."
+  }
+} elseif ($Strict -and $InventoryOnly -and $preflightProcessPresent) {
+  $failureReason = "Inventory-only preflight found a Google Earth Pro process; no cleanup was attempted."
+}
+
 $record = [pscustomobject]@{
   schemaVersion = "cplayout-google-earth-cleanup-v1"
   generatedAt = (Get-Date).ToUniversalTime().ToString("o")
   requested = -not [bool]$InventoryOnly
   inventoryOnly = [bool]$InventoryOnly
+  strict = [bool]$Strict
   targetProcessId = $targetProcessId
+  preflightProcessPresent = [bool]$preflightProcessPresent
+  postflightProcessRemaining = [bool]$postflightProcessRemaining
+  cleanupRequired = [bool]$cleanupRequired
+  contaminated = [bool]$contaminated
+  failureReason = $failureReason
   target = $inventory
+  postflightTarget = $postflightInventory
   closeMethod = $closeMethod
   modalHandled = [bool]$modalResult.handled
   modal = $modalResult
   forceUsed = [bool]$forceUsed
   status = $status
   error = $errorMessage
-  verifiedProcessRemaining = if ($targetProcessId) { Test-ProcessRunning -ProcessId $targetProcessId } else { $false }
+  verifiedProcessRemaining = [bool]$postflightProcessRemaining
 }
 
 if (-not [string]::IsNullOrWhiteSpace($OutputRecordPath)) {

@@ -35,6 +35,13 @@
 - Use repo-local skills in `.agents/skills/` when they match the task; they are reusable workflow surfaces, not product runtime code.
 - Every CPLayout Google Earth Pro automation pass must clean up the targeted Google Earth session by default, or explicitly use and report `-LeaveGoogleEarthOpen` for manual review. Cleanup closes generated Temporary Places/import prompts without saving them into persistent My Places; it must not clear caches, delete saved places, or change Google Earth settings unless an explicit repair task requests that.
 
+## Google Earth Pro Automation Checklist
+
+- Preflight: inventory existing Google Earth Pro process state before launch or capture, identify the targeted CPLayout-owned/reused process, and preserve any already-captured screenshots, manifests, hashes, and attribution evidence.
+- Capture: keep KML/KMZ styles as visual interchange metadata only. Do not treat exporter correctness, a launched process, or a partial window capture as Google Earth render proof.
+- Postflight: run strict cleanup for the targeted Google Earth Pro session unless `-LeaveGoogleEarthOpen` was explicitly used for manual review. Cleanup may close generated Temporary Places/import prompts with discard or "Don't Save"; it must not clear caches, delete saved places, or change Google Earth settings.
+- Failure gate: if cleanup is blocked or the targeted process remains after cleanup, mark the run contaminated and failed even when visual proof passed. `-LeaveGoogleEarthOpen` is the only accepted intentional skip and must be reported in the manifest or summary.
+
 ## Reasoning Policy
 
 - Use low reasoning for file lookup, formatting, simple command output, and narrow documentation checks.

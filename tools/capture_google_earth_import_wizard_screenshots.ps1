@@ -110,6 +110,11 @@ function Invoke-GoogleEarthCleanup([string]$RepoRoot, [string]$OutputPath, [int]
       requested = $true
       leaveOpen = $true
       targetProcessId = $TargetProcessId
+      preflightProcessPresent = [bool]$TargetProcessId
+      postflightProcessRemaining = $false
+      cleanupRequired = $false
+      contaminated = $false
+      failureReason = $null
       closeMethod = "none"
       modalHandled = $false
       forceUsed = $false
@@ -127,6 +132,7 @@ function Invoke-GoogleEarthCleanup([string]$RepoRoot, [string]$OutputPath, [int]
       GoogleEarthPath = $GoogleEarthPath
       OutputRecordPath = $recordPath
       CleanupTimeoutSeconds = $CleanupTimeoutSeconds
+      Strict = $true
     }
     if ($DisableForceCleanup) {
       $cleanupArgs.DisableForceCleanup = $true
@@ -137,6 +143,11 @@ function Invoke-GoogleEarthCleanup([string]$RepoRoot, [string]$OutputPath, [int]
       requested = $true
       leaveOpen = $false
       targetProcessId = $cleanup.targetProcessId
+      preflightProcessPresent = [bool]$cleanup.preflightProcessPresent
+      postflightProcessRemaining = [bool]$cleanup.postflightProcessRemaining
+      cleanupRequired = [bool]$cleanup.cleanupRequired
+      contaminated = [bool]$cleanup.contaminated
+      failureReason = $cleanup.failureReason
       closeMethod = $cleanup.closeMethod
       modalHandled = [bool]$cleanup.modalHandled
       forceUsed = [bool]$cleanup.forceUsed
@@ -149,6 +160,11 @@ function Invoke-GoogleEarthCleanup([string]$RepoRoot, [string]$OutputPath, [int]
       requested = $true
       leaveOpen = $false
       targetProcessId = $TargetProcessId
+      preflightProcessPresent = [bool]$TargetProcessId
+      postflightProcessRemaining = $true
+      cleanupRequired = [bool]$TargetProcessId
+      contaminated = $true
+      failureReason = $_.Exception.Message
       closeMethod = "none"
       modalHandled = $false
       forceUsed = $false
@@ -243,5 +259,9 @@ $manifest = [pscustomobject]@{
 }
 
 $manifestPath = Join-Path $outputPath "manifest.json"
-$manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+$manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 Write-Host "Wrote Google Earth wizard screenshot manifest: $manifestPath"
+
+if ($cleanup.contaminated -or $cleanup.status -eq "blocked" -or $cleanup.postflightProcessRemaining) {
+  throw "Google Earth cleanup failed or left a targeted process running. Cleanup status: $($cleanup.status)"
+}

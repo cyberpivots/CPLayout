@@ -137,14 +137,52 @@ if ($DisableForceCleanup) {
 }
 $captureArgs.CleanupTimeoutSeconds = $CleanupTimeoutSeconds
 
-& $captureScript @captureArgs
-if (-not $?) {
-  $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { "unknown" }
-  throw "Google Earth visual-fidelity capture failed with exit code $exitCode."
+$manifestPath = Join-Path $runOutputPath "visual-fidelity-manifest.json"
+$captureFailed = $false
+$captureFailureMessage = $null
+try {
+  & $captureScript @captureArgs
+  if (-not $?) {
+    $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { "unknown" }
+    throw "Google Earth visual-fidelity capture failed with exit code $exitCode."
+  }
+} catch {
+  $captureFailed = $true
+  $captureFailureMessage = $_.Exception.Message
 }
 
-$manifestPath = Join-Path $runOutputPath "visual-fidelity-manifest.json"
+if ($captureFailed -and -not (Test-Path -LiteralPath $manifestPath)) {
+  throw $captureFailureMessage
+}
+
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$contaminatedGoogleEarthWorkspace = [bool]($manifest.googleEarth.contaminatedWorkspace -or $manifest.googleEarth.cleanup.contaminated -or $manifest.googleEarth.cleanup.postflightProcessRemaining -or $manifest.googleEarth.cleanup.status -eq "blocked")
+if ($captureFailed -and $contaminatedGoogleEarthWorkspace) {
+  $summary = [pscustomobject]@{
+    schemaVersion = "cplayout-google-earth-design-loop-v1"
+    runId = $RunId
+    projectId = $ProjectId
+    projectCrs = $ProjectCrs
+    createdAt = (Get-Date).ToUniversalTime().ToString("o")
+    outputDir = $runOutputRelative
+    visualFidelityManifest = $manifestPath
+    designVisionReview = $null
+    designVisionRecommendations = $null
+    proofPassed = $manifest.proofPassed
+    googleEarthCleanup = $manifest.googleEarth.cleanup
+    googleEarthLeftOpen = [bool]($manifest.googleEarth.cleanup.status -eq "skipped_leave_open")
+    contaminatedGoogleEarthWorkspace = $true
+    canonicalGeometryMutation = $false
+    reviewGate = "Blocked before CV review because Google Earth cleanup failed. Visual proof success does not override cleanup failure."
+  }
+  $summaryPath = Join-Path $runOutputPath "design-loop-summary.json"
+  $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+  Write-Host "Wrote Google Earth design-loop summary: $summaryPath"
+  throw $captureFailureMessage
+}
+if ($captureFailed) {
+  throw $captureFailureMessage
+}
 if ($RequireProofPass -and -not $manifest.proofPassed) {
   throw "Google Earth visual-fidelity proof did not pass. Manifest status: $($manifest.status)"
 }
@@ -209,10 +247,11 @@ $summary = [pscustomobject]@{
   designVisionRecommendations = Join-Path $reviewOutputPath "visual-layout-review-recommendations.geojson"
   proofPassed = $manifest.proofPassed
   googleEarthCleanup = $manifest.googleEarth.cleanup
-  googleEarthLeftOpen = [bool]($manifest.googleEarth.cleanup.status -eq "skipped_leave_open" -or $manifest.googleEarth.cleanup.status -eq "blocked")
+  googleEarthLeftOpen = [bool]($manifest.googleEarth.cleanup.status -eq "skipped_leave_open")
+  contaminatedGoogleEarthWorkspace = $contaminatedGoogleEarthWorkspace
   canonicalGeometryMutation = $false
   reviewGate = "Import recommendations in the Review tab, then use Accept or Apply as an explicit operator action."
 }
 $summaryPath = Join-Path $runOutputPath "design-loop-summary.json"
-$summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
 Write-Host "Wrote Google Earth design-loop summary: $summaryPath"

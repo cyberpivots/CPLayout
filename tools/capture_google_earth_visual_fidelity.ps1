@@ -314,10 +314,16 @@ function New-CaptureManifestEntry([string]$Path, [string]$Label, $CropBox, $Anal
 }
 
 function New-GoogleEarthCleanupRecord([bool]$Requested, [bool]$LeaveOpen, $TargetProcessId, [string]$Status, $ErrorMessage, [string]$CloseMethod = "none") {
+  $contaminated = [bool]($Requested -and -not $LeaveOpen -and $Status -eq "blocked")
   return [pscustomobject]@{
     requested = $Requested
     leaveOpen = $LeaveOpen
     targetProcessId = $TargetProcessId
+    preflightProcessPresent = [bool]$TargetProcessId
+    postflightProcessRemaining = $contaminated
+    cleanupRequired = [bool]($Requested -and -not $LeaveOpen -and $TargetProcessId)
+    contaminated = $contaminated
+    failureReason = if ($contaminated) { $ErrorMessage } else { $null }
     closeMethod = $CloseMethod
     modalHandled = $false
     forceUsed = $false
@@ -346,6 +352,7 @@ function Invoke-GoogleEarthCleanup([string]$RepoRoot, [string]$OutputPath, $Targ
       GoogleEarthPath = $GoogleEarthPath
       OutputRecordPath = $recordPath
       CleanupTimeoutSeconds = $CleanupTimeoutSeconds
+      Strict = $true
     }
     if ($DisableForceCleanup) {
       $cleanupArgs.DisableForceCleanup = $true
@@ -359,6 +366,11 @@ function Invoke-GoogleEarthCleanup([string]$RepoRoot, [string]$OutputPath, $Targ
       requested = $true
       leaveOpen = $false
       targetProcessId = $cleanup.targetProcessId
+      preflightProcessPresent = [bool]$cleanup.preflightProcessPresent
+      postflightProcessRemaining = [bool]$cleanup.postflightProcessRemaining
+      cleanupRequired = [bool]$cleanup.cleanupRequired
+      contaminated = [bool]$cleanup.contaminated
+      failureReason = $cleanup.failureReason
       closeMethod = $cleanup.closeMethod
       modalHandled = [bool]$cleanup.modalHandled
       forceUsed = [bool]$cleanup.forceUsed
@@ -709,10 +721,10 @@ $artifactHashes = if ($fixture) {
 }
 
 $overlayConfirmed = [bool]$ConfirmOverlayVisible
-$proofPassed = [bool]($kmlIntegrity.passed -and $canvasPass -and $overlayConfirmed)
-$status = if ($GenerateOnly) {
+$rawProofPassed = [bool]($kmlIntegrity.passed -and $canvasPass -and $overlayConfirmed)
+$rawStatus = if ($GenerateOnly) {
   "generated_only"
-} elseif ($proofPassed) {
+} elseif ($rawProofPassed) {
   "passed"
 } elseif ($captureError) {
   "blocked"
@@ -723,6 +735,13 @@ $status = if ($GenerateOnly) {
 }
 
 $cleanup = Invoke-GoogleEarthCleanup -RepoRoot $repoRoot -OutputPath $outputPath -TargetProcessId $cleanupTargetProcessId
+$cleanupContaminated = [bool]($cleanup.contaminated -or ($cleanup.status -eq "blocked") -or $cleanup.postflightProcessRemaining)
+$proofPassed = [bool]($rawProofPassed -and -not $cleanupContaminated)
+$status = if ($cleanupContaminated) {
+  "blocked_cleanup_contaminated"
+} else {
+  $rawStatus
+}
 
 $manifest = [pscustomobject]@{
   schemaVersion = "cplayout-google-earth-visual-fidelity-proof-v1"
@@ -743,6 +762,7 @@ $manifest = [pscustomobject]@{
     windowBounds = $windowBounds
     captureError = $captureError
     cleanup = $cleanup
+    contaminatedWorkspace = $cleanupContaminated
   }
   thresholds = [pscustomobject]@{
     minimumNonBlackRatio = $MinimumNonBlackRatio
@@ -776,6 +796,10 @@ $manifestPath = Join-Path $outputPath "visual-fidelity-manifest.json"
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 Write-Host "Wrote Google Earth visual fidelity manifest: $manifestPath"
 Write-Host "Status: $status"
+
+if ($cleanupContaminated) {
+  throw "Google Earth cleanup failed or left a targeted process running. Cleanup status: $($cleanup.status)"
+}
 
 if ($RequireProofPass -and -not $proofPassed) {
   throw "Google Earth visual fidelity proof did not pass. Manifest status: $status"

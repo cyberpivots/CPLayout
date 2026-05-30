@@ -198,6 +198,7 @@ Proof gates:
 - KML integrity must show shared `<Style>` definitions, `<styleUrl>` assignments, CPLayout `<ExtendedData>`, `cplayoutFeatureType`, `Renamed Pipeline A`, fixture-only `<LookAt>`, and no remote icon hrefs.
 - The map-canvas crop must pass non-black and grayscale-variance thresholds.
 - Final success still requires human visual confirmation that the map-canvas screenshot visibly includes CPLayout styled geometry. The script records this only when run with `-ConfirmOverlayVisible`; `-RequireProofPass` turns that condition into a hard failure gate.
+- Strict Google Earth cleanup is also a hard gate. The automation inventories the targeted process before and after cleanup, records `google-earth-cleanup.json`, and fails the run when cleanup is blocked or the targeted process remains. Visual proof success does not override cleanup failure. Use `-LeaveGoogleEarthOpen` only for explicit manual review; manifests and design-loop summaries must report that intentional skip.
 
 Local artifact policy:
 

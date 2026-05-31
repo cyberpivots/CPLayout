@@ -781,7 +781,7 @@ function recommendedWorkflowStep(
   dirty: boolean,
 ): string {
   if (dirty) return "Next: save local edits and export a project package.";
-  if (!settings.onlineImagery.enabled) return "Next: keep offline overlay or enable approved no-key imagery in Settings.";
+  if (!settings.onlineImagery.enabled && !progress.imagery) return "Next: keep offline overlay or enable approved no-key imagery in Settings.";
   if (!progress.imagery) return "Next: confirm imagery attribution and live-source status.";
   if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or review the field boundary in Edit Geometry.";
   if (project.obstacles.length === 0 || !progress.obstacles) return "Next: add visible obstacles and no-spray zones.";

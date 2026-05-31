@@ -188,6 +188,19 @@ test("dashboard next step separates imagery-off from live-source confirmation", 
   await saveScreen(page, testInfo, "dashboard-imagery-off-next-step");
 });
 
+test("dashboard offline imagery path advances after imagery walkthrough progress", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await page.getByTestId("workspace-nav-dashboard").click();
+  await expect(page.getByText("Next: keep offline overlay or enable approved no-key imagery in Settings.")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Complete Setup Imagery walkthrough checkpoint" }).click();
+  await expect(page.getByText("Next: trace or review the field boundary in Edit Geometry.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-offline-imagery-progress");
+});
+
 test("dashboard next step advances after imagery walkthrough progress", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

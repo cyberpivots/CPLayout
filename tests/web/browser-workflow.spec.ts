@@ -240,6 +240,21 @@ test("dashboard recent-project empty state keeps start actions visible", async (
   await saveScreen(page, testInfo, "dashboard-recent-project-empty-state");
 });
 
+test("dashboard recent-project row can reopen a saved browser project", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByRole("button", { name: /^Save$/ }).click();
+  const recentProjects = page.getByTestId("dashboard-recent-projects");
+  const sampleRow = recentProjects.getByRole("button", { name: "Open recent project North Quarter Concept Layout" });
+  await expect(sampleRow).toBeVisible();
+  await page.getByRole("button", { name: "Create New" }).click();
+  await expect(page.getByText("Untitled Field Layout", { exact: true }).first()).toBeVisible();
+  await sampleRow.click();
+  await expect(page.getByText("North Quarter Concept Layout", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Opened North Quarter Concept Layout.")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-recent-project-reopen");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {

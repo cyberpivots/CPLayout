@@ -643,7 +643,14 @@ function ProjectDashboard({
           {recentProjects.length === 0 ? (
             <Text style={styles.dashboardMuted}>No saved browser projects yet.</Text>
           ) : recentProjects.map((summary) => (
-            <Pressable key={summary.id} onPress={() => void onOpenProject(summary.id)} style={styles.recentProjectRow}>
+            <Pressable
+              accessibilityLabel={`Open recent project ${summary.name}`}
+              accessibilityRole="button"
+              key={summary.id}
+              onPress={() => void onOpenProject(summary.id)}
+              style={styles.recentProjectRow}
+              testID={`recent-project-${summary.id}`}
+            >
               <View>
                 <Text style={styles.rowTitle}>{summary.name}</Text>
                 <Text style={styles.rowMeta}>{summary.projectCrs} · {summary.unitSystem.replaceAll("_", " ")} · {new Date(summary.updatedAt).toLocaleString()}</Text>

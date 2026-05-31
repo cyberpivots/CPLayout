@@ -80,7 +80,7 @@ export default function App(): React.JSX.Element {
   const project = editor.project;
   const [savedRevision, setSavedRevision] = useState(0);
   const [settings, setSettings] = useState<AppSettings>(() => browserLocalSettings(sampleProject.settings));
-  const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress());
+  const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(sampleProject.id));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
   const [advisoryRecommendationPreview, setAdvisoryRecommendationPreview] = useState<ModelRecommendation | null>(null);
   const { width: windowWidth } = useWindowDimensions();
@@ -139,6 +139,7 @@ export default function App(): React.JSX.Element {
     dispatchProject({ type: "load_project", project: nextProject });
     setSavedRevision(0);
     setSettings((current) => browserLocalSettings(nextProject.settings, current));
+    setWalkthroughProgress(loadWalkthroughProgress(nextProject.id));
     setSelectedMapFeatureId(null);
     setAdvisoryRecommendationPreview(null);
     setActiveView("dashboard");
@@ -208,14 +209,14 @@ export default function App(): React.JSX.Element {
   function updateWalkthrough(moduleId: WalkthroughModuleId, complete: boolean): void {
     setWalkthroughProgress((current) => {
       const next = { ...current, [moduleId]: complete };
-      saveWalkthroughProgress(next);
+      saveWalkthroughProgress(project.id, next);
       return next;
     });
   }
 
   function resetWalkthrough(): void {
     const next = emptyWalkthroughProgress();
-    saveWalkthroughProgress(next);
+    saveWalkthroughProgress(project.id, next);
     setWalkthroughProgress(next);
   }
 
@@ -794,11 +795,11 @@ function emptyWalkthroughProgress(): Record<WalkthroughModuleId, boolean> {
   };
 }
 
-function loadWalkthroughProgress(): Record<WalkthroughModuleId, boolean> {
+function loadWalkthroughProgress(projectId: string): Record<WalkthroughModuleId, boolean> {
   const empty = emptyWalkthroughProgress();
   if (Platform.OS !== "web") return empty;
   try {
-    const raw = globalThis.localStorage?.getItem(WALKTHROUGH_STORAGE_KEY);
+    const raw = globalThis.localStorage?.getItem(walkthroughStorageKey(projectId));
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as Partial<Record<WalkthroughModuleId, boolean>>;
     return {
@@ -815,13 +816,17 @@ function loadWalkthroughProgress(): Record<WalkthroughModuleId, boolean> {
   }
 }
 
-function saveWalkthroughProgress(progress: Record<WalkthroughModuleId, boolean>): void {
+function saveWalkthroughProgress(projectId: string, progress: Record<WalkthroughModuleId, boolean>): void {
   if (Platform.OS !== "web") return;
   try {
-    globalThis.localStorage?.setItem(WALKTHROUGH_STORAGE_KEY, JSON.stringify(progress));
+    globalThis.localStorage?.setItem(walkthroughStorageKey(projectId), JSON.stringify(progress));
   } catch {
     // Local progress is optional and must not block project work.
   }
+}
+
+function walkthroughStorageKey(projectId: string): string {
+  return `${WALKTHROUGH_STORAGE_KEY}.${projectId}`;
 }
 
 function workflowModeLabel(mode: AppSettings["mappingWorkflowMode"]): string {

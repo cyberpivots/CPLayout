@@ -217,6 +217,19 @@ test("dashboard walkthrough progress stays local and export-ready", async ({ pag
   await saveScreen(page, testInfo, "dashboard-walkthrough-local-progress");
 });
 
+test("dashboard walkthrough progress is scoped to the active project", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("walkthrough-module-imagery").click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
+  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Real Proof" }).click();
+  await expect(page.getByText("Public Adams County Center Pivot Proof", { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("0/7 modules")).toBeVisible();
+  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-walkthrough-project-scope");
+});
+
 test("dashboard review warnings expose actionable layout guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

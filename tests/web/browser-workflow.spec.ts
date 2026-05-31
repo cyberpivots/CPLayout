@@ -245,6 +245,24 @@ test("dashboard walkthrough progress stays local and export-ready", async ({ pag
   await saveScreen(page, testInfo, "dashboard-walkthrough-local-progress");
 });
 
+test("dashboard walkthrough modules expose checkbox state and keyboard activation", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  const imagery = page.getByRole("checkbox", { name: "Complete Setup Imagery walkthrough checkpoint" });
+  await expect(imagery).toBeVisible();
+  await expect(imagery).not.toBeChecked();
+  await imagery.focus();
+  await page.keyboard.press("Space");
+  const completedImagery = page.getByRole("checkbox", { name: "Clear Setup Imagery walkthrough checkpoint" });
+  await expect(completedImagery).toBeChecked();
+  const boundary = page.getByRole("checkbox", { name: "Complete Trace Boundary walkthrough checkpoint" });
+  await boundary.click();
+  await expect(page.getByRole("checkbox", { name: "Clear Trace Boundary walkthrough checkpoint" })).toBeChecked();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-walkthrough-accessible-controls");
+});
+
 test("dashboard walkthrough progress is scoped to the active project", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

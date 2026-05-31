@@ -722,15 +722,17 @@ function WorkflowWalkthrough({
       <View style={styles.walkthroughGrid}>
         {WALKTHROUGH_MODULES.map((module) => {
           const complete = progress[module.id];
+          const toggleModule = () => onToggle(module.id, !complete);
           return (
             <Pressable
               accessibilityLabel={`${complete ? "Clear" : "Complete"} ${module.title} walkthrough checkpoint`}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: complete }}
               key={module.id}
-              onPress={() => onToggle(module.id, !complete)}
+              onPress={toggleModule}
               style={[styles.walkthroughModule, complete && styles.walkthroughModuleComplete]}
               testID={`walkthrough-module-${module.id}`}
+              {...webCheckboxProps(complete, toggleModule)}
             >
               {complete ? <CheckCircle2 size={18} color="#0f5e3d" /> : <Upload size={18} color="#6b796f" />}
               <View style={styles.walkthroughText}>
@@ -743,6 +745,19 @@ function WorkflowWalkthrough({
       </View>
     </View>
   );
+}
+
+function webCheckboxProps(checked: boolean, onActivate: () => void): Record<string, unknown> {
+  if (Platform.OS !== "web") return {};
+  return {
+    "aria-checked": checked ? "true" : "false",
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key !== " " && event.key !== "Enter") return;
+      event.preventDefault();
+      onActivate();
+    },
+    tabIndex: 0,
+  };
 }
 
 function DashboardCard({ detail, icon, testID, title, value }: { detail: string; icon: React.ReactNode; testID?: string; title: string; value: string }): React.JSX.Element {

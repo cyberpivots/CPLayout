@@ -68,6 +68,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onMappingWorkflowModeChange,
     onMoveInfrastructurePoint,
     onPlacePivot,
+    onSelectMapFeature,
   } = props;
   const { width } = useWindowDimensions();
   const compactLayout = width < 760;
@@ -81,6 +82,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onCommitObstacleDraft,
     onMoveInfrastructurePoint,
     onPlacePivot,
+    onSelectMapFeature,
   });
   const [mode, setMode] = useState<DrawingMode>("pan");
   const [activeLayer, setActiveLayer] = useState<DrawingLayerType>("field_boundary");
@@ -149,8 +151,9 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       onCommitObstacleDraft,
       onMoveInfrastructurePoint,
       onPlacePivot,
+      onSelectMapFeature,
     };
-  }, [onAddMapFeature, onAddSurveyPoint, onCommitBoundaryDraft, onCommitObstacleDraft, onMoveInfrastructurePoint, onPlacePivot]);
+  }, [onAddMapFeature, onAddSurveyPoint, onCommitBoundaryDraft, onCommitObstacleDraft, onMoveInfrastructurePoint, onPlacePivot, onSelectMapFeature]);
 
   useEffect(() => {
     interactionRef.current = {
@@ -195,6 +198,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     });
     map.on("click", (event) => {
       const current = interactionRef.current;
+      const selectedFeatureId = mapFeatureIdAtPoint(map, event.point);
+      if (selectedFeatureId && (current.mode === "pan" || current.workflowMode === "layout")) {
+        callbacksRef.current.onSelectMapFeature?.(selectedFeatureId);
+        setStatus(`Selected map feature ${selectedFeatureId}. Project geometry is unchanged.`);
+        return;
+      }
       const intent = browserMapClickToProjectedIntent({
         ...current,
         lonLat: { longitude: event.lngLat.lng, latitude: event.lngLat.lat },
@@ -548,6 +557,14 @@ function syncLayoutSource(
   if (source && "setData" in source) {
     (source as { setData: (data: unknown) => void }).setData(featureCollection);
   }
+}
+
+function mapFeatureIdAtPoint(map: maplibregl.Map, point: maplibregl.PointLike): string | null {
+  const features = map.queryRenderedFeatures(point, {
+    layers: ["map-feature-line", "map-feature-point"],
+  });
+  const id = features.find((feature) => typeof feature.properties?.id === "string")?.properties?.id;
+  return typeof id === "string" && id.length > 0 ? id : null;
 }
 
 function toMapLibreTileTemplate(template: string): string {

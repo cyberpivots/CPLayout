@@ -666,6 +666,10 @@ function ProjectDashboard({
             <AlertTriangle size={19} color="#173428" />
             <Text style={styles.dashboardPanelTitle}>Review Warnings</Text>
           </View>
+          <View style={styles.dashboardActions}>
+            <SmallActionButton label="Open Review" onPress={onOpenReview} />
+            <SmallActionButton label="Inspect Map" onPress={onOpenMap} />
+          </View>
           {editorWarningRows(result).length === 0 ? (
             <Text style={styles.dashboardMuted}>No active layout warnings.</Text>
           ) : editorWarningRows(result).map((warning) => (

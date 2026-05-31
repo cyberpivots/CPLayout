@@ -258,6 +258,16 @@ test("dashboard review warnings expose actionable layout guidance", async ({ pag
   await saveScreen(page, testInfo, "dashboard-review-warning-guidance");
 });
 
+test("dashboard review warnings can open review without geometry mutation", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("dashboard-review-warnings").getByRole("button", { name: "Open Review" }).click();
+  await expect(page.getByTestId("review-view")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText(/Saved online imagery in project: no/)).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-review-warning-open-review");
+});
+
 test("dashboard recent-project empty state keeps start actions visible", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

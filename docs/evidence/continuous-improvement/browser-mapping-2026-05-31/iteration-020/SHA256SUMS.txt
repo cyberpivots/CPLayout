@@ -1,0 +1,11 @@
+6792466c7be82eb2cdfd2f6166f51320c65980cd34dfc7df3ed7ee1da6ea2609  reports/continuous-improvement/playwright-results/browser-workflow-launcher--f8221-ut-paid-APIs-or-hidden-keys-desktop/launcher.png
+42bf2f2787fdc7350ac759d7c37543b108d6a592a1b15d262688d20c60f3d59c  reports/continuous-improvement/playwright-results/browser-workflow-launcher--f8221-ut-paid-APIs-or-hidden-keys-mobile-390/map-view.png
+d0000c0e05ad538b5070ee6778789c2794828728ebb4d91a53a345b52a8d95de  reports/continuous-improvement/playwright-results/browser-workflow-public-pr-ec32d-r-without-geometry-mutation-desktop/public-proof-feature-selected.png
+830c42df3bc3e8c125add3a6c89af62b8eea32c62689ee24f5a004c515fac417  reports/continuous-improvement/playwright-results/browser-workflow-browser-b-3cc37-ed-geometry-status-explicit-desktop/boundary-commit-status.png
+71356f9bfed9ca93e3817ac856929ee82a011d8f057c76add9a9ad3811f29ea2  reports/continuous-improvement/playwright-results/browser-workflow-browser-u-ff689-ted-feature-status-explicit-desktop/utility-line-save-status.png
+3616195faf056b9420ede5169e22651f6a93bfb1e5b8911e229951aaa0b23081  reports/continuous-improvement/playwright-results/browser-workflow-browser-u-ab252-ted-feature-status-explicit-desktop/utility-point-save-status.png
+b28441b551b31c90b4e273fee91115052f86850b10c720d0e30572292c31f28c  reports/continuous-improvement/playwright-results/browser-workflow-offline-b-621f6-h-external-requests-blocked-mobile-390/offline-map-workbench.png
+6bac6698649e626c08aebf2bb30889759895121369f135dffc84ceadf9408d20  reports/continuous-improvement/playwright-results/browser-workflow-settings--47d27-ocks-hidden-key-assumptions-mobile-390/settings-custom-imagery-guidance.png
+cceab8b7f70a1cf8d0ec1f76a62cafd38b4f19eba1bb7ccd70b70d91c8f4a4dd  tests/web/browser-workflow.spec.ts
+d083ddcf242f187dd81e679b72d39c46a28c6c921b498f855d7b9ca229ba9b1b  playwright.config.ts
+97b85e86f5fdf4efb45088ce4ed5ca53b3118fe1dff7693f8a1df4dbd541650d  package.json

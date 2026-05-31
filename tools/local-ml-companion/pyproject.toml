@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "WSL-local advisory layout recommendation file bridge for CPLayout."
 requires-python = ">=3.12"
 dependencies = [
+  "dvc>=3.60",
+  "mlflow>=3.0",
   "opencv-python-headless>=4.10",
   "pandas>=2.2",
   "scikit-learn>=1.5",
@@ -18,3 +20,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cplayout_ml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

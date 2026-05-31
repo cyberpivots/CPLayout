@@ -2,7 +2,7 @@ import { importProjectedGeoJsonToProject, importSurveyCsvToProject } from "./pro
 import { modelRecommendationHardFailures, type ModelRecommendation } from "./layoutEvidence";
 import { PivotProjectSchema } from "./projectDocument";
 import type { ProjectSettings } from "./settings";
-import type { LonLat, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SurveyPoint, UnitSystem, XY } from "./types";
+import type { LonLat, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, UnitSystem, XY } from "./types";
 
 export interface ProjectEditorState {
   project: PivotProject;
@@ -17,7 +17,7 @@ export type InfrastructurePoint = "pivot_center" | "water_source" | "power_sourc
 export type ProjectEditorAction =
   | { type: "load_project"; project: PivotProject }
   | { type: "commit_boundary_draft"; vertices: XY[] }
-  | { type: "commit_obstacle_draft"; vertices: XY[]; kind?: ObstacleZone["kind"]; name?: string; id?: string }
+  | { type: "commit_obstacle_draft"; vertices: XY[]; kind?: ObstacleZone["kind"]; name?: string; id?: string; confidence?: SourceConfidence }
   | { type: "move_boundary_vertex"; vertexIndex: number; point: XY }
   | { type: "delete_boundary_vertex"; vertexIndex: number }
   | { type: "move_obstacle_vertex"; obstacleId: string; vertexIndex: number; point: XY }
@@ -67,7 +67,7 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
           ...state.project,
           obstacles: [
             ...state.project.obstacles,
-            obstacleFromDraft(state.project, action.vertices, action.kind ?? "exclusion", action.name, action.id),
+            obstacleFromDraft(state.project, action.vertices, action.kind ?? "exclusion", action.name, action.id, action.confidence),
           ],
         });
       case "move_boundary_vertex":
@@ -371,6 +371,7 @@ function obstacleFromDraft(
   kind: ObstacleZone["kind"],
   name?: string,
   id?: string,
+  confidence: SourceConfidence = "user_estimated",
 ): ObstacleZone {
   const ring = validatedRing(vertices, "Obstacle draft");
   const obstacleNumber = project.obstacles.length + 1;
@@ -382,7 +383,7 @@ function obstacleFromDraft(
     bufferMeters: 0,
     hardConflict: true,
     noSpray: true,
-    confidence: "user_estimated",
+    confidence,
   };
 }
 

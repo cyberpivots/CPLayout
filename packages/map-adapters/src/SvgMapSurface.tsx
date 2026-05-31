@@ -15,8 +15,8 @@ import {
   Satellite,
   UtilityPole,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
-import { PanResponder, Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { PanResponder, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import Svg, { Circle, Image as SvgImage, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import { boundsForGeometry, createCirclePolygon, machineRadiusMeters, planOnlineImageryTiles, ringsToSvgPath, supportsSvgOnlineImageryOverlay } from "@cplayout/geometry";
@@ -33,7 +33,7 @@ import {
   visibleHeightMeters,
   visibleWidthMeters,
 } from "@cplayout/geometry";
-import type { InfrastructurePoint, MapStyle, ObstacleZone, ProjectMapFeature, ProjectMapFeatureKind, SurveyPoint } from "@cplayout/core";
+import type { InfrastructurePoint, MapStyle, MappingWorkflowMode, ObstacleZone, ProjectMapFeature, ProjectMapFeatureKind, SurveyPoint } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
 import type { MapSurfaceProps } from "./types";
@@ -63,6 +63,7 @@ export function SvgMapSurface({
   settings,
   selectedMapFeatureId,
   advisoryRecommendationPreview,
+  onMappingWorkflowModeChange,
   onCommitBoundaryDraft,
   onCommitObstacleDraft,
   onMoveBoundaryVertex,
@@ -75,6 +76,9 @@ export function SvgMapSurface({
   onAddMapFeature,
   onSelectMapFeature,
 }: MapSurfaceProps): React.JSX.Element {
+  const { width: windowWidth } = useWindowDimensions();
+  const compactLayout = windowWidth < 760;
+  const designMode = settings.mappingWorkflowMode === "design";
   const mapFeatures = project.mapFeatures ?? [];
   const advisoryGeometry = advisoryRecommendationPreview?.proposedGeometry;
   const advisoryPivot = advisoryGeometry?.pivotCenter;
@@ -111,6 +115,7 @@ export function SvgMapSurface({
   const [localSelectedMapFeatureId, setLocalSelectedMapFeatureId] = useState<string | null>(null);
   const [mapFeatureKind, setMapFeatureKind] = useState<ProjectMapFeatureKind>("underground_pipeline");
   const [lastSnap, setLastSnap] = useState<{ point: XY; kind: "vertex" | "feature" } | null>(null);
+  const lastSvgPressAt = useRef(0);
   const palette = paletteForMapStyle(settings.mapStyle);
   const mapFeatureOption = featureOptionForKind(mapFeatureKind);
   const activeSelectedMapFeatureId = selectedMapFeatureId ?? localSelectedMapFeatureId;
@@ -159,18 +164,36 @@ export function SvgMapSurface({
   );
   const panHandlers = panResponder.panHandlers;
   const svgInteractionProps = Platform.OS === "web"
-    ? { onClick: addDraftVertexFromWebClick }
+    ? { onClick: addDraftVertexFromWebClick, onPress: addDraftVertexFromPress }
     : { onPress: addDraftVertexFromPress };
+  const mapClickLayerProps = Platform.OS === "web" ? { onClick: addDraftVertexFromWebClick } : {};
+  const canCommitCurrentDraft = designMode && canCommitDraft(mapState);
+  const canSaveCurrentMapFeature = designMode && canSaveMapFeature(mapState, mapFeatureOption.geometry);
+  const mapClickLayerActive = designMode && mapState.mode !== "pan" && mapState.mode !== "edit_vertices";
+
+  useEffect(() => {
+    if (designMode) return;
+    setSelectedVertex(null);
+    setMapState((current) => {
+      let next = current;
+      if (next.mode !== "pan") next = reduceDrawingMapState(next, { type: "set_mode", mode: "pan" });
+      if (next.draftVertices.length > 0) next = reduceDrawingMapState(next, { type: "clear_draft" });
+      return next;
+    });
+  }, [designMode]);
 
   function dispatch(action: DrawingMapAction): void {
     setMapState((current) => reduceDrawingMapState(current, action));
   }
 
   function addDraftVertexFromPress(event: GestureResponderEvent): void {
+    if (!Number.isFinite(event.nativeEvent.locationX) || !Number.isFinite(event.nativeEvent.locationY)) return;
+    lastSvgPressAt.current = Date.now();
     addDraftVertexAtScreenPoint(event.nativeEvent.locationX, event.nativeEvent.locationY);
   }
 
   function addDraftVertexFromWebClick(event: { nativeEvent?: { offsetX?: number; offsetY?: number }; currentTarget?: { getBoundingClientRect?: () => { left: number; top: number } }; clientX?: number; clientY?: number }): void {
+    if (Date.now() - lastSvgPressAt.current < 80) return;
     const bounds = event.currentTarget?.getBoundingClientRect?.();
     const xPixels = event.nativeEvent?.offsetX ?? (bounds ? (event.clientX ?? 0) - bounds.left : 0);
     const yPixels = event.nativeEvent?.offsetY ?? (bounds ? (event.clientY ?? 0) - bounds.top : 0);
@@ -178,6 +201,8 @@ export function SvgMapSurface({
   }
 
   function addDraftVertexAtScreenPoint(xPixels: number, yPixels: number): void {
+    if (!designMode) return;
+    if (!Number.isFinite(xPixels) || !Number.isFinite(yPixels)) return;
     const rawVertex = screenPointToWorld(
       mapState.viewport,
       { xPixels, yPixels },
@@ -213,6 +238,7 @@ export function SvgMapSurface({
   }
 
   function addDraftVertexAtViewCenter(): void {
+    if (!designMode) return;
     const vertex = snapWorldPoint(mapState.viewport.center);
     if (mapState.mode === "capture_point") {
       captureSurveyPoint(vertex);
@@ -223,6 +249,7 @@ export function SvgMapSurface({
   }
 
   function commitDraft(): void {
+    if (!designMode) return;
     if (mapState.draftVertices.length < 3) return;
     if (mapState.mode === "draw_boundary") {
       onCommitBoundaryDraft?.(mapState.draftVertices);
@@ -235,6 +262,10 @@ export function SvgMapSurface({
   }
 
   function setToolMode(mode: DrawingMapState["mode"], layer?: DrawingLayerType): void {
+    if (!designMode && mode !== "pan") {
+      dispatch({ type: "set_mode", mode: "pan" });
+      return;
+    }
     const nextLayer = setToolLayerForMode(mode, layer);
     if (nextLayer) dispatch({ type: "set_active_layer", activeLayer: nextLayer });
     dispatch({ type: "set_mode", mode });
@@ -242,11 +273,13 @@ export function SvgMapSurface({
   }
 
   function selectVertex(nextSelectedVertex: SelectedVertex): void {
+    if (!designMode) return;
     setSelectedVertex(nextSelectedVertex);
     dispatch({ type: "set_mode", mode: "edit_vertices" });
   }
 
   function deleteSelectedVertex(): void {
+    if (!designMode) return;
     if (!selectedVertex) return;
     if (selectedVertex.layer === "field_boundary") {
       onDeleteBoundaryVertex?.(selectedVertex.vertexIndex);
@@ -257,11 +290,13 @@ export function SvgMapSurface({
   }
 
   function selectFirstBoundaryVertex(): void {
+    if (!designMode) return;
     if (project.fieldBoundary.length === 0) return;
     selectVertex({ layer: "field_boundary", vertexIndex: 0 });
   }
 
   function nudgeSelectedVertex(delta: XY): void {
+    if (!designMode) return;
     if (!selectedVertex) return;
     const currentPoint = selectedVertexPoint(selectedVertex);
     if (!currentPoint) return;
@@ -302,6 +337,7 @@ export function SvgMapSurface({
   }
 
   function captureSurveyPoint(point: XY): void {
+    if (!designMode) return;
     onAddSurveyPoint?.({
       label: `${surveyRoleForLayer(mapState.activeLayer).replaceAll("_", " ")} point ${project.surveyPoints.length + 1}`,
       role: surveyRoleForLayer(mapState.activeLayer),
@@ -313,6 +349,7 @@ export function SvgMapSurface({
   }
 
   function commitMapFeaturePoint(point: XY): void {
+    if (!designMode) return;
     onAddMapFeature?.({
       name: defaultMapFeatureName(mapFeatureKind, 1),
       kind: mapFeatureKind,
@@ -323,6 +360,7 @@ export function SvgMapSurface({
   }
 
   function commitMapFeatureLine(): void {
+    if (!designMode) return;
     if (mapState.draftVertices.length < 2 || mapFeatureOption.geometry !== "LineString") return;
     onAddMapFeature?.({
       name: defaultMapFeatureName(mapFeatureKind, mapState.draftVertices.length),
@@ -335,6 +373,7 @@ export function SvgMapSurface({
   }
 
   function saveMapFeatureFromHud(): void {
+    if (!designMode) return;
     if (mapFeatureOption.geometry === "Point") {
       commitMapFeaturePoint(snapWorldPoint(mapState.viewport.center));
     } else {
@@ -350,22 +389,30 @@ export function SvgMapSurface({
   }
 
   return (
-    <View style={styles.shell}>
+    <View style={[styles.shell, compactLayout && styles.shellCompact]}>
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.title}>Layout Workspace</Text>
+          <Text style={styles.title}>Map Workspace</Text>
           <Text style={styles.subtitle}>
-            {project.projectCrs} · {mapState.mode.replaceAll("_", " ")} · zoom {mapState.viewport.zoomLevel.toFixed(2)}x
+            {project.projectCrs} · {workflowModeLabel(settings.mappingWorkflowMode)} · {mapState.mode.replaceAll("_", " ")} · zoom {mapState.viewport.zoomLevel.toFixed(2)}x
           </Text>
         </View>
-        <View style={styles.modeRow}>
+        <WorkflowSegmentedControl
+          mode={settings.mappingWorkflowMode}
+          onChange={(mode) => onMappingWorkflowModeChange?.(mode)}
+        />
+        <View style={[styles.modeRow, compactLayout && styles.modeRowCompact]}>
           <ToolButton active={mapState.mode === "pan"} icon={<Hand size={18} />} label="Pan" onPress={() => setToolMode("pan")} />
-          <ToolButton active={mapState.mode === "draw_boundary"} icon={<PencilLine size={18} />} label="Draw" onPress={() => setToolMode("draw_boundary", "field_boundary")} />
-          <ToolButton active={mapState.mode === "mark_obstacle"} icon={<Crosshair size={18} />} label="Obstacle" onPress={() => setToolMode("mark_obstacle", "obstacle")} />
-          <ToolButton active={mapState.mode === "edit_vertices"} icon={<Crosshair size={18} />} label="Edit" onPress={() => dispatch({ type: "set_mode", mode: "edit_vertices" })} />
-          <ToolButton active={mapState.mode === "capture_point"} icon={<Satellite size={18} />} label="Survey" onPress={() => setToolMode("capture_point", "control_point")} />
-          <ToolButton active={mapState.mode === "measure"} icon={<Ruler size={18} />} label="Measure" onPress={() => setToolMode("measure")} />
-          <ToolButton active={mapState.mode === "place_pivot"} icon={<LocateFixed size={18} />} label="Pivot" onPress={() => setToolMode("place_pivot", "pivot_center")} />
+          {designMode ? (
+            <>
+              <ToolButton active={mapState.mode === "draw_boundary"} icon={<PencilLine size={18} />} label="Boundary" onPress={() => setToolMode("draw_boundary", "field_boundary")} />
+              <ToolButton active={mapState.mode === "mark_obstacle"} icon={<Crosshair size={18} />} label="Obstacle" onPress={() => setToolMode("mark_obstacle", "obstacle")} />
+              <ToolButton active={mapState.mode === "edit_vertices"} icon={<Crosshair size={18} />} label="Edit" onPress={() => dispatch({ type: "set_mode", mode: "edit_vertices" })} />
+              <ToolButton active={mapState.mode === "capture_point"} icon={<Satellite size={18} />} label="Survey" onPress={() => setToolMode("capture_point", "control_point")} />
+              <ToolButton active={mapState.mode === "measure"} icon={<Ruler size={18} />} label="Measure" onPress={() => setToolMode("measure")} />
+              <ToolButton active={mapState.mode === "place_pivot"} icon={<LocateFixed size={18} />} label="Pivot" onPress={() => setToolMode("place_pivot", "pivot_center")} />
+            </>
+          ) : null}
         </View>
       </View>
 
@@ -381,7 +428,7 @@ export function SvgMapSurface({
       >
         <Svg
           viewBox={viewportToSvgViewBox(mapState.viewport)}
-          style={styles.svg}
+          style={[styles.svg, compactLayout && styles.svgCompact]}
           testID="layout-map-svg"
           {...svgInteractionProps}
         >
@@ -421,7 +468,7 @@ export function SvgMapSurface({
             layerLabel="Boundary"
             selected={selectedVertex?.layer === "field_boundary" ? selectedVertex.vertexIndex : null}
             vertices={project.fieldBoundary}
-            onSelect={(vertexIndex) => selectVertex({ layer: "field_boundary", vertexIndex })}
+            onSelect={designMode ? (vertexIndex) => selectVertex({ layer: "field_boundary", vertexIndex }) : undefined}
           />
           {project.obstacles.map((obstacle) => (
             <React.Fragment key={obstacle.id}>
@@ -431,7 +478,7 @@ export function SvgMapSurface({
                 layerLabel={`${obstacle.name} obstacle`}
                 selected={selectedVertex?.layer === "obstacle" && selectedVertex.obstacleId === obstacle.id ? selectedVertex.vertexIndex : null}
                 vertices={obstacle.polygon}
-                onSelect={(vertexIndex) => selectVertex({ layer: "obstacle", obstacleId: obstacle.id, vertexIndex })}
+                onSelect={designMode ? (vertexIndex) => selectVertex({ layer: "obstacle", obstacleId: obstacle.id, vertexIndex }) : undefined}
               />
             </React.Fragment>
           ))}
@@ -471,6 +518,16 @@ export function SvgMapSurface({
             </React.Fragment>
           ))}
         </Svg>
+        {mapClickLayerActive ? (
+          <View
+            accessibilityLabel="Map drawing click layer"
+            onResponderRelease={addDraftVertexFromPress}
+            onStartShouldSetResponder={() => true}
+            style={[styles.mapClickLayer, compactLayout && styles.mapClickLayerCompact]}
+            testID="layout-map-click-layer"
+            {...mapClickLayerProps}
+          />
+        ) : null}
 
         <View style={styles.zoomControls}>
           <IconControl icon={<Plus size={22} />} label="Zoom in" onPress={() => dispatch({ type: "zoom", factor: settings.drawing.zoomStepFactor })} />
@@ -486,36 +543,42 @@ export function SvgMapSurface({
           </View>
           <IconControl icon={<ArrowDown size={20} />} label="Pan south" onPress={() => dispatch({ type: "pan", delta: { x: 0, y: -settings.drawing.panStepMeters } })} />
         </View>
+        {designMode ? (
         <View style={styles.draftHud}>
           <Text style={styles.draftHudText}>
             {mapState.activeLayer.replaceAll("_", " ")} · {mapState.draftVertices.length} pts{measureText(mapState.draftVertices)}{selectedVertex ? ` · ${selectedVertexText(selectedVertex)}` : ""}
           </Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Add draft vertex at view center" onPress={addDraftVertexAtViewCenter} style={styles.clearDraftButton}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Add draft vertex at view center" disabled={!designMode} onPress={addDraftVertexAtViewCenter} style={[styles.clearDraftButton, !designMode && styles.disabledDraftButton]}>
             <Text style={styles.clearDraftText}>{mapState.mode === "capture_point" ? "Capture Center" : "Add Center"}</Text>
           </Pressable>
           {mapState.mode === "edit_vertices" ? (
             <>
-              <Pressable accessibilityRole="button" accessibilityLabel="Select first boundary vertex" onPress={selectFirstBoundaryVertex} style={styles.clearDraftButton}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Select first boundary vertex" disabled={!designMode} onPress={selectFirstBoundaryVertex} style={[styles.clearDraftButton, !designMode && styles.disabledDraftButton]}>
                 <Text style={styles.clearDraftText}>First Vertex</Text>
               </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="Move selected vertex east" disabled={!selectedVertex} onPress={() => nudgeSelectedVertex({ x: Math.max(1, settings.drawing.panStepMeters / 4), y: 0 })} style={[styles.clearDraftButton, !selectedVertex && styles.disabledDraftButton]}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Move selected vertex east" disabled={!selectedVertex || !designMode} onPress={() => nudgeSelectedVertex({ x: Math.max(1, settings.drawing.panStepMeters / 4), y: 0 })} style={[styles.clearDraftButton, (!selectedVertex || !designMode) && styles.disabledDraftButton]}>
                 <Text style={styles.clearDraftText}>Nudge E</Text>
               </Pressable>
             </>
           ) : null}
-          <Pressable accessibilityRole="button" accessibilityLabel="Commit draft geometry" disabled={!canCommitDraft(mapState)} onPress={commitDraft} style={[styles.clearDraftButton, canCommitDraft(mapState) && styles.commitDraftButton, !canCommitDraft(mapState) && styles.disabledDraftButton]}>
-            <Text style={[styles.clearDraftText, canCommitDraft(mapState) && styles.commitDraftText]}>{mapState.mode === "measure" ? "Measure Only" : "Commit"}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Commit draft geometry" disabled={!canCommitCurrentDraft} onPress={commitDraft} style={[styles.clearDraftButton, canCommitCurrentDraft && styles.commitDraftButton, !canCommitCurrentDraft && styles.disabledDraftButton]}>
+            <Text style={[styles.clearDraftText, canCommitCurrentDraft && styles.commitDraftText]}>{mapState.mode === "measure" ? "Measure Only" : "Commit"}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Save utility map feature" disabled={!canSaveMapFeature(mapState, mapFeatureOption.geometry)} onPress={saveMapFeatureFromHud} style={[styles.clearDraftButton, canSaveMapFeature(mapState, mapFeatureOption.geometry) && styles.commitDraftButton, !canSaveMapFeature(mapState, mapFeatureOption.geometry) && styles.disabledDraftButton]}>
-            <Text style={[styles.clearDraftText, canSaveMapFeature(mapState, mapFeatureOption.geometry) && styles.commitDraftText]}>{mapFeatureOption.geometry === "Point" ? "Save Center Feature" : "Save Feature"}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Save utility map feature" disabled={!canSaveCurrentMapFeature} onPress={saveMapFeatureFromHud} style={[styles.clearDraftButton, canSaveCurrentMapFeature && styles.commitDraftButton, !canSaveCurrentMapFeature && styles.disabledDraftButton]}>
+            <Text style={[styles.clearDraftText, canSaveCurrentMapFeature && styles.commitDraftText]}>{mapFeatureOption.geometry === "Point" ? "Save Center Feature" : "Save Feature"}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Delete selected vertex" disabled={!selectedVertex} onPress={deleteSelectedVertex} style={[styles.clearDraftButton, !selectedVertex && styles.disabledDraftButton]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Delete selected vertex" disabled={!selectedVertex || !designMode} onPress={deleteSelectedVertex} style={[styles.clearDraftButton, (!selectedVertex || !designMode) && styles.disabledDraftButton]}>
             <Text style={styles.clearDraftText}>Delete Vertex</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Clear draft vertices" onPress={() => dispatch({ type: "clear_draft" })} style={styles.clearDraftButton}>
             <Text style={styles.clearDraftText}>Clear</Text>
           </Pressable>
         </View>
+        ) : (
+          <View style={styles.draftHud}>
+            <Text style={styles.draftHudText}>Review Layout · inspection only · geometry editing controls hidden</Text>
+          </View>
+        )}
         {imageryPlan ? (
           <View style={styles.imageryBadge}>
             <Text style={styles.imageryBadgeText}>
@@ -541,11 +604,13 @@ export function SvgMapSurface({
         visible={shouldShowMapLibrePreview}
       />
 
+      {designMode ? (
       <View style={styles.layerRow}>
         {UTILITY_FEATURE_OPTIONS.map((option) => (
           <FeatureKindButton
             key={option.kind}
             active={mapFeatureKind === option.kind}
+            disabled={!designMode}
             label={option.label}
             onPress={() => {
               setMapFeatureKind(option.kind);
@@ -554,20 +619,23 @@ export function SvgMapSurface({
           />
         ))}
       </View>
+      ) : null}
 
+      {designMode ? (
       <View style={styles.layerRow}>
-        <LayerButton active={mapState.activeLayer === "field_boundary"} label="Boundary" layer="field_boundary" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "obstacle"} label="Obstacle" layer="obstacle" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "road"} label="Road" layer="road" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "ditch"} label="Ditch" layer="ditch" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "fence"} label="Fence" layer="fence" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "exclusion"} label="Exclusion" layer="exclusion" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "pivot_center"} label="Pivot" layer="pivot_center" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "water_source"} label="Water" layer="water_source" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "power_source"} label="Power" layer="power_source" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "control_point"} label="Control" layer="control_point" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
-        <LayerButton active={mapState.activeLayer === "note_point"} label="Note" layer="note_point" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "field_boundary"} disabled={!designMode} label="Boundary" layer="field_boundary" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "obstacle"} disabled={!designMode} label="Obstacle" layer="obstacle" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "road"} disabled={!designMode} label="Road" layer="road" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "ditch"} disabled={!designMode} label="Ditch" layer="ditch" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "fence"} disabled={!designMode} label="Fence" layer="fence" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "exclusion"} disabled={!designMode} label="Exclusion" layer="exclusion" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "pivot_center"} disabled={!designMode} label="Pivot" layer="pivot_center" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "water_source"} disabled={!designMode} label="Water" layer="water_source" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "power_source"} disabled={!designMode} label="Power" layer="power_source" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "control_point"} disabled={!designMode} label="Control" layer="control_point" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
+        <LayerButton active={mapState.activeLayer === "note_point"} disabled={!designMode} label="Note" layer="note_point" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
       </View>
+      ) : null}
 
       <View style={styles.legend}>
         <LegendSwatch color="#6cb6df" label="Allowed wet area" />
@@ -895,7 +963,7 @@ function EditableRing({
 }: {
   color: string;
   layerLabel: string;
-  onSelect: (vertexIndex: number) => void;
+  onSelect?: (vertexIndex: number) => void;
   selected: number | null;
   vertices: XY[];
 }): React.JSX.Element {
@@ -911,7 +979,7 @@ function EditableRing({
           r={selected === index ? 11 : 7}
           stroke={color}
           strokeWidth={4}
-          {...svgElementInteractionProps(() => onSelect(index))}
+          {...(onSelect ? svgElementInteractionProps(() => onSelect(index)) : {})}
         />
       ))}
     </>
@@ -941,11 +1009,37 @@ function SnapMarker({ point, color, label }: { point: XY; color: string; label: 
   );
 }
 
-function ToolButton({ active, icon, label, onPress }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void }): React.JSX.Element {
+function WorkflowSegmentedControl({ mode, onChange }: { mode: MappingWorkflowMode; onChange: (mode: MappingWorkflowMode) => void }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive]}>
+    <View accessibilityLabel="Mapping workflow mode" style={styles.workflowSegment}>
+      {(["design", "layout"] as const).map((option) => {
+        const active = mode === option;
+        return (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            key={option}
+            onPress={() => onChange(option)}
+            style={[styles.workflowSegmentButton, active && styles.workflowSegmentButtonActive]}
+            testID={`workflow-${option}-mode`}
+          >
+            <Text style={[styles.workflowSegmentText, active && styles.workflowSegmentTextActive]}>{workflowModeLabel(option)}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function workflowModeLabel(mode: MappingWorkflowMode): string {
+  return mode === "design" ? "Edit Geometry" : "Review Layout";
+}
+
+function ToolButton({ active, disabled = false, icon, label, onPress }: { active: boolean; disabled?: boolean; icon: React.ReactNode; label: string; onPress: () => void }): React.JSX.Element {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive, disabled && styles.toolButtonDisabled]}>
       {icon}
-      <Text style={[styles.toolLabel, active && styles.toolLabelActive]}>{label}</Text>
+      <Text style={[styles.toolLabel, active && styles.toolLabelActive, disabled && styles.toolLabelDisabled]}>{label}</Text>
     </Pressable>
   );
 }
@@ -958,20 +1052,20 @@ function IconControl({ icon, label, onPress }: { icon: React.ReactNode; label: s
   );
 }
 
-function LayerButton({ active, label, layer, onPress }: { active: boolean; label: string; layer: DrawingLayerType; onPress: (layer: DrawingLayerType) => void }): React.JSX.Element {
+function LayerButton({ active, disabled = false, label, layer, onPress }: { active: boolean; disabled?: boolean; label: string; layer: DrawingLayerType; onPress: (layer: DrawingLayerType) => void }): React.JSX.Element {
   return (
-    <Pressable onPress={() => onPress(layer)} style={[styles.layerButton, active && styles.layerButtonActive]}>
-      <Text style={[styles.layerLabel, active && styles.layerLabelActive]}>{label}</Text>
+    <Pressable disabled={disabled} onPress={() => onPress(layer)} style={[styles.layerButton, active && styles.layerButtonActive, disabled && styles.layerButtonDisabled]}>
+      <Text style={[styles.layerLabel, active && styles.layerLabelActive, disabled && styles.layerLabelDisabled]}>{label}</Text>
     </Pressable>
   );
 }
 
-function FeatureKindButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }): React.JSX.Element {
+function FeatureKindButton({ active, disabled = false, label, onPress }: { active: boolean; disabled?: boolean; label: string; onPress: () => void }): React.JSX.Element {
   return (
-    <Pressable onPress={onPress} style={[styles.layerButton, active && styles.layerButtonActive]}>
+    <Pressable disabled={disabled} onPress={onPress} style={[styles.layerButton, active && styles.layerButtonActive, disabled && styles.layerButtonDisabled]}>
       {label === "Power line" || label === "Pole" ? <UtilityPole size={15} color={active ? "#ffffff" : "#314339"} /> : null}
       {label === "Fence" ? <Fence size={15} color={active ? "#ffffff" : "#314339"} /> : null}
-      <Text style={[styles.layerLabel, active && styles.layerLabelActive]}>{label}</Text>
+      <Text style={[styles.layerLabel, active && styles.layerLabelActive, disabled && styles.layerLabelDisabled]}>{label}</Text>
     </Pressable>
   );
 }
@@ -1149,8 +1243,15 @@ const styles = StyleSheet.create({
     flexBasis: 760,
     flex: 1,
     flexGrow: 3,
+    flexShrink: 1,
     minHeight: 720,
+    minWidth: 0,
     overflow: "hidden",
+  },
+  shellCompact: {
+    flexBasis: "100%",
+    minHeight: 640,
+    width: "100%",
   },
   headerRow: {
     alignItems: "center",
@@ -1177,14 +1278,60 @@ const styles = StyleSheet.create({
     height: 640,
     width: "100%",
   },
+  svgCompact: {
+    height: 540,
+  },
   mapSurface: {
     minHeight: 640,
     position: "relative",
   },
+  mapClickLayer: {
+    backgroundColor: "transparent",
+    height: 640,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 1,
+  },
+  mapClickLayerCompact: {
+    height: 540,
+  },
   modeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
+    flexShrink: 1,
     gap: 8,
+    maxWidth: "100%",
+  },
+  modeRowCompact: {
+    width: "100%",
+  },
+  workflowSegment: {
+    alignItems: "center",
+    backgroundColor: "#edf3eb",
+    borderColor: "#c9d6c7",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    padding: 3,
+  },
+  workflowSegmentButton: {
+    borderRadius: 6,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  workflowSegmentButtonActive: {
+    backgroundColor: "#254234",
+  },
+  workflowSegmentText: {
+    color: "#314339",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  workflowSegmentTextActive: {
+    color: "#ffffff",
   },
   toolButton: {
     alignItems: "center",
@@ -1194,6 +1341,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: 6,
+    flexShrink: 1,
     minHeight: 42,
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -1201,6 +1349,9 @@ const styles = StyleSheet.create({
   toolButtonActive: {
     backgroundColor: "#254234",
     borderColor: "#254234",
+  },
+  toolButtonDisabled: {
+    opacity: 0.45,
   },
   toolLabel: {
     color: "#314339",
@@ -1210,18 +1361,23 @@ const styles = StyleSheet.create({
   toolLabelActive: {
     color: "#ffffff",
   },
+  toolLabelDisabled: {
+    color: "#5f6f64",
+  },
   zoomControls: {
     gap: 8,
     position: "absolute",
     right: 12,
     top: 12,
+    zIndex: 2,
   },
   panControls: {
     alignItems: "center",
-    bottom: 12,
     gap: 6,
     position: "absolute",
     right: 12,
+    top: 174,
+    zIndex: 2,
   },
   panMiddle: {
     flexDirection: "row",
@@ -1242,6 +1398,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     position: "absolute",
+    right: 12,
+    zIndex: 2,
   },
   imageryBadge: {
     backgroundColor: "rgba(255, 254, 248, 0.92)",
@@ -1253,7 +1411,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     position: "absolute",
+    right: 12,
     top: 12,
+    zIndex: 2,
   },
   imageryBadgeText: {
     color: "#26392f",
@@ -1329,6 +1489,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#254234",
     borderColor: "#254234",
   },
+  layerButtonDisabled: {
+    opacity: 0.45,
+  },
   layerLabel: {
     color: "#314339",
     fontSize: 12,
@@ -1336,6 +1499,9 @@ const styles = StyleSheet.create({
   },
   layerLabelActive: {
     color: "#ffffff",
+  },
+  layerLabelDisabled: {
+    color: "#5f6f64",
   },
   legend: {
     borderTopColor: "#dde3da",

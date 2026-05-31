@@ -23,6 +23,7 @@ assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileSize, 256);
 assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.projection, "EPSG:3857");
 assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.cachePolicy, "interactive_only");
 assert.equal(defaults.coordinateDisplayFormat, "decimal_degrees");
+assert.equal(defaults.mappingWorkflowMode, "design");
 assert.equal(defaults.gpsQuality.minimumFixType, "rtk_fixed");
 
 const merged = mergeAppSettings({
@@ -30,10 +31,12 @@ const merged = mergeAppSettings({
   drawing: { vertexSnapToleranceMeters: 2.5 },
 });
 assert.equal(merged.coordinateDisplayFormat, "degrees_minutes_seconds");
+assert.equal(merged.mappingWorkflowMode, "design");
 assert.equal(merged.drawing.vertexSnapToleranceMeters, 2.5);
 assert.equal(merged.drawing.featureSnapToleranceMeters, defaults.drawing.featureSnapToleranceMeters);
 
 const projectSettings = projectSettingsFromApp(merged);
+assert.equal(projectSettings.mappingWorkflowMode, "design");
 assert.equal(projectSettings.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in projectSettings.offlineMaps, false);
 assert.equal("onlineImagery" in projectSettings, false);

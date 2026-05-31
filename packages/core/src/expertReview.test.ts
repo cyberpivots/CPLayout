@@ -25,11 +25,20 @@ const emptyResult: LayoutResult = {
 };
 
 const findings = buildExpertReviewFindings(sampleProject, emptyResult, defaultAppSettings());
-assert.equal(findings.length, 5);
-assert.equal(findings[0].role, "Product/UX");
+assert.equal(findings.length, 6);
+assert.equal(findings[0].role, "Product/Workflow");
 assert.equal(findings[0].status, "pass");
 assert.match(findings[0].finding, /decimal degrees/);
-assert.equal(findings.find((finding) => finding.role === "ML Feasibility")?.status, "watch");
+assert.equal(findings.find((finding) => finding.role === "GIS/Imagery")?.status, "pass");
+assert.equal(findings.find((finding) => finding.role === "Storage/Export")?.status, "pass");
+
+const projectBeforeReview = JSON.stringify(sampleProject);
+buildExpertReviewFindings(
+  sampleProject,
+  emptyResult,
+  { ...defaultAppSettings(), onlineImagery: { enabled: true, providerId: "usgs_imagery_only", maxTilesPerView: 8 } },
+);
+assert.equal(JSON.stringify(sampleProject), projectBeforeReview);
 
 const projectedSettingsFindings = buildExpertReviewFindings(
   sampleProject,
@@ -43,9 +52,11 @@ const liveImageryFindings = buildExpertReviewFindings(
   emptyResult,
   { ...defaultAppSettings(), onlineImagery: { enabled: true, providerId: "usgs_imagery_only", maxTilesPerView: 8 } },
 );
-const liveImageryEvidence = liveImageryFindings.find((finding) => finding.role === "GIS/Mapping")?.evidence.join("\n") ?? "";
-assert.match(liveImageryEvidence, /Live online imagery preview: usgs_imagery_only active; remote preview tiles may load/);
+const liveImageryEvidence = liveImageryFindings.find((finding) => finding.role === "GIS/Imagery")?.evidence.join("\n") ?? "";
+assert.match(liveImageryEvidence, /Browser imagery: usgs_imagery_only active; attribution required on map/);
 assert.match(liveImageryEvidence, /Project package network tiles allowed: false/);
+const storageEvidence = liveImageryFindings.find((finding) => finding.role === "Storage/Export")?.evidence.join("\n") ?? "";
+assert.match(storageEvidence, /Saved online imagery in project: no/);
 
 const warningFindings = buildExpertReviewFindings(
   sampleProject,

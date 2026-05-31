@@ -227,6 +227,7 @@ async function run(): Promise<void> {
 
   const boundaryLoopImported = await importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
     accepted: true,
+    autoApplyEligible: true,
     gpuBacked: true,
     cudaAvailable: true,
     projectedPolygon: sampleProject.fieldBoundary,
@@ -235,6 +236,8 @@ async function run(): Promise<void> {
   assert.equal(boundaryLoopImported[0]?.proposedGeometry.fieldBoundary?.length, sampleProject.fieldBoundary.length);
   assert.equal(boundaryLoopImported[0]?.metadata?.schemaVersion, "cplayout-boundary-improvement-loop-v1");
   assert.equal(boundaryLoopImported[0]?.metadata?.autoApplyEligible, true);
+  assert.equal(boundaryLoopImported[0]?.metadata?.mlflowRunId, "mlflow-run-001");
+  assert.equal(boundaryLoopImported[0]?.metadata?.dvcRevision, "abc1234");
   const boundaryLoopData = await loadProjectReviewDataAsync(sampleProject.id);
   const boundaryEvidence = boundaryLoopData.evidenceRecords.find((record) => record.id.includes("boundary-improvement-loop"));
   assert.equal(boundaryEvidence?.metrics?.gpuCudaAvailable, true);
@@ -242,6 +245,7 @@ async function run(): Promise<void> {
 
   const rejectedBoundaryLoopImported = await importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
     accepted: false,
+    autoApplyEligible: false,
     gpuBacked: false,
     cudaAvailable: false,
     projectedPolygon: sampleProject.fieldBoundary,
@@ -249,9 +253,31 @@ async function run(): Promise<void> {
   }));
   assert.equal(rejectedBoundaryLoopImported.length, 0);
 
+  const ungatedBoundaryLoopImported = await importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
+    accepted: true,
+    autoApplyEligible: false,
+    gpuBacked: true,
+    cudaAvailable: true,
+    projectedPolygon: sampleProject.fieldBoundary,
+    createdAt: "2026-05-30T12:07:00.000Z",
+  }));
+  assert.equal(ungatedBoundaryLoopImported.length, 0);
+
+  const hardFailureBoundaryLoopImported = await importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
+    accepted: true,
+    autoApplyEligible: true,
+    gpuBacked: true,
+    cudaAvailable: true,
+    hardFailures: ["candidate crosses road exclusion"],
+    projectedPolygon: sampleProject.fieldBoundary,
+    createdAt: "2026-05-30T12:08:00.000Z",
+  }));
+  assert.equal(hardFailureBoundaryLoopImported.length, 0);
+
   await assert.rejects(
     () => importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
       accepted: true,
+      autoApplyEligible: true,
       gpuBacked: true,
       cudaAvailable: true,
       projectCrs: "EPSG:3857",
@@ -259,6 +285,21 @@ async function run(): Promise<void> {
       createdAt: "2026-05-30T12:10:00.000Z",
     })),
     /uses EPSG:3857/,
+  );
+
+  await assert.rejects(
+    () => importModelRecommendationsAsync(sampleProject.id, boundaryLoopReport({
+      accepted: true,
+      autoApplyEligible: true,
+      gpuBacked: true,
+      cudaAvailable: true,
+      projectedPolygon: [
+        { x: 0, y: 0 },
+        { x: 10, y: 10 },
+      ],
+      createdAt: "2026-05-30T12:11:00.000Z",
+    })),
+    /at least three vertices|Too small/,
   );
 
   const mismatchedGroupedGeoJson = modelRecommendationsToProjectedGeoJson([{
@@ -338,9 +379,11 @@ function reviewStorageKey(projectId: string): string {
 
 function boundaryLoopReport(options: {
   accepted: boolean;
+  autoApplyEligible?: boolean;
   gpuBacked: boolean;
   cudaAvailable: boolean;
   projectedPolygon: Array<{ x: number; y: number }>;
+  hardFailures?: string[];
   createdAt?: string;
   projectCrs?: string;
 }): object {
@@ -355,6 +398,13 @@ function boundaryLoopReport(options: {
     canonicalGeometryMutation: false,
     minimumIterationsRequired: 5,
     iterationCount: 5,
+    mlflow: {
+      runId: "mlflow-run-001",
+    },
+    dvc: {
+      gitCommit: "abc1234",
+    },
+    splitId: "validation",
     gpu: {
       cudaAvailable: options.cudaAvailable,
       deviceCount: options.cudaAvailable ? 1 : 0,
@@ -386,7 +436,9 @@ function boundaryLoopReport(options: {
       accepted: options.accepted,
       status: options.accepted ? "accepted" : "not accepted",
       gpuBacked: options.gpuBacked,
+      autoApplyEligible: options.autoApplyEligible ?? options.accepted,
       reasons: options.accepted ? [] : ["PyTorch CUDA was not available; report is not GPU-backed"],
+      hardFailures: options.hardFailures ?? (options.accepted ? [] : ["PyTorch CUDA was not available; report is not GPU-backed"]),
     },
   };
 }

@@ -44,10 +44,9 @@
 
 ## Reasoning Policy
 
-- Use low reasoning for file lookup, formatting, simple command output, and narrow documentation checks.
-- Use medium reasoning for ordinary TypeScript, tests, and UI changes.
-- Use high reasoning for architecture, storage, native maps, migration, multi-package, and source-backed dependency decisions.
-- Use xhigh reasoning only for high-risk arbitration, cross-platform/native verification disputes, or conflicting expert/reviewer findings.
+- Use xhigh reasoning by default for CPLayout work.
+- Lower reasoning only when the user explicitly requests it for a narrow task.
+- Do not downgrade ordinary TypeScript, UI, documentation, or tool/debug work by default.
 
 ## Current Blocker Boundaries
 

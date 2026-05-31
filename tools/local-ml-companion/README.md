@@ -21,6 +21,8 @@ uv run cplayout-ml probe-gpu
 
 The first recommender is deterministic and advisory. It is not a production-trained agronomy model.
 
+DVC and MLflow are local companion dependencies only. The repository tracks DVC metadata and config, while `.dvc/cache/`, `mlruns/`, local dataset materializations, and generated model files stay ignored. No DVC remote or hosted MLflow tracking server is configured by default.
+
 The imagery field-boundary detector is offline-only. OpenCV is the required scoring/refinement layer. SAM2 is optional and is used only inside this local Python companion when the operator has already installed SAM2 and supplied local files; the CLI does not download checkpoints or make cloud calls.
 
 ```sh
@@ -106,6 +108,38 @@ uv run cplayout-ml evaluate-vision-fixtures \
 The manifest contains `fixtures[]` entries with local paths for `fullWindowScreenshot`, `mapCanvasCrop`, optional `kml`, optional `kmz`, optional `visualFidelityManifest`, optional `projectReference`, and expected booleans such as `expected.boundaryPresent`, `expected.overlayPresent`, and `expected.blackCanvas`. Outputs are `vision-evaluation-summary.json`, `vision-evaluation-cases.jsonl`, and per-case annotated PNGs. The evaluation reports precision, recall, IoU-style boundary detection metrics, overlay detection metrics, false-positive categories, and semantic advisory cues such as pivot ring, overlay, service/access lines, radial/corner-arm cues, and advisory boundaries.
 
 This command is offline/local only. It does not download SAM2 checkpoints, call a network service, cache Google imagery, or write canonical `PivotProject` geometry.
+
+## Full Local ML Loop
+
+Use `prepare-vision-dataset` to validate a local fixture manifest, hash artifact paths, record provenance, and assign deterministic project-level train/validation/test splits without copying restricted imagery:
+
+```sh
+uv run cplayout-ml prepare-vision-dataset \
+  --manifest ../../reports/google-earth-visual-fidelity/fixtures/vision-fixtures.json \
+  --output-dir ../../reports/google-earth-visual-fidelity/ml-loop/dataset \
+  --split-seed cplayout-local-vision-v1
+```
+
+Use `run-boundary-experiment` to run the OpenCV fixture baseline, optional per-fixture boundary-loop variants, and local MLflow logging:
+
+```sh
+uv run cplayout-ml run-boundary-experiment \
+  --manifest ../../reports/google-earth-visual-fidelity/fixtures/vision-fixtures.json \
+  --output-dir ../../reports/google-earth-visual-fidelity/ml-loop/experiment-001 \
+  --experiment-name cplayout-boundary-loop
+```
+
+The experiment report compares the deterministic OpenCV baseline, an OpenCV+SAM2 proposal slot, and a trained-model slot. SAM2 and trained-model candidates remain `not_run` unless local config/checkpoints or model artifacts are explicitly supplied by future companion work. MLflow writes to an ignored local `mlruns/` folder under the experiment output; reports also record DVC metadata and pointer-file state when present.
+
+Use `summarize-boundary-experiments` to generate deterministic JSON and Markdown comparisons:
+
+```sh
+uv run cplayout-ml summarize-boundary-experiments \
+  --input ../../reports/google-earth-visual-fidelity/ml-loop/experiment-001 \
+  --output-dir ../../reports/google-earth-visual-fidelity/ml-loop/summary
+```
+
+These commands are offline/local only. They reject hidden-key provenance, do not upload imagery or telemetry, and do not mutate canonical project geometry.
 
 For a complete local Google Earth proof packet and companion CV run, use the top-level orchestration script:
 

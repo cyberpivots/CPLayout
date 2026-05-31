@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { defaultAppSettings } from "@cplayout/core";
 
 import {
+  createNmeaStreamAccumulator,
   evaluateRtkQualityGate,
   parseNmeaLog,
   parseNmeaSentence,
+  parseNmeaStreamChunk,
   rtkQualityFromNmeaSamples,
   surveyPointFromNmeaSamples,
 } from "./nmea";
@@ -39,6 +41,19 @@ assert.equal(quality.fixType, "rtk_fixed");
 assert.equal(quality.hdop, 0.6);
 assert.equal(quality.verticalAccuracyMeters, 0.031);
 assert.equal(evaluateRtkQualityGate(quality, defaultAppSettings().gpsQuality).accepted, true);
+assert.equal(
+  evaluateRtkQualityGate({ ...quality, satellites: 8 }, defaultAppSettings().gpsQuality).reasons.some((reason) => /satellites/.test(reason)),
+  true,
+);
+
+let accumulator = createNmeaStreamAccumulator();
+const firstChunk = parseNmeaStreamChunk(accumulator, "$GPGGA,172814.0,4042.6142,N,10459.2715,W,4,18,0.6,1560.2,M,-21.3,M,1.");
+assert.equal(firstChunk.samples.length, 0);
+accumulator = firstChunk.accumulator;
+const secondChunk = parseNmeaStreamChunk(accumulator, "2,0134*5A\r\n$GPGSA,A,3,01,02,03,04,05,06,07,08,09,10,11,12,1.1,0.6,0.9*33\n");
+assert.equal(secondChunk.samples.length, 2);
+assert.equal(secondChunk.samples[0]?.fixType, "rtk_fixed");
+assert.equal(secondChunk.accumulator.carry, "");
 
 const simulatedPoint = surveyPointFromNmeaSamples({
   samples: replay,

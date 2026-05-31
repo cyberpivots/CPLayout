@@ -28,6 +28,16 @@ export interface RtkQualityGateResult {
   quality: RtkQuality;
 }
 
+export interface NmeaStreamAccumulator {
+  carry: string;
+}
+
+export interface NmeaChunkParseResult {
+  accumulator: NmeaStreamAccumulator;
+  lines: string[];
+  samples: ParsedNmeaSample[];
+}
+
 export function parseNmeaSentence(sentence: string): ParsedNmeaSample | null {
   const trimmed = sentence.trim();
   if (!trimmed.startsWith("$")) return null;
@@ -107,6 +117,22 @@ export function parseNmeaLog(input: string | Iterable<string>): ParsedNmeaSample
     .filter((sample): sample is ParsedNmeaSample => Boolean(sample));
 }
 
+export function createNmeaStreamAccumulator(carry = ""): NmeaStreamAccumulator {
+  return { carry };
+}
+
+export function parseNmeaStreamChunk(accumulator: NmeaStreamAccumulator, chunk: string): NmeaChunkParseResult {
+  const combined = `${accumulator.carry}${chunk}`.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const parts = combined.split("\n");
+  const carry = parts.pop() ?? "";
+  const lines = parts.map((line) => line.trim()).filter((line) => line.length > 0);
+  return {
+    accumulator: { carry },
+    lines,
+    samples: parseNmeaLog(lines),
+  };
+}
+
 export function rtkQualityFromNmeaSamples(samples: ParsedNmeaSample[]): RtkQuality {
   const quality: RtkQuality = {
     fixType: "unknown",
@@ -150,6 +176,9 @@ export function evaluateRtkQualityGate(quality: RtkQuality, thresholds: AppSetti
   }
   if ((quality.hdop ?? Number.POSITIVE_INFINITY) > thresholds.maxHdop) {
     reasons.push(`HDOP ${quality.hdop ?? "unknown"} exceeds ${thresholds.maxHdop}`);
+  }
+  if ((quality.satellites ?? -1) < thresholds.minSatellites) {
+    reasons.push(`satellites ${quality.satellites ?? "unknown"} below required ${thresholds.minSatellites}`);
   }
   if ((quality.horizontalAccuracyMeters ?? Number.POSITIVE_INFINITY) > thresholds.maxHorizontalAccuracyMeters) {
     reasons.push(`horizontal accuracy ${quality.horizontalAccuracyMeters ?? "unknown"} m exceeds ${thresholds.maxHorizontalAccuracyMeters} m`);

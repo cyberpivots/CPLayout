@@ -1,6 +1,6 @@
 name = "cplayout_database_specialist"
 description = "Read-only specialist for CPLayout SQLite, project-store, project archive, migration, and CRUD integration review."
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 nickname_candidates = ["Database", "Storage", "SQLite"]
 developer_instructions = '''

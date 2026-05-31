@@ -1,4 +1,4 @@
-import type { AppSettings, InfrastructurePoint, LayoutResult, ModelRecommendation, ObstacleZone, PivotProject, ProjectMapFeature, SurveyPoint, XY } from "@cplayout/core";
+import type { AppSettings, InfrastructurePoint, LayoutResult, MappingWorkflowMode, ModelRecommendation, ObstacleZone, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 
 export interface MapSurfaceProps {
@@ -10,8 +10,9 @@ export interface MapSurfaceProps {
   draftVertices?: XY[];
   selectedMapFeatureId?: string | null;
   advisoryRecommendationPreview?: ModelRecommendation | null;
+  onMappingWorkflowModeChange?: (mode: MappingWorkflowMode) => void;
   onCommitBoundaryDraft?: (vertices: XY[]) => void;
-  onCommitObstacleDraft?: (vertices: XY[], kind: ObstacleZone["kind"]) => void;
+  onCommitObstacleDraft?: (vertices: XY[], kind: ObstacleZone["kind"], confidence?: SourceConfidence) => void;
   onMoveBoundaryVertex?: (vertexIndex: number, point: XY) => void;
   onDeleteBoundaryVertex?: (vertexIndex: number) => void;
   onMoveObstacleVertex?: (obstacleId: string, vertexIndex: number, point: XY) => void;

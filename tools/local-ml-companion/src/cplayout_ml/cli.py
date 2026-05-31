@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
+from .ml_loop import prepare_vision_dataset, run_boundary_experiment, summarize_boundary_experiments
+
 MODEL_NAME = "baseline-local-layout-ranker"
 MODEL_VERSION = "0.1.0"
 VISION_MODEL_NAME = "design-only-google-earth-vision-review"
@@ -112,6 +114,23 @@ def main(argv: list[str] | None = None) -> int:
     improve_boundary.add_argument("--min-iterations", type=int, default=5, help="Minimum detector iterations. Values below 5 are raised to 5.")
     improve_boundary.add_argument("--created-at", default=DEFAULT_CREATED_AT)
 
+    prepare_dataset = subcommands.add_parser("prepare-vision-dataset", help="Validate a local fixture manifest and write deterministic dataset metadata.")
+    prepare_dataset.add_argument("--manifest", required=True, type=Path, help="Fixture manifest JSON with local artifact paths.")
+    prepare_dataset.add_argument("--output-dir", required=True, type=Path, help="Directory for vision-dataset-metadata.json.")
+    prepare_dataset.add_argument("--split-seed", default="cplayout-local-vision-v1", help="Stable seed for project-level train/validation/test splits.")
+    prepare_dataset.add_argument("--created-at", default=DEFAULT_CREATED_AT)
+
+    run_experiment = subcommands.add_parser("run-boundary-experiment", help="Run the local OpenCV boundary fixture loop and log local MLflow evidence.")
+    run_experiment.add_argument("--manifest", required=True, type=Path, help="Fixture manifest JSON with local proof packet paths.")
+    run_experiment.add_argument("--output-dir", required=True, type=Path, help="Directory for experiment outputs and local mlruns.")
+    run_experiment.add_argument("--experiment-name", default="cplayout-boundary-loop", help="Local MLflow experiment name.")
+    run_experiment.add_argument("--split-seed", default="cplayout-local-vision-v1")
+    run_experiment.add_argument("--created-at", default=DEFAULT_CREATED_AT)
+
+    summarize_experiments = subcommands.add_parser("summarize-boundary-experiments", help="Compare local boundary experiment reports.")
+    summarize_experiments.add_argument("--input", required=True, type=Path, nargs="+", help="Experiment report JSON files or experiment output directories.")
+    summarize_experiments.add_argument("--output-dir", required=True, type=Path, help="Directory for JSON and Markdown comparison output.")
+
     args = parser.parse_args(argv)
     if args.command == "probe-gpu":
         return probe_gpu()
@@ -155,6 +174,20 @@ def main(argv: list[str] | None = None) -> int:
             args.min_iterations,
             args.created_at,
         )
+    if args.command == "prepare-vision-dataset":
+        return prepare_vision_dataset(args.manifest, args.output_dir, args.split_seed, args.created_at)
+    if args.command == "run-boundary-experiment":
+        return run_boundary_experiment(
+            args.manifest,
+            args.output_dir,
+            args.experiment_name,
+            args.split_seed,
+            args.created_at,
+            evaluate_vision_fixtures,
+            improve_boundary_detector,
+        )
+    if args.command == "summarize-boundary-experiments":
+        return summarize_boundary_experiments(args.input, args.output_dir)
     parser.error("Unsupported command.")
     return 2
 
@@ -840,6 +873,7 @@ def boundary_improvement_acceptance(
         "accepted": accepted,
         "status": "accepted" if accepted else "not accepted",
         "gpuBacked": gpu_backed,
+        "autoApplyEligible": accepted,
         "reasons": reasons,
         "hardFailures": reasons,
         "cvCandidateAccepted": accepted,

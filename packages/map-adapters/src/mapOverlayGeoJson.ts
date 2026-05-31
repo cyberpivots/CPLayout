@@ -43,7 +43,8 @@ export function projectLayoutToWgs84FeatureCollection(
           ? pointFeature(project, "map_feature", feature.geometry.point, properties)
           : lineFeature(project, "map_feature", feature.geometry.vertices, properties);
       }),
-      ...(draftVertices.length > 0 ? [lineFeature(project, "draft_vertices", draftVertices, { count: draftVertices.length })] : []),
+      ...(draftVertices.length === 1 ? [pointFeature(project, "draft_vertices", draftVertices[0], { count: 1 })] : []),
+      ...(draftVertices.length >= 2 ? [lineFeature(project, "draft_vertices", draftVertices, { count: draftVertices.length })] : []),
     ],
   };
 }

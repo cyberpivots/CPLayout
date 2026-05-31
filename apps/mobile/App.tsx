@@ -1,35 +1,47 @@
 import { StatusBar } from "expo-status-bar";
 import {
   AlertTriangle,
+  CheckCircle2,
   ClipboardList,
+  Database,
   Download,
+  FolderOpen,
+  Home,
+  Layers,
+  ListChecks,
+  Map as MapIcon,
   MapPinned,
+  PackageCheck,
+  RotateCcw,
   Ruler,
   Save,
   Satellite,
   SlidersHorizontal,
   Settings2,
+  Upload,
   WifiOff,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useReducer, useState } from "react";
 import {
   Pressable,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 import { CoordinateFormatPanel } from "./src/components/CoordinateFormatPanel";
+import { BrowserRtkReceiverPanel } from "./src/components/BrowserRtkReceiverPanel";
 import { ExpertReviewPanel } from "./src/components/ExpertReviewPanel";
 import { MapSurface } from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
 import { ProjectFilesPanel } from "./src/components/ProjectFilesPanel";
-import { ProjectStartPanel } from "./src/components/ProjectStartPanel";
 import { SettingsPanel } from "./src/components/SettingsPanel";
-import { useProjectRepository } from "./src/hooks/useProjectRepository";
+import { useProjectRepository, type ProjectWorkspaceStatus } from "./src/hooks/useProjectRepository";
 import {
   COORDINATE_FORMAT_LABELS,
   createProjectEditorState,
@@ -57,21 +69,24 @@ import {
 import { evaluateLayout, exportScenarioGeoJson, machineRadiusMeters } from "@cplayout/geometry";
 import { formatAreaFromAcres, formatDistance } from "@cplayout/core";
 
-type Tab = "layout" | "survey" | "equipment" | "settings" | "review" | "export";
+type WorkspaceView = "dashboard" | "map" | "survey" | "review" | "files" | "settings";
 type Screen = "projects" | "workspace";
+type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "review" | "export";
 
 export default function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>("projects");
-  const [tab, setTab] = useState<Tab>("layout");
+  const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
   const [editor, dispatchProject] = useReducer(reduceProjectEditorState, sampleProject, createProjectEditorState);
   const project = editor.project;
   const [savedRevision, setSavedRevision] = useState(0);
-  const [settings, setSettings] = useState<AppSettings>(() => mergeAppSettings(sampleProject.settings));
+  const [settings, setSettings] = useState<AppSettings>(() => browserLocalSettings(sampleProject.settings));
+  const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress());
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
   const [advisoryRecommendationPreview, setAdvisoryRecommendationPreview] = useState<ModelRecommendation | null>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const compactLayout = windowWidth < 760;
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
-  const machineRadius = machineRadiusMeters(project.machine);
   const isDirty = editor.revision !== savedRevision;
   const selectedMapFeature = useMemo(
     () => (project.mapFeatures ?? []).find((feature) => feature.id === selectedMapFeatureId) ?? null,
@@ -116,13 +131,17 @@ export default function App(): React.JSX.Element {
     dispatchProject({ type: "update_project_settings", unitSystem: parsed.unitSystem, settings: projectSettingsFromApp(parsed) });
   }
 
+  function setWorkflowMode(mappingWorkflowMode: AppSettings["mappingWorkflowMode"]): void {
+    setSettings((current) => parseAppSettings({ ...current, mappingWorkflowMode }));
+  }
+
   function loadProject(nextProject: PivotProject): void {
     dispatchProject({ type: "load_project", project: nextProject });
     setSavedRevision(0);
-    setSettings(mergeAppSettings(nextProject.settings));
+    setSettings((current) => browserLocalSettings(nextProject.settings, current));
     setSelectedMapFeatureId(null);
     setAdvisoryRecommendationPreview(null);
-    setTab("layout");
+    setActiveView("dashboard");
     setScreen("workspace");
   }
 
@@ -186,6 +205,20 @@ export default function App(): React.JSX.Element {
     });
   }
 
+  function updateWalkthrough(moduleId: WalkthroughModuleId, complete: boolean): void {
+    setWalkthroughProgress((current) => {
+      const next = { ...current, [moduleId]: complete };
+      saveWalkthroughProgress(next);
+      return next;
+    });
+  }
+
+  function resetWalkthrough(): void {
+    const next = emptyWalkthroughProgress();
+    saveWalkthroughProgress(next);
+    setWalkthroughProgress(next);
+  }
+
   if (screen === "projects") {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -193,22 +226,44 @@ export default function App(): React.JSX.Element {
         <View style={styles.app}>
           <View style={styles.topBar}>
             <View>
-              <Text style={styles.appTitle}>Center Pivot Layout</Text>
-              <Text style={styles.appSubtitle}>Offline project workspace</Text>
+              <Text style={styles.appTitle}>CPLayout</Text>
+              <Text style={styles.appSubtitle}>Browser mapping console</Text>
             </View>
-            <View style={styles.statusRow}>
+            <View style={[styles.statusRow, compactLayout && styles.statusRowCompact]}>
               <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline storage" />
               <StatusPill icon={<Ruler size={15} color="#254234" />} label="Projected XY canonical" />
+              <StatusPill icon={<Satellite size={15} color="#254234" />} label={settings.onlineImagery.enabled ? "USGS imagery ready" : "Imagery off"} />
             </View>
           </View>
-          <ScrollView contentContainerStyle={styles.content}>
-            <ProjectStartPanel
+          <ScrollView contentContainerStyle={[styles.content, compactLayout && styles.contentCompact]}>
+            <ProjectDashboard
+              compact={compactLayout}
+              dirty={isDirty}
+              mode="launcher"
               onCreate={createNewProject}
+              onOpenFiles={() => {
+                setScreen("workspace");
+                setActiveView("files");
+              }}
               onOpenImprovedProof={() => loadProject(improvedCenterPivotReviewProject)}
+              onOpenMap={() => {
+                setScreen("workspace");
+                setActiveView("map");
+              }}
               onOpenProject={openSavedProject}
+              onOpenReview={() => {
+                setScreen("workspace");
+                setActiveView("review");
+              }}
               onOpenRealProof={() => loadProject(realCenterPivotProofProject)}
               onOpenSample={() => loadProject(sampleProject)}
+              project={project}
               repository={repository}
+              result={result}
+              settings={settings}
+              walkthroughProgress={walkthroughProgress}
+              onResetWalkthrough={resetWalkthrough}
+              onToggleWalkthrough={updateWalkthrough}
             />
           </ScrollView>
         </View>
@@ -230,18 +285,19 @@ export default function App(): React.JSX.Element {
       <View style={styles.app}>
         <View style={styles.topBar}>
           <View>
-            <Text style={styles.appTitle}>Center Pivot Layout</Text>
+            <Text style={styles.appTitle}>CPLayout</Text>
             <Text style={styles.appSubtitle}>{project.name}</Text>
           </View>
-          <View style={styles.statusRow}>
+          <View style={[styles.statusRow, compactLayout && styles.statusRowCompact]}>
             <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline storage" />
-            {settings.onlineImagery.enabled ? <StatusPill icon={<Satellite size={15} color="#254234" />} label="Live imagery preview" /> : null}
+            {settings.onlineImagery.enabled ? <StatusPill icon={<Satellite size={15} color="#254234" />} label="USGS imagery on" /> : null}
+            <StatusPill icon={<MapPinned size={15} color="#254234" />} label={workflowModeLabel(settings.mappingWorkflowMode)} />
             <StatusPill icon={<Satellite size={15} color="#254234" />} label={`${settings.gpsQuality.minimumFixType.replaceAll("_", " ")} gate`} />
             <StatusPill icon={<Ruler size={15} color="#254234" />} label={project.projectCrs} />
             <StatusPill icon={<SlidersHorizontal size={15} color="#254234" />} label={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
             <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} />
           </View>
-          <View style={styles.projectActionRow}>
+          <View style={[styles.projectActionRow, compactLayout && styles.statusRowCompact]}>
             <SmallActionButton label={isDirty ? "Save *" : "Save"} onPress={saveCurrentProject} />
             <SmallActionButton label="Projects" onPress={() => setScreen("projects")} />
             <SmallActionButton label="Undo" disabled={editor.past.length === 0} onPress={() => dispatchProject({ type: "undo" })} />
@@ -249,26 +305,51 @@ export default function App(): React.JSX.Element {
           </View>
         </View>
 
-        <View style={styles.nav}>
-          <NavButton active={tab === "layout"} icon={<MapPinned size={18} />} label="Layout" onPress={() => setTab("layout")} />
-          <NavButton active={tab === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => setTab("survey")} />
-          <NavButton active={tab === "equipment"} icon={<Settings2 size={18} />} label="Equipment" onPress={() => setTab("equipment")} />
-          <NavButton active={tab === "settings"} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => setTab("settings")} />
-          <NavButton active={tab === "review"} icon={<ClipboardList size={18} />} label="Review" onPress={() => setTab("review")} />
-          <NavButton active={tab === "export"} icon={<Download size={18} />} label="Export" onPress={() => setTab("export")} />
-        </View>
+        <View style={[styles.workspaceShell, compactLayout && styles.workspaceShellCompact]}>
+          <View style={[styles.leftRail, compactLayout && styles.leftRailCompact]}>
+            <RailButton active={activeView === "dashboard"} icon={<Home size={18} />} label="Dashboard" onPress={() => setActiveView("dashboard")} />
+            <RailButton active={activeView === "map"} icon={<MapPinned size={18} />} label="Map" onPress={() => setActiveView("map")} />
+            <RailButton active={activeView === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => setActiveView("survey")} />
+            <RailButton active={activeView === "review"} icon={<ClipboardList size={18} />} label="Review" onPress={() => setActiveView("review")} />
+            <RailButton active={activeView === "files"} icon={<Download size={18} />} label="Files" onPress={() => setActiveView("files")} />
+            <RailButton active={activeView === "settings"} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => setActiveView("settings")} />
+          </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
-          {tab === "layout" && (
-            <View style={styles.layoutGrid}>
+          <ScrollView style={styles.workspaceScroll} contentContainerStyle={[styles.content, compactLayout && styles.contentCompact]}>
+          {activeView === "dashboard" && (
+            <ProjectDashboard
+              compact={compactLayout}
+              dirty={isDirty}
+              mode="workspace"
+              onCreate={createNewProject}
+              onOpenFiles={() => setActiveView("files")}
+              onOpenImprovedProof={() => loadProject(improvedCenterPivotReviewProject)}
+              onOpenMap={() => setActiveView("map")}
+              onOpenProject={openSavedProject}
+              onOpenReview={() => setActiveView("review")}
+              onOpenRealProof={() => loadProject(realCenterPivotProofProject)}
+              onOpenSample={() => loadProject(sampleProject)}
+              project={project}
+              repository={repository}
+              result={result}
+              settings={settings}
+              walkthroughProgress={walkthroughProgress}
+              onResetWalkthrough={resetWalkthrough}
+              onToggleWalkthrough={updateWalkthrough}
+            />
+          )}
+
+          {activeView === "map" && (
+            <View style={[styles.layoutGrid, compactLayout && styles.layoutGridCompact]}>
               <MapSurface
                 project={project}
                 result={result}
                 settings={settings}
                 selectedMapFeatureId={selectedMapFeatureId}
                 advisoryRecommendationPreview={advisoryRecommendationPreview}
+                onMappingWorkflowModeChange={setWorkflowMode}
                 onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
-                onCommitObstacleDraft={(vertices, kind) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind })}
+                onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
                 onMoveBoundaryVertex={(vertexIndex, point) => dispatchProject({ type: "move_boundary_vertex", vertexIndex, point })}
                 onDeleteBoundaryVertex={(vertexIndex) => dispatchProject({ type: "delete_boundary_vertex", vertexIndex })}
                 onMoveObstacleVertex={(obstacleId, vertexIndex, point) => dispatchProject({ type: "move_obstacle_vertex", obstacleId, vertexIndex, point })}
@@ -279,8 +360,8 @@ export default function App(): React.JSX.Element {
                 onAddMapFeature={addMapFeature}
                 onSelectMapFeature={setSelectedMapFeatureId}
               />
-              <View style={styles.sidePanel}>
-                <Text style={styles.sectionTitle}>Scenario Metrics</Text>
+              <View style={[styles.sidePanel, compactLayout && styles.sidePanelCompact]}>
+                <Text style={styles.sectionTitle}>Map Inspector</Text>
                 <View style={styles.metricGrid}>
                   <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
                   <MetricTile label="Dry / non-irrigated" value={formatAreaFromAcres(result.metrics.nonIrrigatedAcres, settings.unitSystem)} tone="warn" />
@@ -318,6 +399,12 @@ export default function App(): React.JSX.Element {
                   <ActionButton label="+ End gun" onPress={() => changeEndGun(6)} />
                 </View>
 
+                <Text style={styles.sectionTitle}>Machine</Text>
+                <MachineSettingsForm
+                  machine={project.machine}
+                  onChange={(machine) => dispatchProject({ type: "update_machine", machine })}
+                />
+
                 <Text style={styles.sectionTitle}>Validation</Text>
                 <View style={styles.warningList}>
                   {editor.lastError ? (
@@ -337,8 +424,16 @@ export default function App(): React.JSX.Element {
             </View>
           )}
 
-          {tab === "survey" && (
+          {activeView === "survey" && (
             <Section title="Survey Capture Readiness" icon={<Satellite size={20} color="#254234" />}>
+              <BrowserRtkReceiverPanel
+                onAddMapFeature={addMapFeature}
+                onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
+                onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
+                onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
+                project={project}
+                settings={settings}
+              />
               <View style={styles.metricGrid}>
                 <MetricTile label="Survey points" value={`${project.surveyPoints.length}`} />
                 <MetricTile label="RTK fixed points" value={`${project.surveyPoints.filter((point) => point.confidence === "rtk_fixed").length}`} tone="good" />
@@ -362,35 +457,11 @@ export default function App(): React.JSX.Element {
             </Section>
           )}
 
-          {tab === "equipment" && (
-            <Section title="Machine Configuration" icon={<Settings2 size={20} color="#254234" />}>
-              <View style={styles.metricGrid}>
-                <MetricTile label="Machine radius" value={formatDistance(machineRadius, settings.unitSystem)} />
-                <MetricTile label="End gun throw" value={formatDistance(project.machine.endGunThrowMeters, settings.unitSystem)} />
-                <MetricTile label="Tower count" value={`${project.machine.spanLengthsMeters.length}`} />
-                <MetricTile label="Sweep" value={project.machine.sweep.mode === "full_circle" ? "Full" : "Part"} />
-              </View>
-              <MachineSettingsForm
-                machine={project.machine}
-                onChange={(machine) => dispatchProject({ type: "update_machine", machine })}
-              />
-              {project.machine.spanLengthsMeters.map((span, index) => (
-                <View key={`${span}-${index}`} style={styles.listRow}>
-                  <View>
-                    <Text style={styles.rowTitle}>Span {index + 1}</Text>
-                    <Text style={styles.rowMeta}>Cumulative tower radius {formatDistance(project.machine.spanLengthsMeters.slice(0, index + 1).reduce((sum, value) => sum + value, 0), settings.unitSystem)}</Text>
-                  </View>
-                  <Text style={styles.coordinate}>{formatDistance(span, settings.unitSystem)}</Text>
-                </View>
-              ))}
-            </Section>
-          )}
-
-          {tab === "settings" && (
+          {activeView === "settings" && (
             <SettingsPanel settings={settings} onChange={commitSettings} />
           )}
 
-          {tab === "review" && (
+          {activeView === "review" && (
             <ExpertReviewPanel
               onApplyRecommendation={applyModelRecommendation}
               onPreviewRecommendation={setAdvisoryRecommendationPreview}
@@ -401,7 +472,7 @@ export default function App(): React.JSX.Element {
             />
           )}
 
-          {tab === "export" && (
+          {activeView === "files" && (
             <Section title="Files and GIS Exchange" icon={<ClipboardList size={20} color="#254234" />}>
               <ProjectFilesPanel
                 dirty={isDirty}
@@ -431,10 +502,317 @@ export default function App(): React.JSX.Element {
               </View>
             </Section>
           )}
-        </ScrollView>
+          </ScrollView>
+        </View>
       </View>
     </SafeAreaView>
   );
+}
+
+const WALKTHROUGH_STORAGE_KEY = "cplayout.walkthrough-progress.v1";
+
+const WALKTHROUGH_MODULES: Array<{
+  id: WalkthroughModuleId;
+  title: string;
+  checkpoint: string;
+}> = [
+  { id: "imagery", title: "Setup Imagery", checkpoint: "USGS/default or approved custom source visible with attribution." },
+  { id: "boundary", title: "Trace Boundary", checkpoint: "Field boundary draft is reviewed and committed as projected XY." },
+  { id: "obstacles", title: "Add Obstacles", checkpoint: "Roads, ditches, buildings, and no-spray zones are marked." },
+  { id: "pivot", title: "Place Pivot", checkpoint: "Pivot, water source, and power source are positioned." },
+  { id: "survey", title: "Survey Points", checkpoint: "RTK or imported control points meet the configured quality gate." },
+  { id: "review", title: "Expert Review", checkpoint: "Review center findings and recommendations are resolved or deferred." },
+  { id: "export", title: "Export Package", checkpoint: "ZIP/KML/GeoJSON are exported after saving local edits." },
+];
+
+function ProjectDashboard({
+  compact,
+  dirty,
+  mode,
+  onCreate,
+  onOpenFiles,
+  onOpenImprovedProof,
+  onOpenMap,
+  onOpenProject,
+  onOpenRealProof,
+  onOpenReview,
+  onOpenSample,
+  onResetWalkthrough,
+  onToggleWalkthrough,
+  project,
+  repository,
+  result,
+  settings,
+  walkthroughProgress,
+}: {
+  compact: boolean;
+  dirty: boolean;
+  mode: "launcher" | "workspace";
+  onCreate: () => void;
+  onOpenFiles: () => void;
+  onOpenImprovedProof: () => void;
+  onOpenMap: () => void;
+  onOpenProject: (projectId: string) => void | Promise<void>;
+  onOpenRealProof: () => void;
+  onOpenReview: () => void;
+  onOpenSample: () => void;
+  onResetWalkthrough: () => void;
+  onToggleWalkthrough: (moduleId: WalkthroughModuleId, complete: boolean) => void;
+  project: PivotProject;
+  repository: ProjectWorkspaceStatus;
+  result: ReturnType<typeof evaluateLayout>;
+  settings: AppSettings;
+  walkthroughProgress: Record<WalkthroughModuleId, boolean>;
+}): React.JSX.Element {
+  const completedWalkthrough = WALKTHROUGH_MODULES.filter((module) => walkthroughProgress[module.id]).length;
+  const warningCount = result.warnings.length + result.metrics.obstacleConflictCount + (result.metrics.outsideFieldAcres > 0 ? 1 : 0);
+  const nextStep = recommendedWorkflowStep(project, result, settings, walkthroughProgress, dirty);
+  const recentProjects = repository.projects.slice(0, 5);
+
+  return (
+    <View style={styles.dashboard}>
+      <View style={[styles.dashboardHero, compact && styles.dashboardHeroCompact]}>
+        <View style={styles.dashboardIntro}>
+          <Text style={styles.dashboardTitle}>{mode === "launcher" ? "Project Dashboard" : project.name}</Text>
+          <Text style={styles.dashboardSubtitle}>
+            {nextStep}
+          </Text>
+          <View style={styles.dashboardActions}>
+            <SmallActionButton label="Continue Mapping" onPress={onOpenMap} />
+            <SmallActionButton label="Expert Review" onPress={onOpenReview} />
+            <SmallActionButton label="Export Package" onPress={onOpenFiles} />
+          </View>
+        </View>
+        <View style={styles.dashboardMetricStack}>
+          <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} tone="neutral" />
+          <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
+          <MetricTile label="Machine radius" value={formatDistance(machineRadiusMeters(project.machine), settings.unitSystem)} />
+          <MetricTile label="Review warnings" value={`${warningCount}`} tone={warningCount > 0 ? "warn" : "good"} />
+        </View>
+      </View>
+
+      <View style={styles.dashboardGrid}>
+        <DashboardCard
+          icon={<Satellite size={20} color="#173428" />}
+          title="Imagery Status"
+          value={settings.onlineImagery.enabled ? "USGS live reference enabled" : "Live imagery disabled"}
+          detail={settings.onlineImagery.enabled ? "Attribution is shown on-map; imagery is not stored in project files." : "Enable imagery in Settings for browser-local tracing."}
+        />
+        <DashboardCard
+          icon={<Database size={20} color="#173428" />}
+          title="Storage"
+          value={repository.backendInfo?.backendLabel ?? repository.backendLabel}
+          detail={`${repository.statusMessage} · ${dirty ? "unsaved edits" : "export-ready after latest save"}`}
+        />
+        <DashboardCard
+          icon={<PackageCheck size={20} color="#173428" />}
+          title="Export Readiness"
+          value={dirty ? "Save before export" : "Ready to package"}
+          detail="Project ZIP excludes browser-local imagery settings, custom drafts, local directories, and walkthrough progress."
+        />
+        <DashboardCard
+          icon={<ListChecks size={20} color="#173428" />}
+          title="Walkthrough"
+          value={`${completedWalkthrough}/${WALKTHROUGH_MODULES.length} modules`}
+          detail="Progress is local-only and is never written into PivotProject or project archives."
+        />
+      </View>
+
+      <WorkflowWalkthrough
+        onReset={onResetWalkthrough}
+        onToggle={onToggleWalkthrough}
+        progress={walkthroughProgress}
+      />
+
+      <View style={styles.dashboardGrid}>
+        <View style={styles.dashboardPanel}>
+          <View style={styles.dashboardPanelHeader}>
+            <FolderOpen size={19} color="#173428" />
+            <Text style={styles.dashboardPanelTitle}>Recent Projects</Text>
+          </View>
+          <View style={styles.dashboardActions}>
+            <SmallActionButton label="Create New" onPress={onCreate} />
+            <SmallActionButton label="Open Sample" onPress={onOpenSample} />
+            <SmallActionButton label="Real Proof" onPress={onOpenRealProof} />
+            <SmallActionButton label="Improved Review" onPress={onOpenImprovedProof} />
+          </View>
+          {recentProjects.length === 0 ? (
+            <Text style={styles.dashboardMuted}>No saved browser projects yet.</Text>
+          ) : recentProjects.map((summary) => (
+            <Pressable key={summary.id} onPress={() => void onOpenProject(summary.id)} style={styles.recentProjectRow}>
+              <View>
+                <Text style={styles.rowTitle}>{summary.name}</Text>
+                <Text style={styles.rowMeta}>{summary.projectCrs} · {summary.unitSystem.replaceAll("_", " ")} · {new Date(summary.updatedAt).toLocaleString()}</Text>
+              </View>
+              <FolderOpen size={18} color="#173428" />
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.dashboardPanel}>
+          <View style={styles.dashboardPanelHeader}>
+            <AlertTriangle size={19} color="#173428" />
+            <Text style={styles.dashboardPanelTitle}>Review Warnings</Text>
+          </View>
+          {editorWarningRows(result).length === 0 ? (
+            <Text style={styles.dashboardMuted}>No active layout warnings.</Text>
+          ) : editorWarningRows(result).map((warning) => (
+            <View key={warning} style={styles.warningItem}>
+              <AlertTriangle size={17} color="#9a4c1c" />
+              <Text style={styles.warningText}>{warning}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function WorkflowWalkthrough({
+  onReset,
+  onToggle,
+  progress,
+}: {
+  onReset: () => void;
+  onToggle: (moduleId: WalkthroughModuleId, complete: boolean) => void;
+  progress: Record<WalkthroughModuleId, boolean>;
+}): React.JSX.Element {
+  return (
+    <View style={[styles.dashboardPanel, styles.walkthroughPanel]}>
+      <View style={styles.dashboardPanelHeader}>
+        <ListChecks size={19} color="#173428" />
+        <Text style={styles.dashboardPanelTitle}>Workflow Walkthrough</Text>
+        <Pressable accessibilityRole="button" onPress={onReset} style={styles.resetButton}>
+          <RotateCcw size={14} color="#173428" />
+          <Text style={styles.resetButtonText}>Reset</Text>
+        </Pressable>
+      </View>
+      <View style={styles.walkthroughGrid}>
+        {WALKTHROUGH_MODULES.map((module) => {
+          const complete = progress[module.id];
+          return (
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: complete }}
+              key={module.id}
+              onPress={() => onToggle(module.id, !complete)}
+              style={[styles.walkthroughModule, complete && styles.walkthroughModuleComplete]}
+            >
+              {complete ? <CheckCircle2 size={18} color="#0f5e3d" /> : <Upload size={18} color="#6b796f" />}
+              <View style={styles.walkthroughText}>
+                <Text style={styles.walkthroughTitle}>{module.title}</Text>
+                <Text style={styles.walkthroughCheckpoint}>{module.checkpoint}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function DashboardCard({ detail, icon, title, value }: { detail: string; icon: React.ReactNode; title: string; value: string }): React.JSX.Element {
+  return (
+    <View style={styles.dashboardCard}>
+      <View style={styles.dashboardPanelHeader}>
+        {icon}
+        <Text style={styles.dashboardCardTitle}>{title}</Text>
+      </View>
+      <Text style={styles.dashboardCardValue}>{value}</Text>
+      <Text style={styles.dashboardMuted}>{detail}</Text>
+    </View>
+  );
+}
+
+function recommendedWorkflowStep(
+  project: PivotProject,
+  result: ReturnType<typeof evaluateLayout>,
+  settings: AppSettings,
+  progress: Record<WalkthroughModuleId, boolean>,
+  dirty: boolean,
+): string {
+  if (!settings.onlineImagery.enabled || !progress.imagery) return "Next: confirm imagery attribution and live-source status.";
+  if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or review the field boundary in Edit Geometry.";
+  if (project.obstacles.length === 0 || !progress.obstacles) return "Next: add visible obstacles and no-spray zones.";
+  if (!progress.pivot) return "Next: place pivot, water source, and power source.";
+  if (project.surveyPoints.length === 0 || !progress.survey) return "Next: capture or import survey/control points.";
+  if (result.warnings.length > 0 || result.metrics.obstacleConflictCount > 0 || !progress.review) return "Next: open Expert Review Center and resolve findings.";
+  if (dirty || !progress.export) return "Next: save local edits and export a project package.";
+  return "Project is ready for repeat review, export, or field handoff.";
+}
+
+function editorWarningRows(result: ReturnType<typeof evaluateLayout>): string[] {
+  return [
+    ...result.warnings,
+    ...(result.metrics.obstacleConflictCount > 0 ? [`${result.metrics.obstacleConflictCount} obstacle conflict${result.metrics.obstacleConflictCount === 1 ? "" : "s"} detected.`] : []),
+    ...(result.metrics.outsideFieldAcres > 0 ? [`${result.metrics.outsideFieldAcres.toFixed(2)} acres of wet coverage are outside the field.`] : []),
+  ];
+}
+
+function browserLocalSettings(settings?: PivotProject["settings"], current?: AppSettings): AppSettings {
+  const merged = mergeAppSettings(settings);
+  if (current) {
+    return {
+      ...merged,
+      onlineImagery: current.onlineImagery,
+    };
+  }
+  if (Platform.OS !== "web") return merged;
+  return {
+    ...merged,
+    onlineImagery: {
+      ...merged.onlineImagery,
+      enabled: true,
+      providerId: "usgs_imagery_only",
+      maxTilesPerView: Math.min(64, merged.onlineImagery.maxTilesPerView),
+    },
+  };
+}
+
+function emptyWalkthroughProgress(): Record<WalkthroughModuleId, boolean> {
+  return {
+    imagery: false,
+    boundary: false,
+    obstacles: false,
+    pivot: false,
+    survey: false,
+    review: false,
+    export: false,
+  };
+}
+
+function loadWalkthroughProgress(): Record<WalkthroughModuleId, boolean> {
+  const empty = emptyWalkthroughProgress();
+  if (Platform.OS !== "web") return empty;
+  try {
+    const raw = globalThis.localStorage?.getItem(WALKTHROUGH_STORAGE_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as Partial<Record<WalkthroughModuleId, boolean>>;
+    return {
+      imagery: parsed.imagery === true,
+      boundary: parsed.boundary === true,
+      obstacles: parsed.obstacles === true,
+      pivot: parsed.pivot === true,
+      survey: parsed.survey === true,
+      review: parsed.review === true,
+      export: parsed.export === true,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+function saveWalkthroughProgress(progress: Record<WalkthroughModuleId, boolean>): void {
+  if (Platform.OS !== "web") return;
+  try {
+    globalThis.localStorage?.setItem(WALKTHROUGH_STORAGE_KEY, JSON.stringify(progress));
+  } catch {
+    // Local progress is optional and must not block project work.
+  }
+}
+
+function workflowModeLabel(mode: AppSettings["mappingWorkflowMode"]): string {
+  return mode === "design" ? "Edit Geometry" : "Review Layout";
 }
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }): React.JSX.Element {
@@ -458,11 +836,14 @@ function StatusPill({ icon, label }: { icon: React.ReactNode; label: string }): 
   );
 }
 
-function NavButton({ active, icon, label, onPress }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void }): React.JSX.Element {
+function RailButton({ active, icon, label, onPress }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void }): React.JSX.Element {
+  const tintedIcon = React.isValidElement<{ color?: string }>(icon)
+    ? React.cloneElement(icon, { color: active ? "#ffffff" : "#d5e2db" })
+    : icon;
   return (
-    <Pressable onPress={onPress} style={[styles.navButton, active && styles.navButtonActive]}>
-      {icon}
-      <Text style={[styles.navLabel, active && styles.navLabelActive]}>{label}</Text>
+    <Pressable onPress={onPress} style={[styles.railButton, active && styles.railButtonActive]}>
+      {tintedIcon}
+      <Text style={[styles.railLabel, active && styles.railLabelActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -681,12 +1062,70 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: "row",
     flexWrap: "wrap",
+    flexShrink: 1,
     gap: 8,
+    maxWidth: "100%",
+  },
+  statusRowCompact: {
+    width: "100%",
   },
   projectActionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
+    flexShrink: 1,
     gap: 8,
+    maxWidth: "100%",
+  },
+  workspaceShell: {
+    flex: 1,
+    flexDirection: "row",
+    minHeight: 0,
+  },
+  workspaceShellCompact: {
+    flexDirection: "column",
+  },
+  leftRail: {
+    backgroundColor: "#13211b",
+    borderRightColor: "#26392f",
+    borderRightWidth: 1,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    width: 148,
+  },
+  leftRailCompact: {
+    borderRightWidth: 0,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 8,
+    width: "100%",
+  },
+  workspaceScroll: {
+    flex: 1,
+  },
+  railButton: {
+    alignItems: "center",
+    borderColor: "transparent",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  railButtonActive: {
+    backgroundColor: "#2f6f5b",
+    borderColor: "#6da992",
+  },
+  railLabel: {
+    color: "#d5e2db",
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  railLabelActive: {
+    color: "#ffffff",
   },
   smallActionButton: {
     alignItems: "center",
@@ -694,6 +1133,7 @@ const styles = StyleSheet.create({
     borderColor: "#cdd8ca",
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 1,
     flexDirection: "row",
     gap: 6,
     paddingHorizontal: 11,
@@ -761,11 +1201,18 @@ const styles = StyleSheet.create({
   content: {
     padding: 18,
   },
+  contentCompact: {
+    padding: 10,
+  },
   layoutGrid: {
     alignItems: "stretch",
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 16,
+    width: "100%",
+  },
+  layoutGridCompact: {
+    gap: 12,
   },
   sidePanel: {
     backgroundColor: "#fbfcf8",
@@ -774,8 +1221,184 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexBasis: 360,
     flexGrow: 0.8,
+    flexShrink: 1,
     gap: 14,
+    minWidth: 0,
     padding: 16,
+  },
+  sidePanelCompact: {
+    flexBasis: "100%",
+    width: "100%",
+  },
+  dashboard: {
+    gap: 14,
+  },
+  dashboardHero: {
+    alignItems: "stretch",
+    backgroundColor: "#fbfcf8",
+    borderColor: "#d8ded6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 16,
+    justifyContent: "space-between",
+    padding: 16,
+  },
+  dashboardHeroCompact: {
+    padding: 12,
+  },
+  dashboardIntro: {
+    flex: 1,
+    gap: 10,
+    minWidth: 260,
+  },
+  dashboardTitle: {
+    color: "#121d17",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  dashboardSubtitle: {
+    color: "#44564b",
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
+  dashboardActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  dashboardMetricStack: {
+    flexBasis: 360,
+    flexDirection: "row",
+    flexGrow: 1,
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  dashboardGrid: {
+    alignItems: "stretch",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  dashboardPanel: {
+    backgroundColor: "#fbfcf8",
+    borderColor: "#d8ded6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 360,
+    flexGrow: 1,
+    gap: 12,
+    minWidth: 0,
+    padding: 14,
+  },
+  walkthroughPanel: {
+    flexBasis: "auto",
+    flexGrow: 0,
+  },
+  dashboardPanelHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  dashboardPanelTitle: {
+    color: "#17241c",
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  dashboardCard: {
+    backgroundColor: "#fbfcf8",
+    borderColor: "#d8ded6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 240,
+    flexGrow: 1,
+    gap: 8,
+    minWidth: 0,
+    padding: 14,
+  },
+  dashboardCardTitle: {
+    color: "#17241c",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  dashboardCardValue: {
+    color: "#14221b",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  dashboardMuted: {
+    color: "#56685d",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  recentProjectRow: {
+    alignItems: "center",
+    backgroundColor: "#f6faf5",
+    borderColor: "#dce4da",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+    padding: 12,
+  },
+  walkthroughGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  walkthroughModule: {
+    alignItems: "flex-start",
+    backgroundColor: "#f6faf5",
+    borderColor: "#dce4da",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 240,
+    flexDirection: "row",
+    flexGrow: 1,
+    gap: 9,
+    padding: 12,
+  },
+  walkthroughModuleComplete: {
+    backgroundColor: "#edf7f0",
+    borderColor: "#9cc8ad",
+  },
+  walkthroughText: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0,
+  },
+  walkthroughTitle: {
+    color: "#17241c",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  walkthroughCheckpoint: {
+    color: "#58675e",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 16,
+  },
+  resetButton: {
+    alignItems: "center",
+    backgroundColor: "#eef4ef",
+    borderColor: "#c7d6ca",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  resetButtonText: {
+    color: "#173428",
+    fontSize: 11,
+    fontWeight: "900",
   },
   inlineActions: {
     flexDirection: "row",

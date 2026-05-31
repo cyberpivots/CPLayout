@@ -90,7 +90,7 @@ const READY_CHECKLIST = [
 ];
 
 export function GoogleEarthImportWizard(): React.JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [stepIndex, setStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [copiedExample, setCopiedExample] = useState<string | null>(null);

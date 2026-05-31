@@ -14,6 +14,9 @@ export type OnlineImageryProviderId = typeof ONLINE_IMAGERY_PROVIDERS[number];
 export type OnlineImageryProjection = "EPSG:3857";
 export type OnlineImageryCachePolicy = "interactive_only";
 
+export const MAPPING_WORKFLOW_MODES = ["design", "layout"] as const;
+export type MappingWorkflowMode = typeof MAPPING_WORKFLOW_MODES[number];
+
 export const GPS_FIX_ORDER = ["invalid", "autonomous", "dgps", "rtk_float", "rtk_fixed", "ppp"] as const;
 export type MinimumGpsFixType = typeof GPS_FIX_ORDER[number];
 
@@ -70,6 +73,7 @@ export interface AppSettings {
   unitSystem: UnitSystem;
   coordinateDisplayFormat: CoordinateDisplayFormat;
   defaultZoomLevel: number;
+  mappingWorkflowMode: MappingWorkflowMode;
   mapStyle: MapStyle;
   drawing: DrawingSettings;
   gpsQuality: GpsQualityThresholds;
@@ -87,6 +91,7 @@ export type DeepPartialSettings = {
 
 const UnitSystemSchema = z.enum(["metric", "us_survey_feet"]);
 const CoordinateDisplayFormatSchema = z.enum(COORDINATE_FORMATS);
+const MappingWorkflowModeSchema = z.enum(MAPPING_WORKFLOW_MODES).default("design");
 const MapStyleSchema = z.enum(MAP_STYLES);
 const OfflinePackageTypeSchema = z.enum(OFFLINE_PACKAGE_TYPES);
 const OnlineImageryProviderIdSchema = z.enum(ONLINE_IMAGERY_PROVIDERS);
@@ -166,6 +171,7 @@ export const AppSettingsSchema = z.object({
   unitSystem: UnitSystemSchema,
   coordinateDisplayFormat: CoordinateDisplayFormatSchema,
   defaultZoomLevel: z.number().min(0.25).max(12),
+  mappingWorkflowMode: MappingWorkflowModeSchema,
   mapStyle: MapStyleSchema,
   drawing: DrawingSettingsSchema,
   gpsQuality: GpsQualityThresholdsSchema,
@@ -182,6 +188,7 @@ export function defaultAppSettings(): AppSettings {
     unitSystem: "us_survey_feet",
     coordinateDisplayFormat: "decimal_degrees",
     defaultZoomLevel: 1,
+    mappingWorkflowMode: "design",
     mapStyle: "field_light",
     drawing: {
       vertexSnapToleranceMeters: 1,
@@ -229,6 +236,7 @@ export function projectSettingsFromApp(settings: AppSettings): ProjectSettings {
     unitSystem: settings.unitSystem,
     coordinateDisplayFormat: settings.coordinateDisplayFormat,
     defaultZoomLevel: settings.defaultZoomLevel,
+    mappingWorkflowMode: settings.mappingWorkflowMode,
     mapStyle: settings.mapStyle,
     drawing: settings.drawing,
     gpsQuality: settings.gpsQuality,

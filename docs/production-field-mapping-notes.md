@@ -2,7 +2,7 @@
 
 ## Source-Backed Decisions
 
-- Codex guidance: OpenAI recommends durable repo instructions in `AGENTS.md`, planning for complex work, and asking Codex to run relevant tests/reviews before accepting changes. This repo keeps `gpt-5.5` with medium default reasoning, high plan-mode reasoning, and task-risk escalation rules in `AGENTS.md`.
+- Codex guidance: OpenAI recommends durable repo instructions in `AGENTS.md`, planning for complex work, and asking Codex to run relevant tests/reviews before accepting changes. This repo keeps `gpt-5.5` with xhigh default and plan-mode reasoning in `.codex/config.toml`.
   Sources: https://developers.openai.com/codex/learn/best-practices, https://developers.openai.com/codex/guides/agents-md, https://developers.openai.com/codex/config-reference
 - Expo SQLite: `expo-sqlite` provides a persistent SQLite API and Expo recommends installing SDK packages with `npx expo install`.
   Sources: https://docs.expo.dev/versions/latest/sdk/sqlite/, https://docs.expo.dev/versions/latest/

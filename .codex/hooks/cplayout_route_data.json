@@ -1,0 +1,135 @@
+{
+  "maxRoutes": 3,
+  "minScore": 10,
+  "routes": [
+    {
+      "id": "cplayout_imagery_mapper",
+      "skill": "cplayout-imagery-mapping-agent",
+      "note": "Keep KML/KMZ styling visual-only and require evidence before any imagery/CV or Google Earth render claim.",
+      "priority": 10,
+      "positiveKeywords": [
+        { "term": "google earth", "weight": 12 },
+        { "term": "earth pro", "weight": 12 },
+        { "term": "visual fidelity", "weight": 12 },
+        { "term": "non-black", "weight": 10 },
+        { "term": "render proof", "weight": 10 },
+        { "term": "kml", "weight": 8 },
+        { "term": "kmz", "weight": 8 },
+        { "term": "imagery", "weight": 8 },
+        { "term": "field boundary", "weight": 8 },
+        { "term": "operator boundary", "weight": 8 },
+        { "term": "computer vision", "weight": 7 },
+        { "term": "cv", "weight": 5 },
+        { "term": "image", "weight": 4 }
+      ],
+      "negativeKeywords": [
+        { "term": "not imagery", "weight": 8 },
+        { "term": "no imagery", "weight": 8 },
+        { "term": "database only", "weight": 6 },
+        { "term": "ui only", "weight": 6 },
+        { "term": "web only", "weight": 4 }
+      ]
+    },
+    {
+      "id": "cplayout_interface_developer",
+      "skill": "cplayout-interface-development-agent",
+      "note": "Preserve offline-first Expo boundaries and run visible UI proof when screens change.",
+      "priority": 20,
+      "positiveKeywords": [
+        { "term": "react native", "weight": 12 },
+        { "term": "expo", "weight": 10 },
+        { "term": "svg map", "weight": 9 },
+        { "term": "interface", "weight": 8 },
+        { "term": "component", "weight": 7 },
+        { "term": "screen", "weight": 7 },
+        { "term": "playwright", "weight": 7 },
+        { "term": "mobile", "weight": 6 },
+        { "term": "ui", "weight": 6 },
+        { "term": "ux", "weight": 5 },
+        { "term": "web", "weight": 3 },
+        { "term": "layout", "weight": 2 }
+      ],
+      "negativeKeywords": [
+        { "term": "database only", "weight": 7 },
+        { "term": "storage only", "weight": 7 },
+        { "term": "no ui", "weight": 8 },
+        { "term": "not ui", "weight": 8 }
+      ]
+    },
+    {
+      "id": "cplayout_center_pivot_designer",
+      "skill": "cplayout-center-pivot-design-agent",
+      "note": "Separate source-backed design evidence from advisory software scoring.",
+      "priority": 30,
+      "positiveKeywords": [
+        { "term": "center pivot", "weight": 12 },
+        { "term": "corner arm", "weight": 12 },
+        { "term": "lateral move", "weight": 10 },
+        { "term": "linear move", "weight": 10 },
+        { "term": "irrigation", "weight": 8 },
+        { "term": "sprinkler", "weight": 7 },
+        { "term": "tower", "weight": 7 },
+        { "term": "span", "weight": 6 },
+        { "term": "acre", "weight": 5 },
+        { "term": "pivot", "weight": 5 },
+        { "term": "layout", "weight": 2 }
+      ],
+      "negativeKeywords": [
+        { "term": "not pivot", "weight": 8 },
+        { "term": "no pivot", "weight": 8 },
+        { "term": "ui only", "weight": 6 },
+        { "term": "database only", "weight": 6 }
+      ]
+    },
+    {
+      "id": "cplayout_database_specialist",
+      "skill": "cplayout-database-agent",
+      "note": "Keep native SQLite, web storage, and project archive contracts explicit.",
+      "priority": 40,
+      "positiveKeywords": [
+        { "term": "expo sqlite", "weight": 12 },
+        { "term": "project-store", "weight": 10 },
+        { "term": "project archive", "weight": 10 },
+        { "term": "database", "weight": 10 },
+        { "term": "sqlite", "weight": 13 },
+        { "term": "migration", "weight": 8 },
+        { "term": "persistence", "weight": 8 },
+        { "term": "storage", "weight": 7 },
+        { "term": "schema", "weight": 7 },
+        { "term": "archive", "weight": 7 },
+        { "term": "crud", "weight": 6 },
+        { "term": "zip", "weight": 6 }
+      ],
+      "negativeKeywords": [
+        { "term": "ui only", "weight": 7 },
+        { "term": "imagery only", "weight": 7 },
+        { "term": "not database", "weight": 8 },
+        { "term": "no database", "weight": 8 }
+      ]
+    },
+    {
+      "id": "cplayout_kb_curator",
+      "skill": "cplayout-expert-agent-panels",
+      "note": "Record verified facts, sources, validation, and unresolved gaps separately.",
+      "priority": 50,
+      "positiveKeywords": [
+        { "term": "source ledger", "weight": 10 },
+        { "term": "known gap", "weight": 10 },
+        { "term": "prompt registry", "weight": 10 },
+        { "term": "multi-agent", "weight": 8 },
+        { "term": "subagent", "weight": 7 },
+        { "term": "knowledge", "weight": 7 },
+        { "term": "registry", "weight": 6 },
+        { "term": "skill", "weight": 4 },
+        { "term": "prompt", "weight": 4 },
+        { "term": "agent", "weight": 3 },
+        { "term": "hook", "weight": 3 }
+      ],
+      "negativeKeywords": [
+        { "term": "ui only", "weight": 6 },
+        { "term": "database only", "weight": 6 },
+        { "term": "imagery only", "weight": 6 }
+      ]
+    }
+  ]
+}

@@ -27,6 +27,7 @@ assert.equal(state.lastError, null);
 
 state = reduceProjectEditorState(state, {
   type: "commit_obstacle_draft",
+  confidence: "rtk_fixed",
   kind: "exclusion",
   name: "Test exclusion",
   vertices: [
@@ -36,6 +37,7 @@ state = reduceProjectEditorState(state, {
   ],
 });
 assert.equal(state.project.obstacles.at(-1)?.name, "Test exclusion");
+assert.equal(state.project.obstacles.at(-1)?.confidence, "rtk_fixed");
 
 state = reduceProjectEditorState(state, { type: "undo" });
 assert.notEqual(state.project.obstacles.at(-1)?.name, "Test exclusion");

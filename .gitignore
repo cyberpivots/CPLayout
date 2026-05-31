@@ -6,6 +6,16 @@ dist-android/
 web-build/
 reports/android-native-verification/
 reports/google-earth-visual-fidelity/
+tools/local-ml-companion/.dvc/cache/
+tools/local-ml-companion/.dvc/tmp/
+tools/local-ml-companion/mlruns/
+tools/local-ml-companion/datasets/
+tools/local-ml-companion/model-artifacts/
+tools/local-ml-companion/experiments/
+tools/local-ml-companion/**/*.pt
+tools/local-ml-companion/**/*.pth
+tools/local-ml-companion/**/*.onnx
+tools/local-ml-companion/**/*.safetensors
 
 *.log
 *.tmp

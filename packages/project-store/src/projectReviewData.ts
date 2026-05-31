@@ -321,7 +321,13 @@ function parseBoundaryImprovementLoopImport(
   const gpu = recordValue(loop.gpu, "Boundary improvement loop must include gpu status.");
   const bestIteration = objectOrUndefined(loop.bestIteration);
   const bestCandidate = bestIteration ? objectOrUndefined(bestIteration.bestCandidate) : undefined;
-  const accepted = acceptance.accepted === true && acceptance.gpuBacked === true && gpu.cudaAvailable === true;
+  const hardFailures = arrayValue(acceptance.hardFailures);
+  const accepted = acceptance.accepted === true
+    && acceptance.gpuBacked === true
+    && acceptance.autoApplyEligible === true
+    && gpu.cudaAvailable === true
+    && hardFailures.length === 0
+    && bestCandidate?.rejected !== true;
   const projectedBoundary = accepted && bestCandidate
     ? arrayValue(bestCandidate.projectedPolygon).map((point) => xyValue(point, "Boundary loop projectedPolygon point is invalid."))
     : [];
@@ -337,11 +343,13 @@ function parseBoundaryImprovementLoopImport(
       : "Local boundary-improvement loop evidence was imported but did not pass GPU-backed projected-boundary acceptance gates.",
     confidence: numberOrDefault(bestCandidate?.confidence, 0),
     reviewStatus: accepted ? "accepted" : "unreviewed",
-    notes: "Experimental local companion output; not survey-grade and not a React Native Python/PyTorch runtime.",
+    notes: accepted
+      ? "Experimental local companion output; not survey-grade and not a React Native Python/PyTorch runtime."
+      : `Experimental local companion output; not survey-grade. Auto-apply rejected: ${boundaryLoopRejectionSummary(acceptance, gpu, bestCandidate)}.`,
     artifacts: objectOrUndefined(loop.artifacts),
     metrics,
   });
-  if (!accepted || !bestCandidate) {
+  if (!accepted || !bestCandidate || projectedBoundary.length === 0) {
     return { evidenceRecords: [evidenceRecord], modelRecommendations: [], layoutDecisions: [] };
   }
 
@@ -369,6 +377,11 @@ function parseBoundaryImprovementLoopImport(
       autoApplyEligible: true,
       iterationCount: numberOrUndefined(loop.iterationCount),
       acceptanceStatus: acceptance.status,
+      hardFailures,
+      mlflowRunId: stringOrUndefined(loop.mlflowRunId) ?? stringOrUndefined(objectOrUndefined(loop.mlflow)?.runId),
+      dvcRevision: stringOrUndefined(loop.dvcRevision) ?? stringOrUndefined(objectOrUndefined(loop.dvc)?.gitCommit),
+      splitId: stringOrUndefined(loop.splitId),
+      candidateRejectionSummary: boundaryLoopRejectionSummary(acceptance, gpu, bestCandidate),
       surveyGrade: false,
     },
     warnings: [
@@ -643,8 +656,29 @@ function numberOrUndefined(input: unknown): number | undefined {
   return typeof input === "number" && Number.isFinite(input) ? input : undefined;
 }
 
+function stringOrUndefined(input: unknown): string | undefined {
+  return typeof input === "string" && input.length > 0 ? input : undefined;
+}
+
 function objectOrUndefined(input: unknown): Record<string, unknown> | undefined {
   return input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : undefined;
+}
+
+function boundaryLoopRejectionSummary(
+  acceptance: Record<string, unknown>,
+  gpu: Record<string, unknown>,
+  bestCandidate: Record<string, unknown> | undefined,
+): string {
+  const reasons = [
+    ...arrayValue(acceptance.hardFailures).map(String),
+    ...arrayValue(acceptance.reasons).map(String),
+    ...(acceptance.autoApplyEligible === true ? [] : ["autoApplyEligible is not true"]),
+    ...(acceptance.gpuBacked === true ? [] : ["acceptance is not GPU-backed"]),
+    ...(gpu.cudaAvailable === true ? [] : ["CUDA was not available"]),
+    ...(bestCandidate?.rejected === true ? ["best candidate is rejected"] : []),
+    ...(bestCandidate && bestCandidate.projectedPolygon !== undefined ? [] : ["projected fieldBoundary is missing"]),
+  ];
+  return [...new Set(reasons)].join("; ") || "none";
 }
 
 function boundaryLoopMetrics(
@@ -660,6 +694,7 @@ function boundaryLoopMetrics(
     minimumIterationsRequired: loop.minimumIterationsRequired,
     accepted: acceptance.accepted,
     acceptanceStatus: acceptance.status,
+    autoApplyEligible: acceptance.autoApplyEligible,
     gpuCudaAvailable: gpu.cudaAvailable,
     gpuDeviceCount: gpu.deviceCount,
     gpuDevices: gpu.devices,
@@ -675,6 +710,10 @@ function boundaryLoopMetrics(
     operatorLabelAlignment: bestCandidate?.operatorLabelAlignment,
     areaRatio: bestCandidate?.areaRatio,
     rejectionReasons: bestCandidate?.rejectionReasons,
+    candidateRejectionSummary: boundaryLoopRejectionSummary(acceptance, gpu, bestCandidate),
+    mlflowRunId: stringOrUndefined(loop.mlflowRunId) ?? stringOrUndefined(objectOrUndefined(loop.mlflow)?.runId),
+    dvcRevision: stringOrUndefined(loop.dvcRevision) ?? stringOrUndefined(objectOrUndefined(loop.dvc)?.gitCommit),
+    splitId: stringOrUndefined(loop.splitId),
   };
 }
 

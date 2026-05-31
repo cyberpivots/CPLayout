@@ -33,13 +33,13 @@ Use these roles as prompted subagents when useful, or as local review lenses whe
 
 | Role | Agent type | Reasoning | Purpose |
 | --- | --- | --- | --- |
-| `workspace-cartographer` | `explorer` | `low` or `medium` | Map files, contracts, dirty state, and ownership boundaries. |
-| `product-ux-reviewer` | `default` or local lens | `medium` | Check CPLayout workflow usability and visible acceptance risks. |
-| `gis-map-reviewer` | `explorer` or `default` | `high` | Check projected `XY` geometry, WGS84 input/display separation, map packages, attribution, and offline/no-cost boundaries. |
-| `architecture-storage-native-gate-reviewer` | `explorer` or `default` | `high`; `xhigh` for disputes | Check repository split, SQLite/web/native gates, ZIP archive flow, and unverified native claims. |
-| `implementation-worker` | `worker` | `medium` or `high` | Make a bounded change in a disjoint write scope after mutation is allowed. |
-| `qa-reviewer` | `explorer` or `default` | `high`; `xhigh` for release gates | Review tests, validation evidence, screenshots, audit findings, and residual risk. |
-| `kb-curator` | `default` | `medium` | Update source ledgers, task logs, prompt registry, docs index, and known gaps. |
+| `workspace-cartographer` | `explorer` | `xhigh` | Map files, contracts, dirty state, and ownership boundaries. |
+| `product-ux-reviewer` | `default` or local lens | `xhigh` | Check CPLayout workflow usability and visible acceptance risks. |
+| `gis-map-reviewer` | `explorer` or `default` | `xhigh` | Check projected `XY` geometry, WGS84 input/display separation, map packages, attribution, and offline/no-cost boundaries. |
+| `architecture-storage-native-gate-reviewer` | `explorer` or `default` | `xhigh` | Check repository split, SQLite/web/native gates, ZIP archive flow, and unverified native claims. |
+| `implementation-worker` | `worker` | `xhigh` | Make a bounded change in a disjoint write scope after mutation is allowed. |
+| `qa-reviewer` | `explorer` or `default` | `xhigh` | Review tests, validation evidence, screenshots, audit findings, and residual risk. |
+| `kb-curator` | `default` | `xhigh` | Update source ledgers, task logs, prompt registry, docs index, and known gaps. |
 
 For role prompts and delegation rules, read `references/agent-prompts.md`.
 
@@ -74,10 +74,8 @@ Every panel must preserve these boundaries:
 
 Load `references/reasoning-routing.md` when a task spans architecture, storage, maps, native behavior, or release gates. Short form:
 
-- `low`: file lookup, inventory, formatting, narrow command output.
-- `medium`: ordinary TypeScript, UI, documentation, and bounded implementation.
-- `high`: architecture, storage, map/provider, native gates, cross-package changes, and source-backed research.
-- `xhigh`: release arbitration, severe reviewer disagreement, security/safety/native verification disputes.
+- `xhigh`: default for CPLayout agent-panel work, including ordinary implementation, UI, docs, architecture, storage, maps, native gates, and source-backed research.
+- Lower reasoning is allowed only when the user explicitly requests it for a narrow task.
 
 ## Evidence And Records
 

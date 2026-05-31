@@ -31,6 +31,35 @@ assert.ok(bundle.files[PROJECT_JSON_FILENAME].includes("pivot-project-v1"));
 assert.ok(bundle.files[PROJECT_GEOJSON_FILENAME].includes("FeatureCollection"));
 assert.ok(bundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME].includes("field_boundary"));
 assert.ok(bundle.files[MAP_PACKAGES_CSV_FILENAME].startsWith("id,name,packageType"));
+assert.doesNotMatch(bundle.files[PROJECT_JSON_FILENAME], /onlineImagery|tileUrlTemplate|walkthroughProgress|packageDirectory/);
+
+const localOnlyDraftProject = {
+  ...sampleProject,
+  settings: {
+    ...sampleProject.settings,
+    onlineImagery: {
+      enabled: true,
+      providerId: "custom_open_xyz",
+      maxTilesPerView: 32,
+      customSource: {
+        name: "Local-only custom source",
+        tileUrlTemplate: "https://tiles.example.org/{z}/{x}/{y}.png",
+      },
+    },
+    offlineMaps: {
+      ...sampleProject.settings?.offlineMaps,
+      packageDirectory: "/operator/local/tiles",
+    },
+    walkthroughProgress: { imagery: true, boundary: true },
+  },
+} as unknown as typeof sampleProject;
+const localOnlyBundle = buildProjectArchiveBundle(
+  localOnlyDraftProject,
+  result,
+  exportScenarioGeoJson(localOnlyDraftProject, result),
+  "2026-05-19T12:00:00.000Z",
+);
+assert.doesNotMatch(localOnlyBundle.files[PROJECT_JSON_FILENAME], /onlineImagery|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 
 const surveyCsv = surveyPointsToCsv(sampleProject.surveyPoints);
 assert.match(surveyCsv, /^id,label,role,x,y,longitude,latitude,observedAt,source,confidence,notes/);

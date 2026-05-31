@@ -27,9 +27,20 @@ This registry records the repo-local specialist prompt surfaces and the session-
 
 ## Prompt Triage
 
-Prompt triage is implemented as an advisory `UserPromptSubmit` hook in `.codex/hooks.json`, backed by `.codex/hooks/cplayout_prompt_triage.py`. It injects routing context only; it does not block work, enforce policy, or prove runtime behavior.
+Prompt triage is implemented as an advisory `UserPromptSubmit` hook in `.codex/hooks.json`, backed by `.codex/hooks/cplayout_prompt_triage.py` and `.codex/hooks/cplayout_route_data.json`. It injects routing context only; it does not block work, enforce policy, or prove runtime behavior.
 
-Detailed routing lives in `.agents/skills/cplayout-expert-agent-panels/references/prompt-triage.md`.
+The route data uses weighted positive and negative keywords. A route score is the sum of matched positive weights minus matched negative weights. Routes are emitted only when their score is at least `minScore`, then sorted by score descending, route priority ascending, and route id. Hook output is capped by `maxRoutes`, currently `3`, so broad prompts do not flood the context window with every specialist.
+
+Broad terms such as `agent`, `hook`, `layout`, and `web` are intentionally low weight. They should not route by themselves; they only help rank a route when stronger task-specific terms are also present.
+
+Detailed routing guidance lives in `.agents/skills/cplayout-expert-agent-panels/references/prompt-triage.md`; executable route data lives in `.codex/hooks/cplayout_route_data.json`.
+
+## Tool And Subagent Hooks
+
+`.codex/hooks.json` also registers:
+
+- `SubagentStart` through `.codex/hooks/cplayout_subagent_start.py`, which injects CPLayout boundaries into spawned subagents: read `AGENTS.md`, preserve projected/local `XY`, avoid paid APIs and hidden keys, keep KML/KMZ styling visual-only, and require evidence before runtime proof claims.
+- `PreToolUse` through `.codex/hooks/cplayout_pre_tool_use.py`, which narrowly denies clearly destructive commands such as `git reset --hard`, `git clean -fd`, force push, and `npm audit fix --force`. Other CPLayout-sensitive patterns receive advisory context rather than a block.
 
 ## Session-Level Skill Snapshot
 

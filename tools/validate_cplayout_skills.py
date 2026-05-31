@@ -36,6 +36,48 @@ REQUIRED_DOCS = (
     ".agents/skills/cplayout-expert-agent-panels/references/prompt-triage.md",
 )
 
+REQUIRED_ROUTE_IDS = {
+    "cplayout_imagery_mapper",
+    "cplayout_interface_developer",
+    "cplayout_center_pivot_designer",
+    "cplayout_database_specialist",
+    "cplayout_kb_curator",
+}
+
+HOOK_SAMPLES = (
+    (
+        "UserPromptSubmit",
+        ".codex/hooks/cplayout_prompt_triage.py",
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "Use Google Earth KML imagery and SQLite to plan a center pivot UI change.",
+        },
+    ),
+    (
+        "SubagentStart",
+        ".codex/hooks/cplayout_subagent_start.py",
+        {"hook_event_name": "SubagentStart", "agent_type": "cplayout_imagery_mapper"},
+    ),
+    (
+        "PreToolUse advisory",
+        ".codex/hooks/cplayout_pre_tool_use.py",
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo Google Maps API key and WGS84 geometry"},
+        },
+    ),
+    (
+        "PreToolUse deny",
+        ".codex/hooks/cplayout_pre_tool_use.py",
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "git reset --hard HEAD"},
+        },
+    ),
+)
+
 
 def run(command: list[str], *, cwd: Path = ROOT) -> tuple[bool, str]:
     result = subprocess.run(
@@ -94,43 +136,101 @@ def validate_hooks() -> list[str]:
     )
     if "cplayout_prompt_triage.py" not in command:
         errors.append(".codex/hooks.json: UserPromptSubmit command does not reference cplayout_prompt_triage.py")
+    hook_config = hooks.get("hooks", {})
+    configured_events = set(hook_config) if isinstance(hook_config, dict) else set()
+    for event_name in ("UserPromptSubmit", "SubagentStart", "PreToolUse"):
+        if event_name not in configured_events:
+            errors.append(f".codex/hooks.json: missing {event_name} hook")
+
+    pre_tool_entries = hook_config.get("PreToolUse", []) if isinstance(hook_config, dict) else []
+    matcher = pre_tool_entries[0].get("matcher", "") if pre_tool_entries and isinstance(pre_tool_entries[0], dict) else ""
+    if matcher != r"Bash|functions\.exec_command|apply_patch|Edit|Write|mcp__.*":
+        errors.append(".codex/hooks.json: PreToolUse matcher does not cover expected tool names")
 
     ok, output = run([sys.executable, str(ROOT / ".codex" / "hooks" / "cplayout_prompt_triage.py")])
     if not ok:
         errors.append(f"prompt triage empty-input run failed: {output}")
 
-    sample = {
-        "hook_event_name": "UserPromptSubmit",
-        "prompt": "Use Google Earth KML imagery and SQLite to plan a center pivot UI change.",
-    }
-    proc = subprocess.run(
-        [sys.executable, str(ROOT / ".codex" / "hooks" / "cplayout_prompt_triage.py")],
-        cwd=ROOT,
-        input=json.dumps(sample),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-    if proc.returncode != 0:
-        errors.append(f"prompt triage sample failed: {proc.stdout.strip()}")
-    else:
+    for label, rel_script, sample in HOOK_SAMPLES:
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / rel_script)],
+            cwd=ROOT,
+            input=json.dumps(sample),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        if proc.returncode != 0:
+            errors.append(f"{label} sample failed: {proc.stdout.strip()}")
+            continue
         try:
             parsed = json.loads(proc.stdout)
-            context = parsed["hookSpecificOutput"]["additionalContext"]
+            output = parsed["hookSpecificOutput"]
         except Exception as exc:  # noqa: BLE001 - report parser detail.
-            errors.append(f"prompt triage sample output invalid: {exc}")
-        else:
-            for expected in (
-                "cplayout_imagery_mapper",
-                "cplayout_interface_developer",
-                "cplayout_center_pivot_designer",
-                "cplayout_database_specialist",
-            ):
-                if expected not in context:
-                    errors.append(f"prompt triage sample missing {expected}")
-            print("[hook] UserPromptSubmit sample: ok")
+            errors.append(f"{label} sample output invalid: {exc}")
+            continue
+        if output.get("hookEventName") != sample["hook_event_name"]:
+            errors.append(f"{label} sample has wrong hookEventName")
+        if "deny" in label and output.get("permissionDecision") != "deny":
+            errors.append(f"{label} sample did not deny destructive input")
+        if "deny" not in label and not isinstance(output.get("additionalContext"), str):
+            errors.append(f"{label} sample missing additionalContext")
+        print(f"[hook] {label} sample: ok")
     return errors
+
+
+def validate_route_data() -> list[str]:
+    errors: list[str] = []
+    route_path = ROOT / ".codex" / "hooks" / "cplayout_route_data.json"
+    try:
+        route_data = json.loads(route_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - report parser detail.
+        return [f"{route_path.relative_to(ROOT)}: {exc}"]
+
+    if route_data.get("maxRoutes") != 3:
+        errors.append("cplayout_route_data.json: maxRoutes must be 3")
+    if not isinstance(route_data.get("minScore"), int):
+        errors.append("cplayout_route_data.json: minScore must be an integer")
+
+    route_ids: list[str] = []
+    routes = route_data.get("routes")
+    if not isinstance(routes, list):
+        return ["cplayout_route_data.json: routes must be a list"]
+    for route in routes:
+        if not isinstance(route, dict):
+            errors.append("cplayout_route_data.json: route must be an object")
+            continue
+        route_id = route.get("id")
+        if isinstance(route_id, str):
+            route_ids.append(route_id)
+        for field in ("positiveKeywords", "negativeKeywords"):
+            keywords = route.get(field)
+            if not isinstance(keywords, list):
+                errors.append(f"cplayout_route_data.json: {route_id}.{field} must be a list")
+                continue
+            for keyword in keywords:
+                weight = keyword.get("weight") if isinstance(keyword, dict) else None
+                if not isinstance(weight, int) or weight <= 0:
+                    errors.append(f"cplayout_route_data.json: {route_id}.{field} has non-positive weight")
+
+    duplicates = sorted({route_id for route_id in route_ids if route_ids.count(route_id) > 1})
+    for duplicate in duplicates:
+        errors.append(f"cplayout_route_data.json: duplicate route id {duplicate}")
+    missing = sorted(REQUIRED_ROUTE_IDS - set(route_ids))
+    for route_id in missing:
+        errors.append(f"cplayout_route_data.json: missing required route id {route_id}")
+    if not errors:
+        print("[hook] cplayout_route_data.json: ok")
+    return errors
+
+
+def validate_hook_tests() -> list[str]:
+    ok, output = run(
+        [sys.executable, "-m", "unittest", "discover", "-s", "tools/tests", "-p", "test_cplayout_*.py"]
+    )
+    print("[test] tools/tests/test_cplayout_*.py: " + ("ok" if ok else output))
+    return [] if ok else [f"hook unit tests failed: {output}"]
 
 
 def validate_required_files() -> list[str]:
@@ -164,7 +264,9 @@ def main() -> int:
     errors.extend(validate_required_files())
     errors.extend(validate_skills())
     errors.extend(validate_toml())
+    errors.extend(validate_route_data())
     errors.extend(validate_hooks())
+    errors.extend(validate_hook_tests())
     errors.extend(validate_ge_inventory_help())
 
     if errors:

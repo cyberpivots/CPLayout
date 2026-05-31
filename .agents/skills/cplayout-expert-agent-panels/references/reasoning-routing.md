@@ -1,59 +1,17 @@
 # Reasoning Routing
 
-Use CPLayout's `AGENTS.md` reasoning policy as the source of truth. Escalate only when risk or ambiguity justifies it.
-
-## Low
-
-Use `low` for:
-
-- file lookup,
-- skill inventory,
-- formatting,
-- simple command output,
-- narrow documentation checks,
-- dirty-tree snapshots.
-
-Typical agents: main agent locally, `explorer` for read-only mapping.
-
-## Medium
-
-Use `medium` for:
-
-- ordinary TypeScript changes,
-- UI changes without native/runtime implications,
-- docs updates,
-- skill edits,
-- bounded implementation workers,
-- normal test triage.
-
-Typical agents: main agent, `worker` for disjoint edits, local product/UX review.
-
-## High
-
-Use `high` for:
-
-- package architecture,
-- storage migrations or repository splits,
-- map/provider decisions,
-- native verification gates,
-- source-backed dependency decisions,
-- cross-package changes,
-- CPLayout project archive or schema implications,
-- current OpenAI/Codex source research.
-
-Typical agents: `default` source researcher, `explorer` architecture reviewer, main agent for critical-path design.
+Use CPLayout's `AGENTS.md` reasoning policy as the source of truth. The repo default is xhigh; lower reasoning is allowed only when the user explicitly requests it.
 
 ## Xhigh
 
-Use `xhigh` only for:
+Use `xhigh` for all CPLayout panel roles by default, including:
 
-- release arbitration,
-- severe reviewer disagreement,
-- security or safety disputes,
-- native verification disputes,
-- high-risk cross-platform architecture decisions where wrong claims could mislead downstream implementation.
+- file lookup, skill inventory, formatting, and dirty-tree snapshots,
+- ordinary TypeScript, UI, documentation, skill, and bounded implementation work,
+- package architecture, storage, maps, native gates, cross-package changes, and source-backed research,
+- release arbitration, reviewer disagreement, security/safety, and native verification disputes.
 
-Do not use `xhigh` for ordinary implementation, formatting, or routine documentation.
+Do not route CPLayout panel work to a lower reasoning level unless the user explicitly asks for a lower setting.
 
 ## Routing Output
 

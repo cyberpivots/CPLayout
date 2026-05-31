@@ -13,7 +13,36 @@ assert.deepEqual(parsed.pivotCenter, sampleProject.pivotCenter);
 assert.equal(parsed.settings?.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in (parsed.settings?.offlineMaps ?? {}), false);
 assert.equal("onlineImagery" in (parsed.settings ?? {}), false);
+assert.doesNotMatch(serialized, /onlineImagery|tileUrlTemplate|walkthroughProgress|packageDirectory/);
+assert.equal(parsed.settings?.mappingWorkflowMode, "design");
 assert.deepEqual(parsed.mapFeatures, []);
+
+const parsedWithLocalOnlyDrafts = parseProjectDocument({
+  ...sampleProject,
+  settings: {
+    ...sampleProject.settings,
+    onlineImagery: {
+      enabled: true,
+      providerId: "custom_open_xyz",
+      maxTilesPerView: 32,
+      customSource: {
+        name: "Local-only source",
+        tileUrlTemplate: "https://tiles.example.org/{z}/{x}/{y}.png",
+      },
+    },
+    offlineMaps: {
+      ...sampleProject.settings?.offlineMaps,
+      packageDirectory: "/local/operator/maps",
+    },
+    walkthroughProgress: {
+      imagery: true,
+      boundary: true,
+    },
+  },
+});
+assert.equal("onlineImagery" in (parsedWithLocalOnlyDrafts.settings ?? {}), false);
+assert.equal("walkthroughProgress" in (parsedWithLocalOnlyDrafts.settings ?? {}), false);
+assert.equal("packageDirectory" in (parsedWithLocalOnlyDrafts.settings?.offlineMaps ?? {}), false);
 
 const parsedMapFeatures = parseProjectDocument({
   ...sampleProject,
@@ -58,6 +87,16 @@ const parsedLegacySettings = parseProjectDocument({
   },
 });
 assert.equal(parsedLegacySettings.settings?.coordinateDisplayFormat, "decimal_degrees");
+assert.equal(parsedLegacySettings.settings?.mappingWorkflowMode, "design");
+
+const parsedLayoutSettings = parseProjectDocument({
+  ...sampleProject,
+  settings: {
+    ...sampleProject.settings!,
+    mappingWorkflowMode: "layout",
+  },
+});
+assert.equal(parsedLayoutSettings.settings?.mappingWorkflowMode, "layout");
 
 const parsedLegacyMapPackage = parseProjectDocument({
   ...sampleProject,

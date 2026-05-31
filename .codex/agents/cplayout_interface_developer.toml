@@ -1,6 +1,6 @@
 name = "cplayout_interface_developer"
 description = "Read-only specialist for CPLayout interface development, UI/UX workflows, Expo React Native surfaces, and web/native verification planning."
-model_reasoning_effort = "medium"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 nickname_candidates = ["Interface", "UX", "Screens"]
 developer_instructions = '''

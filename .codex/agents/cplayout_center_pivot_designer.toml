@@ -1,6 +1,6 @@
 name = "cplayout_center_pivot_designer"
 description = "Read-only specialist for center pivot, lateral move, and corner-arm irrigation design evidence used by CPLayout."
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 nickname_candidates = ["Pivot", "Irrigation", "Design"]
 developer_instructions = '''

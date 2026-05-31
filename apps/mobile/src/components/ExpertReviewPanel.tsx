@@ -152,11 +152,11 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
       decision: "accepted",
       recommendationId: recommendation.id,
       evidenceIds: recommendation.evidenceIds,
-      reason: "Auto-applied GPU-backed experimental ML Boundary Assist projected-XY boundary to the current unsaved editor workspace; Save remains explicit.",
+      reason: "Auto-applied GPU-backed experimental ML Boundary Assist projected-XY boundary to the current unsaved editor workspace after strict import gates; Save remains explicit and Undo is available.",
     });
     setReviewData(nextData);
     onPreviewRecommendation?.(null);
-    setStatus(`Imported and auto-applied ML Boundary Assist boundary from ${recommendation.id}. Undo is available; Save remains explicit.`);
+    setStatus(`Imported ML Boundary Assist evidence and changed the unsaved editor workspace from ${recommendation.id}. Save remains explicit, Undo is available, and the recommendation is not survey-grade.`);
     return true;
   }
 
@@ -165,7 +165,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
       <View style={styles.reviewWorkspace}>
         <View style={styles.importHeader}>
           <View>
-            <Text style={styles.workspaceTitle}>ML Boundary Assist</Text>
+            <Text style={styles.workspaceTitle}>Expert Review Center</Text>
             <Text style={styles.workspaceSubtitle}>{reviewData.modelRecommendations.length} imported · {reviewData.layoutDecisions.length} decisions saved</Text>
           </View>
           <Text style={styles.workspaceBadge}>Adjacent storage</Text>
@@ -378,11 +378,14 @@ function hasProjectedGeometry(recommendation: ModelRecommendation): boolean {
 
 function isAutoApplyBoundaryAssist(recommendation: ModelRecommendation): boolean {
   const metadata = recommendation.metadata ?? {};
+  const hardFailures = Array.isArray(metadata.hardFailures) ? metadata.hardFailures : [];
   return recommendation.reviewStatus === "accepted"
-    && recommendation.proposedGeometry.fieldBoundary !== undefined
+    && Array.isArray(recommendation.proposedGeometry.fieldBoundary)
+    && recommendation.proposedGeometry.fieldBoundary.length >= 3
     && metadata.schemaVersion === "cplayout-boundary-improvement-loop-v1"
     && metadata.autoApplyEligible === true
-    && metadata.gpuBacked === true;
+    && metadata.gpuBacked === true
+    && hardFailures.length === 0;
 }
 
 function evidenceForRecommendation(
@@ -423,7 +426,9 @@ function gpuSummary(recommendation: ModelRecommendation, evidenceRecords: Layout
   if (metadata.schemaVersion !== "cplayout-boundary-improvement-loop-v1" && !metrics) return null;
   const gpuBacked = metadata.gpuBacked === true || metrics?.gpuCudaAvailable === true;
   const iterations = typeof metadata.iterationCount === "number" ? metadata.iterationCount : metrics?.iterationCount;
-  return `Boundary loop: ${gpuBacked ? "GPU-backed" : "no CUDA evidence"} · ${String(iterations ?? "n/a")} iterations · ${String(metadata.acceptanceStatus ?? metrics?.acceptanceStatus ?? "unknown")}`;
+  const run = typeof metadata.mlflowRunId === "string" ? ` · MLflow ${metadata.mlflowRunId.slice(0, 8)}` : "";
+  const dvc = typeof metadata.dvcRevision === "string" ? ` · DVC ${metadata.dvcRevision.slice(0, 8)}` : "";
+  return `Boundary loop: ${gpuBacked ? "GPU-backed" : "no CUDA evidence"} · ${String(iterations ?? "n/a")} iterations · ${String(metadata.acceptanceStatus ?? metrics?.acceptanceStatus ?? "unknown")}${run}${dvc}`;
 }
 
 function artifactHashSummary(record: LayoutEvidenceRecord): string[] {
@@ -449,14 +454,16 @@ function errorMessage(error: unknown): string {
 function actionsForFinding(finding: ExpertReviewFinding): string[] {
   if (finding.status === "pass") return ["Keep this evidence in the exported ZIP before field handoff."];
   switch (finding.role) {
-    case "Product/UX":
-      return ["Open Settings and switch coordinate display to decimal degrees for field entry."];
-    case "GIS/Mapping":
+    case "Product/Workflow":
+      return ["Open Settings and switch coordinate display to decimal degrees for field entry; keep Review Layout read-only."];
+    case "GIS/Imagery":
       return ["Use online imagery only as a live reference; review GeoJSON/KML/KMZ imports and project them into the project CRS before geometry mutation."];
-    case "Architecture/Storage":
+    case "Pivot Design":
+      return ["Adjust pivot center, machine sweep, obstacles, or boundary geometry before accepting production coverage."];
+    case "Survey/RTK":
+      return ["Add RTK-fixed or explicitly planning-grade control points before field handoff."];
+    case "Storage/Export":
       return ["Save Local, export ZIP, and keep native SQLite claims blocked until device verification is complete."];
-    case "ML Feasibility":
-      return ["Keep ML/Python/GDAL work in offline preprocessing until a native offline runtime proof exists."];
     case "QA/Safety":
       return ["Fix obstacle conflicts or outside-field coverage in Layout, then save and export a fresh ZIP."];
   }
@@ -465,14 +472,16 @@ function actionsForFinding(finding: ExpertReviewFinding): string[] {
 function roleIcon(finding: ExpertReviewFinding): React.JSX.Element {
   const color = finding.status === "blocked" ? "#8b1e18" : finding.status === "watch" ? "#805116" : "#254234";
   switch (finding.role) {
-    case "Product/UX":
+    case "Product/Workflow":
       return <ClipboardList size={21} color={color} />;
-    case "GIS/Mapping":
+    case "GIS/Imagery":
       return <MapPinned size={21} color={color} />;
-    case "Architecture/Storage":
-      return <Database size={21} color={color} />;
-    case "ML Feasibility":
+    case "Pivot Design":
+      return <Sparkles size={21} color={color} />;
+    case "Survey/RTK":
       return <Satellite size={21} color={color} />;
+    case "Storage/Export":
+      return <Database size={21} color={color} />;
     case "QA/Safety":
       return <AlertTriangle size={21} color={color} />;
   }

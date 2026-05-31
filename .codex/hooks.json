@@ -11,6 +11,32 @@
           }
         ]
       }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/cplayout_subagent_start.py\"",
+            "timeout": 20,
+            "statusMessage": "Injecting CPLayout subagent boundaries"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|functions\\.exec_command|apply_patch|Edit|Write|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/cplayout_pre_tool_use.py\"",
+            "timeout": 20,
+            "statusMessage": "Checking CPLayout tool guardrails"
+          }
+        ]
+      }
     ]
   }
 }

@@ -97,23 +97,35 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       return error instanceof Error ? error : new Error(String(error));
     }
   }, [settings.onlineImagery.customSource, settings.onlineImagery.enabled, settings.onlineImagery.providerId]);
-  const projectionState = useMemo(() => {
+  const projectionFrame = useMemo(() => {
     try {
       return {
         center: projectWgs84Center(project),
         bounds: projectWgs84Bounds(project),
-        featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices),
         error: null as string | null,
       };
     } catch (error) {
       return {
         center: [0, 0] as [number, number],
         bounds: [-1, -1, 1, 1] as [number, number, number, number],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [project]);
+  const overlayState = useMemo(() => {
+    try {
+      return {
+        featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices),
+        error: null as string | null,
+      };
+    } catch (error) {
+      return {
         featureCollection: { type: "FeatureCollection" as const, features: [] },
         error: error instanceof Error ? error.message : String(error),
       };
     }
   }, [draftVertices, project, result]);
+  const projectionError = projectionFrame.error ?? overlayState.error;
   const activeProvider = provider instanceof Error ? null : provider;
   const providerError = provider instanceof Error ? provider.message : null;
   const providerKey = activeProvider
@@ -162,21 +174,21 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }, [designMode]);
 
   useEffect(() => {
-    if (!containerRef.current || projectionState.error) return undefined;
+    if (!containerRef.current || projectionError) return undefined;
     setRuntimeError(null);
     const map = new maplibregl.Map({
       attributionControl: false,
-      center: projectionState.center,
+      center: projectionFrame.center,
       container: containerRef.current,
       dragRotate: false,
       pitchWithRotate: false,
-      style: buildWorkbenchStyle(activeProvider, projectionState.featureCollection),
+      style: buildWorkbenchStyle(activeProvider, overlayState.featureCollection),
       zoom: activeProvider ? Math.min(15, activeProvider.maxZoom) : 14,
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
-    const fitProject = () => fitBoundsToProject(map, projectionState.bounds, activeProvider);
+    const fitProject = () => fitBoundsToProject(map, projectionFrame.bounds, activeProvider);
     map.once("load", () => {
       fitProject();
       setTimeout(() => map.resize(), 0);
@@ -198,20 +210,20 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       mapRef.current = null;
       map.remove();
     };
-  }, [activeProvider, providerKey, project.id, projectionState.bounds, projectionState.center, projectionState.error]);
+  }, [activeProvider, providerKey, project.id, projectionError, projectionFrame.bounds, projectionFrame.center]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || projectionState.error) return;
-    const updateSource = () => syncLayoutSource(map, projectionState.featureCollection);
+    if (!map || projectionError) return;
+    const updateSource = () => syncLayoutSource(map, overlayState.featureCollection);
     if (map.isStyleLoaded()) updateSource();
     else map.once("load", updateSource);
-  }, [projectionState.error, projectionState.featureCollection]);
+  }, [projectionError, overlayState.featureCollection]);
 
-  if (projectionState.error) {
+  if (projectionError) {
     return (
       <View style={styles.fallbackShell}>
-        <Text style={styles.fallbackText}>Browser imagery is unavailable for this project view: {projectionState.error}</Text>
+        <Text style={styles.fallbackText}>Browser imagery is unavailable for this project view: {projectionError}</Text>
         <SvgMapSurface {...props} />
       </View>
     );

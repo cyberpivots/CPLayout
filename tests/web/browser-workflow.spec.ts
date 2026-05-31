@@ -188,6 +188,16 @@ test("dashboard next step separates imagery-off from live-source confirmation", 
   await saveScreen(page, testInfo, "dashboard-imagery-off-next-step");
 });
 
+test("dashboard next step advances after imagery walkthrough progress", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByText("Next: confirm imagery attribution and live-source status.")).toBeVisible();
+  await page.getByTestId("walkthrough-module-imagery").click();
+  await expect(page.getByText("Next: trace or review the field boundary in Edit Geometry.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-next-step-after-imagery-progress");
+});
+
 test("dashboard export readiness reflects unsaved browser geometry edits", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

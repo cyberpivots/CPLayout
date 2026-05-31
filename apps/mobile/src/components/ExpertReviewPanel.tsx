@@ -161,7 +161,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
   }
 
   return (
-    <View style={styles.shell}>
+    <View style={styles.shell} testID="review-view">
       <View style={styles.reviewWorkspace}>
         <View style={styles.importHeader}>
           <View>

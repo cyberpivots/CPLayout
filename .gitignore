@@ -5,6 +5,7 @@ dist/
 dist-android/
 web-build/
 reports/android-native-verification/
+reports/continuous-improvement/
 reports/google-earth-visual-fidelity/
 tools/local-ml-companion/.dvc/cache/
 tools/local-ml-companion/.dvc/tmp/

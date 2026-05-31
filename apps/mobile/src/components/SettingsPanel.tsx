@@ -58,7 +58,7 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
   }
 
   return (
-    <View style={styles.shell}>
+    <View style={styles.shell} testID="settings-view">
       <SettingsGroup icon={<Ruler size={20} color="#254234" />} title="Units and Coordinates">
         <View style={styles.buttonRow}>
           <Choice active={settings.unitSystem === "metric"} label="Metric" onPress={() => update({ unitSystem: "metric" })} />

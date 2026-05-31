@@ -12,6 +12,8 @@
     "web": "npm run web -w @cplayout/mobile",
     "android": "npm run android -w @cplayout/mobile",
     "export:web": "npm run export:web -w @cplayout/mobile",
+    "test:web:e2e": "playwright test --config playwright.config.ts",
+    "proof:web": "npm run export:web && npm run test:web:e2e",
     "typecheck": "tsc -p tsconfig.tools.json && npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "validate:skills": "python3 tools/validate_cplayout_skills.py",
@@ -22,6 +24,7 @@
     "verify:release": "npm run validate && git diff --check && npm run validate:skills && npm run check:android-tools && npm run verify:android-native"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.0",
     "tsx": "4.22.2",
     "typescript": "~5.9.2"

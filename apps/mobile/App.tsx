@@ -221,7 +221,7 @@ export default function App(): React.JSX.Element {
 
   if (screen === "projects") {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} testID="launcher-screen">
         <StatusBar style="dark" />
         <View style={styles.app}>
           <View style={styles.topBar}>
@@ -280,7 +280,7 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} testID="workspace-screen">
       <StatusBar style="dark" />
       <View style={styles.app}>
         <View style={styles.topBar}>
@@ -307,12 +307,12 @@ export default function App(): React.JSX.Element {
 
         <View style={[styles.workspaceShell, compactLayout && styles.workspaceShellCompact]}>
           <View style={[styles.leftRail, compactLayout && styles.leftRailCompact]}>
-            <RailButton active={activeView === "dashboard"} icon={<Home size={18} />} label="Dashboard" onPress={() => setActiveView("dashboard")} />
-            <RailButton active={activeView === "map"} icon={<MapPinned size={18} />} label="Map" onPress={() => setActiveView("map")} />
-            <RailButton active={activeView === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => setActiveView("survey")} />
-            <RailButton active={activeView === "review"} icon={<ClipboardList size={18} />} label="Review" onPress={() => setActiveView("review")} />
-            <RailButton active={activeView === "files"} icon={<Download size={18} />} label="Files" onPress={() => setActiveView("files")} />
-            <RailButton active={activeView === "settings"} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => setActiveView("settings")} />
+            <RailButton active={activeView === "dashboard"} icon={<Home size={18} />} label="Dashboard" onPress={() => setActiveView("dashboard")} testID="workspace-nav-dashboard" />
+            <RailButton active={activeView === "map"} icon={<MapPinned size={18} />} label="Map" onPress={() => setActiveView("map")} testID="workspace-nav-map" />
+            <RailButton active={activeView === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => setActiveView("survey")} testID="workspace-nav-survey" />
+            <RailButton active={activeView === "review"} icon={<ClipboardList size={18} />} label="Review" onPress={() => setActiveView("review")} testID="workspace-nav-review" />
+            <RailButton active={activeView === "files"} icon={<Download size={18} />} label="Files" onPress={() => setActiveView("files")} testID="workspace-nav-files" />
+            <RailButton active={activeView === "settings"} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => setActiveView("settings")} testID="workspace-nav-settings" />
           </View>
 
           <ScrollView style={styles.workspaceScroll} contentContainerStyle={[styles.content, compactLayout && styles.contentCompact]}>
@@ -340,7 +340,7 @@ export default function App(): React.JSX.Element {
           )}
 
           {activeView === "map" && (
-            <View style={[styles.layoutGrid, compactLayout && styles.layoutGridCompact]}>
+            <View style={[styles.layoutGrid, compactLayout && styles.layoutGridCompact]} testID="map-view">
               <MapSurface
                 project={project}
                 result={result}
@@ -425,7 +425,7 @@ export default function App(): React.JSX.Element {
           )}
 
           {activeView === "survey" && (
-            <Section title="Survey Capture Readiness" icon={<Satellite size={20} color="#254234" />}>
+            <Section title="Survey Capture Readiness" icon={<Satellite size={20} color="#254234" />} testID="survey-view">
               <BrowserRtkReceiverPanel
                 onAddMapFeature={addMapFeature}
                 onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
@@ -473,7 +473,7 @@ export default function App(): React.JSX.Element {
           )}
 
           {activeView === "files" && (
-            <Section title="Files and GIS Exchange" icon={<ClipboardList size={20} color="#254234" />}>
+            <Section title="Files and GIS Exchange" icon={<ClipboardList size={20} color="#254234" />} testID="files-view">
               <ProjectFilesPanel
                 dirty={isDirty}
                 onApplyGoogleEarthKmlImport={applyGoogleEarthKmlImport}
@@ -570,7 +570,7 @@ function ProjectDashboard({
   const recentProjects = repository.projects.slice(0, 5);
 
   return (
-    <View style={styles.dashboard}>
+    <View style={styles.dashboard} testID={`dashboard-${mode}`}>
       <View style={[styles.dashboardHero, compact && styles.dashboardHeroCompact]}>
         <View style={styles.dashboardIntro}>
           <Text style={styles.dashboardTitle}>{mode === "launcher" ? "Project Dashboard" : project.name}</Text>
@@ -815,9 +815,9 @@ function workflowModeLabel(mode: AppSettings["mappingWorkflowMode"]): string {
   return mode === "design" ? "Edit Geometry" : "Review Layout";
 }
 
-function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }): React.JSX.Element {
+function Section({ title, icon, children, testID }: { title: string; icon: React.ReactNode; children: React.ReactNode; testID?: string }): React.JSX.Element {
   return (
-    <View style={styles.section}>
+    <View style={styles.section} testID={testID}>
       <View style={styles.sectionHeader}>
         {icon}
         <Text style={styles.sectionTitle}>{title}</Text>
@@ -836,12 +836,12 @@ function StatusPill({ icon, label }: { icon: React.ReactNode; label: string }): 
   );
 }
 
-function RailButton({ active, icon, label, onPress }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void }): React.JSX.Element {
+function RailButton({ active, icon, label, onPress, testID }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
   const tintedIcon = React.isValidElement<{ color?: string }>(icon)
     ? React.cloneElement(icon, { color: active ? "#ffffff" : "#d5e2db" })
     : icon;
   return (
-    <Pressable onPress={onPress} style={[styles.railButton, active && styles.railButtonActive]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.railButton, active && styles.railButtonActive]} testID={testID}>
       {tintedIcon}
       <Text style={[styles.railLabel, active && styles.railLabelActive]}>{label}</Text>
     </Pressable>

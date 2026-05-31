@@ -263,12 +263,15 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
             </View>
           </View>
           <Text style={styles.findingText}>{finding.finding}</Text>
+          <Text style={styles.findingSectionLabel}>Evidence</Text>
           <View style={styles.evidenceList}>
             {finding.evidence.map((evidence) => (
               <Text key={evidence} style={styles.evidence}>- {evidence}</Text>
             ))}
           </View>
+          <Text style={styles.findingSectionLabel}>Acceptance Gate</Text>
           <Text style={styles.gate}>{finding.acceptanceGate}</Text>
+          <Text style={styles.findingSectionLabel}>Actions</Text>
           <View style={styles.actionList}>
             {actionsForFinding(finding).map((action) => (
               <Text key={action} style={styles.actionItem}>Action: {action}</Text>
@@ -780,6 +783,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     lineHeight: 20,
+  },
+  findingSectionLabel: {
+    color: "#173428",
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 8,
   },
   evidenceList: {
     gap: 4,

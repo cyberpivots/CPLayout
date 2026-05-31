@@ -325,6 +325,19 @@ test("dashboard review warnings can open review without geometry mutation", asyn
   await saveScreen(page, testInfo, "dashboard-review-warning-open-review");
 });
 
+test("expert review findings label evidence gates and actions", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-review").click();
+  await expect(page.getByTestId("review-view")).toBeVisible();
+  await expect(page.getByText("Evidence").first()).toBeVisible();
+  await expect(page.getByText("Acceptance Gate").first()).toBeVisible();
+  await expect(page.getByText("Actions").first()).toBeVisible();
+  await expect(page.getByText(/Saved online imagery in project: no/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "expert-review-evidence-labels");
+});
+
 test("dashboard review warnings can inspect the map without geometry mutation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

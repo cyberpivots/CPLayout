@@ -188,6 +188,23 @@ test("dashboard next step separates imagery-off from live-source confirmation", 
   await saveScreen(page, testInfo, "dashboard-imagery-off-next-step");
 });
 
+test("dashboard export readiness reflects unsaved browser geometry edits", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("browser-tool-boundary").click();
+  const map = page.getByLabel("CPLayout MapLibre imagery workbench");
+  await map.click({ position: { x: 160, y: 180 } });
+  await map.click({ position: { x: 240, y: 180 } });
+  await map.click({ position: { x: 220, y: 250 } });
+  await page.getByTestId("browser-action-commit").click();
+  await page.getByTestId("workspace-nav-dashboard").click();
+  const exportCard = page.getByTestId("dashboard-card-export");
+  await expect(exportCard.getByText("Save before export")).toBeVisible();
+  await expect(exportCard.getByText(/Project ZIP excludes browser-local imagery settings/)).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-export-dirty-state");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {

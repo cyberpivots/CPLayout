@@ -594,24 +594,28 @@ function ProjectDashboard({
       <View style={styles.dashboardGrid}>
         <DashboardCard
           icon={<Satellite size={20} color="#173428" />}
+          testID="dashboard-card-imagery"
           title="Imagery Status"
           value={settings.onlineImagery.enabled ? "USGS live reference enabled" : "Live imagery disabled"}
           detail={settings.onlineImagery.enabled ? "Attribution is shown on-map; imagery is not stored in project files." : "Enable imagery in Settings for browser-local tracing."}
         />
         <DashboardCard
           icon={<Database size={20} color="#173428" />}
+          testID="dashboard-card-storage"
           title="Storage"
           value={repository.backendInfo?.backendLabel ?? repository.backendLabel}
           detail={`${repository.statusMessage} · ${dirty ? "unsaved edits" : "export-ready after latest save"}`}
         />
         <DashboardCard
           icon={<PackageCheck size={20} color="#173428" />}
+          testID="dashboard-card-export"
           title="Export Readiness"
           value={dirty ? "Save before export" : "Ready to package"}
           detail="Project ZIP excludes browser-local imagery settings, custom drafts, local directories, and walkthrough progress."
         />
         <DashboardCard
           icon={<ListChecks size={20} color="#173428" />}
+          testID="dashboard-card-walkthrough"
           title="Walkthrough"
           value={`${completedWalkthrough}/${WALKTHROUGH_MODULES.length} modules`}
           detail="Progress is local-only and is never written into PivotProject or project archives."
@@ -711,9 +715,9 @@ function WorkflowWalkthrough({
   );
 }
 
-function DashboardCard({ detail, icon, title, value }: { detail: string; icon: React.ReactNode; title: string; value: string }): React.JSX.Element {
+function DashboardCard({ detail, icon, testID, title, value }: { detail: string; icon: React.ReactNode; testID?: string; title: string; value: string }): React.JSX.Element {
   return (
-    <View style={styles.dashboardCard}>
+    <View style={styles.dashboardCard} testID={testID}>
       <View style={styles.dashboardPanelHeader}>
         {icon}
         <Text style={styles.dashboardCardTitle}>{title}</Text>

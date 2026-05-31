@@ -65,6 +65,25 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   expect(disallowed).toEqual([]);
 });
 
+test("public proof map features can select the side-panel editor without geometry mutation", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Real Proof" }).click();
+  await expect(page.getByTestId("workspace-screen")).toBeVisible();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await expect(page.getByText("Saved")).toBeVisible();
+
+  const workbench = page.getByLabel("CPLayout MapLibre imagery workbench");
+  const box = await workbench.boundingBox();
+  expect(box, "map workbench bounding box").not.toBeNull();
+  if (!box) return;
+  await workbench.click({ position: { x: box.width / 2, y: box.height / 2 } });
+  await expect(page.getByText(/Selected map feature/)).toBeVisible();
+  await expect(page.getByLabel("Selected map feature name")).toHaveValue("Power feed from 112th Avenue");
+  await expect(page.getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "public-proof-feature-selected");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {

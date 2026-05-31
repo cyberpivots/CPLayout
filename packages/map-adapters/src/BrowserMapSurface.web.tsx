@@ -392,7 +392,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           <View style={styles.statusTextGroup}>
             <Text style={styles.statusText}>{status}</Text>
             <Text style={styles.statusMeta}>
-              {mode.replaceAll("_", " ")} · {draftVertices.length} draft pts{advisoryRecommendationPreview ? " · advisory preview visible" : ""}
+              {mode.replaceAll("_", " ")} · {draftVertices.length} draft pts{utilitySaveHint(mode, mapFeatureOption.geometry)}{advisoryRecommendationPreview ? " · advisory preview visible" : ""}
             </Text>
           </View>
           <View style={styles.hudActions}>
@@ -591,6 +591,11 @@ function obstacleKindForLayer(layer: DrawingLayerType): ObstacleZone["kind"] {
 
 function toolLabel(mode: DrawingMode): string {
   return mode.replaceAll("_", " ");
+}
+
+function utilitySaveHint(mode: DrawingMode, geometry: UtilityFeatureGeometry): string {
+  if (mode !== "measure") return "";
+  return geometry === "Point" ? " · point saves on map click" : " · line needs 2 pts";
 }
 
 function ModeSwitch({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID?: string }): React.JSX.Element {

@@ -54,6 +54,11 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await page.getByTestId("browser-tool-pan").click();
   await expect(page.getByText("pan · 0 draft pts")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
+  await page.getByTestId("browser-tool-utility").click();
+  await expect(page.getByText("measure · 0 draft pts · line needs 2 pts")).toBeVisible();
+  await page.getByRole("button", { name: "Pump" }).click();
+  await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
+  await page.getByTestId("browser-tool-pan").click();
   await page.getByTestId("browser-workflow-layout").click();
   await expect(page.getByText("Review Layout: map gestures and inspection only. Geometry callbacks are blocked.")).toBeVisible();
   await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 120, y: 160 } });

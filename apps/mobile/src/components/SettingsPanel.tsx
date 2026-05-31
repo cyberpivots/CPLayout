@@ -281,7 +281,7 @@ function SettingsGroup({ icon, title, children }: { icon: React.ReactNode; title
 
 function Choice({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }): React.JSX.Element {
   return (
-    <Pressable onPress={onPress} style={[styles.choice, active && styles.choiceActive]}>
+    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={[styles.choice, active && styles.choiceActive]}>
       <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{label}</Text>
     </Pressable>
   );

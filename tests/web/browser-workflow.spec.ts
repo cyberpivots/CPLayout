@@ -9,11 +9,12 @@ const routeScreens = [
   { nav: "workspace-nav-settings", screen: "settings-view" },
 ] as const;
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
   await captureConsoleFailures(page);
+  const strictOffline = testInfo.title.includes("offline");
   await page.route("**/*", (route) => {
     const url = route.request().url();
-    if (isAllowedNetworkRequest(url)) {
+    if (isAllowedNetworkRequest(url, strictOffline)) {
       void route.continue();
       return;
     }
@@ -89,6 +90,31 @@ test("public proof map features can select the side-panel editor without geometr
   await saveScreen(page, testInfo, "public-proof-feature-selected");
 });
 
+test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
+  const externalRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (!url.startsWith(testInfo.project.use.baseURL ?? "") && !url.startsWith("data:") && !url.startsWith("blob:")) {
+      externalRequests.push(url);
+    }
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByTestId("workspace-screen")).toBeVisible();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await expect(page.getByText("EPSG:32613 canonical geometry · offline overlay")).toBeVisible();
+  await expect(page.getByText(/No live imagery source enabled/)).toBeVisible();
+  await page.getByTestId("browser-tool-boundary").click();
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 160, y: 180 } });
+  await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
+  expect(externalRequests).toEqual([]);
+  await saveScreen(page, testInfo, "offline-map-workbench");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {
@@ -125,8 +151,9 @@ async function expectNoOverlap(page: Page, firstTestId: string, secondTestId: st
   expect(overlaps, `${firstTestId} should not overlap ${secondTestId}`).toBe(false);
 }
 
-function isAllowedNetworkRequest(url: string): boolean {
+function isAllowedNetworkRequest(url: string, strictOffline = false): boolean {
   if (url.startsWith("http://127.0.0.1:")) return true;
+  if (strictOffline) return url.startsWith("data:") || url.startsWith("blob:");
   if (url.startsWith("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/")) return true;
   return url.startsWith("data:") || url.startsWith("blob:");
 }

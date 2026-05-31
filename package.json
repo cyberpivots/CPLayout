@@ -14,6 +14,7 @@
     "export:web": "npm run export:web -w @cplayout/mobile",
     "typecheck": "tsc -p tsconfig.tools.json && npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "validate:skills": "python3 tools/validate_cplayout_skills.py",
     "validate": "npm run typecheck && npm test",
     "audit:moderate": "npm audit --audit-level=moderate",
     "check:android-tools": "tsx tools/check_android_tools.ts",

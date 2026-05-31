@@ -21,8 +21,9 @@ Direct user no-mutation instructions win over this workflow. For read-only tasks
 4. Classify the task by risk, owner role, mutation scope, external evidence need, and validation gate.
 5. Close local knowledge gaps first, then research current external facts from official or primary sources.
    - For CPLayout Google Earth/KML loops, re-check the Google KML Reference, Google shared-style tutorial, OGC KML page, and the repo source ledger before changing import/export behavior.
-6. Use bounded subagents only when the user explicitly asks for expert panels, delegation, parallel agents, specialist teams, or multi-agent work and the current runtime exposes subagent tools.
-7. Synthesize the panel result into the next concrete action, implement only when mutation is allowed, validate, and record durable findings when appropriate.
+6. Use `references/prompt-triage.md` when the prompt needs specialist routing, new agent surfaces, hooks, skills, source ledgers, or knowledge-record updates.
+7. Use bounded subagents only when the user explicitly asks for expert panels, delegation, parallel agents, specialist teams, or multi-agent work and the current runtime exposes subagent tools.
+8. Synthesize the panel result into the next concrete action, implement only when mutation is allowed, validate, and record durable findings when appropriate.
 
 For the detailed sequence, read `references/panel-lifecycle.md`.
 
@@ -46,13 +47,13 @@ For role prompts and delegation rules, read `references/agent-prompts.md`.
 
 Treat "Implement expert agent panels" as explicit authorization to spawn bounded subagents when the runtime permits it and parallel work is useful. Do not spawn agents for broad, vague work.
 
-Use built-in agents in v1:
+Use built-in agents for generic exploration and implementation:
 
 - `explorer` for workspace mapping, code review, and validation triage.
 - `default` for source-backed external research or synthesis.
 - `worker` only for disjoint implementation slices after mutation is allowed.
 
-Do not add project-scoped `.codex/agents/*.toml` in v1. Role-specific prompts are enough until a repeated task proves custom TOML agents are worth the maintenance cost.
+Project-scoped `.codex/agents/*.toml` specialists are allowed when the user explicitly requests durable specialist agents or a repeated workflow justifies the maintenance cost. Keep those agents narrow, source-backed, and read-only by default; use `worker` only for explicit bounded mutation scopes.
 
 Keep immediate blocking work local. Wait for subagents only when their result is needed for the next critical-path decision.
 

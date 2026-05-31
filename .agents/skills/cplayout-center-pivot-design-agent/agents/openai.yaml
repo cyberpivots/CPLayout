@@ -1,0 +1,8 @@
+interface:
+  display_name: "CPLayout Pivot Designer"
+  short_description: "Pivot, linear, and corner-arm review"
+  brand_color: "#7C3AED"
+  default_prompt: "Use $cplayout-center-pivot-design-agent to review a CPLayout pivot, lateral move, or corner-arm layout decision."
+
+policy:
+  allow_implicit_invocation: true

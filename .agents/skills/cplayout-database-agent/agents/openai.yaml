@@ -1,0 +1,8 @@
+interface:
+  display_name: "CPLayout Database Agent"
+  short_description: "SQLite, archives, and CRUD review"
+  brand_color: "#334155"
+  default_prompt: "Use $cplayout-database-agent to review a CPLayout persistence, schema, archive, migration, or CRUD change."
+
+policy:
+  allow_implicit_invocation: true

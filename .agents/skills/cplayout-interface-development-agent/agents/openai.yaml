@@ -1,0 +1,8 @@
+interface:
+  display_name: "CPLayout Interface Developer"
+  short_description: "Expo UI/UX and verification review"
+  brand_color: "#0F766E"
+  default_prompt: "Use $cplayout-interface-development-agent to plan or review a CPLayout interface change with verification gates."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/cplayout_prompt_triage.py\"",
+            "timeout": 20,
+            "statusMessage": "Injecting CPLayout prompt triage"
+          }
+        ]
+      }
+    ]
+  }
+}

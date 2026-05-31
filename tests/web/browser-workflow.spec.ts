@@ -268,6 +268,17 @@ test("dashboard review warnings can open review without geometry mutation", asyn
   await saveScreen(page, testInfo, "dashboard-review-warning-open-review");
 });
 
+test("dashboard review warnings can inspect the map without geometry mutation", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("dashboard-review-warnings").getByRole("button", { name: "Inspect Map" }).click();
+  await expect(page.getByTestId("map-view")).toBeVisible();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText("Review Layout: map gestures and inspection only. Geometry callbacks are blocked.")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-review-warning-inspect-map");
+});
+
 test("dashboard recent-project empty state keeps start actions visible", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

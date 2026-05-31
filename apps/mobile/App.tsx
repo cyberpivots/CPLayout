@@ -247,6 +247,11 @@ export default function App(): React.JSX.Element {
                 setActiveView("files");
               }}
               onOpenImprovedProof={() => loadProject(improvedCenterPivotReviewProject)}
+              onInspectMap={() => {
+                setWorkflowMode("layout");
+                setScreen("workspace");
+                setActiveView("map");
+              }}
               onOpenMap={() => {
                 setScreen("workspace");
                 setActiveView("map");
@@ -325,6 +330,10 @@ export default function App(): React.JSX.Element {
               onCreate={createNewProject}
               onOpenFiles={() => setActiveView("files")}
               onOpenImprovedProof={() => loadProject(improvedCenterPivotReviewProject)}
+              onInspectMap={() => {
+                setWorkflowMode("layout");
+                setActiveView("map");
+              }}
               onOpenMap={() => setActiveView("map")}
               onOpenProject={openSavedProject}
               onOpenReview={() => setActiveView("review")}
@@ -531,6 +540,7 @@ function ProjectDashboard({
   dirty,
   mode,
   onCreate,
+  onInspectMap,
   onOpenFiles,
   onOpenImprovedProof,
   onOpenMap,
@@ -550,6 +560,7 @@ function ProjectDashboard({
   dirty: boolean;
   mode: "launcher" | "workspace";
   onCreate: () => void;
+  onInspectMap: () => void;
   onOpenFiles: () => void;
   onOpenImprovedProof: () => void;
   onOpenMap: () => void;
@@ -668,7 +679,7 @@ function ProjectDashboard({
           </View>
           <View style={styles.dashboardActions}>
             <SmallActionButton label="Open Review" onPress={onOpenReview} />
-            <SmallActionButton label="Inspect Map" onPress={onOpenMap} />
+            <SmallActionButton label="Inspect Map" onPress={onInspectMap} />
           </View>
           {editorWarningRows(result).length === 0 ? (
             <Text style={styles.dashboardMuted}>No active layout warnings.</Text>

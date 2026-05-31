@@ -205,6 +205,24 @@ test("dashboard export readiness reflects unsaved browser geometry edits", async
   await saveScreen(page, testInfo, "dashboard-export-dirty-state");
 });
 
+test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("browser-tool-boundary").click();
+  const map = page.getByLabel("CPLayout MapLibre imagery workbench");
+  await map.click({ position: { x: 160, y: 180 } });
+  await map.click({ position: { x: 240, y: 180 } });
+  await map.click({ position: { x: 220, y: 250 } });
+  await page.getByTestId("browser-action-commit").click();
+  await page.getByTestId("workspace-nav-dashboard").click();
+  await expect(page.getByText("Next: save local edits and export a project package.")).toBeVisible();
+  await expect(page.getByTestId("dashboard-card-imagery").getByText("Live imagery disabled")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-dirty-over-imagery-off");
+});
+
 test("dashboard walkthrough progress stays local and export-ready", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

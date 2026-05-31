@@ -744,6 +744,7 @@ function recommendedWorkflowStep(
   progress: Record<WalkthroughModuleId, boolean>,
   dirty: boolean,
 ): string {
+  if (dirty) return "Next: save local edits and export a project package.";
   if (!settings.onlineImagery.enabled) return "Next: keep offline overlay or enable approved no-key imagery in Settings.";
   if (!progress.imagery) return "Next: confirm imagery attribution and live-source status.";
   if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or review the field boundary in Edit Geometry.";
@@ -751,7 +752,7 @@ function recommendedWorkflowStep(
   if (!progress.pivot) return "Next: place pivot, water source, and power source.";
   if (project.surveyPoints.length === 0 || !progress.survey) return "Next: capture or import survey/control points.";
   if (result.warnings.length > 0 || result.metrics.obstacleConflictCount > 0 || !progress.review) return "Next: open Expert Review Center and resolve findings.";
-  if (dirty || !progress.export) return "Next: save local edits and export a project package.";
+  if (!progress.export) return "Next: save local edits and export a project package.";
   return "Project is ready for repeat review, export, or field handoff.";
 }
 

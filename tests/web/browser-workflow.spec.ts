@@ -104,6 +104,7 @@ test("offline browser map workbench stays usable with external requests blocked"
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Off" }).click();
+  await expect(page.getByText(/project exports keep projected\/local XY geometry/)).toBeVisible();
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByText("EPSG:32613 canonical geometry · offline overlay")).toBeVisible();

@@ -35,6 +35,12 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
       return ONLINE_IMAGERY_PROVIDER_CATALOG[settings.onlineImagery.providerId];
     }
   }, [settings.onlineImagery.customSource, settings.onlineImagery.providerId]);
+  const imagerySourceSummary = settings.onlineImagery.enabled
+    ? `${activeProvider.coverageLabel} · ${activeProvider.projection} · ${activeProvider.tileScheme.toUpperCase()} ${activeProvider.tileSize}px · z${activeProvider.minZoom}-${activeProvider.maxZoom} · live preview only`
+    : "Live imagery disabled · browser map uses offline overlay only · no external tile source is requested";
+  const imageryGuardrailSummary = settings.onlineImagery.enabled
+    ? `${activeProvider.attribution} · ${activeProvider.licenseText} · imagery is reference-only and never canonical geometry`
+    : "Imagery settings are browser-local aids; project exports keep projected/local XY geometry and exclude live tile requests.";
 
   useEffect(() => {
     setCustomDraft(customDraftFromSettings(settings));
@@ -179,10 +185,10 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
           onIncrease={() => update({ onlineImagery: { ...settings.onlineImagery, maxTilesPerView: clamp(settings.onlineImagery.maxTilesPerView + 8, 8, 128) } })}
         />
         <Text style={styles.lockedText}>
-          {activeProvider.coverageLabel} · {activeProvider.projection} · {activeProvider.tileScheme.toUpperCase()} {activeProvider.tileSize}px · z{activeProvider.minZoom}-{activeProvider.maxZoom} · live preview only
+          {imagerySourceSummary}
         </Text>
         <Text style={styles.lockedText}>
-          {activeProvider.attribution} · {activeProvider.licenseText}
+          {imageryGuardrailSummary}
         </Text>
         {customFormVisible ? (
           <View style={styles.customForm}>

@@ -1,0 +1,12 @@
+f769c578accb367b640c937cad239dc39df534e6dac0fc38a01aafbd7d3865ee  reports/continuous-improvement/playwright-results/browser-workflow-launcher--f8221-ut-paid-APIs-or-hidden-keys-desktop/dashboard-workspace.png
+3f281f903555ca490f13f081a9789bc8e57fc3720285a022dc0f683941d71725  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-939d4-aved-browser-geometry-edits-desktop/dashboard-export-dirty-state.png
+e2380dd5f1ab71515998d3a1e3947aeb1dd44b1b6995b5324e1e9cc805d83ebd  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-51d2c-tranks-imagery-off-guidance-mobile-390/dashboard-dirty-over-imagery-off.png
+5c11eab094cdac13d1a2483f04466c7852f805f6d9e15ec994ddc843746385d3  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-0f430-tays-local-and-export-ready-desktop/dashboard-walkthrough-local-progress.png
+845c1232b0df71d36d97e46893c3e72c3d3e79c18d1a307d0419a734d36039b4  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-69185-coped-to-the-active-project-mobile-390/dashboard-walkthrough-project-scope.png
+a619370528437fdca00761a22ec6e262be0b919391ac35f48b26ee9747679d24  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-53ca0-pen-a-saved-browser-project-desktop/dashboard-recent-project-reopen.png
+cde4274531780dc2926165f40fcfed685738beeea7fee97a8669336303c9fff0  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-3ce08-keeps-start-actions-visible-mobile-390/dashboard-recent-project-empty-state.png
+f769c578accb367b640c937cad239dc39df534e6dac0fc38a01aafbd7d3865ee  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-60666--actionable-layout-guidance-desktop/dashboard-review-warning-guidance.png
+195422c085544686253b4bea8b9943fcd3c1f8ea2cbd80b5175ac40373ac6037  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-b4f40-w-without-geometry-mutation-mobile-390/dashboard-review-warning-open-review.png
+a2f7a7e91265aa660e6da2584657080598484f1e34a5fa99d480e76a8da70390  apps/mobile/App.tsx
+6ae4bc796c60a7723a4781980a582db8ec0d9547d046de541a01db8ad265f954  tests/web/browser-workflow.spec.ts
+d083ddcf242f187dd81e679b72d39c46a28c6c921b498f855d7b9ca229ba9b1b  playwright.config.ts

@@ -312,11 +312,13 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
             active={settings.mappingWorkflowMode === "design"}
             label="Edit Geometry"
             onPress={() => onMappingWorkflowModeChange?.("design")}
+            testID="browser-workflow-design"
           />
           <ModeSwitch
             active={settings.mappingWorkflowMode === "layout"}
             label="Review Layout"
             onPress={() => onMappingWorkflowModeChange?.("layout")}
+            testID="browser-workflow-layout"
           />
         </View>
       </View>
@@ -328,14 +330,14 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           style: mapContainerStyle,
         })}
         <View style={[styles.toolHud, compactLayout && styles.toolHudCompact]}>
-          <ToolButton active={mode === "pan"} icon={<Hand size={17} color={mode === "pan" ? "#ffffff" : "#173428"} />} label="Pan" onPress={() => setTool("pan")} />
+          <ToolButton active={mode === "pan"} icon={<Hand size={17} color={mode === "pan" ? "#ffffff" : "#173428"} />} label="Pan" onPress={() => setTool("pan")} testID="browser-tool-pan" />
           {designMode ? (
             <>
-              <ToolButton active={mode === "draw_boundary"} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} />
-              <ToolButton active={mode === "mark_obstacle"} icon={<Layers size={17} color={mode === "mark_obstacle" ? "#ffffff" : "#173428"} />} label="Obstacle" onPress={() => setTool("mark_obstacle", "obstacle")} />
-              <ToolButton active={mode === "place_pivot"} icon={<LocateFixed size={17} color={mode === "place_pivot" ? "#ffffff" : "#173428"} />} label="Pivot" onPress={() => setTool("place_pivot", "pivot_center")} />
-              <ToolButton active={mode === "capture_point"} icon={<Crosshair size={17} color={mode === "capture_point" ? "#ffffff" : "#173428"} />} label="Survey" onPress={() => setTool("capture_point", "control_point")} />
-              <ToolButton active={mode === "measure"} icon={<UtilityPole size={17} color={mode === "measure" ? "#ffffff" : "#173428"} />} label="Utility" onPress={() => setTool("measure")} />
+              <ToolButton active={mode === "draw_boundary"} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} testID="browser-tool-boundary" />
+              <ToolButton active={mode === "mark_obstacle"} icon={<Layers size={17} color={mode === "mark_obstacle" ? "#ffffff" : "#173428"} />} label="Obstacle" onPress={() => setTool("mark_obstacle", "obstacle")} testID="browser-tool-obstacle" />
+              <ToolButton active={mode === "place_pivot"} icon={<LocateFixed size={17} color={mode === "place_pivot" ? "#ffffff" : "#173428"} />} label="Pivot" onPress={() => setTool("place_pivot", "pivot_center")} testID="browser-tool-pivot" />
+              <ToolButton active={mode === "capture_point"} icon={<Crosshair size={17} color={mode === "capture_point" ? "#ffffff" : "#173428"} />} label="Survey" onPress={() => setTool("capture_point", "control_point")} testID="browser-tool-survey" />
+              <ToolButton active={mode === "measure"} icon={<UtilityPole size={17} color={mode === "measure" ? "#ffffff" : "#173428"} />} label="Utility" onPress={() => setTool("measure")} testID="browser-tool-utility" />
             </>
           ) : null}
         </View>
@@ -385,9 +387,9 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
             </Text>
           </View>
           <View style={styles.hudActions}>
-            <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} />
-            <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureLine} primary={canSaveFeature} />
-            <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} />
+            <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="browser-action-commit" />
+            <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureLine} primary={canSaveFeature} testID="browser-action-save-feature" />
+            <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="browser-action-clear" />
           </View>
         </View>
 
@@ -574,17 +576,17 @@ function toolLabel(mode: DrawingMode): string {
   return mode.replaceAll("_", " ");
 }
 
-function ModeSwitch({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }): React.JSX.Element {
+function ModeSwitch({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.modeSwitch, active && styles.modeSwitchActive]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.modeSwitch, active && styles.modeSwitchActive]} testID={testID}>
       <Text style={[styles.modeSwitchText, active && styles.modeSwitchTextActive]}>{label}</Text>
     </Pressable>
   );
 }
 
-function ToolButton({ active, icon, label, onPress }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void }): React.JSX.Element {
+function ToolButton({ active, icon, label, onPress, testID }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive]} testID={testID}>
       {icon}
       <Text style={[styles.toolButtonText, active && styles.toolButtonTextActive]}>{label}</Text>
     </Pressable>
@@ -599,9 +601,9 @@ function Chip({ active, label, onPress }: { active: boolean; label: string; onPr
   );
 }
 
-function HudButton({ disabled = false, icon, label, onPress, primary = false }: { disabled?: boolean; icon: React.ReactNode; label: string; onPress: () => void; primary?: boolean }): React.JSX.Element {
+function HudButton({ disabled = false, icon, label, onPress, primary = false, testID }: { disabled?: boolean; icon: React.ReactNode; label: string; onPress: () => void; primary?: boolean; testID?: string }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.hudButton, primary && styles.hudButtonPrimary, disabled && styles.hudButtonDisabled]}>
+    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.hudButton, primary && styles.hudButtonPrimary, disabled && styles.hudButtonDisabled]} testID={testID}>
       {icon}
       <Text style={[styles.hudButtonText, primary && styles.hudButtonTextPrimary, disabled && styles.hudButtonTextDisabled]}>{label}</Text>
     </Pressable>

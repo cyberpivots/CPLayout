@@ -47,8 +47,14 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit Geometry" })).toBeVisible();
-  await page.getByRole("button", { name: "Review Layout" }).click();
+  await expect(page.getByTestId("browser-workflow-design")).toBeVisible();
+  await page.getByTestId("browser-tool-boundary").click();
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 180, y: 180 } });
+  await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
+  await page.getByTestId("browser-tool-pan").click();
+  await expect(page.getByText("pan · 0 draft pts")).toBeVisible();
+  await expect(page.getByText("Saved")).toBeVisible();
+  await page.getByTestId("browser-workflow-layout").click();
   await expect(page.getByText("Review Layout: map gestures and inspection only. Geometry callbacks are blocked.")).toBeVisible();
   await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 120, y: 160 } });
   await expect(page.getByText("Review Layout is read-only; switch to Edit Geometry before changing project geometry.")).toBeVisible();

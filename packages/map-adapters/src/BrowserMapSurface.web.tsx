@@ -232,12 +232,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       return;
     }
     if (intent.type === "place_pivot") {
-      callbacksRef.current.onPlacePivot?.(intent.point);
+      callbacksRef.current.onPlacePivot?.(intent.point, intent.wgs84);
       setStatus(`Placed pivot at projected XY ${intent.point.x.toFixed(2)}, ${intent.point.y.toFixed(2)}.`);
       return;
     }
     if (intent.type === "move_infrastructure") {
-      callbacksRef.current.onMoveInfrastructurePoint?.(intent.pointType, intent.point);
+      callbacksRef.current.onMoveInfrastructurePoint?.(intent.pointType, intent.point, intent.wgs84);
       setStatus(`Moved ${intent.pointType.replaceAll("_", " ")} in projected XY.`);
       return;
     }

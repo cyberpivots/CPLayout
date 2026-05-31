@@ -354,8 +354,8 @@ export default function App(): React.JSX.Element {
                 onDeleteBoundaryVertex={(vertexIndex) => dispatchProject({ type: "delete_boundary_vertex", vertexIndex })}
                 onMoveObstacleVertex={(obstacleId, vertexIndex, point) => dispatchProject({ type: "move_obstacle_vertex", obstacleId, vertexIndex, point })}
                 onDeleteObstacleVertex={(obstacleId, vertexIndex) => dispatchProject({ type: "delete_obstacle_vertex", obstacleId, vertexIndex })}
-                onPlacePivot={(point) => dispatchProject({ type: "place_pivot", point })}
-                onMoveInfrastructurePoint={(pointType, point) => dispatchProject({ type: "move_infrastructure", pointType, point })}
+                onPlacePivot={(point, wgs84) => dispatchProject({ type: "place_pivot", point, wgs84 })}
+                onMoveInfrastructurePoint={(pointType, point, wgs84) => dispatchProject({ type: "move_infrastructure", pointType, point, wgs84 })}
                 onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
                 onAddMapFeature={addMapFeature}
                 onSelectMapFeature={setSelectedMapFeatureId}

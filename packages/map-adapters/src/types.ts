@@ -1,4 +1,4 @@
-import type { AppSettings, InfrastructurePoint, LayoutResult, MappingWorkflowMode, ModelRecommendation, ObstacleZone, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
+import type { AppSettings, InfrastructurePoint, LayoutResult, LonLat, MappingWorkflowMode, ModelRecommendation, ObstacleZone, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 
 export interface MapSurfaceProps {
@@ -17,8 +17,8 @@ export interface MapSurfaceProps {
   onDeleteBoundaryVertex?: (vertexIndex: number) => void;
   onMoveObstacleVertex?: (obstacleId: string, vertexIndex: number, point: XY) => void;
   onDeleteObstacleVertex?: (obstacleId: string, vertexIndex: number) => void;
-  onPlacePivot?: (point: XY) => void;
-  onMoveInfrastructurePoint?: (pointType: InfrastructurePoint, point: XY) => void;
+  onPlacePivot?: (point: XY, wgs84?: LonLat) => void;
+  onMoveInfrastructurePoint?: (pointType: InfrastructurePoint, point: XY, wgs84?: LonLat) => void;
   onAddSurveyPoint?: (point: Omit<SurveyPoint, "id" | "observedAt"> & { id?: string; observedAt?: string }) => void;
   onAddMapFeature?: (feature: Omit<ProjectMapFeature, "id"> & { id?: string }) => void;
   onSelectMapFeature?: (featureId: string | null) => void;

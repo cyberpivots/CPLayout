@@ -709,7 +709,12 @@ function WorkflowWalkthrough({
       <View style={styles.dashboardPanelHeader}>
         <ListChecks size={19} color="#173428" />
         <Text style={styles.dashboardPanelTitle}>Workflow Walkthrough</Text>
-        <Pressable accessibilityRole="button" onPress={onReset} style={styles.resetButton}>
+        <Pressable
+          accessibilityLabel="Reset walkthrough progress for active project"
+          accessibilityRole="button"
+          onPress={onReset}
+          style={styles.resetButton}
+        >
           <RotateCcw size={14} color="#173428" />
           <Text style={styles.resetButtonText}>Reset</Text>
         </Pressable>
@@ -719,6 +724,7 @@ function WorkflowWalkthrough({
           const complete = progress[module.id];
           return (
             <Pressable
+              accessibilityLabel={`${complete ? "Clear" : "Complete"} ${module.title} walkthrough checkpoint`}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: complete }}
               key={module.id}

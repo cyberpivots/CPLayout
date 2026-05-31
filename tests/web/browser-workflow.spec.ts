@@ -304,6 +304,7 @@ test("dashboard recent-project row can reopen a saved browser project", async ({
   await sampleRow.click();
   await expect(page.getByText("North Quarter Concept Layout", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Opened North Quarter Concept Layout.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-recent-project-reopen");
 });
 

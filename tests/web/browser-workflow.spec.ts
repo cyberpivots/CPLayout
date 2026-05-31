@@ -116,6 +116,17 @@ test("offline browser map workbench stays usable with external requests blocked"
   await saveScreen(page, testInfo, "offline-map-workbench");
 });
 
+test("settings custom imagery guidance blocks hidden-key assumptions", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Custom open" }).click();
+  await expect(page.getByText(/Custom sources must be open, no-key/)).toBeVisible();
+  await expect(page.getByText(/Hidden keys, tokens, paid hosted imagery/)).toBeVisible();
+  await expect(page.getByLabel("Tile URL")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-custom-imagery-guidance");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {

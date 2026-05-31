@@ -192,6 +192,9 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
         </Text>
         {customFormVisible ? (
           <View style={styles.customForm}>
+            <Text style={styles.lockedText}>
+              Custom sources must be open, no-key XYZ or WMTS-style tile templates. Hidden keys, tokens, paid hosted imagery, and bulk caching are blocked.
+            </Text>
             <SettingsInput
               label="Source name"
               value={customDraft.name}

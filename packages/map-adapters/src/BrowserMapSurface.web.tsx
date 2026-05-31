@@ -365,7 +365,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        <View style={[styles.statusHud, compactLayout && styles.statusHudCompact]}>
+        <View style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
           <View style={styles.statusTextGroup}>
             <Text style={styles.statusText}>{status}</Text>
             <Text style={styles.statusMeta}>
@@ -380,13 +380,13 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         </View>
 
         {!designMode ? (
-          <View style={[styles.reviewHud, compactLayout && styles.reviewHudCompact]}>
+          <View style={[styles.reviewHud, compactLayout && styles.reviewHudCompact]} testID="browser-map-review-hud">
             <MapPinned size={17} color="#173428" />
             <Text style={styles.reviewHudText}>Review Layout: map gestures and inspection only. Geometry callbacks are blocked.</Text>
           </View>
         ) : null}
 
-        <View style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]}>
+        <View style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]} testID="browser-map-attribution-hud">
           <Satellite size={13} color="#173428" />
           <Text style={styles.attributionText}>
             {providerError ? providerError : `${activeProvider?.attribution ?? "No live imagery source enabled"} · ${activeProvider?.licenseText ?? "Offline overlay only"}`}
@@ -761,7 +761,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(17,28,23,0.92)",
     borderRadius: 8,
-    bottom: 42,
+    bottom: 72,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
@@ -774,7 +774,7 @@ const styles = StyleSheet.create({
   },
   statusHudCompact: {
     alignItems: "flex-start",
-    bottom: 76,
+    bottom: 84,
     left: 8,
     right: 8,
   },

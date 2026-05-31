@@ -53,6 +53,7 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 120, y: 160 } });
   await expect(page.getByText("Review Layout is read-only; switch to Edit Geometry before changing project geometry.")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
+  await expectNoOverlap(page, "browser-map-status-hud", "browser-map-attribution-hud");
 
   const disallowed = networkLog.filter((url) => !isAllowedExternalProofRequest(url));
   expect(disallowed).toEqual([]);
@@ -79,6 +80,19 @@ async function saveScreen(page: Page, testInfo: TestInfo, label: string): Promis
     fullPage: true,
     path: testInfo.outputPath(`${label}.png`),
   });
+}
+
+async function expectNoOverlap(page: Page, firstTestId: string, secondTestId: string): Promise<void> {
+  const first = await page.getByTestId(firstTestId).boundingBox();
+  const second = await page.getByTestId(secondTestId).boundingBox();
+  expect(first, `${firstTestId} bounding box`).not.toBeNull();
+  expect(second, `${secondTestId} bounding box`).not.toBeNull();
+  const overlaps = Boolean(first && second
+    && first.x < second.x + second.width
+    && first.x + first.width > second.x
+    && first.y < second.y + second.height
+    && first.y + first.height > second.y);
+  expect(overlaps, `${firstTestId} should not overlap ${secondTestId}`).toBe(false);
 }
 
 function isAllowedNetworkRequest(url: string): boolean {

@@ -153,8 +153,11 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }, [activeLayer, mapFeatureKind, mapFeatureOption.geometry, mode, project.projectCrs, settings.mappingWorkflowMode, settings.onlineImagery.enabled]);
 
   useEffect(() => {
-    if (designMode) return;
-    setDraftVertices([]);
+    if (designMode) {
+      setStatus("Edit Geometry mode: projected XY edits require Commit before they change the project.");
+      return;
+    }
+    clearDraft("Review Layout is inspection only; projected XY geometry callbacks are blocked.");
     setMode("pan");
   }, [designMode]);
 
@@ -218,7 +221,9 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     if (!designMode && nextMode !== "pan") return;
     setMode(nextMode);
     if (nextLayer) setActiveLayer(nextLayer);
-    if (nextMode !== "draw_boundary" && nextMode !== "mark_obstacle" && nextMode !== "measure") setDraftVertices([]);
+    if (nextMode !== "draw_boundary" && nextMode !== "mark_obstacle" && nextMode !== "measure") {
+      clearDraft(`${toolLabel(nextMode)} mode selected. No draft vertices are pending.`);
+    }
   }
 
   function applyClickIntent(intent: BrowserMapClickIntent): void {
@@ -259,7 +264,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       callbacksRef.current.onCommitObstacleDraft?.(draftVertices, obstacleKindForLayer(activeLayer), confidenceForImagery(settings.onlineImagery.enabled));
       setStatus(`Committed ${obstacleKindForLayer(activeLayer)} obstacle with ${draftVertices.length} projected XY vertices.`);
     }
-    setDraftVertices([]);
+    clearDraft("Committed draft geometry into the projected XY project state.");
   }
 
   function saveMapFeatureLine(): void {
@@ -272,7 +277,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       notes: settings.onlineImagery.enabled ? "Traced from browser imagery; verify with field survey." : undefined,
     });
     setStatus(`Saved ${mapFeatureKind.replaceAll("_", " ")} line with ${draftVertices.length} projected XY vertices.`);
+    clearDraft(`Saved ${mapFeatureKind.replaceAll("_", " ")} line as a projected XY map feature.`);
+  }
+
+  function clearDraft(nextStatus = "Draft cleared. Committed projected XY geometry is unchanged."): void {
     setDraftVertices([]);
+    setStatus(nextStatus);
   }
 
   const canCommitDraft = designMode && draftVertices.length >= 3 && (mode === "draw_boundary" || mode === "mark_obstacle");
@@ -365,7 +375,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           <View style={styles.hudActions}>
             <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} />
             <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureLine} primary={canSaveFeature} />
-            <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => setDraftVertices([])} />
+            <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} />
           </View>
         </View>
 
@@ -546,6 +556,10 @@ function obstacleKindForLayer(layer: DrawingLayerType): ObstacleZone["kind"] {
     return layer;
   }
   return "exclusion";
+}
+
+function toolLabel(mode: DrawingMode): string {
+  return mode.replaceAll("_", " ");
 }
 
 function ModeSwitch({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }): React.JSX.Element {

@@ -248,6 +248,22 @@ test("dashboard walkthrough progress is scoped to the active project", async ({ 
   await saveScreen(page, testInfo, "dashboard-walkthrough-project-scope");
 });
 
+test("dashboard walkthrough reset only clears the active project", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("walkthrough-module-imagery").click();
+  await page.getByTestId("walkthrough-module-boundary").click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
+  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Real Proof" }).click();
+  await page.getByTestId("walkthrough-module-survey").click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
+  await page.getByRole("button", { name: "Reset" }).click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("0/7 modules")).toBeVisible();
+  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-walkthrough-reset-project-scope");
+});
+
 test("dashboard review warnings expose actionable layout guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

@@ -23,6 +23,12 @@ assert.deepEqual(panned.draftVertices, withVertex.draftVertices);
 assert.equal(panned.geometryRevision, withVertex.geometryRevision);
 assert.equal(panned.viewport.center.x, withVertex.viewport.center.x + 100);
 
+const clearedDraft = reduceDrawingMapState(panned, { type: "clear_draft" });
+assert.equal(clearedDraft.draftVertices.length, 0);
+assert.equal(clearedDraft.geometryRevision, panned.geometryRevision + 1);
+assert.deepEqual(clearedDraft.viewport, panned.viewport);
+assert.deepEqual(withVertex.draftVertices, [{ x: 10, y: 20 }]);
+
 const zoomed = reduceDrawingMapState(panned, { type: "zoom", factor: 2 });
 assert.deepEqual(zoomed.draftVertices, withVertex.draftVertices);
 assert.equal(visibleWidthMeters(zoomed.viewport), 500);

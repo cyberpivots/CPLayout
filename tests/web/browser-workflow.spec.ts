@@ -205,6 +205,18 @@ test("dashboard export readiness reflects unsaved browser geometry edits", async
   await saveScreen(page, testInfo, "dashboard-export-dirty-state");
 });
 
+test("dashboard walkthrough progress stays local and export-ready", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("0/7 modules")).toBeVisible();
+  await page.getByTestId("walkthrough-module-imagery").click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByTestId("dashboard-card-export").getByText("Ready to package")).toBeVisible();
+  await expect(page.getByText("Progress is local-only and is never written into PivotProject or project archives.")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-walkthrough-local-progress");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {

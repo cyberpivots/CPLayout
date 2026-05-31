@@ -295,7 +295,7 @@ export default function App(): React.JSX.Element {
             <StatusPill icon={<Satellite size={15} color="#254234" />} label={`${settings.gpsQuality.minimumFixType.replaceAll("_", " ")} gate`} />
             <StatusPill icon={<Ruler size={15} color="#254234" />} label={project.projectCrs} />
             <StatusPill icon={<SlidersHorizontal size={15} color="#254234" />} label={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
-            <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} />
+            <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
           </View>
           <View style={[styles.projectActionRow, compactLayout && styles.statusRowCompact]}>
             <SmallActionButton label={isDirty ? "Save *" : "Save"} onPress={saveCurrentProject} />
@@ -701,6 +701,7 @@ function WorkflowWalkthrough({
               key={module.id}
               onPress={() => onToggle(module.id, !complete)}
               style={[styles.walkthroughModule, complete && styles.walkthroughModuleComplete]}
+              testID={`walkthrough-module-${module.id}`}
             >
               {complete ? <CheckCircle2 size={18} color="#0f5e3d" /> : <Upload size={18} color="#6b796f" />}
               <View style={styles.walkthroughText}>
@@ -832,9 +833,9 @@ function Section({ title, icon, children, testID }: { title: string; icon: React
   );
 }
 
-function StatusPill({ icon, label }: { icon: React.ReactNode; label: string }): React.JSX.Element {
+function StatusPill({ icon, label, testID }: { icon: React.ReactNode; label: string; testID?: string }): React.JSX.Element {
   return (
-    <View style={styles.statusPill}>
+    <View style={styles.statusPill} testID={testID}>
       {icon}
       <Text style={styles.statusText}>{label}</Text>
     </View>

@@ -227,6 +227,19 @@ test("dashboard review warnings expose actionable layout guidance", async ({ pag
   await saveScreen(page, testInfo, "dashboard-review-warning-guidance");
 });
 
+test("dashboard recent-project empty state keeps start actions visible", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  const recentProjects = page.getByTestId("dashboard-recent-projects");
+  await expect(recentProjects.getByText("Recent Projects")).toBeVisible();
+  await expect(recentProjects.getByText("No saved browser projects yet.")).toBeVisible();
+  await expect(recentProjects.getByRole("button", { name: "Create New" })).toBeVisible();
+  await expect(recentProjects.getByRole("button", { name: "Open Sample" })).toBeVisible();
+  await expect(recentProjects.getByRole("button", { name: "Real Proof" })).toBeVisible();
+  await expect(recentProjects.getByRole("button", { name: "Improved Review" })).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-recent-project-empty-state");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {

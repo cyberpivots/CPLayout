@@ -108,6 +108,23 @@ test("browser boundary commit keeps projected geometry status explicit", async (
   await saveScreen(page, testInfo, "boundary-commit-status");
 });
 
+test("browser utility line save keeps projected feature status explicit", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await page.getByTestId("browser-tool-utility").click();
+  const map = page.getByLabel("CPLayout MapLibre imagery workbench");
+  await map.click({ position: { x: 170, y: 210 } });
+  await map.click({ position: { x: 250, y: 230 } });
+  await expect(page.getByText(/measure .* 2 draft pts .* line needs 2 pts/)).toBeVisible();
+  await page.getByTestId("browser-action-save-feature").click();
+  await expect(page.getByText("Saved underground pipeline line with 2 projected XY vertices as a map feature.")).toBeVisible();
+  await expect(page.getByText("measure · 0 draft pts · line needs 2 pts")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "utility-line-save-status");
+});
+
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

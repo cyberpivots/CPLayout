@@ -125,6 +125,21 @@ test("browser utility line save keeps projected feature status explicit", async 
   await saveScreen(page, testInfo, "utility-line-save-status");
 });
 
+test("browser utility point save keeps projected feature status explicit", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await page.getByTestId("browser-tool-utility").click();
+  await page.getByRole("button", { name: "Pump" }).click();
+  await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 190, y: 220 } });
+  await expect(page.getByText("Saved pump location point in projected XY as a map feature.")).toBeVisible();
+  await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "utility-point-save-status");
+});
+
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

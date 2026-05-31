@@ -273,7 +273,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       return;
     }
     callbacksRef.current.onAddMapFeature?.(intent.feature);
-    setStatus(`Added ${intent.feature.kind.replaceAll("_", " ")} point in projected XY.`);
+    setStatus(`Saved ${intent.feature.kind.replaceAll("_", " ")} point in projected XY as a map feature.`);
   }
 
   function commitDraft(): void {

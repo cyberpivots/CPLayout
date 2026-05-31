@@ -629,7 +629,7 @@ function ProjectDashboard({
       />
 
       <View style={styles.dashboardGrid}>
-        <View style={styles.dashboardPanel}>
+        <View style={styles.dashboardPanel} testID="dashboard-recent-projects">
           <View style={styles.dashboardPanelHeader}>
             <FolderOpen size={19} color="#173428" />
             <Text style={styles.dashboardPanelTitle}>Recent Projects</Text>
@@ -653,7 +653,7 @@ function ProjectDashboard({
           ))}
         </View>
 
-        <View style={styles.dashboardPanel}>
+        <View style={styles.dashboardPanel} testID="dashboard-review-warnings">
           <View style={styles.dashboardPanelHeader}>
             <AlertTriangle size={19} color="#173428" />
             <Text style={styles.dashboardPanelTitle}>Review Warnings</Text>

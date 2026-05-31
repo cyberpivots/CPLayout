@@ -217,6 +217,16 @@ test("dashboard walkthrough progress stays local and export-ready", async ({ pag
   await saveScreen(page, testInfo, "dashboard-walkthrough-local-progress");
 });
 
+test("dashboard review warnings expose actionable layout guidance", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  const warnings = page.getByTestId("dashboard-review-warnings");
+  await expect(warnings.getByText("Review Warnings")).toBeVisible();
+  await expect(warnings.getByText("1 obstacle or exclusion zone intersects the modeled wet area.")).toBeVisible();
+  await expect(warnings.getByText("1 obstacle conflict detected.")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-review-warning-guidance");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {

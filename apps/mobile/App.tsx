@@ -731,7 +731,8 @@ function recommendedWorkflowStep(
   progress: Record<WalkthroughModuleId, boolean>,
   dirty: boolean,
 ): string {
-  if (!settings.onlineImagery.enabled || !progress.imagery) return "Next: confirm imagery attribution and live-source status.";
+  if (!settings.onlineImagery.enabled) return "Next: keep offline overlay or enable approved no-key imagery in Settings.";
+  if (!progress.imagery) return "Next: confirm imagery attribution and live-source status.";
   if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or review the field boundary in Edit Geometry.";
   if (project.obstacles.length === 0 || !progress.obstacles) return "Next: add visible obstacles and no-spray zones.";
   if (!progress.pivot) return "Next: place pivot, water source, and power source.";

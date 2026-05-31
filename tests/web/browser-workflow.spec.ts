@@ -177,6 +177,17 @@ test("settings custom imagery guidance blocks hidden-key assumptions", async ({ 
   await saveScreen(page, testInfo, "settings-custom-imagery-guidance");
 });
 
+test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await page.getByTestId("workspace-nav-dashboard").click();
+  await expect(page.getByTestId("dashboard-workspace")).toBeVisible();
+  await expect(page.getByText("Next: keep offline overlay or enable approved no-key imagery in Settings.")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-imagery-off-next-step");
+});
+
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {

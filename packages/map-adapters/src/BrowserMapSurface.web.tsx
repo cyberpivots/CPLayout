@@ -380,13 +380,13 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         </View>
 
         {!designMode ? (
-          <View style={styles.reviewHud}>
+          <View style={[styles.reviewHud, compactLayout && styles.reviewHudCompact]}>
             <MapPinned size={17} color="#173428" />
             <Text style={styles.reviewHudText}>Review Layout: map gestures and inspection only. Geometry callbacks are blocked.</Text>
           </View>
         ) : null}
 
-        <View style={styles.attributionHud}>
+        <View style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]}>
           <Satellite size={13} color="#173428" />
           <Text style={styles.attributionText}>
             {providerError ? providerError : `${activeProvider?.attribution ?? "No live imagery source enabled"} · ${activeProvider?.licenseText ?? "Offline overlay only"}`}
@@ -774,7 +774,9 @@ const styles = StyleSheet.create({
   },
   statusHudCompact: {
     alignItems: "flex-start",
-    bottom: 56,
+    bottom: 76,
+    left: 8,
+    right: 8,
   },
   statusTextGroup: {
     flex: 1,
@@ -841,6 +843,12 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 70,
   },
+  reviewHudCompact: {
+    left: 8,
+    maxWidth: "94%",
+    right: 8,
+    top: 106,
+  },
   reviewHudText: {
     color: "#553b09",
     flexShrink: 1,
@@ -859,6 +867,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 7,
     position: "absolute",
+  },
+  attributionHudCompact: {
+    left: 8,
+    maxWidth: "94%",
+    right: 8,
   },
   attributionText: {
     color: "#173428",

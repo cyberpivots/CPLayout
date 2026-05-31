@@ -278,14 +278,15 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
 
   function commitDraft(): void {
     if (!designMode || draftVertices.length < 3) return;
+    let committedStatus: string | null = null;
     if (mode === "draw_boundary") {
       callbacksRef.current.onCommitBoundaryDraft?.(draftVertices);
-      setStatus(`Committed field boundary with ${draftVertices.length} projected XY vertices.`);
+      committedStatus = `Committed field boundary with ${draftVertices.length} projected XY vertices.`;
     } else if (mode === "mark_obstacle") {
       callbacksRef.current.onCommitObstacleDraft?.(draftVertices, obstacleKindForLayer(activeLayer), confidenceForImagery(settings.onlineImagery.enabled));
-      setStatus(`Committed ${obstacleKindForLayer(activeLayer)} obstacle with ${draftVertices.length} projected XY vertices.`);
+      committedStatus = `Committed ${obstacleKindForLayer(activeLayer)} obstacle with ${draftVertices.length} projected XY vertices.`;
     }
-    clearDraft("Committed draft geometry into the projected XY project state.");
+    if (committedStatus) clearDraft(committedStatus);
   }
 
   function saveMapFeatureLine(): void {
@@ -297,8 +298,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       confidence: confidenceForImagery(settings.onlineImagery.enabled),
       notes: settings.onlineImagery.enabled ? "Traced from browser imagery; verify with field survey." : undefined,
     });
-    setStatus(`Saved ${mapFeatureKind.replaceAll("_", " ")} line with ${draftVertices.length} projected XY vertices.`);
-    clearDraft(`Saved ${mapFeatureKind.replaceAll("_", " ")} line as a projected XY map feature.`);
+    clearDraft(`Saved ${mapFeatureKind.replaceAll("_", " ")} line with ${draftVertices.length} projected XY vertices as a map feature.`);
   }
 
   function clearDraft(nextStatus = "Draft cleared. Committed projected XY geometry is unchanged."): void {

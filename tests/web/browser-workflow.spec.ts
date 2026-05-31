@@ -90,6 +90,24 @@ test("public proof map features can select the side-panel editor without geometr
   await saveScreen(page, testInfo, "public-proof-feature-selected");
 });
 
+test("browser boundary commit keeps projected geometry status explicit", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await page.getByTestId("browser-tool-boundary").click();
+  const map = page.getByLabel("CPLayout MapLibre imagery workbench");
+  await map.click({ position: { x: 160, y: 180 } });
+  await map.click({ position: { x: 240, y: 180 } });
+  await map.click({ position: { x: 220, y: 250 } });
+  await expect(page.getByText(/draw boundary .* 3 draft pts/)).toBeVisible();
+  await page.getByTestId("browser-action-commit").click();
+  await expect(page.getByText("Committed field boundary with 3 projected XY vertices.")).toBeVisible();
+  await expect(page.getByText("draw boundary · 0 draft pts")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "boundary-commit-status");
+});
+
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

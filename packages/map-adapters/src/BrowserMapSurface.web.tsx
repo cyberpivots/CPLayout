@@ -600,7 +600,7 @@ function utilitySaveHint(mode: DrawingMode, geometry: UtilityFeatureGeometry): s
 
 function ModeSwitch({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.modeSwitch, active && styles.modeSwitchActive]} testID={testID}>
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} aria-pressed={active} onPress={onPress} style={[styles.modeSwitch, active && styles.modeSwitchActive]} testID={testID}>
       <Text style={[styles.modeSwitchText, active && styles.modeSwitchTextActive]}>{label}</Text>
     </Pressable>
   );

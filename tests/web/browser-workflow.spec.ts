@@ -106,6 +106,25 @@ test("workspace rail exposes the selected view state", async ({ page }, testInfo
   await saveScreen(page, testInfo, "workspace-rail-selected-state");
 });
 
+test("workspace compact rail stays within the viewport while switching routes", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  const viewport = page.viewportSize();
+  expect(viewport, "viewport").not.toBeNull();
+  const railBox = await page.getByTestId("workspace-rail").boundingBox();
+  expect(railBox, "workspace rail bounding box").not.toBeNull();
+  if (!viewport || !railBox) return;
+  expect(railBox.x).toBeGreaterThanOrEqual(0);
+  expect(railBox.x + railBox.width).toBeLessThanOrEqual(viewport.width + 2);
+  for (const routeScreen of routeScreens) {
+    await page.getByTestId(routeScreen.nav).click();
+    await expect(page.getByTestId(routeScreen.screen)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "workspace-compact-rail-overflow");
+});
+
 test("survey rtk receiver starts closed without mutating the project", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

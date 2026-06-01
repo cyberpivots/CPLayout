@@ -312,7 +312,7 @@ export default function App(): React.JSX.Element {
         </View>
 
         <View style={[styles.workspaceShell, compactLayout && styles.workspaceShellCompact]}>
-          <View style={[styles.leftRail, compactLayout && styles.leftRailCompact]}>
+          <View style={[styles.leftRail, compactLayout && styles.leftRailCompact]} testID="workspace-rail">
             <RailButton active={activeView === "dashboard"} icon={<Home size={18} />} label="Dashboard" onPress={() => setActiveView("dashboard")} testID="workspace-nav-dashboard" />
             <RailButton active={activeView === "map"} icon={<MapPinned size={18} />} label="Map" onPress={() => setActiveView("map")} testID="workspace-nav-map" />
             <RailButton active={activeView === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => setActiveView("survey")} testID="workspace-nav-survey" />

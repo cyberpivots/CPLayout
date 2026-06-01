@@ -601,6 +601,33 @@ test("settings browser-local imagery settings stay out of project zip", async ({
   await saveScreen(page, testInfo, "settings-local-imagery-excluded-from-zip");
 });
 
+test("dashboard walkthrough progress stays out of project zip", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("walkthrough-module-imagery").click();
+  await page.getByTestId("walkthrough-module-export").click();
+  await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await page.getByTestId("workspace-nav-files").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export ZIP" }).click();
+  const download = await downloadPromise;
+  const archivePath = await download.path();
+  expect(archivePath, "download path").not.toBeNull();
+  if (!archivePath) return;
+  const archive = unzipSync(new Uint8Array(await readFile(archivePath)));
+  const projectJsonBytes = archive["project.json"];
+  expect(projectJsonBytes, "project.json in archive").toBeDefined();
+  if (!projectJsonBytes) return;
+  const projectJson = strFromU8(projectJsonBytes);
+  expect(projectJson).not.toContain("walkthrough");
+  expect(projectJson).not.toContain("cplayout.walkthrough-progress");
+  expect(projectJson).not.toContain("Setup Imagery");
+  expect(projectJson).not.toContain("Export Package");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "dashboard-walkthrough-excluded-from-zip");
+});
+
 test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

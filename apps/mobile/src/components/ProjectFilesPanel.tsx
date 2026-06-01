@@ -304,6 +304,7 @@ export function ProjectFilesPanel({
             onChangeText={setSurveyCsvImport}
             placeholder="id,label,role,x,y,source,confidence"
             style={styles.importInput}
+            testID="files-survey-csv-import-input"
             value={surveyCsvImport}
           />
           <FileAction icon={<Upload size={18} color="#254234" />} label="Import CSV" onPress={applySurveyCsvImport} />

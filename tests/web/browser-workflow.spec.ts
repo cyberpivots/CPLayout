@@ -356,6 +356,17 @@ test("files geojson import rejects wgs84 as canonical geometry", async ({ page }
   await saveScreen(page, testInfo, "files-geojson-wgs84-rejected");
 });
 
+test("files survey csv import dirties the project with projected point status", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\np1,Point 1,control,501010,4506010,imported,rtk_fixed\n");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await expect(page.getByTestId("files-status").getByText(/Imported 1 survey point/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "files-survey-csv-import-point");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

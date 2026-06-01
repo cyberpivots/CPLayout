@@ -1,0 +1,12 @@
+e2472d3636946e995f94ddc6d0e8aa2c90d4ff7af10b8328ab0b82860be42ad9  reports/continuous-improvement/playwright-results/browser-workflow-files-sta-44cfe-cal-archive-message-visible-desktop/files-status-canonical-package.png
+e2472d3636946e995f94ddc6d0e8aa2c90d4ff7af10b8328ab0b82860be42ad9  reports/continuous-improvement/playwright-results/browser-workflow-files-act-ec055--accessible-browser-buttons-desktop/files-action-buttons.png
+e434f605af0b713b10e076a05e153dfe73a27d0bc7a0ca1446ac3540a54f0165  reports/continuous-improvement/playwright-results/browser-workflow-files-exp-a111e-e-canonical-project-package-desktop/files-export-zip-download.png
+13f6c10b8f9d8dc24910e48abaaf1b0f7baf68393b888d7dcdff4206209c4081  reports/continuous-improvement/playwright-results/browser-workflow-files-exp-f6504-data-without-runtime-claims-desktop/files-export-kml-download.png
+59296244e3cfd753607edfadd3834a476286205d1c61dc2ac96a4ff24b385679  reports/continuous-improvement/playwright-results/browser-workflow-files-exp-88638-hive-without-runtime-claims-desktop/files-export-kmz-download.png
+3d082fb47058ff9bb7b4273a2edec93fc29436642d7a4d8f6f823009c2f5489c  reports/continuous-improvement/playwright-results/browser-workflow-files-pro-b86b0-ct-with-projected-xy-status-desktop/files-geojson-import-projected-boundary.png
+bfee1217088b7c3cc72e8ed9aa019e7860481d61dad27449d05ab9982d0fc06e  reports/continuous-improvement/playwright-results/browser-workflow-files-geo-a33de-wgs84-as-canonical-geometry-desktop/files-geojson-wgs84-rejected.png
+3d082fb47058ff9bb7b4273a2edec93fc29436642d7a4d8f6f823009c2f5489c  reports/continuous-improvement/playwright-results/browser-workflow-files-sur-97279-with-projected-point-status-desktop/files-survey-csv-import-point.png
+07c412e7a54a19c5f21b1b678702d04e7f2a2efae1473f42c79c90b17659b000  reports/continuous-improvement/playwright-results/browser-workflow-files-sur-2c0b7-issing-projected-xy-columns-desktop/files-survey-csv-missing-xy-rejected.png
+c5a98f880e17d0e60f7ef3cfe2b5cd2c0ef7f925bafcc2f4c55b37df1ca1641c  apps/mobile/src/components/ProjectFilesPanel.tsx
+659bd74fcd3244dee5052738281456878ce4b0b6a4a87477e652f1bc7fa1968e  tests/web/browser-workflow.spec.ts
+d083ddcf242f187dd81e679b72d39c46a28c6c921b498f855d7b9ca229ba9b1b  playwright.config.ts

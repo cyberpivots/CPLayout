@@ -312,6 +312,27 @@ test("browser map HUD actions expose disabled state", async ({ page }, testInfo)
   await saveScreen(page, testInfo, "browser-map-hud-action-disabled-state");
 });
 
+test("browser map compact HUD actions stay inside the status panel", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("browser-tool-boundary").click();
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 160, y: 180 } });
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 200, y: 240 } });
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 230, y: 185 } });
+  await expect(page.getByTestId("browser-action-commit")).toBeEnabled();
+  await expect(page.getByText(/draw boundary .* 3 draft pts/)).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectInsideContainer(page, "browser-map-status-hud", "browser-map-frame");
+  await expectInsideContainer(page, "browser-map-hud-actions", "browser-map-status-hud");
+  await expectInsideContainer(page, "browser-action-commit", "browser-map-hud-actions");
+  await expectInsideContainer(page, "browser-action-save-feature", "browser-map-hud-actions");
+  await expectInsideContainer(page, "browser-action-clear", "browser-map-hud-actions");
+  await expectNoOverlap(page, "browser-map-status-hud", "browser-map-attribution-hud");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "browser-map-compact-hud-actions");
+});
+
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {
@@ -1262,6 +1283,18 @@ async function expectNoOverlap(page: Page, firstTestId: string, secondTestId: st
     && first.y < second.y + second.height
     && first.y + first.height > second.y);
   expect(overlaps, `${firstTestId} should not overlap ${secondTestId}`).toBe(false);
+}
+
+async function expectInsideContainer(page: Page, childTestId: string, containerTestId: string): Promise<void> {
+  const child = await page.getByTestId(childTestId).boundingBox();
+  const container = await page.getByTestId(containerTestId).boundingBox();
+  expect(child, `${childTestId} bounding box`).not.toBeNull();
+  expect(container, `${containerTestId} bounding box`).not.toBeNull();
+  if (!child || !container) return;
+  expect(child.x, `${childTestId} left edge`).toBeGreaterThanOrEqual(container.x - 2);
+  expect(child.y, `${childTestId} top edge`).toBeGreaterThanOrEqual(container.y - 2);
+  expect(child.x + child.width, `${childTestId} right edge`).toBeLessThanOrEqual(container.x + container.width + 2);
+  expect(child.y + child.height, `${childTestId} bottom edge`).toBeLessThanOrEqual(container.y + container.height + 2);
 }
 
 function isAllowedNetworkRequest(url: string, strictOffline = false): boolean {

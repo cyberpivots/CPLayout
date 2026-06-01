@@ -332,7 +332,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         </View>
       </View>
 
-      <View style={[styles.mapFrame, compactLayout && styles.mapFrameCompact]}>
+      <View style={[styles.mapFrame, compactLayout && styles.mapFrameCompact]} testID="browser-map-frame">
         {React.createElement("div", {
           "aria-label": "CPLayout MapLibre imagery workbench",
           ref: containerRef,
@@ -395,7 +395,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
               {mode.replaceAll("_", " ")} · {draftVertices.length} draft pts{utilitySaveHint(mode, mapFeatureOption.geometry)}{advisoryRecommendationPreview ? " · advisory preview visible" : ""}
             </Text>
           </View>
-          <View style={styles.hudActions}>
+          <View style={styles.hudActions} testID="browser-map-hud-actions">
             <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="browser-action-commit" />
             <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureLine} primary={canSaveFeature} testID="browser-action-save-feature" />
             <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="browser-action-clear" />

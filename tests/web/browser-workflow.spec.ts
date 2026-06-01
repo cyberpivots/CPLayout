@@ -780,6 +780,38 @@ test("survey point promotion writes projected water source after explicit action
   await saveScreen(page, testInfo, "survey-water-promotion-export");
 });
 
+test("survey point delete removes imported evidence from canonical export", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nsurvey-delete-me,Delete Me,note,501050,4506050,imported,rtk_float\n");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await page.getByRole("button", { name: "Save Local *" }).click();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await page.getByTestId("workspace-nav-survey").click();
+  const importedPoint = page.getByTestId("survey-point-survey-delete-me");
+  await expect(importedPoint.getByText("Delete Me")).toBeVisible();
+  await importedPoint.getByRole("button", { name: "Delete" }).click();
+  await expect(importedPoint).toHaveCount(0);
+  await expect(page.getByTestId("survey-metric-points")).toContainText("2");
+  await expect(page.getByTestId("survey-metric-draft-inputs")).toContainText("1");
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await page.getByTestId("workspace-nav-files").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export ZIP" }).click();
+  const download = await downloadPromise;
+  const archivePath = await download.path();
+  expect(archivePath, "download path").not.toBeNull();
+  if (!archivePath) return;
+  const archive = unzipSync(new Uint8Array(await readFile(archivePath)));
+  const projectJsonBytes = archive["project.json"];
+  expect(projectJsonBytes, "project.json in archive").toBeDefined();
+  if (!projectJsonBytes) return;
+  const projectDocument = JSON.parse(strFromU8(projectJsonBytes)) as { project?: { surveyPoints?: { id?: string }[] } };
+  expect(projectDocument.project?.surveyPoints?.some((point) => point.id === "survey-delete-me")).toBe(false);
+  await saveScreen(page, testInfo, "survey-delete-export");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

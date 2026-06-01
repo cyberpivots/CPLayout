@@ -105,6 +105,21 @@ test("survey rtk receiver starts closed without mutating the project", async ({ 
   await saveScreen(page, testInfo, "survey-rtk-gate-closed");
 });
 
+test("survey rtk closed gate disables geometry capture controls", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-survey").click();
+  await expect(page.getByTestId("rtk-gate-badge").getByText("Gate closed")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Boundary (0)" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Commit Boundary" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Add Obstacle (0)" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Commit Obstacle" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Add Feature Vertex (0)" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save Line Feature" })).toBeDisabled();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "survey-rtk-geometry-disabled");
+});
+
 test("browser boundary commit keeps projected geometry status explicit", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

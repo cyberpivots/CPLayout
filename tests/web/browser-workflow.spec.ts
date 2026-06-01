@@ -134,6 +134,21 @@ test("survey rtk role selection stays local while gate is closed", async ({ page
   await saveScreen(page, testInfo, "survey-rtk-role-local");
 });
 
+test("survey rtk map feature selection stays local while gate is closed", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-survey").click();
+  await page.getByRole("button", { name: "Pump point" }).click();
+  await expect(page.getByRole("button", { name: "Save Point Feature" })).toBeDisabled();
+  await page.getByRole("button", { name: "Power line" }).click();
+  await expect(page.getByRole("button", { name: "Add Feature Vertex (0)" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save Line Feature" })).toBeDisabled();
+  await expect(page.getByTestId("rtk-gate-badge").getByText("Gate closed")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
+  await saveScreen(page, testInfo, "survey-rtk-feature-local");
+});
+
 test("browser boundary commit keeps projected geometry status explicit", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

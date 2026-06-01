@@ -369,6 +369,7 @@ test("expert review apply confirmation does not dirty before confirm", async ({ 
   await expect(page.getByText("Unsaved edits")).toHaveCount(0);
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(confirm).toHaveCount(0);
+  await expect(page.getByText(/Apply canceled .* projected XY geometry was not changed/)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "expert-review-apply-confirm-no-mutation");
 });

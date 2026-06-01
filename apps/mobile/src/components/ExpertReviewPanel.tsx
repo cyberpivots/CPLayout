@@ -135,6 +135,14 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
     }
   }
 
+  function cancelApplyRecommendation(): void {
+    const recommendationId = pendingApply?.id;
+    setPendingApply(null);
+    setStatus(recommendationId
+      ? `Apply canceled for ${recommendationId}; projected XY geometry was not changed.`
+      : "Apply canceled; projected XY geometry was not changed.");
+  }
+
   async function autoApplyBoundaryAssist(imported: ModelRecommendation[]): Promise<boolean> {
     const recommendation = sortedRecommendations(imported).find(isAutoApplyBoundaryAssist);
     if (!recommendation) return false;
@@ -191,7 +199,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
             </View>
             <View style={styles.decisionActions}>
               <ReviewButton icon={<Check size={16} color="#ffffff" />} label="Apply XY" primary onPress={confirmApplyRecommendation} />
-              <ReviewButton icon={<X size={16} color="#254234" />} label="Cancel" onPress={() => setPendingApply(null)} />
+              <ReviewButton icon={<X size={16} color="#254234" />} label="Cancel" onPress={cancelApplyRecommendation} />
             </View>
           </View>
         ) : null}

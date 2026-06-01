@@ -1,6 +1,6 @@
 import { Archive, Database, Download, FolderOpen, RefreshCw, Save, Trash2, Upload } from "lucide-react-native";
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { exportScenarioGeoJson } from "@cplayout/geometry";
 import {
@@ -217,7 +217,7 @@ export function ProjectFilesPanel({
         <FileAction icon={<Upload size={18} color="#254234" />} label="Import ZIP" onPress={importZip} />
         <FileAction icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={onRefreshProjects} />
       </View>
-      <View style={[styles.statusBox, statusToneStyle(status.tone)]}>
+      <View style={[styles.statusBox, statusToneStyle(status.tone)]} testID="files-status" {...webStatusProps()}>
         <Database size={17} color={statusToneColor(status.tone)} />
         <Text style={[styles.statusText, statusTextToneStyle(status.tone)]}>{dirty ? "Unsaved edits. " : ""}{repository.statusMessage} · {status.text}</Text>
       </View>
@@ -349,6 +349,14 @@ function FileAction({ icon, label, onPress, primary = false }: { icon: React.Rea
       <Text style={[styles.actionText, primary && styles.actionTextPrimary]}>{label}</Text>
     </Pressable>
   );
+}
+
+function webStatusProps(): Record<string, unknown> {
+  if (Platform.OS !== "web") return {};
+  return {
+    "aria-live": "polite",
+    role: "status",
+  };
 }
 
 function errorMessage(error: unknown): string {

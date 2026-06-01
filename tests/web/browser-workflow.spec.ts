@@ -228,6 +228,19 @@ test("dashboard export readiness reflects unsaved browser geometry edits", async
   await saveScreen(page, testInfo, "dashboard-export-dirty-state");
 });
 
+test("files status keeps the canonical archive message visible", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const status = page.getByTestId("files-status");
+  await expect(status).toHaveAttribute("role", "status");
+  await expect(status.getByText(/Browser local storage/)).toBeVisible();
+  await expect(status.getByText(/Project ZIP is the canonical project package/)).toBeVisible();
+  await expect(page.getByText("Project Files")).toBeVisible();
+  await expect(page.getByText("Canonical Project Package", { exact: true })).toBeVisible();
+  await saveScreen(page, testInfo, "files-status-canonical-package");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

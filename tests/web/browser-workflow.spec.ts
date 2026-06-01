@@ -338,6 +338,20 @@ test("expert review findings label evidence gates and actions", async ({ page },
   await saveScreen(page, testInfo, "expert-review-evidence-labels");
 });
 
+test("expert review recommendation preview does not dirty or apply geometry", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-review").click();
+  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
+  await expect(page.getByText(/Generated .* pivot candidate.* No geometry was applied./)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await page.getByRole("button", { name: "Preview" }).first().click();
+  await expect(page.getByRole("button", { name: "Previewing" })).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
+  await saveScreen(page, testInfo, "expert-review-preview-no-mutation");
+});
+
 test("dashboard review warnings can inspect the map without geometry mutation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

@@ -1,0 +1,12 @@
+2d25b539cc6be2ea7e153c392114965484f372d8f24992f10aef304a16d51c31  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-66ab7-es-not-dirty-before-confirm-desktop/expert-review-apply-confirm-no-mutation.png
+7b78b358b1c254454da4ee0798660320761cf7084bb193dc4b8cc60aa800b62c  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-66ab7-es-not-dirty-before-confirm-tablet-768/expert-review-apply-confirm-no-mutation.png
+d2f18b3c3a050bc2c18afe1439abb33e2d7b1ccc40cfcc9552a5442efc6a2c55  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-66ab7-es-not-dirty-before-confirm-mobile-390/expert-review-apply-confirm-no-mutation.png
+a1a94ef5ebf9e69ed08bbeab8ca6b09b0da82ae13ec10534b6417e84957b9e70  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-85a35-rty-only-after-confirmation-desktop/expert-review-apply-xy-dirty.png
+f58e5513321caa846866b889c6e4c87b79c4160f072fc0d8628ad48d85441b6f  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-85a35-rty-only-after-confirmation-tablet-768/expert-review-apply-xy-dirty.png
+da67404a6a8b3d776d2c7692a2248d5cd6f6ea4bd5ed991ffa35ec6d85c2818b  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-85a35-rty-only-after-confirmation-mobile-390/expert-review-apply-xy-dirty.png
+6cbf87284a224001765d727e88ff83ed05f01a010a698977d6a97ace7dadc209  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-93f3d-n-without-geometry-mutation-desktop/expert-review-accept-no-mutation.png
+ff17538f57560dc6f0c003b3ab7ac1af1afd5a956557708fcb3adb13b7d9223f  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-12fd5-n-without-geometry-mutation-desktop/expert-review-reject-no-mutation.png
+6e89b1e7eb52527e5e9167e3def7a99e60b92064a8604c56179f297fbab4e89b  reports/continuous-improvement/playwright-results/browser-workflow-expert-re-bd6bc-n-without-geometry-mutation-desktop/expert-review-defer-no-mutation.png
+0383128e5b06c1b7f4a1eb589c64b2a72c906a94220926ac5bcc9f5ebb5a7011  apps/mobile/src/components/ExpertReviewPanel.tsx
+5dc6d5815606c8c08f9bf536d4c5fdf8142381e23fae961d5af7489fd24074d7  tests/web/browser-workflow.spec.ts
+d083ddcf242f187dd81e679b72d39c46a28c6c921b498f855d7b9ca229ba9b1b  playwright.config.ts

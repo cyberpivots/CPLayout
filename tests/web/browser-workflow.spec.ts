@@ -352,6 +352,19 @@ test("expert review recommendation preview does not dirty or apply geometry", as
   await saveScreen(page, testInfo, "expert-review-preview-no-mutation");
 });
 
+test("expert review accept records a decision without geometry mutation", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-review").click();
+  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
+  await page.getByRole("button", { name: "Accept" }).first().click();
+  await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
+  await expect(page.getByText(/accepted/i).first()).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
+  await saveScreen(page, testInfo, "expert-review-accept-no-mutation");
+});
+
 test("expert review apply confirmation does not dirty before confirm", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

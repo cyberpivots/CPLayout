@@ -94,7 +94,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
             : "Deferred for later field or engineering review.",
       });
       setReviewData(nextData);
-      setStatus(`${decisionLabel(decision)} recorded for ${recommendation.id}.`);
+      setStatus(decisionStatusMessage(decision, recommendation.id));
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -309,6 +309,16 @@ function decisionLabel(decision: LayoutDecisionRecord["decision"]): string {
   if (decision === "accepted") return "Accept";
   if (decision === "rejected") return "Reject";
   return "Defer";
+}
+
+function decisionStatusMessage(decision: LayoutDecisionRecord["decision"], recommendationId: string): string {
+  if (decision === "accepted") {
+    return `Accept recorded for ${recommendationId}; projected XY geometry was not changed. Use Apply XY to mutate geometry.`;
+  }
+  if (decision === "rejected") {
+    return `Reject recorded for ${recommendationId}; projected XY geometry was not changed.`;
+  }
+  return `Defer recorded for ${recommendationId}; projected XY geometry was not changed.`;
 }
 
 function geometrySummary(recommendation: ModelRecommendation): string {

@@ -285,6 +285,21 @@ test("files export kml downloads visual interchange data without runtime claims"
   await saveScreen(page, testInfo, "files-export-kml-download");
 });
 
+test("files export kmz downloads a doc-kml archive without runtime claims", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export KMZ" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.google-earth\.kmz$/);
+  const status = page.getByTestId("files-status");
+  await expect(status.getByText(/Downloaded .*\.google-earth\.kmz/)).toBeVisible();
+  await expect(status.getByText(/KMZ contains doc\.kml with \d+ feature/)).toBeVisible();
+  await expect(status.getByText(/render proof/i)).toHaveCount(0);
+  await saveScreen(page, testInfo, "files-export-kmz-download");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

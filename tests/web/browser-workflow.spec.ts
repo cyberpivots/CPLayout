@@ -415,6 +415,37 @@ test("files geojson import rejects wgs84 as canonical geometry", async ({ page }
   await saveScreen(page, testInfo, "files-geojson-wgs84-rejected");
 });
 
+test("files rejected geojson import preserves the paste field for correction", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const input = page.getByTestId("files-geojson-import-input");
+  const rejectedGeoJson = JSON.stringify({
+    type: "FeatureCollection",
+    properties: { projectCrs: "EPSG:4326" },
+    features: [{
+      type: "Feature",
+      properties: { layerType: "field_boundary" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [-104.1, 40.1],
+          [-104.0, 40.1],
+          [-104.0, 40.2],
+          [-104.1, 40.2],
+          [-104.1, 40.1],
+        ]],
+      },
+    }],
+  });
+  await input.fill(rejectedGeoJson);
+  await page.getByRole("button", { name: "Import GeoJSON" }).click();
+  await expect(page.getByTestId("files-status").getByText(/WGS84 is an input\/display layer only/)).toBeVisible();
+  await expect(input).toHaveValue(rejectedGeoJson);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "files-geojson-rejected-preserves-input");
+});
+
 test("files survey csv import dirties the project with projected point status", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

@@ -812,6 +812,21 @@ test("survey point delete removes imported evidence from canonical export", asyn
   await saveScreen(page, testInfo, "survey-delete-export");
 });
 
+test("survey rtk float import counts as draft input", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Create New" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nfloat-only,Float Only,control,501010,4506010,imported,rtk_float\n");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await page.getByTestId("workspace-nav-survey").click();
+  await expect(page.getByTestId("survey-metric-points")).toContainText("3");
+  await expect(page.getByTestId("survey-metric-rtk-fixed")).toContainText("1");
+  await expect(page.getByTestId("survey-metric-draft-inputs")).toContainText("2");
+  await expect(page.getByTestId("survey-point-float-only").getByText(/control .* imported .* rtk_float/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "survey-rtk-float-planning-grade");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

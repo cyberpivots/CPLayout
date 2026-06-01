@@ -270,6 +270,21 @@ test("files export zip downloads the canonical project package", async ({ page }
   await saveScreen(page, testInfo, "files-export-zip-download");
 });
 
+test("files export kml downloads visual interchange data without runtime claims", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export KML" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.google-earth\.kml$/);
+  const status = page.getByTestId("files-status");
+  await expect(status.getByText(/Downloaded .*\.google-earth\.kml/)).toBeVisible();
+  await expect(status.getByText(/Exported \d+ Google Earth feature/)).toBeVisible();
+  await expect(status.getByText(/render proof/i)).toHaveCount(0);
+  await saveScreen(page, testInfo, "files-export-kml-download");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

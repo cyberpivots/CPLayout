@@ -1,0 +1,9 @@
+bfb4f3a8376f40274846cf0a7ab6e7ae5e2cd45dce380a4e44e622b21d50f0c5  reports/continuous-improvement/playwright-results/browser-workflow-settings--47d27-ocks-hidden-key-assumptions-desktop/settings-custom-imagery-guidance.png
+552ab7fd6046b32f77d1c2efdd2e54f1b1a6cf29bbc9e69fd4d0aea32f5d1ba7  reports/continuous-improvement/playwright-results/browser-workflow-settings--8c538-credentialed-tile-templates-desktop/settings-custom-imagery-token-rejected.png
+2f64a4e102181dd84a932d7a7e640ae2e25ca30cc8fa0efbc40811d45898203b  reports/continuous-improvement/playwright-results/browser-workflow-settings--aa0e5-no-key-local-tile-templates-desktop/settings-custom-imagery-local-applied.png
+5bb0fcfe0a5afed8f39e4c9ba743ced8d4264d0a0989fa88197be2747f7bd3a8  reports/continuous-improvement/playwright-results/browser-workflow-settings--ff5dc--local-only-export-boundary-desktop/settings-offline-imagery-guardrail.png
+ffae6705486a7e42cdc5320cedbe1e6cb32571def34d697066391080cb132807  reports/continuous-improvement/playwright-results/browser-workflow-settings--6a5b0--interactive-preview-budget-desktop/settings-tile-cap-stepper.png
+fb7d523533daf659acab675351b9413e3a80963278f31661fb88b7472b1d5aa9  reports/continuous-improvement/playwright-results/browser-workflow-launcher--f8221-ut-paid-APIs-or-hidden-keys-mobile-390/settings-view.png
+f05451a4b4ca0a66dfe848dbacac57df9da7757daf024e7c649c57fa8f4f079f  apps/mobile/src/components/SettingsPanel.tsx
+93301bab5515d907cfb5ed35ee87b5541f78d4a611b8ce22e2b6d77af3842eb4  tests/web/browser-workflow.spec.ts
+d083ddcf242f187dd81e679b72d39c46a28c6c921b498f855d7b9ca229ba9b1b  playwright.config.ts

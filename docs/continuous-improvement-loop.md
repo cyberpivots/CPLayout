@@ -84,7 +84,8 @@ Validation cadence:
 | 066 | Add stable Settings imagery guardrail anchors and prove imagery Off reports the local-only export boundary. | Settings/offline imagery guardrail surface and browser network proof. | `apps/mobile/src/components/SettingsPanel.tsx`; `tests/web/browser-workflow.spec.ts`; loop ledger. | `npm run validate`; `npm run export:web`; `npm run test:web:e2e -- --grep "settings offline imagery guardrail"`; `git diff --check`; `npm audit`. | `SettingsPanel.tsx` f1b5de0c; `browser-workflow.spec.ts` b7f45ba4. | `7018094` | Pass; imagery Off summary is targetable and reports no external tile source plus projected/local `XY` export boundary. | Settings tile-cap control proof. |
 | 067 | Add accessible Settings stepper controls and prove the imagery tile cap clamps the interactive preview budget. | Settings tile-cap control and no-cost imagery preview limits. | `apps/mobile/src/components/SettingsPanel.tsx`; `tests/web/browser-workflow.spec.ts`; loop ledger. | `npm run validate`; `npm run export:web`; `npm run test:web:e2e -- --grep "settings tile cap stepper"`; `git diff --check`; `npm audit`. | `SettingsPanel.tsx` f05451a4; `browser-workflow.spec.ts` 5d85330c. | `ced1da0` | Pass; tile-cap controls expose named buttons and clamp the browser preview budget from 8 to 128 tiles without dirtying the project. | Custom imagery validation proof. |
 | 068 | Prove custom open imagery rejects credentialed tile templates before they can alter browser imagery settings. | Core custom imagery safety validation and Settings custom source form. | `tests/web/browser-workflow.spec.ts`; loop ledger. | `npm run validate`; `npm run test:web:e2e -- --grep "settings custom imagery rejects"`; `git diff --check`; `npm audit`. | `browser-workflow.spec.ts` 871cb46f. | `2e88583` | Pass; credentialed tile templates keep Apply disabled, live imagery disabled, and project state Saved. | Custom open source apply proof. |
-| 069 | Prove a no-key local custom imagery template can be applied as a browser-local preview source. | Custom imagery validation allowlist for local self-hosted tile services and Settings apply flow. | `tests/web/browser-workflow.spec.ts`; loop ledger. | `npm run validate`; `npm run test:web:e2e -- --grep "settings custom imagery applies"`; `git diff --check`; `npm audit`. | `browser-workflow.spec.ts` 93301bab. | Pending until committed. | Pass; valid local templates enable Custom open preview guidance while keeping imagery reference-only and project state Saved. | Iteration 070 settings milestone proof. |
+| 069 | Prove a no-key local custom imagery template can be applied as a browser-local preview source. | Custom imagery validation allowlist for local self-hosted tile services and Settings apply flow. | `tests/web/browser-workflow.spec.ts`; loop ledger. | `npm run validate`; `npm run test:web:e2e -- --grep "settings custom imagery applies"`; `git diff --check`; `npm audit`. | `browser-workflow.spec.ts` 93301bab. | `6e1ed52` | Pass; valid local templates enable Custom open preview guidance while keeping imagery reference-only and project state Saved. | Iteration 070 settings milestone proof. |
+| 070 | Run seventh milestone gates and curate Files recovery plus Settings imagery guardrail evidence. | Iterations 061-069 commits; Playwright proof outputs under ignored `reports/continuous-improvement/`; CPLayout milestone cadence. | `docs/evidence/continuous-improvement/browser-mapping-2026-05-31/iteration-070/README.md`; `docs/evidence/continuous-improvement/browser-mapping-2026-05-31/iteration-070/SHA256SUMS.txt`; loop ledger. | `npm run validate`; `npm run validate:skills`; `npm run audit:moderate`; `npm audit`; `git diff --check`; `npm run proof:web`. | `README.md` 2665d833; `SHA256SUMS.txt` 80d17c3e. | Pending until committed. | Pass; milestone proof confirms 138 browser checks and curated Settings/offline imagery hashes without checking in raw screenshots. | Survey/RTK browser workflow integration. |
 
 ## Milestones
 
@@ -111,3 +112,21 @@ Summary: the third milestone curates browser-only evidence for dashboard next-st
 Checked-in evidence: `docs/evidence/continuous-improvement/browser-mapping-2026-05-31/iteration-040/README.md`.
 
 Summary: the fourth milestone curates browser-only evidence for Review Warnings map inspection, recent-project saved-state recovery, walkthrough accessibility and offline-imagery progress, and Expert Review evidence labeling plus non-mutating preview behavior. It does not verify native runtime behavior, raw tile-package rendering, Google Earth rendering, or any imagery/CV promotion into canonical geometry.
+
+### Iteration 050
+
+Checked-in evidence: `docs/evidence/continuous-improvement/browser-mapping-2026-05-31/iteration-050/README.md`.
+
+Summary: the fifth milestone curates browser-only evidence for Expert Review Apply confirmation, manual decision safety, recommendation action accessibility, and the Apply XY dirty-state boundary. It does not verify native runtime behavior, raw tile-package rendering, Google Earth rendering, or any imagery/CV promotion into canonical geometry.
+
+### Iteration 060
+
+Checked-in evidence: `docs/evidence/continuous-improvement/browser-mapping-2026-05-31/iteration-060/README.md`.
+
+Summary: the sixth milestone curates browser-only evidence for Files status, archive export, KML/KMZ visual interchange downloads, projected GeoJSON import/rejection, and Survey CSV import/rejection. It does not verify native runtime behavior, raw tile-package rendering, Google Earth rendering, or any imagery/CV promotion into canonical geometry.
+
+### Iteration 070
+
+Checked-in evidence: `docs/evidence/continuous-improvement/browser-mapping-2026-05-31/iteration-070/README.md`.
+
+Summary: the seventh milestone curates browser-only evidence for Files import recovery plus Settings imagery guardrails, including imagery Off local-only status, tile-cap controls, credential rejection, and valid no-key local custom source application. It does not verify native runtime behavior, raw tile-package rendering, Google Earth rendering, external imagery availability, or any imagery/CV promotion into canonical geometry.

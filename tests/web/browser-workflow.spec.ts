@@ -352,6 +352,23 @@ test("expert review recommendation preview does not dirty or apply geometry", as
   await saveScreen(page, testInfo, "expert-review-preview-no-mutation");
 });
 
+test("expert review apply confirmation does not dirty before confirm", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-review").click();
+  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
+  await page.getByRole("button", { name: "Apply" }).first().click();
+  await expect(page.getByText("Confirm Apply")).toBeVisible();
+  await expect(page.getByText(/Projected XY/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply XY" })).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Confirm Apply")).toHaveCount(0);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "expert-review-apply-confirm-no-mutation");
+});
+
 test("dashboard review warnings can inspect the map without geometry mutation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

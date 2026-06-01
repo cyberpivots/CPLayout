@@ -187,6 +187,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
             <View style={styles.applyConfirmText}>
               <Text style={styles.confirmTitle}>Confirm Apply</Text>
               <Text style={styles.geometrySummary}>{applyMetricsSummary(project, result, pendingApply)}</Text>
+              <Text style={styles.evidenceRecordMuted}>Projected XY geometry changes only after Apply XY; Cancel keeps the project unchanged.</Text>
             </View>
             <View style={styles.decisionActions}>
               <ReviewButton icon={<Check size={16} color="#ffffff" />} label="Apply XY" primary onPress={confirmApplyRecommendation} />

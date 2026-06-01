@@ -279,6 +279,39 @@ test("browser map utility option chips expose active state", async ({ page }, te
   await saveScreen(page, testInfo, "browser-map-chip-active-state");
 });
 
+test("browser map HUD actions expose disabled state", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  const commit = page.getByTestId("browser-action-commit");
+  const saveFeature = page.getByTestId("browser-action-save-feature");
+  const clear = page.getByTestId("browser-action-clear");
+  await expect(commit).toHaveAttribute("aria-disabled", "true");
+  await expect(saveFeature).toHaveAttribute("aria-disabled", "true");
+  await expect(clear).toHaveAttribute("aria-disabled", "true");
+
+  await page.getByTestId("browser-tool-boundary").click();
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 160, y: 180 } });
+  await expect(clear).not.toHaveAttribute("aria-disabled", "true");
+  await expect(clear).toBeEnabled();
+  await expect(commit).toHaveAttribute("aria-disabled", "true");
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 200, y: 240 } });
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 230, y: 185 } });
+  await expect(commit).not.toHaveAttribute("aria-disabled", "true");
+  await expect(commit).toBeEnabled();
+  await expect(saveFeature).toHaveAttribute("aria-disabled", "true");
+
+  await page.getByTestId("browser-action-clear").click();
+  await page.getByTestId("browser-tool-utility").click();
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 160, y: 180 } });
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 220, y: 225 } });
+  await expect(commit).toHaveAttribute("aria-disabled", "true");
+  await expect(saveFeature).not.toHaveAttribute("aria-disabled", "true");
+  await expect(saveFeature).toBeEnabled();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "browser-map-hud-action-disabled-state");
+});
+
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

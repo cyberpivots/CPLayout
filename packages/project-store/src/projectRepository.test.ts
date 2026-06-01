@@ -51,6 +51,11 @@ async function run(): Promise<void> {
   const summaries = await projectRepository.listProjectsAsync();
   assert.equal(summaries.length, 1);
   assert.equal(summaries[0]?.id, editedProject.id);
+  const legacyCatalog = await projectRepository.listProjectCatalogAsync();
+  assert.equal(legacyCatalog.customers[0]?.displayName, "Example Customer");
+  assert.equal(legacyCatalog.projects[0]?.customerId, "example-customer");
+  assert.equal(legacyCatalog.fieldMaps[0]?.name, "Primary Field Map");
+  assert.equal(legacyCatalog.designs[0]?.pivotProjectId, editedProject.id);
 
   const reloaded = await projectRepository.loadProjectAsync(editedProject.id);
   assert.ok(reloaded);
@@ -99,6 +104,37 @@ async function run(): Promise<void> {
   assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Base pivot wet circle/);
   assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Allowed irrigated coverage/);
   assert.match(proofBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Public proof pivot center/);
+
+  const customerB = await projectRepository.createCustomerAsync({ displayName: "Zephyr Farms", sortName: "Zephyr Farms" });
+  const customerA = await projectRepository.createCustomerAsync({ displayName: "Adams Irrigation", sortName: "Adams Irrigation" });
+  const catalog = await projectRepository.listProjectCatalogAsync();
+  assert.deepEqual(
+    catalog.customers.map((customer) => customer.displayName).slice(0, 2),
+    ["Adams Irrigation", "Example Customer"],
+  );
+  const projectRecord = await projectRepository.createProjectRecordAsync({
+    customerId: customerA.id,
+    id: "adams-catalog-project",
+    name: "Adams North Unit",
+    projectCrs: editedProject.projectCrs,
+    unitSystem: editedProject.unitSystem,
+  });
+  const fieldMap = await projectRepository.createFieldMapRecordAsync({
+    id: "adams-north-field-map",
+    projectId: projectRecord.id,
+    name: "North Quarter",
+  });
+  const design = await projectRepository.createDesignRecordAsync({
+    id: "adams-north-design",
+    fieldMapId: fieldMap.id,
+    name: "Base Pivot",
+    pivotProjectId: editedProject.id,
+  });
+  await projectRepository.saveDesignProjectAsync(design.id, { ...editedProject, name: "Adams North Base Pivot" }, evaluateLayout(editedProject));
+  const designReloaded = await projectRepository.loadDesignProjectAsync(design.id);
+  assert.ok(designReloaded);
+  assert.equal(designReloaded.name, "Adams North Base Pivot");
+  assert.ok(customerB.id.startsWith("customer-"));
 
   console.log("project repository saveable geometry tests passed");
 }

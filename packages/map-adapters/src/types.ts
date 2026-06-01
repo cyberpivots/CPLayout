@@ -8,6 +8,7 @@ export interface MapSurfaceProps {
   activeToolMode?: DrawingMode;
   activeLayer?: DrawingLayerType;
   draftVertices?: XY[];
+  homeView?: boolean;
   selectedMapFeatureId?: string | null;
   advisoryRecommendationPreview?: ModelRecommendation | null;
   onMappingWorkflowModeChange?: (mode: MappingWorkflowMode) => void;

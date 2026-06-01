@@ -7,8 +7,8 @@ import {
   migrationSql,
 } from "./persistenceSchema";
 
-assert.equal(SQLITE_SCHEMA_VERSION, 4);
-assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4]);
+assert.equal(SQLITE_SCHEMA_VERSION, 5);
+assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4, 5]);
 
 const sql = migrationSql();
 assert.match(sql, /CREATE TABLE IF NOT EXISTS projects/);
@@ -26,6 +26,10 @@ assert.match(sql, /install_status TEXT NOT NULL DEFAULT 'metadata_only'/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_evidence/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS model_recommendations/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_decisions/);
+assert.match(sql, /CREATE TABLE IF NOT EXISTS customers/);
+assert.match(sql, /CREATE TABLE IF NOT EXISTS project_records/);
+assert.match(sql, /CREATE TABLE IF NOT EXISTS field_maps/);
+assert.match(sql, /CREATE TABLE IF NOT EXISTS designs/);
 assert.match(sql, /record_json TEXT NOT NULL/);
 assert.match(sql, /recommendation_json TEXT NOT NULL/);
 assert.match(sql, /decision_json TEXT NOT NULL/);
@@ -43,5 +47,10 @@ assert.ok(indexes.includes("idx_layout_evidence_project_status"));
 assert.ok(indexes.includes("idx_layout_evidence_source"));
 assert.ok(indexes.includes("idx_model_recommendations_project_status"));
 assert.ok(indexes.includes("idx_layout_decisions_project_created"));
+assert.ok(indexes.includes("idx_customers_sort"));
+assert.ok(indexes.includes("idx_project_records_customer"));
+assert.ok(indexes.includes("idx_field_maps_project"));
+assert.ok(indexes.includes("idx_designs_field_map"));
+assert.ok(indexes.includes("idx_designs_pivot_project"));
 
 console.log("persistence schema tests passed");

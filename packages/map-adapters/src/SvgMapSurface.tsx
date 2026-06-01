@@ -576,7 +576,7 @@ export function SvgMapSurface({
         </View>
         ) : (
           <View style={styles.draftHud}>
-            <Text style={styles.draftHudText}>Review Layout · inspection only · geometry editing controls hidden</Text>
+            <Text style={styles.draftHudText}>Layout · RTK-only mutation · pointer editing controls hidden</Text>
           </View>
         )}
         {imageryPlan ? (
@@ -1032,7 +1032,7 @@ function WorkflowSegmentedControl({ mode, onChange }: { mode: MappingWorkflowMod
 }
 
 function workflowModeLabel(mode: MappingWorkflowMode): string {
-  return mode === "design" ? "Edit Geometry" : "Review Layout";
+  return mode === "design" ? "Design" : "Layout";
 }
 
 function ToolButton({ active, disabled = false, icon, label, onPress }: { active: boolean; disabled?: boolean; icon: React.ReactNode; label: string; onPress: () => void }): React.JSX.Element {

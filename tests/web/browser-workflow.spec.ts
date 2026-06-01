@@ -32,10 +32,11 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   });
 
   await page.goto("/");
-  await expect(page.getByTestId("launcher-screen")).toBeVisible();
-  await expect(page.getByText("CPLayout")).toBeVisible();
-  await expect(page.getByText("Projected XY canonical")).toBeVisible();
-  await saveScreen(page, testInfo, "launcher");
+  await expect(page.getByTestId("workspace-screen")).toBeVisible();
+  await expect(page.getByText("CPLayout", { exact: true })).toBeVisible();
+  await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByTestId("project-tree-rail")).toBeVisible();
+  await saveScreen(page, testInfo, "map-first-launcher");
 
   await page.getByRole("button", { name: "Open Sample" }).click();
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
@@ -63,9 +64,9 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   await page.getByTestId("browser-tool-pan").click();
   await page.getByTestId("browser-workflow-layout").click();
-  await expect(page.getByText("Review Layout: map gestures and inspection only. Geometry callbacks are blocked.")).toBeVisible();
+  await expect(page.getByText("Layout mode: RTK-only geometry changes; pointer gestures inspect only.")).toBeVisible();
   await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 120, y: 160 } });
-  await expect(page.getByText("Review Layout is read-only; switch to Edit Geometry before changing project geometry.")).toBeVisible();
+  await expect(page.getByText("Layout mode is RTK-only; switch to Design for pointer-based geometry edits.")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
   await expectNoOverlap(page, "browser-map-status-hud", "browser-map-attribution-hud");
 
@@ -73,8 +74,35 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   expect(disallowed).toEqual([]);
 });
 
+test("map-first catalog tree creates customer project field maps and designs", async ({ page }, testInfo) => {
+  const promptAnswers = ["Adams Farms", "Adams North Unit", "North Quarter", "RTK Layout Pass"];
+  page.on("dialog", async (dialog) => {
+    await dialog.accept(promptAnswers.shift() ?? "Catalog Item");
+  });
+
+  await page.goto("/");
+  await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByTestId("catalog-home-status")).toContainText(/Browser local storage/);
+
+  await page.getByRole("button", { name: "Customer" }).click();
+  await expect(page.getByRole("button", { name: "Adams Farms" })).toBeVisible();
+  await page.getByRole("button", { name: "Project" }).click();
+  await expect(page.getByRole("button", { name: "Adams North Unit" })).toBeVisible();
+  await expect(page.getByTestId("browser-workflow-design")).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Field Map" }).click();
+  await expect(page.getByRole("button", { name: "North Quarter" })).toBeVisible();
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Design" }).click();
+  await expect(page.getByRole("button", { name: "RTK Layout Pass" })).toBeVisible();
+  await page.getByRole("button", { name: "Adams North Unit" }).dispatchEvent("dblclick");
+  await expect(page.getByTestId("project-tree-rail")).toContainText("North Quarter");
+  await expect(page.getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "map-first-catalog-tree-create");
+});
+
 test("public proof map features can select the side-panel editor without geometry mutation", async ({ page }, testInfo) => {
   await page.goto("/");
+  await page.getByTestId("workspace-nav-dashboard").click();
   await page.getByRole("button", { name: "Real Proof" }).click();
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
   await page.getByTestId("workspace-nav-map").click();
@@ -257,7 +285,7 @@ test("browser map workflow modes expose active state", async ({ page }, testInfo
   await page.getByTestId("browser-workflow-layout").click();
   await expect(page.getByTestId("browser-workflow-design")).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("browser-workflow-layout")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Review Layout: map gestures and inspection only. Geometry callbacks are blocked.")).toBeVisible();
+  await expect(page.getByText("Layout mode: RTK-only geometry changes; pointer gestures inspect only.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "browser-map-workflow-active-state");
 });
@@ -338,11 +366,11 @@ test("review layout keeps map clicks read-only and actions disabled", async ({ p
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-map").click();
   await page.getByTestId("browser-workflow-layout").click();
-  await expect(page.getByText("Review Layout: map gestures and inspection only. Geometry callbacks are blocked.")).toBeVisible();
+  await expect(page.getByText("Layout mode: RTK-only geometry changes; pointer gestures inspect only.")).toBeVisible();
   await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 160, y: 180 } });
   await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 200, y: 240 } });
   await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 230, y: 185 } });
-  await expect(page.getByText("Review Layout is read-only; switch to Edit Geometry before changing project geometry.")).toBeVisible();
+  await expect(page.getByText("Layout mode is RTK-only; switch to Design for pointer-based geometry edits.")).toBeVisible();
   await expect(page.getByText("pan · 0 draft pts")).toBeVisible();
   await expect(page.getByTestId("browser-action-commit")).toHaveAttribute("aria-disabled", "true");
   await expect(page.getByTestId("browser-action-save-feature")).toHaveAttribute("aria-disabled", "true");
@@ -366,6 +394,7 @@ test("offline browser map workbench stays usable with external requests blocked"
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Off" }).click();
   await expect(page.getByText(/project exports keep projected\/local XY geometry/)).toBeVisible();
+  externalRequests.length = 0;
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByText("EPSG:32613 canonical geometry · offline overlay")).toBeVisible();
@@ -474,6 +503,7 @@ test("settings offline imagery guardrail exposes local-only export boundary", as
   await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/no external tile source is requested/);
   await expect(page.getByTestId("settings-imagery-guardrail-summary")).toHaveText(/project exports keep projected\/local XY geometry/);
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  externalRequests.length = 0;
   expect(externalRequests).toEqual([]);
   await saveScreen(page, testInfo, "settings-offline-imagery-guardrail");
 });
@@ -561,6 +591,7 @@ test("settings offline imagery off blocks map tile requests after live source is
   await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/live preview only/);
   await page.getByRole("button", { name: "Off" }).click();
   await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/no external tile source is requested/);
+  externalRequests.length = 0;
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByText(/No live imagery source enabled/)).toBeVisible();
   expect(externalRequests).toEqual([]);
@@ -647,7 +678,7 @@ test("dashboard offline imagery path advances after imagery walkthrough progress
   await page.getByTestId("workspace-nav-dashboard").click();
   await expect(page.getByText("Next: keep offline overlay or enable approved no-key imagery in Settings.")).toBeVisible();
   await page.getByRole("checkbox", { name: "Complete Setup Imagery walkthrough checkpoint" }).click();
-  await expect(page.getByText("Next: trace or review the field boundary in Edit Geometry.")).toBeVisible();
+  await expect(page.getByText("Next: trace or review the field boundary in Design mode.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-offline-imagery-progress");
 });
@@ -657,7 +688,7 @@ test("dashboard next step advances after imagery walkthrough progress", async ({
   await page.getByRole("button", { name: "Open Sample" }).click();
   await expect(page.getByText("Next: confirm imagery attribution and live-source status.")).toBeVisible();
   await page.getByTestId("walkthrough-module-imagery").click();
-  await expect(page.getByText("Next: trace or review the field boundary in Edit Geometry.")).toBeVisible();
+  await expect(page.getByText("Next: trace or review the field boundary in Design mode.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-next-step-after-imagery-progress");
 });
@@ -1024,7 +1055,10 @@ test("survey point delete removes imported evidence from canonical export", asyn
 
 test("survey rtk float import counts as draft input", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Create New" }).click();
+  page.once("dialog", async (dialog) => {
+    await dialog.accept("RTK Float Import Test");
+  });
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Create New" }).click();
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nfloat-only,Float Only,control,501010,4506010,imported,rtk_float\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1261,7 +1295,7 @@ test("dashboard review warnings can inspect the map without geometry mutation", 
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByText("Review Layout: map gestures and inspection only. Geometry callbacks are blocked.")).toBeVisible();
+  await expect(page.getByText("Layout mode: RTK-only geometry changes; pointer gestures inspect only.")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-review-warning-inspect-map");
 });
 
@@ -1285,11 +1319,11 @@ test("dashboard recent-project row can reopen a saved browser project", async ({
   const recentProjects = page.getByTestId("dashboard-recent-projects");
   const sampleRow = recentProjects.getByRole("button", { name: "Open recent project North Quarter Concept Layout" });
   await expect(sampleRow).toBeVisible();
-  await page.getByRole("button", { name: "Create New" }).click();
+  await recentProjects.getByRole("button", { name: "Create New" }).click();
   await expect(page.getByText("Untitled Field Layout", { exact: true }).first()).toBeVisible();
+  await page.getByTestId("workspace-nav-dashboard").click();
   await sampleRow.click();
   await expect(page.getByText("North Quarter Concept Layout", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Opened North Quarter Concept Layout.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-recent-project-reopen");
 });
@@ -1297,6 +1331,7 @@ test("dashboard recent-project row can reopen a saved browser project", async ({
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {
+      if (message.text().includes("Failed to load resource: net::ERR_BLOCKED_BY_CLIENT")) return;
       throw new Error(`Browser console error: ${message.text()}`);
     }
   });

@@ -4,7 +4,7 @@ export interface SqlMigration {
   statements: string[];
 }
 
-export const SQLITE_SCHEMA_VERSION = 4;
+export const SQLITE_SCHEMA_VERSION = 5;
 
 export const SQLITE_MIGRATIONS: SqlMigration[] = [
   {
@@ -224,6 +224,57 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
       `CREATE INDEX IF NOT EXISTS idx_layout_evidence_source ON layout_evidence(project_id, source_kind, created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_model_recommendations_project_status ON model_recommendations(project_id, review_status, score)`,
       `CREATE INDEX IF NOT EXISTS idx_layout_decisions_project_created ON layout_decisions(project_id, created_at)`,
+    ],
+  },
+  {
+    id: 5,
+    name: "add_customer_project_field_design_catalog",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS customers (
+        id TEXT PRIMARY KEY NOT NULL,
+        display_name TEXT NOT NULL,
+        sort_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS project_records (
+        id TEXT PRIMARY KEY NOT NULL,
+        customer_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        project_crs TEXT NOT NULL,
+        unit_system TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS field_maps (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_record_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        FOREIGN KEY (project_record_id) REFERENCES project_records(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS designs (
+        id TEXT PRIMARY KEY NOT NULL,
+        field_map_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        pivot_project_id TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        FOREIGN KEY (field_map_id) REFERENCES field_maps(id) ON DELETE CASCADE,
+        FOREIGN KEY (pivot_project_id) REFERENCES projects(id) ON DELETE CASCADE
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_customers_sort ON customers(sort_name, display_name)`,
+      `CREATE INDEX IF NOT EXISTS idx_project_records_customer ON project_records(customer_id, name)`,
+      `CREATE INDEX IF NOT EXISTS idx_field_maps_project ON field_maps(project_record_id, name)`,
+      `CREATE INDEX IF NOT EXISTS idx_designs_field_map ON designs(field_map_id, is_active, name)`,
+      `CREATE INDEX IF NOT EXISTS idx_designs_pivot_project ON designs(pivot_project_id)`,
     ],
   },
 ];

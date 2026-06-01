@@ -38,6 +38,8 @@ const server = createServer((request, response) => {
 
   response.writeHead(200, {
     "cache-control": "no-store",
+    "Cross-Origin-Embedder-Policy": "credentialless",
+    "Cross-Origin-Opener-Policy": "same-origin",
     "content-type": contentTypes[extname(candidate)] ?? "application/octet-stream",
   });
   createReadStream(candidate).pipe(response);

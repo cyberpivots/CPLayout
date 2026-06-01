@@ -74,8 +74,8 @@ type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "review" | "export";
 
 export default function App(): React.JSX.Element {
-  const [screen, setScreen] = useState<Screen>("projects");
-  const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
+  const [screen, setScreen] = useState<Screen>("workspace");
+  const [activeView, setActiveView] = useState<WorkspaceView>("map");
   const [editor, dispatchProject] = useReducer(reduceProjectEditorState, sampleProject, createProjectEditorState);
   const project = editor.project;
   const [savedRevision, setSavedRevision] = useState(0);
@@ -83,6 +83,13 @@ export default function App(): React.JSX.Element {
   const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(sampleProject.id));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
   const [advisoryRecommendationPreview, setAdvisoryRecommendationPreview] = useState<ModelRecommendation | null>(null);
+  const [homeMapView, setHomeMapView] = useState(true);
+  const [activeCatalogContext, setActiveCatalogContext] = useState<{
+    customerId: string | null;
+    projectId: string | null;
+    fieldMapId: string | null;
+    designId: string | null;
+  }>({ customerId: null, projectId: null, fieldMapId: null, designId: null });
   const { width: windowWidth } = useWindowDimensions();
   const compactLayout = windowWidth < 760;
   const repository = useProjectRepository();
@@ -135,25 +142,58 @@ export default function App(): React.JSX.Element {
     setSettings((current) => parseAppSettings({ ...current, mappingWorkflowMode }));
   }
 
-  function loadProject(nextProject: PivotProject): void {
+  function loadProject(nextProject: PivotProject, context?: Partial<typeof activeCatalogContext>): void {
     dispatchProject({ type: "load_project", project: nextProject });
     setSavedRevision(0);
     setSettings((current) => browserLocalSettings(nextProject.settings, current));
     setWalkthroughProgress(loadWalkthroughProgress(nextProject.id));
     setSelectedMapFeatureId(null);
     setAdvisoryRecommendationPreview(null);
-    setActiveView("dashboard");
+    setHomeMapView(false);
+    setActiveView("map");
+    setWorkflowMode("design");
+    if (context) {
+      setActiveCatalogContext((current) => ({ ...current, ...context }));
+    }
     setScreen("workspace");
   }
 
+  function loadProjectDashboard(nextProject: PivotProject, context?: Partial<typeof activeCatalogContext>): void {
+    loadProject(nextProject, context);
+    setActiveView("dashboard");
+  }
+
   async function saveCurrentProject(): Promise<void> {
-    const saved = await repository.saveProject(project, result);
+    const saved = activeCatalogContext.designId
+      ? await repository.saveDesignProject(activeCatalogContext.designId, project, result)
+      : await repository.saveProject(project, result);
     if (saved) setSavedRevision(editor.revision);
   }
 
   async function openSavedProject(projectId: string): Promise<void> {
     const loaded = await repository.openProject(projectId);
-    if (loaded) loadProject(loaded);
+    if (!loaded) return;
+    const design = repository.catalog.designs.find((record) => record.pivotProjectId === projectId) ?? null;
+    const fieldMap = design ? repository.catalog.fieldMaps.find((record) => record.id === design.fieldMapId) ?? null : null;
+    loadProject(loaded, {
+      projectId: fieldMap?.projectId ?? projectId,
+      fieldMapId: fieldMap?.id ?? null,
+      designId: design?.id ?? null,
+    });
+  }
+
+  async function openDesignProject(designId: string): Promise<void> {
+    const loaded = await repository.openDesignProject(designId);
+    if (!loaded) return;
+    const design = repository.catalog.designs.find((record) => record.id === designId) ?? null;
+    const fieldMap = design ? repository.catalog.fieldMaps.find((record) => record.id === design.fieldMapId) ?? null : null;
+    const projectRecord = fieldMap ? repository.catalog.projects.find((record) => record.id === fieldMap.projectId) ?? null : null;
+    loadProject(loaded, {
+      customerId: projectRecord?.customerId ?? activeCatalogContext.customerId,
+      projectId: fieldMap?.projectId ?? null,
+      fieldMapId: fieldMap?.id ?? null,
+      designId,
+    });
   }
 
   function importProjectedGeoJson(geoJson: string): string {
@@ -206,6 +246,100 @@ export default function App(): React.JSX.Element {
     });
   }
 
+  async function createCustomerFolder(): Promise<void> {
+    const name = promptText("Customer folder name", `Customer ${repository.catalog.customers.length + 1}`);
+    const customer = await repository.createCustomer({ displayName: name, sortName: name });
+    if (customer) setActiveCatalogContext({ customerId: customer.id, projectId: null, fieldMapId: null, designId: null });
+  }
+
+  async function createProjectFolder(): Promise<void> {
+    const customer = await selectedOrDefaultCustomer();
+    if (!customer) return;
+    const createdAt = new Date().toISOString();
+    const name = promptText("Project name", `Untitled Project ${repository.catalog.projects.length + 1}`);
+    const projectId = `project-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+    const fieldMapId = `${projectId}:field-map:primary`;
+    const designId = `${projectId}:design:primary`;
+    const nextProject: PivotProject = {
+      ...sampleProject,
+      id: projectId,
+      name,
+      surveyPoints: sampleProject.surveyPoints.map((point) => ({ ...point, observedAt: createdAt })),
+    };
+    await repository.saveProject(nextProject, evaluateLayout(nextProject));
+    await repository.createProjectRecord({ id: projectId, customerId: customer.id, name, projectCrs: nextProject.projectCrs, unitSystem: nextProject.unitSystem });
+    await repository.createFieldMapRecord({ id: fieldMapId, projectId, name: "Primary Field Map" });
+    await repository.createDesignRecord({ id: designId, fieldMapId, name: "Base Design", pivotProjectId: projectId, isActive: true });
+    await repository.refreshProjects();
+    loadProject(nextProject, { customerId: customer.id, projectId, fieldMapId, designId });
+  }
+
+  async function createFieldMapForProject(projectId = activeCatalogContext.projectId): Promise<void> {
+    const projectRecord = projectId ? repository.catalog.projects.find((record) => record.id === projectId) ?? null : null;
+    if (!projectRecord) return;
+    const createdAt = new Date().toISOString();
+    const fieldMapId = `${projectRecord.id}:field-map:${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+    const pivotProjectId = `${fieldMapId}:design-project`;
+    const designId = `${fieldMapId}:design:base`;
+    const fieldName = promptText("Field map name", `Field Map ${repository.catalog.fieldMaps.filter((record) => record.projectId === projectRecord.id).length + 1}`);
+    const nextProject: PivotProject = {
+      ...sampleProject,
+      id: pivotProjectId,
+      name: `${projectRecord.name} - ${fieldName}`,
+      projectCrs: projectRecord.projectCrs,
+      unitSystem: projectRecord.unitSystem as PivotProject["unitSystem"],
+      surveyPoints: sampleProject.surveyPoints.map((point) => ({ ...point, observedAt: createdAt })),
+    };
+    await repository.saveProject(nextProject, evaluateLayout(nextProject));
+    const fieldMap = await repository.createFieldMapRecord({ id: fieldMapId, projectId: projectRecord.id, name: fieldName });
+    const design = fieldMap
+      ? await repository.createDesignRecord({ id: designId, fieldMapId: fieldMap.id, name: "Base Design", pivotProjectId, isActive: true })
+      : null;
+    await repository.refreshProjects();
+    if (design) loadProject(nextProject, { customerId: projectRecord.customerId, projectId: projectRecord.id, fieldMapId, designId: design.id });
+  }
+
+  async function createDesignForFieldMap(fieldMapId = activeCatalogContext.fieldMapId): Promise<void> {
+    const fieldMap = fieldMapId ? repository.catalog.fieldMaps.find((record) => record.id === fieldMapId) ?? null : null;
+    if (!fieldMap) return;
+    const projectRecord = repository.catalog.projects.find((record) => record.id === fieldMap.projectId) ?? null;
+    if (!projectRecord) return;
+    const createdAt = new Date().toISOString();
+    const designName = promptText("Design name", `Design ${repository.catalog.designs.filter((record) => record.fieldMapId === fieldMap.id).length + 1}`);
+    const pivotProjectId = `${fieldMap.id}:design:${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+    const nextProject: PivotProject = {
+      ...sampleProject,
+      id: pivotProjectId,
+      name: `${projectRecord.name} - ${fieldMap.name} - ${designName}`,
+      projectCrs: projectRecord.projectCrs,
+      unitSystem: projectRecord.unitSystem as PivotProject["unitSystem"],
+      surveyPoints: sampleProject.surveyPoints.map((point) => ({ ...point, observedAt: createdAt })),
+    };
+    await repository.saveProject(nextProject, evaluateLayout(nextProject));
+    const design = await repository.createDesignRecord({ fieldMapId: fieldMap.id, name: designName, pivotProjectId, isActive: false });
+    await repository.refreshProjects();
+    if (design) loadProject(nextProject, { customerId: projectRecord.customerId, projectId: projectRecord.id, fieldMapId: fieldMap.id, designId: design.id });
+  }
+
+  async function openFieldMap(fieldMapId: string): Promise<void> {
+    const design = repository.catalog.designs.find((record) => record.fieldMapId === fieldMapId && record.isActive)
+      ?? repository.catalog.designs.find((record) => record.fieldMapId === fieldMapId)
+      ?? null;
+    if (design) await openDesignProject(design.id);
+    else setActiveCatalogContext((current) => ({ ...current, fieldMapId, designId: null }));
+  }
+
+  async function selectedOrDefaultCustomer(): Promise<{ id: string; displayName: string } | null> {
+    const selected = activeCatalogContext.customerId
+      ? repository.catalog.customers.find((customer) => customer.id === activeCatalogContext.customerId) ?? null
+      : null;
+    if (selected) return selected;
+    const first = repository.catalog.customers[0] ?? null;
+    if (first) return first;
+    const created = await repository.createCustomer({ displayName: "Example Customer", sortName: "Example Customer" });
+    return created ? { id: created.id, displayName: created.displayName } : null;
+  }
+
   function updateWalkthrough(moduleId: WalkthroughModuleId, complete: boolean): void {
     setWalkthroughProgress((current) => {
       const next = { ...current, [moduleId]: complete };
@@ -246,7 +380,7 @@ export default function App(): React.JSX.Element {
                 setScreen("workspace");
                 setActiveView("files");
               }}
-              onOpenImprovedProof={() => loadProject(improvedCenterPivotReviewProject)}
+              onOpenImprovedProof={() => loadProjectDashboard(improvedCenterPivotReviewProject)}
               onInspectMap={() => {
                 setWorkflowMode("layout");
                 setScreen("workspace");
@@ -261,8 +395,8 @@ export default function App(): React.JSX.Element {
                 setScreen("workspace");
                 setActiveView("review");
               }}
-              onOpenRealProof={() => loadProject(realCenterPivotProofProject)}
-              onOpenSample={() => loadProject(sampleProject)}
+              onOpenRealProof={() => loadProjectDashboard(realCenterPivotProofProject)}
+              onOpenSample={() => loadProjectDashboard(sampleProject)}
               project={project}
               repository={repository}
               result={result}
@@ -292,34 +426,67 @@ export default function App(): React.JSX.Element {
         <View style={styles.topBar}>
           <View>
             <Text style={styles.appTitle}>CPLayout</Text>
-            <Text style={styles.appSubtitle}>{project.name}</Text>
+            <Text style={styles.appSubtitle}>{homeMapView ? "North America project catalog" : project.name}</Text>
           </View>
           <View style={[styles.statusRow, compactLayout && styles.statusRowCompact]}>
             <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline storage" />
             {settings.onlineImagery.enabled ? <StatusPill icon={<Satellite size={15} color="#254234" />} label="USGS imagery on" /> : null}
             <StatusPill icon={<MapPinned size={15} color="#254234" />} label={workflowModeLabel(settings.mappingWorkflowMode)} />
             <StatusPill icon={<Satellite size={15} color="#254234" />} label={`${settings.gpsQuality.minimumFixType.replaceAll("_", " ")} gate`} />
-            <StatusPill icon={<Ruler size={15} color="#254234" />} label={project.projectCrs} />
+            <StatusPill icon={<Ruler size={15} color="#254234" />} label={homeMapView ? "North America" : project.projectCrs} />
             <StatusPill icon={<SlidersHorizontal size={15} color="#254234" />} label={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
             <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
           </View>
           <View style={[styles.projectActionRow, compactLayout && styles.statusRowCompact]}>
             <SmallActionButton label={isDirty ? "Save *" : "Save"} onPress={saveCurrentProject} />
-            <SmallActionButton label="Projects" onPress={() => setScreen("projects")} />
+            <SmallActionButton label="Catalog" onPress={() => {
+              setScreen("workspace");
+              setActiveView("map");
+              setHomeMapView(true);
+            }} />
+            <SmallActionButton label="Dashboard" onPress={() => setActiveView("dashboard")} />
             <SmallActionButton label="Undo" disabled={editor.past.length === 0} onPress={() => dispatchProject({ type: "undo" })} />
             <SmallActionButton label="Redo" disabled={editor.future.length === 0} onPress={() => dispatchProject({ type: "redo" })} />
           </View>
         </View>
 
         <View style={[styles.workspaceShell, compactLayout && styles.workspaceShellCompact]}>
-          <View style={[styles.leftRail, compactLayout && styles.leftRailCompact]} testID="workspace-rail">
-            <RailButton active={activeView === "dashboard"} icon={<Home size={18} />} label="Dashboard" onPress={() => setActiveView("dashboard")} testID="workspace-nav-dashboard" />
-            <RailButton active={activeView === "map"} icon={<MapPinned size={18} />} label="Map" onPress={() => setActiveView("map")} testID="workspace-nav-map" />
-            <RailButton active={activeView === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => setActiveView("survey")} testID="workspace-nav-survey" />
-            <RailButton active={activeView === "review"} icon={<ClipboardList size={18} />} label="Review" onPress={() => setActiveView("review")} testID="workspace-nav-review" />
-            <RailButton active={activeView === "files"} icon={<Download size={18} />} label="Files" onPress={() => setActiveView("files")} testID="workspace-nav-files" />
-            <RailButton active={activeView === "settings"} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => setActiveView("settings")} testID="workspace-nav-settings" />
-          </View>
+          <ProjectTreeRail
+            activeContext={activeCatalogContext}
+            activeView={activeView}
+            catalog={repository.catalog}
+            compact={compactLayout}
+            onCreateCustomer={createCustomerFolder}
+            onCreateDesign={() => void createDesignForFieldMap()}
+            onCreateFieldMap={() => void createFieldMapForProject()}
+            onCreateProject={createProjectFolder}
+            onNavigate={setActiveView}
+            onOpenDesign={openDesignProject}
+            onOpenFieldMap={openFieldMap}
+            onOpenProject={(projectId) => {
+              const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
+              setActiveCatalogContext({
+                customerId: record?.customerId ?? activeCatalogContext.customerId,
+                projectId,
+                fieldMapId: null,
+                designId: null,
+              });
+              setActiveView("map");
+              setHomeMapView(true);
+            }}
+            onOpenSample={() => loadProjectDashboard(sampleProject, { customerId: null, projectId: null, fieldMapId: null, designId: null })}
+            onSelectCustomer={(customerId) => setActiveCatalogContext({ customerId, projectId: null, fieldMapId: null, designId: null })}
+            onSelectProject={(projectId) => {
+              const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
+              setActiveCatalogContext({
+                customerId: record?.customerId ?? activeCatalogContext.customerId,
+                projectId,
+                fieldMapId: null,
+                designId: null,
+              });
+            }}
+            onSelectFieldMap={(fieldMapId) => setActiveCatalogContext((current) => ({ ...current, fieldMapId, designId: null }))}
+          />
 
           <ScrollView style={styles.workspaceScroll} contentContainerStyle={[styles.content, compactLayout && styles.contentCompact]}>
           {activeView === "dashboard" && (
@@ -329,7 +496,7 @@ export default function App(): React.JSX.Element {
               mode="workspace"
               onCreate={createNewProject}
               onOpenFiles={() => setActiveView("files")}
-              onOpenImprovedProof={() => loadProject(improvedCenterPivotReviewProject)}
+              onOpenImprovedProof={() => loadProjectDashboard(improvedCenterPivotReviewProject)}
               onInspectMap={() => {
                 setWorkflowMode("layout");
                 setActiveView("map");
@@ -337,8 +504,8 @@ export default function App(): React.JSX.Element {
               onOpenMap={() => setActiveView("map")}
               onOpenProject={openSavedProject}
               onOpenReview={() => setActiveView("review")}
-              onOpenRealProof={() => loadProject(realCenterPivotProofProject)}
-              onOpenSample={() => loadProject(sampleProject)}
+              onOpenRealProof={() => loadProjectDashboard(realCenterPivotProofProject)}
+              onOpenSample={() => loadProjectDashboard(sampleProject)}
               project={project}
               repository={repository}
               result={result}
@@ -352,6 +519,7 @@ export default function App(): React.JSX.Element {
           {activeView === "map" && (
             <View style={[styles.layoutGrid, compactLayout && styles.layoutGridCompact]} testID="map-view">
               <MapSurface
+                homeView={homeMapView}
                 project={project}
                 result={result}
                 settings={settings}
@@ -371,65 +539,89 @@ export default function App(): React.JSX.Element {
                 onSelectMapFeature={setSelectedMapFeatureId}
               />
               <View style={[styles.sidePanel, compactLayout && styles.sidePanelCompact]}>
-                <Text style={styles.sectionTitle}>Map Inspector</Text>
-                <View style={styles.metricGrid}>
-                  <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
-                  <MetricTile label="Dry / non-irrigated" value={formatAreaFromAcres(result.metrics.nonIrrigatedAcres, settings.unitSystem)} tone="warn" />
-                  <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} tone="neutral" />
-                  <MetricTile label="End gun" value={formatAreaFromAcres(result.metrics.endGunAcres, settings.unitSystem)} tone="neutral" />
-                  <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
-                  <MetricTile label="Obstacle hits" value={`${result.metrics.obstacleConflictCount}`} tone={result.metrics.obstacleConflictCount > 0 ? "danger" : "good"} />
-                </View>
-
-                <CoordinateFormatPanel
-                  coordinate={project.pivotCenter}
-                  format={settings.coordinateDisplayFormat}
-                  onApply={applyPivotCoordinate}
-                  onFormatChange={(coordinateDisplayFormat) => commitSettings({ ...settings, coordinateDisplayFormat })}
-                  projectCrs={project.projectCrs}
-                />
-
-                <MapFeatureEditor
-                  feature={selectedMapFeature}
-                  onDelete={deleteMapFeature}
-                  onRename={updateMapFeatureName}
-                />
-
-                <Text style={styles.sectionTitle}>Mode Controls</Text>
-                <View style={styles.controlRow}>
-                  <ActionButton label="Full circle" selected={project.machine.sweep.mode === "full_circle"} onPress={() => updateSweep({ mode: "full_circle" })} />
-                  <ActionButton
-                    label="Part circle"
-                    selected={project.machine.sweep.mode === "partial_circle"}
-                    onPress={() => updateSweep({ mode: "partial_circle", startAngleDegrees: 210, stopAngleDegrees: 35, direction: "counterclockwise" })}
+                {homeMapView ? (
+                  <CatalogHomePanel
+                    catalog={repository.catalog}
+                    repository={repository}
+                    settings={settings}
                   />
-                </View>
-                <View style={styles.controlRow}>
-                  <ActionButton label="- End gun" onPress={() => changeEndGun(-6)} />
-                  <ActionButton label="+ End gun" onPress={() => changeEndGun(6)} />
-                </View>
-
-                <Text style={styles.sectionTitle}>Machine</Text>
-                <MachineSettingsForm
-                  machine={project.machine}
-                  onChange={(machine) => dispatchProject({ type: "update_machine", machine })}
-                />
-
-                <Text style={styles.sectionTitle}>Validation</Text>
-                <View style={styles.warningList}>
-                  {editor.lastError ? (
-                    <View style={styles.warningItem}>
-                      <AlertTriangle size={17} color="#9a4c1c" />
-                      <Text style={styles.warningText}>{editor.lastError}</Text>
+                ) : (
+                  <>
+                    <Text style={styles.sectionTitle}>Map Inspector</Text>
+                    <View style={styles.metricGrid}>
+                      <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
+                      <MetricTile label="Dry / non-irrigated" value={formatAreaFromAcres(result.metrics.nonIrrigatedAcres, settings.unitSystem)} tone="warn" />
+                      <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} tone="neutral" />
+                      <MetricTile label="End gun" value={formatAreaFromAcres(result.metrics.endGunAcres, settings.unitSystem)} tone="neutral" />
+                      <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
+                      <MetricTile label="Obstacle hits" value={`${result.metrics.obstacleConflictCount}`} tone={result.metrics.obstacleConflictCount > 0 ? "danger" : "good"} />
                     </View>
-                  ) : null}
-                  {result.warnings.map((warning) => (
-                    <View key={warning} style={styles.warningItem}>
-                      <AlertTriangle size={17} color="#9a4c1c" />
-                      <Text style={styles.warningText}>{warning}</Text>
+
+                    <CoordinateFormatPanel
+                      coordinate={project.pivotCenter}
+                      format={settings.coordinateDisplayFormat}
+                      onApply={applyPivotCoordinate}
+                      onFormatChange={(coordinateDisplayFormat) => commitSettings({ ...settings, coordinateDisplayFormat })}
+                      projectCrs={project.projectCrs}
+                    />
+
+                    {settings.mappingWorkflowMode === "layout" ? (
+                      <>
+                        <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
+                        <BrowserRtkReceiverPanel
+                          onAddMapFeature={addMapFeature}
+                          onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
+                          onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
+                          onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
+                          project={project}
+                          settings={settings}
+                        />
+                      </>
+                    ) : null}
+
+                    <MapFeatureEditor
+                      feature={selectedMapFeature}
+                      onDelete={deleteMapFeature}
+                      onRename={updateMapFeatureName}
+                    />
+
+                    <Text style={styles.sectionTitle}>Mode Controls</Text>
+                    <View style={styles.controlRow}>
+                      <ActionButton label="Full circle" selected={project.machine.sweep.mode === "full_circle"} onPress={() => updateSweep({ mode: "full_circle" })} />
+                      <ActionButton
+                        label="Part circle"
+                        selected={project.machine.sweep.mode === "partial_circle"}
+                        onPress={() => updateSweep({ mode: "partial_circle", startAngleDegrees: 210, stopAngleDegrees: 35, direction: "counterclockwise" })}
+                      />
                     </View>
-                  ))}
-                </View>
+                    <View style={styles.controlRow}>
+                      <ActionButton label="- End gun" onPress={() => changeEndGun(-6)} />
+                      <ActionButton label="+ End gun" onPress={() => changeEndGun(6)} />
+                    </View>
+
+                    <Text style={styles.sectionTitle}>Machine</Text>
+                    <MachineSettingsForm
+                      machine={project.machine}
+                      onChange={(machine) => dispatchProject({ type: "update_machine", machine })}
+                    />
+
+                    <Text style={styles.sectionTitle}>Validation</Text>
+                    <View style={styles.warningList}>
+                      {editor.lastError ? (
+                        <View style={styles.warningItem}>
+                          <AlertTriangle size={17} color="#9a4c1c" />
+                          <Text style={styles.warningText}>{editor.lastError}</Text>
+                        </View>
+                      ) : null}
+                      {result.warnings.map((warning) => (
+                        <View key={warning} style={styles.warningItem}>
+                          <AlertTriangle size={17} color="#9a4c1c" />
+                          <Text style={styles.warningText}>{warning}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                )}
               </View>
             </View>
           )}
@@ -534,6 +726,38 @@ const WALKTHROUGH_MODULES: Array<{
   { id: "review", title: "Expert Review", checkpoint: "Review center findings and recommendations are resolved or deferred." },
   { id: "export", title: "Export Package", checkpoint: "ZIP/KML/GeoJSON are exported after saving local edits." },
 ];
+
+function CatalogHomePanel({
+  catalog,
+  repository,
+  settings,
+}: {
+  catalog: ProjectWorkspaceStatus["catalog"];
+  repository: ProjectWorkspaceStatus;
+  settings: AppSettings;
+}): React.JSX.Element {
+  return (
+    <>
+      <Text style={styles.sectionTitle}>Catalog Home</Text>
+      <View style={styles.metricGrid} testID="catalog-home-metrics">
+        <MetricTile label="Customers" value={`${catalog.customers.length}`} />
+        <MetricTile label="Projects" value={`${catalog.projects.length}`} />
+        <MetricTile label="Field maps" value={`${catalog.fieldMaps.length}`} />
+        <MetricTile label="Designs" value={`${catalog.designs.length}`} />
+      </View>
+      <View style={styles.mapFeatureEditor} testID="catalog-home-status">
+        <Text style={styles.mapFeatureTitle}>{repository.backendInfo?.backendLabel ?? repository.backendLabel}</Text>
+        <Text style={styles.mapFeatureMeta}>
+          {repository.statusMessage} · {settings.onlineImagery.enabled ? "USGS live reference is enabled with attribution on the map." : "No external imagery is requested."}
+        </Text>
+      </View>
+      <View style={styles.warningItem}>
+        <MapPinned size={17} color="#9a4c1c" />
+        <Text style={styles.warningText}>Open or create a field map/design from the tree to enable Design drawing. Layout mode remains RTK-only for geometry mutation.</Text>
+      </View>
+    </>
+  );
+}
 
 function ProjectDashboard({
   compact,
@@ -783,7 +1007,7 @@ function recommendedWorkflowStep(
   if (dirty) return "Next: save local edits and export a project package.";
   if (!settings.onlineImagery.enabled && !progress.imagery) return "Next: keep offline overlay or enable approved no-key imagery in Settings.";
   if (!progress.imagery) return "Next: confirm imagery attribution and live-source status.";
-  if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or review the field boundary in Edit Geometry.";
+  if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or review the field boundary in Design mode.";
   if (project.obstacles.length === 0 || !progress.obstacles) return "Next: add visible obstacles and no-spray zones.";
   if (!progress.pivot) return "Next: place pivot, water source, and power source.";
   if (project.surveyPoints.length === 0 || !progress.survey) return "Next: capture or import survey/control points.";
@@ -867,7 +1091,7 @@ function walkthroughStorageKey(projectId: string): string {
 }
 
 function workflowModeLabel(mode: AppSettings["mappingWorkflowMode"]): string {
-  return mode === "design" ? "Edit Geometry" : "Review Layout";
+  return mode === "design" ? "Design" : "Layout RTK";
 }
 
 function Section({ title, icon, children, testID }: { title: string; icon: React.ReactNode; children: React.ReactNode; testID?: string }): React.JSX.Element {
@@ -889,6 +1113,200 @@ function StatusPill({ icon, label, testID }: { icon: React.ReactNode; label: str
       <Text style={styles.statusText}>{label}</Text>
     </View>
   );
+}
+
+function ProjectTreeRail({
+  activeContext,
+  activeView,
+  catalog,
+  compact,
+  onCreateCustomer,
+  onCreateDesign,
+  onCreateFieldMap,
+  onCreateProject,
+  onNavigate,
+  onOpenDesign,
+  onOpenFieldMap,
+  onOpenProject,
+  onOpenSample,
+  onSelectCustomer,
+  onSelectFieldMap,
+  onSelectProject,
+}: {
+  activeContext: {
+    customerId: string | null;
+    projectId: string | null;
+    fieldMapId: string | null;
+    designId: string | null;
+  };
+  activeView: WorkspaceView;
+  catalog: ProjectWorkspaceStatus["catalog"];
+  compact: boolean;
+  onCreateCustomer: () => void | Promise<void>;
+  onCreateDesign: () => void | Promise<void>;
+  onCreateFieldMap: () => void | Promise<void>;
+  onCreateProject: () => void | Promise<void>;
+  onNavigate: (view: WorkspaceView) => void;
+  onOpenDesign: (designId: string) => void | Promise<void>;
+  onOpenFieldMap: (fieldMapId: string) => void | Promise<void>;
+  onOpenProject: (projectId: string) => void | Promise<void>;
+  onOpenSample: () => void;
+  onSelectCustomer: (customerId: string) => void;
+  onSelectFieldMap: (fieldMapId: string) => void;
+  onSelectProject: (projectId: string) => void;
+}): React.JSX.Element {
+  const visibleCustomers = activeContext.projectId
+    ? catalog.customers.filter((customer) => customer.id === activeContext.customerId)
+    : catalog.customers;
+  const activeProject = activeContext.projectId
+    ? catalog.projects.find((project) => project.id === activeContext.projectId) ?? null
+    : null;
+
+  return (
+    <View style={[styles.leftRail, compact && styles.leftRailCompact]} testID="workspace-rail">
+      <View style={styles.projectTreePanel} testID="project-tree-rail">
+        <View style={styles.projectTreeHeader}>
+          <FolderOpen size={18} color="#d5e2db" />
+          <Text style={styles.projectTreeTitle}>{activeProject ? activeProject.name : "Project Catalog"}</Text>
+        </View>
+        <View style={styles.projectTreeActions} testID="project-tree-actions">
+          <SmallActionButton label="Customer" onPress={onCreateCustomer} />
+          <SmallActionButton label="Create New" onPress={onCreateProject} />
+          <SmallActionButton label="Project" onPress={onCreateProject} />
+          <SmallActionButton disabled={!activeContext.projectId} label="Field Map" onPress={onCreateFieldMap} />
+          <SmallActionButton disabled={!activeContext.fieldMapId} label="Design" onPress={onCreateDesign} />
+          <SmallActionButton label="Open Sample" onPress={onOpenSample} />
+        </View>
+        <ScrollView style={[styles.projectTreeScroll, compact && styles.projectTreeScrollCompact]} contentContainerStyle={styles.projectTreeContent} testID="project-tree-scroll">
+          {catalog.customers.length === 0 ? (
+            <Text style={styles.projectTreeEmpty}>No customer folders yet.</Text>
+          ) : null}
+          {visibleCustomers.map((customer) => {
+            const projects = catalog.projects.filter((project) => project.customerId === customer.id);
+            return (
+              <View key={customer.id} style={styles.projectTreeGroup}>
+                <ProjectTreeNode
+                  active={activeContext.customerId === customer.id}
+                  depth={0}
+                  icon={<FolderOpen size={15} color="#d5e2db" />}
+                  label={customer.displayName}
+                  meta={`${projects.length} project${projects.length === 1 ? "" : "s"}`}
+                  onOpen={() => onSelectCustomer(customer.id)}
+                  onSelect={() => onSelectCustomer(customer.id)}
+                  testID={`catalog-customer-${customer.id}`}
+                />
+                {projects.map((projectRecord) => {
+                  const fieldMaps = catalog.fieldMaps.filter((fieldMap) => fieldMap.projectId === projectRecord.id);
+                  const showProjectChildren = activeContext.projectId === null || activeContext.projectId === projectRecord.id;
+                  return (
+                    <View key={projectRecord.id}>
+                      <ProjectTreeNode
+                        active={activeContext.projectId === projectRecord.id}
+                        depth={1}
+                        icon={<Database size={14} color="#d5e2db" />}
+                        label={projectRecord.name}
+                        meta={`${fieldMaps.length} field map${fieldMaps.length === 1 ? "" : "s"}`}
+                        onOpen={() => onOpenProject(projectRecord.id)}
+                        onSelect={() => onSelectProject(projectRecord.id)}
+                        testID={`catalog-project-${projectRecord.id}`}
+                      />
+                      {showProjectChildren ? fieldMaps.map((fieldMap) => {
+                        const designs = catalog.designs.filter((design) => design.fieldMapId === fieldMap.id);
+                        return (
+                          <View key={fieldMap.id}>
+                            <ProjectTreeNode
+                              active={activeContext.fieldMapId === fieldMap.id}
+                              depth={2}
+                              icon={<MapIcon size={14} color="#d5e2db" />}
+                              label={fieldMap.name}
+                              meta={`${designs.length} design${designs.length === 1 ? "" : "s"}`}
+                              onOpen={() => onOpenFieldMap(fieldMap.id)}
+                              onSelect={() => onSelectFieldMap(fieldMap.id)}
+                              testID={`catalog-field-map-${fieldMap.id}`}
+                            />
+                            {designs.map((design) => (
+                              <ProjectTreeNode
+                                active={activeContext.designId === design.id}
+                                depth={3}
+                                icon={<Layers size={14} color="#d5e2db" />}
+                                key={design.id}
+                                label={design.name}
+                                meta={design.isActive ? "active design" : "layout variant"}
+                                onOpen={() => onOpenDesign(design.id)}
+                                onSelect={() => onSelectFieldMap(fieldMap.id)}
+                                testID={`catalog-design-${design.id}`}
+                              />
+                            ))}
+                          </View>
+                        );
+                      }) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
+      <View style={[styles.projectTreeNav, compact && styles.projectTreeNavCompact]}>
+        <RailButton active={activeView === "dashboard"} icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
+        <RailButton active={activeView === "map"} icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
+        <RailButton active={activeView === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
+        <RailButton active={activeView === "review"} icon={<ClipboardList size={18} />} label="Review" onPress={() => onNavigate("review")} testID="workspace-nav-review" />
+        <RailButton active={activeView === "files"} icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
+        <RailButton active={activeView === "settings"} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => onNavigate("settings")} testID="workspace-nav-settings" />
+      </View>
+    </View>
+  );
+}
+
+function ProjectTreeNode({
+  active,
+  depth,
+  icon,
+  label,
+  meta,
+  onOpen,
+  onSelect,
+  testID,
+}: {
+  active: boolean;
+  depth: 0 | 1 | 2 | 3;
+  icon: React.ReactNode;
+  label: string;
+  meta: string;
+  onOpen: () => void | Promise<void>;
+  onSelect: () => void;
+  testID: string;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      aria-selected={active}
+      onPress={onSelect}
+      style={[styles.projectTreeNode, active && styles.projectTreeNodeActive, { paddingLeft: 8 + depth * 12 }]}
+      testID={testID}
+      {...webDoubleClickProps(onOpen)}
+    >
+      {icon}
+      <View style={styles.projectTreeNodeText}>
+        <Text style={[styles.projectTreeNodeLabel, active && styles.projectTreeNodeLabelActive]} numberOfLines={1}>{label}</Text>
+        <Text style={styles.projectTreeNodeMeta} numberOfLines={1}>{meta}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function webDoubleClickProps(onDoubleClick: () => void | Promise<void>): Record<string, unknown> {
+  if (Platform.OS !== "web") return {};
+  return {
+    onDoubleClick: (event: React.MouseEvent) => {
+      event.preventDefault();
+      void onDoubleClick();
+    },
+  };
 }
 
 function RailButton({ active, icon, label, onPress, testID }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
@@ -1093,6 +1511,14 @@ function requiredFiniteNumber(value: string, label: string): number {
   return parsed;
 }
 
+function promptText(message: string, fallback: string): string {
+  if (Platform.OS === "web" && typeof globalThis.prompt === "function") {
+    const prompted = globalThis.prompt(message, fallback)?.trim();
+    if (prompted) return prompted;
+  }
+  return fallback;
+}
+
 const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: "#edf1eb",
@@ -1156,17 +1582,105 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 12,
-    width: 148,
+    position: "relative",
+    width: 292,
+    zIndex: 2,
   },
   leftRailCompact: {
     borderRightWidth: 0,
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexShrink: 0,
+    maxHeight: 360,
     paddingHorizontal: 8,
     width: "100%",
   },
   workspaceScroll: {
     flex: 1,
+  },
+  projectTreeHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 32,
+  },
+  projectTreePanel: {
+    gap: 6,
+  },
+  projectTreeTitle: {
+    color: "#eef7f1",
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  projectTreeActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingBottom: 6,
+  },
+  projectTreeScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  projectTreeScrollCompact: {
+    flexGrow: 0,
+    maxHeight: 120,
+    minHeight: 30,
+  },
+  projectTreeContent: {
+    gap: 6,
+    paddingBottom: 8,
+  },
+  projectTreeGroup: {
+    gap: 3,
+  },
+  projectTreeEmpty: {
+    color: "#d5e2db",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+  projectTreeNode: {
+    alignItems: "center",
+    borderColor: "transparent",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 7,
+    minHeight: 42,
+    paddingRight: 8,
+    paddingVertical: 7,
+  },
+  projectTreeNodeActive: {
+    backgroundColor: "#274f42",
+    borderColor: "#6da992",
+  },
+  projectTreeNodeText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  projectTreeNodeLabel: {
+    color: "#e5f0e8",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  projectTreeNodeLabelActive: {
+    color: "#ffffff",
+  },
+  projectTreeNodeMeta: {
+    color: "#aebfb6",
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  projectTreeNav: {
+    borderTopColor: "#26392f",
+    borderTopWidth: 1,
+    gap: 5,
+    paddingTop: 8,
+  },
+  projectTreeNavCompact: {
+    flexDirection: "row",
+    flexWrap: "wrap",
   },
   railButton: {
     alignItems: "center",

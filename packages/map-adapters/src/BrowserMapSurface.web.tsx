@@ -70,9 +70,11 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onPlacePivot,
     onSelectMapFeature,
   } = props;
+  const homeView = props.homeView === true;
   const { width } = useWindowDimensions();
   const compactLayout = width < 760;
   const designMode = settings.mappingWorkflowMode === "design";
+  const canEditOnMap = designMode && !homeView;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const callbacksRef = useRef({
@@ -100,6 +102,13 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     }
   }, [settings.onlineImagery.customSource, settings.onlineImagery.enabled, settings.onlineImagery.providerId]);
   const projectionFrame = useMemo(() => {
+    if (homeView) {
+      return {
+        center: [-98, 49] as [number, number],
+        bounds: [-168, 15, -52, 72] as [number, number, number, number],
+        error: null as string | null,
+      };
+    }
     try {
       return {
         center: projectWgs84Center(project),
@@ -113,8 +122,14 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [project]);
+  }, [homeView, project]);
   const overlayState = useMemo(() => {
+    if (homeView) {
+      return {
+        featureCollection: { type: "FeatureCollection" as const, features: [] },
+        error: null as string | null,
+      };
+    }
     try {
       return {
         featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices),
@@ -126,7 +141,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [draftVertices, project, result]);
+  }, [draftVertices, homeView, project, result]);
   const projectionError = projectionFrame.error ?? overlayState.error;
   const activeProvider = provider instanceof Error ? null : provider;
   const providerError = provider instanceof Error ? provider.message : null;
@@ -168,13 +183,18 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }, [activeLayer, mapFeatureKind, mapFeatureOption.geometry, mode, project.projectCrs, settings.mappingWorkflowMode, settings.onlineImagery.enabled]);
 
   useEffect(() => {
-    if (designMode) {
-      setStatus("Edit Geometry mode: projected XY edits require Commit before they change the project.");
+    if (homeView) {
+      clearDraft("Select or create a field map/design from the project tree before editing projected XY geometry.");
+      setMode("pan");
       return;
     }
-    clearDraft("Review Layout is inspection only; projected XY geometry callbacks are blocked.");
+    if (designMode) {
+      setStatus("Design mode: projected XY edits require Commit before they change the project.");
+      return;
+    }
+    clearDraft("Layout mode is RTK-only; pointer gestures inspect and do not mutate projected XY geometry.");
     setMode("pan");
-  }, [designMode]);
+  }, [designMode, homeView]);
 
   useEffect(() => {
     if (!containerRef.current || projectionError) return undefined;
@@ -198,6 +218,10 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     });
     map.on("click", (event) => {
       const current = interactionRef.current;
+      if (homeView) {
+        setStatus("North America map is a catalog view. Open a field map or design before editing projected XY geometry.");
+        return;
+      }
       const selectedFeatureId = mapFeatureIdAtPoint(map, event.point);
       if (selectedFeatureId && (current.mode === "pan" || current.workflowMode === "layout")) {
         callbacksRef.current.onSelectMapFeature?.(selectedFeatureId);
@@ -219,7 +243,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       mapRef.current = null;
       map.remove();
     };
-  }, [activeProvider, providerKey, project.id, projectionError, projectionFrame.bounds, projectionFrame.center]);
+  }, [activeProvider, homeView, providerKey, project.id, projectionError, projectionFrame.bounds, projectionFrame.center]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -239,7 +263,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }
 
   function setTool(nextMode: DrawingMode, nextLayer?: DrawingLayerType): void {
-    if (!designMode && nextMode !== "pan") return;
+    if ((!designMode || homeView) && nextMode !== "pan") return;
     setMode(nextMode);
     if (nextLayer) setActiveLayer(nextLayer);
     if (nextMode !== "draw_boundary" && nextMode !== "mark_obstacle" && nextMode !== "measure") {
@@ -249,7 +273,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
 
   function applyClickIntent(intent: BrowserMapClickIntent): void {
     if (intent.type === "none") {
-      if (intent.reason === "review_layout_no_mutation") setStatus("Review Layout is read-only; switch to Edit Geometry before changing project geometry.");
+      if (intent.reason === "review_layout_no_mutation") setStatus("Layout mode is RTK-only; switch to Design for pointer-based geometry edits.");
       return;
     }
     if (intent.type === "draft_vertex") {
@@ -277,7 +301,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }
 
   function commitDraft(): void {
-    if (!designMode || draftVertices.length < 3) return;
+    if (!canEditOnMap || draftVertices.length < 3) return;
     let committedStatus: string | null = null;
     if (mode === "draw_boundary") {
       callbacksRef.current.onCommitBoundaryDraft?.(draftVertices);
@@ -290,7 +314,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }
 
   function saveMapFeatureLine(): void {
-    if (!designMode || mode !== "measure" || mapFeatureOption.geometry !== "LineString" || draftVertices.length < 2) return;
+    if (!canEditOnMap || mode !== "measure" || mapFeatureOption.geometry !== "LineString" || draftVertices.length < 2) return;
     callbacksRef.current.onAddMapFeature?.({
       name: defaultMapFeatureName(mapFeatureKind, draftVertices.length),
       kind: mapFeatureKind,
@@ -306,26 +330,26 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     setStatus(nextStatus);
   }
 
-  const canCommitDraft = designMode && draftVertices.length >= 3 && (mode === "draw_boundary" || mode === "mark_obstacle");
-  const canSaveFeature = designMode && mode === "measure" && mapFeatureOption.geometry === "LineString" && draftVertices.length >= 2;
+  const canCommitDraft = canEditOnMap && draftVertices.length >= 3 && (mode === "draw_boundary" || mode === "mark_obstacle");
+  const canSaveFeature = canEditOnMap && mode === "measure" && mapFeatureOption.geometry === "LineString" && draftVertices.length >= 2;
 
   return (
     <View style={styles.shell} testID="browser-map-workbench">
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.title}>Imagery Workbench</Text>
-          <Text style={styles.subtitle}>{project.projectCrs} canonical geometry · {activeProvider?.name ?? "offline overlay"} </Text>
+          <Text style={styles.title}>{homeView ? "North America Map" : "Imagery Workbench"}</Text>
+          <Text style={styles.subtitle}>{homeView ? "Customer/project catalog view" : `${project.projectCrs} canonical geometry`} · {activeProvider?.name ?? "offline overlay"} </Text>
         </View>
         <View style={styles.segmented}>
           <ModeSwitch
             active={settings.mappingWorkflowMode === "design"}
-            label="Edit Geometry"
+            label="Design"
             onPress={() => onMappingWorkflowModeChange?.("design")}
             testID="browser-workflow-design"
           />
           <ModeSwitch
             active={settings.mappingWorkflowMode === "layout"}
-            label="Review Layout"
+            label="Layout"
             onPress={() => onMappingWorkflowModeChange?.("layout")}
             testID="browser-workflow-layout"
           />
@@ -340,7 +364,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         })}
         <View style={[styles.toolHud, compactLayout && styles.toolHudCompact]}>
           <ToolButton active={mode === "pan"} icon={<Hand size={17} color={mode === "pan" ? "#ffffff" : "#173428"} />} label="Pan" onPress={() => setTool("pan")} testID="browser-tool-pan" />
-          {designMode ? (
+          {canEditOnMap ? (
             <>
               <ToolButton active={mode === "draw_boundary"} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} testID="browser-tool-boundary" />
               <ToolButton active={mode === "mark_obstacle"} icon={<Layers size={17} color={mode === "mark_obstacle" ? "#ffffff" : "#173428"} />} label="Obstacle" onPress={() => setTool("mark_obstacle", "obstacle")} testID="browser-tool-obstacle" />
@@ -351,7 +375,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           ) : null}
         </View>
 
-        {designMode && mode === "mark_obstacle" ? (
+        {canEditOnMap && mode === "mark_obstacle" ? (
           <View style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["obstacle", "road", "ditch", "fence", "tree", "building", "canal", "exclusion"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
@@ -359,7 +383,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        {designMode && mode === "place_pivot" ? (
+        {canEditOnMap && mode === "place_pivot" ? (
           <View style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["pivot_center", "water_source", "power_source"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
@@ -367,7 +391,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        {designMode && mode === "capture_point" ? (
+        {canEditOnMap && mode === "capture_point" ? (
           <View style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["control_point", "field_boundary", "obstacle", "note_point"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
@@ -375,7 +399,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        {designMode && mode === "measure" ? (
+        {canEditOnMap && mode === "measure" ? (
           <View style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {UTILITY_FEATURE_OPTIONS.map((option) => (
               <Chip
@@ -402,10 +426,10 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         </View>
 
-        {!designMode ? (
+        {!canEditOnMap ? (
           <View style={[styles.reviewHud, compactLayout && styles.reviewHudCompact]} testID="browser-map-review-hud">
             <MapPinned size={17} color="#173428" />
-            <Text style={styles.reviewHudText}>Review Layout: map gestures and inspection only. Geometry callbacks are blocked.</Text>
+            <Text style={styles.reviewHudText}>{homeView ? "Catalog map: open a field map or design before editing." : "Layout mode: RTK-only geometry changes; pointer gestures inspect only."}</Text>
           </View>
         ) : null}
 

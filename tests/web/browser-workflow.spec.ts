@@ -273,6 +273,21 @@ test("settings offline package guardrail keeps network tiles disabled", async ({
   await saveScreen(page, testInfo, "settings-offline-package-guardrail");
 });
 
+test("settings offline package type changes keep local-only guardrails", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  const packageSummary = page.getByTestId("settings-offline-package-summary");
+  await page.getByRole("button", { name: "MBTILES" }).click();
+  await expect(packageSummary).toHaveText(/Network tiles: disabled/);
+  await expect(packageSummary).toHaveText(/Attribution: required/);
+  await page.getByRole("button", { name: "RASTER TILES" }).click();
+  await expect(packageSummary).toHaveText(/Network tiles: disabled/);
+  await expect(packageSummary).toHaveText(/Local directory: offline-map-packages/);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-offline-package-type-change");
+});
+
 test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

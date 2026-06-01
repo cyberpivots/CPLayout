@@ -129,7 +129,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
       await recordDecision(recommendation, "accepted");
       onPreviewRecommendation?.(null);
       setPendingApply(null);
-      setStatus(`Applied projected XY geometry from ${recommendation.id}. Undo is available in the layout editor.`);
+      setStatus(`Applied projected XY geometry from ${recommendation.id}. Save Local persists the edited project; Undo is available in the layout editor.`);
     } catch (error) {
       setStatus(errorMessage(error));
     }

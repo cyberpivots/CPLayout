@@ -428,7 +428,7 @@ test("expert review apply xy marks the project dirty only after confirmation", a
   await expect(page.getByTestId("review-apply-confirmation")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await page.getByRole("button", { name: "Apply XY" }).click();
-  await expect(page.getByText(/Applied projected XY geometry/)).toBeVisible();
+  await expect(page.getByText(/Applied projected XY geometry .* Save Local persists the edited project/)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
   await expect(page.getByTestId("review-apply-confirmation")).toHaveCount(0);
   await saveScreen(page, testInfo, "expert-review-apply-xy-dirty");

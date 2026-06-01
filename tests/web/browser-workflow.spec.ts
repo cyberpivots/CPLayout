@@ -358,6 +358,35 @@ test("files projected geojson import can be saved locally", async ({ page }, tes
   await saveScreen(page, testInfo, "files-geojson-import-save-local");
 });
 
+test("files projected geojson import clears the paste field after success", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const input = page.getByTestId("files-geojson-import-input");
+  await input.fill(JSON.stringify({
+    type: "FeatureCollection",
+    properties: { projectCrs: "EPSG:32613" },
+    features: [{
+      type: "Feature",
+      properties: { layerType: "field_boundary" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [501000, 4506000],
+          [501300, 4506000],
+          [501300, 4506300],
+          [501000, 4506300],
+          [501000, 4506000],
+        ]],
+      },
+    }],
+  }));
+  await page.getByRole("button", { name: "Import GeoJSON" }).click();
+  await expect(page.getByTestId("files-status").getByText(/Imported projected GeoJSON boundary/)).toBeVisible();
+  await expect(input).toHaveValue("");
+  await saveScreen(page, testInfo, "files-geojson-import-clears-input");
+});
+
 test("files geojson import rejects wgs84 as canonical geometry", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

@@ -288,6 +288,29 @@ test("settings custom imagery rejects credentialed tile templates", async ({ pag
   await saveScreen(page, testInfo, "settings-custom-imagery-token-rejected");
 });
 
+test("settings rejected credentialed imagery never reaches map requests", async ({ page }, testInfo) => {
+  const requestedUrls: string[] = [];
+  page.on("request", (request) => {
+    requestedUrls.push(request.url());
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await page.getByRole("button", { name: "Custom open" }).click();
+  await page.getByLabel("Source name").fill("Rejected Token Tiles");
+  await page.getByLabel("Tile URL").fill("https://tiles.example.com/{z}/{x}/{y}.png?token=secret");
+  await page.getByLabel("Coverage").fill("Credentialed source should not be accepted");
+  await page.getByLabel("Attribution").fill("Rejected attribution");
+  await page.getByLabel("License").fill("Rejected license");
+  await expect(page.getByRole("button", { name: "Apply custom open imagery source" })).toBeDisabled();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByText(/No live imagery source enabled/)).toBeVisible();
+  expect(requestedUrls.filter((url) => url.includes("tiles.example.com"))).toEqual([]);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-rejected-imagery-no-request");
+});
+
 test("settings custom imagery applies no-key local tile templates", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

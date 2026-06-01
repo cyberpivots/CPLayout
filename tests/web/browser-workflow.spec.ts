@@ -751,6 +751,35 @@ test("survey view reflects imported projected survey csv evidence", async ({ pag
   await saveScreen(page, testInfo, "survey-imported-csv-evidence");
 });
 
+test("survey point promotion writes projected water source after explicit action", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nsurvey-water-promote,Imported Water,water_source,501030,4506030,imported,rtk_fixed\n");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await page.getByRole("button", { name: "Save Local *" }).click();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await page.getByTestId("workspace-nav-survey").click();
+  const importedPoint = page.getByTestId("survey-point-survey-water-promote");
+  await expect(importedPoint.getByText("Imported Water")).toBeVisible();
+  await importedPoint.getByRole("button", { name: "Set Water" }).click();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await page.getByTestId("workspace-nav-files").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export ZIP" }).click();
+  const download = await downloadPromise;
+  const archivePath = await download.path();
+  expect(archivePath, "download path").not.toBeNull();
+  if (!archivePath) return;
+  const archive = unzipSync(new Uint8Array(await readFile(archivePath)));
+  const projectJsonBytes = archive["project.json"];
+  expect(projectJsonBytes, "project.json in archive").toBeDefined();
+  if (!projectJsonBytes) return;
+  const projectDocument = JSON.parse(strFromU8(projectJsonBytes)) as { project?: { waterSource?: { x?: number; y?: number } } };
+  expect(projectDocument.project?.waterSource).toEqual({ x: 501030, y: 4506030 });
+  await saveScreen(page, testInfo, "survey-water-promotion-export");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

@@ -196,6 +196,26 @@ test("settings custom imagery rejects credentialed tile templates", async ({ pag
   await saveScreen(page, testInfo, "settings-custom-imagery-token-rejected");
 });
 
+test("settings custom imagery applies no-key local tile templates", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await page.getByRole("button", { name: "Custom open" }).click();
+  await page.getByLabel("Source name").fill("Local Open Tiles");
+  await page.getByLabel("Tile URL").fill("http://127.0.0.1:8088/tiles/{z}/{x}/{y}.png");
+  await page.getByLabel("Coverage").fill("Operator-hosted local tile cache");
+  await page.getByLabel("Attribution").fill("Operator open imagery");
+  await page.getByLabel("License").fill("Open local imagery license");
+  await expect(page.getByText("Custom source ready")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply custom open imagery source" })).toBeEnabled();
+  await page.getByRole("button", { name: "Apply custom open imagery source" }).click();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/Operator-hosted local tile cache/);
+  await expect(page.getByTestId("settings-imagery-guardrail-summary")).toHaveText(/imagery is reference-only and never canonical geometry/);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-custom-imagery-local-applied");
+});
+
 test("settings offline imagery guardrail exposes local-only export boundary", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

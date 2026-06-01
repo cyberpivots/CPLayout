@@ -184,10 +184,10 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
           onDecrease={() => update({ onlineImagery: { ...settings.onlineImagery, maxTilesPerView: clamp(settings.onlineImagery.maxTilesPerView - 8, 8, 128) } })}
           onIncrease={() => update({ onlineImagery: { ...settings.onlineImagery, maxTilesPerView: clamp(settings.onlineImagery.maxTilesPerView + 8, 8, 128) } })}
         />
-        <Text style={styles.lockedText}>
+        <Text style={styles.lockedText} testID="settings-imagery-source-summary">
           {imagerySourceSummary}
         </Text>
-        <Text style={styles.lockedText}>
+        <Text style={styles.lockedText} testID="settings-imagery-guardrail-summary">
           {imageryGuardrailSummary}
         </Text>
         {customFormVisible ? (

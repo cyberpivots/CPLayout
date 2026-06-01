@@ -177,6 +177,26 @@ test("settings custom imagery guidance blocks hidden-key assumptions", async ({ 
   await saveScreen(page, testInfo, "settings-custom-imagery-guidance");
 });
 
+test("settings offline imagery guardrail exposes local-only export boundary", async ({ page }, testInfo) => {
+  const externalRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (!url.startsWith(testInfo.project.use.baseURL ?? "") && !url.startsWith("data:") && !url.startsWith("blob:")) {
+      externalRequests.push(url);
+    }
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/no external tile source is requested/);
+  await expect(page.getByTestId("settings-imagery-guardrail-summary")).toHaveText(/project exports keep projected\/local XY geometry/);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  expect(externalRequests).toEqual([]);
+  await saveScreen(page, testInfo, "settings-offline-imagery-guardrail");
+});
+
 test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

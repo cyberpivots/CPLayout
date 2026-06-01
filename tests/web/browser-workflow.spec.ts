@@ -304,6 +304,28 @@ test("settings map style changes do not enable online imagery", async ({ page },
   await saveScreen(page, testInfo, "settings-map-style-offline-imagery");
 });
 
+test("settings offline imagery off blocks map tile requests after live source is active", async ({ page }, testInfo) => {
+  const externalRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (!url.startsWith(testInfo.project.use.baseURL ?? "") && !url.startsWith("data:") && !url.startsWith("blob:")) {
+      externalRequests.push(url);
+    }
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/live preview only/);
+  await page.getByRole("button", { name: "Off" }).click();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/no external tile source is requested/);
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByText(/No live imagery source enabled/)).toBeVisible();
+  expect(externalRequests).toEqual([]);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-offline-map-no-tile-requests");
+});
+
 test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

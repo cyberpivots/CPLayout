@@ -262,6 +262,23 @@ test("browser map workflow modes expose active state", async ({ page }, testInfo
   await saveScreen(page, testInfo, "browser-map-workflow-active-state");
 });
 
+test("browser map utility option chips expose active state", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("browser-tool-utility").click();
+  const pipe = page.getByRole("button", { name: "Pipe", exact: true });
+  const pump = page.getByRole("button", { name: "Pump", exact: true });
+  await expect(pipe).toHaveAttribute("aria-pressed", "true");
+  await expect(pump).toHaveAttribute("aria-pressed", "false");
+  await pump.click();
+  await expect(pipe).toHaveAttribute("aria-pressed", "false");
+  await expect(pump).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "browser-map-chip-active-state");
+});
+
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

@@ -299,7 +299,7 @@ export function BrowserRtkReceiverPanel({
           <Satellite size={20} color="#254234" />
           <Text style={styles.title}>Browser RTK Receiver</Text>
         </View>
-        <View style={[styles.gateBadge, gate.accepted ? styles.gateBadgeAccepted : styles.gateBadgeBlocked]}>
+        <View style={[styles.gateBadge, gate.accepted ? styles.gateBadgeAccepted : styles.gateBadgeBlocked]} testID="rtk-gate-badge">
           {gate.accepted ? <CheckCircle2 size={16} color="#1f5f39" /> : <CircleAlert size={16} color="#8b1e18" />}
           <Text style={[styles.gateText, gate.accepted ? styles.gateTextAccepted : styles.gateTextBlocked]}>{gate.accepted ? "Gate accepted" : "Gate closed"}</Text>
         </View>
@@ -322,7 +322,7 @@ export function BrowserRtkReceiverPanel({
         />
       </View>
 
-      <Text style={styles.statusText}>{status}</Text>
+      <Text style={styles.statusText} testID="rtk-status">{status}</Text>
       <View style={styles.metricsGrid}>
         <RtkMetric label="Fix" value={quality.fixType} />
         <RtkMetric label="Satellites" value={formatNullable(quality.satellites)} />
@@ -333,7 +333,7 @@ export function BrowserRtkReceiverPanel({
         <RtkMetric label="Est. accuracy" value={quality.horizontalAccuracyMeters === null ? "unknown" : `${quality.horizontalAccuracyMeters.toFixed(3)} m`} />
         <RtkMetric label="NMEA lines" value={`${sentenceCount}`} />
       </View>
-      {!gate.accepted ? <Text style={styles.gateReasons}>{gate.reasons.slice(0, 3).join("; ") || "Waiting for accepted NMEA quality."}</Text> : null}
+      {!gate.accepted ? <Text style={styles.gateReasons} testID="rtk-gate-reasons">{gate.reasons.slice(0, 3).join("; ") || "Waiting for accepted NMEA quality."}</Text> : null}
 
       <View style={styles.captureBlock}>
         <Text style={styles.groupTitle}>Survey Point</Text>

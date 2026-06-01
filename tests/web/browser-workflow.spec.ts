@@ -92,6 +92,19 @@ test("public proof map features can select the side-panel editor without geometr
   await saveScreen(page, testInfo, "public-proof-feature-selected");
 });
 
+test("survey rtk receiver starts closed without mutating the project", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-survey").click();
+  await expect(page.getByTestId("survey-view")).toBeVisible();
+  await expect(page.getByTestId("rtk-gate-badge").getByText("Gate closed")).toBeVisible();
+  await expect(page.getByTestId("rtk-gate-reasons")).toHaveText(/fix unknown is below required rtk_fixed/);
+  await expect(page.getByTestId("rtk-status")).toHaveText(/No receiver connected|Web Serial is unavailable/);
+  await expect(page.getByRole("button", { name: "Capture Survey Point" })).toBeDisabled();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "survey-rtk-gate-closed");
+});
+
 test("browser boundary commit keeps projected geometry status explicit", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

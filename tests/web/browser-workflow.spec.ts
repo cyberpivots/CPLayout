@@ -1,4 +1,6 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { strFromU8, unzipSync } from "fflate";
+import { readFile } from "node:fs/promises";
 
 const routeScreens = [
   { nav: "workspace-nav-dashboard", screen: "dashboard-workspace" },
@@ -324,6 +326,39 @@ test("settings offline imagery off blocks map tile requests after live source is
   expect(externalRequests).toEqual([]);
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "settings-offline-map-no-tile-requests");
+});
+
+test("settings browser-local imagery settings stay out of project zip", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "MBTILES" }).click();
+  await page.getByRole("button", { name: "Custom open" }).click();
+  await page.getByLabel("Source name").fill("Local Open Tiles");
+  await page.getByLabel("Tile URL").fill("http://127.0.0.1:8088/tiles/{z}/{x}/{y}.png");
+  await page.getByLabel("Coverage").fill("Operator-hosted local tile cache");
+  await page.getByLabel("Attribution").fill("Operator open imagery");
+  await page.getByLabel("License").fill("Open local imagery license");
+  await page.getByRole("button", { name: "Apply custom open imagery source" }).click();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/Operator-hosted local tile cache/);
+  await page.getByTestId("workspace-nav-files").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export ZIP" }).click();
+  const download = await downloadPromise;
+  const archivePath = await download.path();
+  expect(archivePath, "download path").not.toBeNull();
+  if (!archivePath) return;
+  const archive = unzipSync(new Uint8Array(await readFile(archivePath)));
+  const projectJsonBytes = archive["project.json"];
+  expect(projectJsonBytes, "project.json in archive").toBeDefined();
+  if (!projectJsonBytes) return;
+  const projectJson = strFromU8(projectJsonBytes);
+  expect(projectJson).not.toContain("onlineImagery");
+  expect(projectJson).not.toContain("tileUrlTemplate");
+  expect(projectJson).not.toContain("Local Open Tiles");
+  expect(projectJson).not.toContain("offline-map-packages");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-local-imagery-excluded-from-zip");
 });
 
 test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {

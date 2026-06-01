@@ -439,6 +439,18 @@ test("files survey csv import can be saved locally", async ({ page }, testInfo) 
   await saveScreen(page, testInfo, "files-survey-csv-import-save-local");
 });
 
+test("files survey csv import clears the paste field after success", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const input = page.getByTestId("files-survey-csv-import-input");
+  await input.fill("id,label,role,x,y,source,confidence\np1,Point 1,control,501010,4506010,imported,rtk_fixed\n");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await expect(page.getByTestId("files-status").getByText(/Imported 1 survey point/)).toBeVisible();
+  await expect(input).toHaveValue("");
+  await saveScreen(page, testInfo, "files-survey-csv-import-clears-input");
+});
+
 test("files survey csv import rejects missing projected xy columns", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

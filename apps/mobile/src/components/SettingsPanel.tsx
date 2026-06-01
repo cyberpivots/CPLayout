@@ -152,7 +152,9 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
             />
           ))}
         </View>
-        <Text style={styles.lockedText}>Network tiles: disabled · Attribution: required · Local directory: {settings.offlineMaps.packageDirectory}</Text>
+        <Text style={styles.lockedText} testID="settings-offline-package-summary">
+          Network tiles: disabled · Attribution: required · Local directory: {settings.offlineMaps.packageDirectory}
+        </Text>
       </SettingsGroup>
 
       <SettingsGroup icon={<Satellite size={20} color="#254234" />} title="Online Imagery Preview">

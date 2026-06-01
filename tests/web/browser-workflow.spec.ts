@@ -762,7 +762,7 @@ test("survey point promotion writes projected water source after explicit action
   await page.getByTestId("workspace-nav-survey").click();
   const importedPoint = page.getByTestId("survey-point-survey-water-promote");
   await expect(importedPoint.getByText("Imported Water")).toBeVisible();
-  await importedPoint.getByRole("button", { name: "Set Water" }).click();
+  await importedPoint.getByRole("button", { name: "Set Water from Imported Water" }).click();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
   await page.getByTestId("workspace-nav-files").click();
   const downloadPromise = page.waitForEvent("download");
@@ -791,7 +791,7 @@ test("survey point delete removes imported evidence from canonical export", asyn
   await page.getByTestId("workspace-nav-survey").click();
   const importedPoint = page.getByTestId("survey-point-survey-delete-me");
   await expect(importedPoint.getByText("Delete Me")).toBeVisible();
-  await importedPoint.getByRole("button", { name: "Delete" }).click();
+  await importedPoint.getByRole("button", { name: "Delete survey point Delete Me" }).click();
   await expect(importedPoint).toHaveCount(0);
   await expect(page.getByTestId("survey-metric-points")).toContainText("2");
   await expect(page.getByTestId("survey-metric-draft-inputs")).toContainText("1");
@@ -825,6 +825,17 @@ test("survey rtk float import counts as draft input", async ({ page }, testInfo)
   await expect(page.getByTestId("survey-point-float-only").getByText(/control .* imported .* rtk_float/)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
   await saveScreen(page, testInfo, "survey-rtk-float-planning-grade");
+});
+
+test("survey point row actions expose point-specific accessible names", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-survey").click();
+  await expect(page.getByRole("button", { name: "Set Pivot from Pivot center repeated shot" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete survey point Pivot center repeated shot" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete survey point Road digitized from imagery" })).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "survey-point-accessible-actions");
 });
 
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {

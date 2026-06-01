@@ -455,10 +455,10 @@ export default function App(): React.JSX.Element {
                     <Text style={styles.rowTitle}>{point.label}</Text>
                     <Text style={styles.rowMeta}>{point.role} · {point.source} · {point.confidence}</Text>
                     <View style={styles.inlineActions}>
-                      {point.role === "pivot_center" ? <SmallActionButton label="Set Pivot" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "pivot_center" })} /> : null}
-                      {point.role === "water_source" ? <SmallActionButton label="Set Water" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "water_source" })} /> : null}
-                      {point.role === "power_source" ? <SmallActionButton label="Set Power" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "power_source" })} /> : null}
-                      <SmallActionButton label="Delete" onPress={() => dispatchProject({ type: "delete_survey_point", id: point.id })} />
+                      {point.role === "pivot_center" ? <SmallActionButton accessibilityLabel={`Set Pivot from ${point.label}`} label="Set Pivot" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "pivot_center" })} /> : null}
+                      {point.role === "water_source" ? <SmallActionButton accessibilityLabel={`Set Water from ${point.label}`} label="Set Water" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "water_source" })} /> : null}
+                      {point.role === "power_source" ? <SmallActionButton accessibilityLabel={`Set Power from ${point.label}`} label="Set Power" onPress={() => dispatchProject({ type: "promote_survey_point", id: point.id, target: "power_source" })} /> : null}
+                      <SmallActionButton accessibilityLabel={`Delete survey point ${point.label}`} label="Delete" onPress={() => dispatchProject({ type: "delete_survey_point", id: point.id })} />
                     </View>
                   </View>
                   <Text style={styles.coordinate}>{formatProjectCoordinate(point.projected)}</Text>
@@ -911,9 +911,19 @@ function ActionButton({ label, onPress, selected = false }: { label: string; onP
   );
 }
 
-function SmallActionButton({ disabled = false, label, onPress }: { disabled?: boolean; label: string; onPress: () => void | Promise<void> }): React.JSX.Element {
+function SmallActionButton({
+  accessibilityLabel,
+  disabled = false,
+  label,
+  onPress,
+}: {
+  accessibilityLabel?: string;
+  disabled?: boolean;
+  label: string;
+  onPress: () => void | Promise<void>;
+}): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.smallActionButton, disabled && styles.smallActionButtonDisabled]}>
+    <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.smallActionButton, disabled && styles.smallActionButtonDisabled]}>
       {label.startsWith("Save") ? <Save size={14} color={disabled ? "#68766d" : "#254234"} /> : null}
       <Text style={[styles.smallActionText, disabled && styles.smallActionTextDisabled]}>{label}</Text>
     </Pressable>

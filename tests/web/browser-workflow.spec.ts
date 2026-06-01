@@ -288,6 +288,22 @@ test("settings offline package type changes keep local-only guardrails", async (
   await saveScreen(page, testInfo, "settings-offline-package-type-change");
 });
 
+test("settings map style changes do not enable online imagery", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/Live imagery disabled/);
+  await page.getByRole("button", { name: "Imagery", exact: true }).click();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/Live imagery disabled/);
+  await expect(page.getByTestId("settings-imagery-guardrail-summary")).toHaveText(/project exports keep projected\/local XY geometry/);
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByText("EPSG:32613 canonical geometry · offline overlay")).toBeVisible();
+  await expect(page.getByText(/No live imagery source enabled/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-map-style-offline-imagery");
+});
+
 test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

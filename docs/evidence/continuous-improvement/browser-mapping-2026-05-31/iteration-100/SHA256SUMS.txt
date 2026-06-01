@@ -1,0 +1,10 @@
+f67f70b16ad92a1318fbd91c5631597d44bd598bdc3db06427e69df7069644df  docs/evidence/continuous-improvement/browser-mapping-2026-05-31/iteration-100/README.md
+5a3a48d18cc2bb818370af568e8a4f34bc5ab37a55f9d56d2c11493e60400f02  docs/browser-mapping-final-proof-checklist.md
+3abd17316719cfb1f2d2d6091c16158c13009d0784b2434023a080b4943e7094  tests/web/browser-workflow.spec.ts
+8aed4afd24a26c20716251b13f7961468f5ded7b998da27c3621c9581d377870  tools/verify_continuous_improvement_ledger.ts
+e89491005a9a9f7a8355ce82d548d3673d3acc12ad2f80d283f8d3acd0cd95ec  reports/continuous-improvement/playwright-results/browser-workflow-browser-m-91b97-tay-inside-the-status-panel-desktop/browser-map-compact-hud-actions.png
+f792523e20f02d2de062d947855ce9da48b07f24435bf6244d462a7671fbf26f  reports/continuous-improvement/playwright-results/browser-workflow-review-la-ddd8d-d-only-and-actions-disabled-desktop/review-layout-actions-disabled.png
+e434f605af0b713b10e076a05e153dfe73a27d0bc7a0ca1446ac3540a54f0165  reports/continuous-improvement/playwright-results/browser-workflow-dashboard-e2cfe-ss-stays-out-of-project-zip-desktop/dashboard-walkthrough-excluded-from-zip.png
+a96bba5dd69e656e50fa087cb09f1b23085deaa73afeabda54a5b33e88096359  reports/continuous-improvement/playwright-results/browser-workflow-settings--77fb6-ngs-stay-out-of-project-zip-desktop/settings-local-imagery-excluded-from-zip.png
+d33f6e852925d954022a8c29172f6f74d58c78b1e83fd79cdb47f6a9fc6d0d52  reports/continuous-improvement/playwright-results/browser-workflow-survey-po-05643-ource-after-explicit-action-desktop/survey-water-promotion-export.png
+25207ccf4f40d5f06804e1a385d34bd5a674dae0af2d24d0e472025085a058e8  reports/continuous-improvement/playwright-results/browser-workflow-network-a-a8092-gs-on-allowed-imagery-hosts-desktop/network-credential-query-blocked.png

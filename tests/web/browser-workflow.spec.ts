@@ -397,6 +397,19 @@ test("files survey csv import dirties the project with projected point status", 
   await saveScreen(page, testInfo, "files-survey-csv-import-point");
 });
 
+test("files survey csv import can be saved locally", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\np1,Point 1,control,501010,4506010,imported,rtk_fixed\n");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await page.getByRole("button", { name: "Save Local *" }).click();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByTestId("files-status").getByText(/Browser local storage/)).toBeVisible();
+  await saveScreen(page, testInfo, "files-survey-csv-import-save-local");
+});
+
 test("files survey csv import rejects missing projected xy columns", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

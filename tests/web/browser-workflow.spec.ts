@@ -333,6 +333,24 @@ test("browser map compact HUD actions stay inside the status panel", async ({ pa
   await saveScreen(page, testInfo, "browser-map-compact-hud-actions");
 });
 
+test("review layout keeps map clicks read-only and actions disabled", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("browser-workflow-layout").click();
+  await expect(page.getByText("Review Layout: map gestures and inspection only. Geometry callbacks are blocked.")).toBeVisible();
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 160, y: 180 } });
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 200, y: 240 } });
+  await page.getByLabel("CPLayout MapLibre imagery workbench").click({ position: { x: 230, y: 185 } });
+  await expect(page.getByText("Review Layout is read-only; switch to Edit Geometry before changing project geometry.")).toBeVisible();
+  await expect(page.getByText("pan · 0 draft pts")).toBeVisible();
+  await expect(page.getByTestId("browser-action-commit")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("browser-action-save-feature")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("browser-action-clear")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "review-layout-actions-disabled");
+});
+
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

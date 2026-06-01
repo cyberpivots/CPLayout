@@ -183,7 +183,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
           <Text style={styles.statusLine}>{status}</Text>
         </View>
         {pendingApply ? (
-          <View style={styles.applyConfirm}>
+          <View accessibilityLabel="Confirm projected XY apply" accessibilityRole="alert" style={styles.applyConfirm} testID="review-apply-confirmation">
             <View style={styles.applyConfirmText}>
               <Text style={styles.confirmTitle}>Confirm Apply</Text>
               <Text style={styles.geometrySummary}>{applyMetricsSummary(project, result, pendingApply)}</Text>

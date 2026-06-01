@@ -177,6 +177,25 @@ test("settings custom imagery guidance blocks hidden-key assumptions", async ({ 
   await saveScreen(page, testInfo, "settings-custom-imagery-guidance");
 });
 
+test("settings custom imagery rejects credentialed tile templates", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  await page.getByRole("button", { name: "Off" }).click();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/Live imagery disabled/);
+  await page.getByRole("button", { name: "Custom open" }).click();
+  await page.getByLabel("Source name").fill("Open County Tiles");
+  await page.getByLabel("Tile URL").fill("https://example.org/tiles/{z}/{x}/{y}.png?token=secret");
+  await page.getByLabel("Coverage").fill("County open imagery coverage");
+  await page.getByLabel("Attribution").fill("County GIS imagery");
+  await page.getByLabel("License").fill("Open imagery license");
+  await expect(page.getByText(/cannot include hidden API keys, tokens, signatures, or subscription credentials/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply custom open imagery source" })).toBeDisabled();
+  await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/Live imagery disabled/);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-custom-imagery-token-rejected");
+});
+
 test("settings offline imagery guardrail exposes local-only export boundary", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

@@ -378,6 +378,19 @@ test("expert review reject records a decision without geometry mutation", async 
   await saveScreen(page, testInfo, "expert-review-reject-no-mutation");
 });
 
+test("expert review defer records a decision without geometry mutation", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-review").click();
+  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
+  await page.getByRole("button", { name: "Defer" }).first().click();
+  await expect(page.getByText(/Defer recorded .* projected XY geometry was not changed/)).toBeVisible();
+  await expect(page.getByText(/deferred/i).first()).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
+  await saveScreen(page, testInfo, "expert-review-defer-no-mutation");
+});
+
 test("expert review apply confirmation does not dirty before confirm", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

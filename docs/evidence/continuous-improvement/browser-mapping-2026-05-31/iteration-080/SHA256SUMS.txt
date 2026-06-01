@@ -1,0 +1,13 @@
+67da7976861e8418082d336a0e9efd53bc4c6d9ab9e44d5e2dd7a166463faf04  reports/continuous-improvement/playwright-results/browser-workflow-settings--1b31f-eeps-network-tiles-disabled-desktop/settings-offline-package-guardrail.png
+e16d62b25c117c2d57e60a1188521f8bbe5aa22acc74c3186deb0d438935a9ca  reports/continuous-improvement/playwright-results/browser-workflow-settings--2b718--keep-local-only-guardrails-desktop/settings-offline-package-type-change.png
+8cbd2b3f1fecd8ad846eaa8126eb3c0159d764e4b1d62863922f35713043e213  reports/continuous-improvement/playwright-results/browser-workflow-settings--23836-o-not-enable-online-imagery-desktop/settings-map-style-offline-imagery.png
+9dc509bb89367a1970fc58c0742f972ef0f802a4d7925791e2dd9b3c1847d55e  reports/continuous-improvement/playwright-results/browser-workflow-settings--fa370-after-live-source-is-active-desktop/settings-offline-map-no-tile-requests.png
+a96bba5dd69e656e50fa087cb09f1b23085deaa73afeabda54a5b33e88096359  reports/continuous-improvement/playwright-results/browser-workflow-settings--77fb6-ngs-stay-out-of-project-zip-desktop/settings-local-imagery-excluded-from-zip.png
+3b8c62a3654d0e410812d3ddf4542d44a2519d2402c88018e155b639061e9982  reports/continuous-improvement/playwright-results/browser-workflow-survey-rt-15c69-ithout-mutating-the-project-desktop/survey-rtk-gate-closed.png
+3b8c62a3654d0e410812d3ddf4542d44a2519d2402c88018e155b639061e9982  reports/continuous-improvement/playwright-results/browser-workflow-survey-rt-e5ac3-s-geometry-capture-controls-desktop/survey-rtk-geometry-disabled.png
+5b3614b41df32f2eee492150fd7852eafed737bb8092b53fd0f3b1cb3118c3ab  reports/continuous-improvement/playwright-results/browser-workflow-survey-rt-7eed5--local-while-gate-is-closed-desktop/survey-rtk-role-local.png
+4314a329465c4d060ab8dde23f5412b65bc796755c8f3ff2c10e441b549a8700  reports/continuous-improvement/playwright-results/browser-workflow-survey-rt-d6789--local-while-gate-is-closed-desktop/survey-rtk-feature-local.png
+62f894f6e59fd5aaa89b881277207ef1262146936c93ac359e0d808a0a284964  apps/mobile/src/components/BrowserRtkReceiverPanel.tsx
+baa9a0c59dc4aaa53657613369603141b47e4ae31051543dee762f2564a74ceb  apps/mobile/src/components/SettingsPanel.tsx
+42b39dccd7bc6adf2a60dff7b92292d1b016bed4d2e80cfec7ce4ababee7c0a5  tests/web/browser-workflow.spec.ts
+d083ddcf242f187dd81e679b72d39c46a28c6c921b498f855d7b9ca229ba9b1b  playwright.config.ts

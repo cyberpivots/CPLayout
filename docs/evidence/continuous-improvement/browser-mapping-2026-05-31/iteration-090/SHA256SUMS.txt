@@ -1,0 +1,12 @@
+4b24207de2b2ff31bdab8ef4c9a840e23d54658b87704aa54963413e7f82a853  reports/continuous-improvement/playwright-results/browser-workflow-survey-vi-924d1-ojected-survey-csv-evidence-desktop/survey-imported-csv-evidence.png
+d33f6e852925d954022a8c29172f6f74d58c78b1e83fd79cdb47f6a9fc6d0d52  reports/continuous-improvement/playwright-results/browser-workflow-survey-po-05643-ource-after-explicit-action-desktop/survey-water-promotion-export.png
+9897c912bd68de9b7696d2de1f4148c8c13d7edb68f5139153757bf32cfcc892  reports/continuous-improvement/playwright-results/browser-workflow-survey-po-f0edb-dence-from-canonical-export-desktop/survey-delete-export.png
+87b3f8f1125dc3f0a509708afdfaafab014eee20f34a0515abaeb67b70605ee1  reports/continuous-improvement/playwright-results/browser-workflow-survey-rt-79b85-mport-counts-as-draft-input-desktop/survey-rtk-float-planning-grade.png
+3b8c62a3654d0e410812d3ddf4542d44a2519d2402c88018e155b639061e9982  reports/continuous-improvement/playwright-results/browser-workflow-survey-po-4f003-t-specific-accessible-names-desktop/survey-point-accessible-actions.png
+c11d2602a89d7711268803317e08370ddbe3e29c1202a8df16025c03c27d981c  reports/continuous-improvement/playwright-results/browser-workflow-workspace-cd7ab-ses-the-selected-view-state-desktop/workspace-rail-selected-state.png
+fb7d523533daf659acab675351b9413e3a80963278f31661fb88b7472b1d5aa9  reports/continuous-improvement/playwright-results/browser-workflow-workspace-1be4c-port-while-switching-routes-mobile-390/workspace-compact-rail-overflow.png
+398b8dfec4520b893708c4f984c4e4cde20e10a08211f5d7a92d71aeb64c16da  reports/continuous-improvement/playwright-results/browser-workflow-settings--56dfb--never-reaches-map-requests-desktop/settings-rejected-imagery-no-request.png
+25207ccf4f40d5f06804e1a385d34bd5a674dae0af2d24d0e472025085a058e8  reports/continuous-improvement/playwright-results/browser-workflow-network-a-a8092-gs-on-allowed-imagery-hosts-desktop/network-credential-query-blocked.png
+c58e4472305c9f743df128bda23b5a234f4d8b0a43fa66e2a6ba5bc0b9e1c1c7  apps/mobile/App.tsx
+1cea9fc59f9d372ae95e5774d6ab71cf318d0e00340173a48703c34c7f817d36  tests/web/browser-workflow.spec.ts
+d083ddcf242f187dd81e679b72d39c46a28c6c921b498f855d7b9ca229ba9b1b  playwright.config.ts

@@ -734,6 +734,23 @@ test("files survey csv import rejects missing projected xy columns", async ({ pa
   await saveScreen(page, testInfo, "files-survey-csv-missing-xy-rejected");
 });
 
+test("survey view reflects imported projected survey csv evidence", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nsurvey-import-rtk-float,Imported Float,water_source,501030,4506030,imported,rtk_float\n");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await expect(page.getByTestId("files-status").getByText(/Imported 1 survey point/)).toBeVisible();
+  await page.getByTestId("workspace-nav-survey").click();
+  await expect(page.getByTestId("survey-metric-points")).toContainText("3");
+  await expect(page.getByTestId("survey-metric-rtk-fixed")).toContainText("1");
+  await expect(page.getByTestId("survey-metric-draft-inputs")).toContainText("2");
+  await expect(page.getByTestId("survey-point-survey-import-rtk-float").getByText("Imported Float")).toBeVisible();
+  await expect(page.getByTestId("survey-point-survey-import-rtk-float").getByText(/water_source .* imported .* rtk_float/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "survey-imported-csv-evidence");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

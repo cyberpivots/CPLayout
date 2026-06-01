@@ -445,12 +445,12 @@ export default function App(): React.JSX.Element {
                 settings={settings}
               />
               <View style={styles.metricGrid}>
-                <MetricTile label="Survey points" value={`${project.surveyPoints.length}`} />
-                <MetricTile label="RTK fixed points" value={`${project.surveyPoints.filter((point) => point.confidence === "rtk_fixed").length}`} tone="good" />
-                <MetricTile label="Draft inputs" value={`${project.surveyPoints.filter((point) => point.confidence !== "rtk_fixed").length}`} tone="warn" />
+                <MetricTile label="Survey points" testID="survey-metric-points" value={`${project.surveyPoints.length}`} />
+                <MetricTile label="RTK fixed points" testID="survey-metric-rtk-fixed" value={`${project.surveyPoints.filter((point) => point.confidence === "rtk_fixed").length}`} tone="good" />
+                <MetricTile label="Draft inputs" testID="survey-metric-draft-inputs" value={`${project.surveyPoints.filter((point) => point.confidence !== "rtk_fixed").length}`} tone="warn" />
               </View>
               {project.surveyPoints.map((point) => (
-                <View key={point.id} style={styles.listRow}>
+                <View key={point.id} style={styles.listRow} testID={`survey-point-${point.id}`}>
                   <View>
                     <Text style={styles.rowTitle}>{point.label}</Text>
                     <Text style={styles.rowMeta}>{point.role} · {point.source} · {point.confidence}</Text>

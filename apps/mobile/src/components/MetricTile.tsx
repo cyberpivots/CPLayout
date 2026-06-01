@@ -3,13 +3,14 @@ import { StyleSheet, Text, View } from "react-native";
 
 interface MetricTileProps {
   label: string;
+  testID?: string;
   value: string;
   tone?: "neutral" | "good" | "warn" | "danger";
 }
 
-export function MetricTile({ label, value, tone = "neutral" }: MetricTileProps): React.JSX.Element {
+export function MetricTile({ label, testID, value, tone = "neutral" }: MetricTileProps): React.JSX.Element {
   return (
-    <View style={[styles.tile, styles[tone]]}>
+    <View style={[styles.tile, styles[tone]]} testID={testID}>
       <Text style={styles.value}>{value}</Text>
       <Text style={styles.label}>{label}</Text>
     </View>

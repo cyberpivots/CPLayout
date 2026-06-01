@@ -608,7 +608,7 @@ function ModeSwitch({ active, label, onPress, testID }: { active: boolean; label
 
 function ToolButton({ active, icon, label, onPress, testID }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive]} testID={testID}>
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} aria-pressed={active} onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive]} testID={testID}>
       {icon}
       <Text style={[styles.toolButtonText, active && styles.toolButtonTextActive]}>{label}</Text>
     </Pressable>

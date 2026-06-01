@@ -232,6 +232,22 @@ test("browser utility point save keeps projected feature status explicit", async
   await saveScreen(page, testInfo, "utility-point-save-status");
 });
 
+test("browser map tool buttons expose active state", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-tool-pan")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "false");
+  await page.getByTestId("browser-tool-boundary").click();
+  await expect(page.getByTestId("browser-tool-pan")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("browser-tool-utility").click();
+  await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("browser-tool-utility")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "browser-map-tool-active-state");
+});
+
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {

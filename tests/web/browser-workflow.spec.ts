@@ -328,6 +328,36 @@ test("files projected geojson import dirties the project with projected xy statu
   await saveScreen(page, testInfo, "files-geojson-import-projected-boundary");
 });
 
+test("files projected geojson import can be saved locally", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-geojson-import-input").fill(JSON.stringify({
+    type: "FeatureCollection",
+    properties: { projectCrs: "EPSG:32613" },
+    features: [{
+      type: "Feature",
+      properties: { layerType: "field_boundary" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [501000, 4506000],
+          [501300, 4506000],
+          [501300, 4506300],
+          [501000, 4506300],
+          [501000, 4506000],
+        ]],
+      },
+    }],
+  }));
+  await page.getByRole("button", { name: "Import GeoJSON" }).click();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await page.getByRole("button", { name: "Save Local *" }).click();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByTestId("files-status").getByText(/Browser local storage/)).toBeVisible();
+  await saveScreen(page, testInfo, "files-geojson-import-save-local");
+});
+
 test("files geojson import rejects wgs84 as canonical geometry", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

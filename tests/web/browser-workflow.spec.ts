@@ -300,6 +300,34 @@ test("files export kmz downloads a doc-kml archive without runtime claims", asyn
   await saveScreen(page, testInfo, "files-export-kmz-download");
 });
 
+test("files projected geojson import dirties the project with projected xy status", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-geojson-import-input").fill(JSON.stringify({
+    type: "FeatureCollection",
+    properties: { projectCrs: "EPSG:32613" },
+    features: [{
+      type: "Feature",
+      properties: { layerType: "field_boundary" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [501000, 4506000],
+          [501300, 4506000],
+          [501300, 4506300],
+          [501000, 4506300],
+          [501000, 4506000],
+        ]],
+      },
+    }],
+  }));
+  await page.getByRole("button", { name: "Import GeoJSON" }).click();
+  await expect(page.getByTestId("files-status").getByText(/Imported projected GeoJSON boundary/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "files-geojson-import-projected-boundary");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

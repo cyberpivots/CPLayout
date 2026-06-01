@@ -292,6 +292,7 @@ export function ProjectFilesPanel({
             onChangeText={setGeoJsonImport}
             placeholder="FeatureCollection with projectCrs and field_boundary/obstacle features"
             style={styles.importInput}
+            testID="files-geojson-import-input"
             value={geoJsonImport}
           />
           <FileAction icon={<Upload size={18} color="#254234" />} label="Import GeoJSON" onPress={applyGeoJsonImport} />

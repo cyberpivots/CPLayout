@@ -256,6 +256,20 @@ test("files actions expose accessible browser buttons", async ({ page }, testInf
   await saveScreen(page, testInfo, "files-action-buttons");
 });
 
+test("files export zip downloads the canonical project package", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export ZIP" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.center-pivot\.zip$/);
+  const status = page.getByTestId("files-status");
+  await expect(status.getByText(/Downloaded .*\.center-pivot\.zip/)).toBeVisible();
+  await expect(status.getByText(/Project ZIP is the canonical project package/)).toHaveCount(0);
+  await saveScreen(page, testInfo, "files-export-zip-download");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

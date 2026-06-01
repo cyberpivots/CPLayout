@@ -120,6 +120,20 @@ test("survey rtk closed gate disables geometry capture controls", async ({ page 
   await saveScreen(page, testInfo, "survey-rtk-geometry-disabled");
 });
 
+test("survey rtk role selection stays local while gate is closed", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-survey").click();
+  await page.getByRole("button", { name: "Pivot", exact: true }).click();
+  await page.getByRole("button", { name: "Water", exact: true }).click();
+  await page.getByRole("button", { name: "Power", exact: true }).click();
+  await expect(page.getByTestId("rtk-gate-badge").getByText("Gate closed")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Capture Survey Point" })).toBeDisabled();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
+  await saveScreen(page, testInfo, "survey-rtk-role-local");
+});
+
 test("browser boundary commit keeps projected geometry status explicit", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

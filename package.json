@@ -21,6 +21,7 @@
     "audit:moderate": "npm audit --audit-level=moderate",
     "check:android-tools": "tsx tools/check_android_tools.ts",
     "verify:android-native": "tsx tools/verify_android_native.ts",
+    "verify:loop-ledger": "tsx tools/verify_continuous_improvement_ledger.ts",
     "verify:release": "npm run validate && git diff --check && npm run validate:skills && npm run check:android-tools && npm run verify:android-native"
   },
   "devDependencies": {

@@ -197,6 +197,28 @@ test("settings offline imagery guardrail exposes local-only export boundary", as
   await saveScreen(page, testInfo, "settings-offline-imagery-guardrail");
 });
 
+test("settings tile cap stepper clamps interactive preview budget", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-settings").click();
+  const tileCap = page.getByTestId("settings-tile-cap-stepper");
+  await expect(tileCap.getByTestId("settings-tile-cap-stepper-value")).toHaveText("64");
+  await expect(tileCap.getByRole("button", { name: "Decrease Tile cap" })).toBeVisible();
+  await expect(tileCap.getByRole("button", { name: "Increase Tile cap" })).toBeVisible();
+
+  for (let index = 0; index < 9; index += 1) {
+    await tileCap.getByRole("button", { name: "Increase Tile cap" }).click();
+  }
+  await expect(tileCap.getByTestId("settings-tile-cap-stepper-value")).toHaveText("128");
+
+  for (let index = 0; index < 16; index += 1) {
+    await tileCap.getByRole("button", { name: "Decrease Tile cap" }).click();
+  }
+  await expect(tileCap.getByTestId("settings-tile-cap-stepper-value")).toHaveText("8");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "settings-tile-cap-stepper");
+});
+
 test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

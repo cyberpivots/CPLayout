@@ -180,6 +180,7 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
         </View>
         <Stepper
           label="Tile cap"
+          testID="settings-tile-cap-stepper"
           value={`${settings.onlineImagery.maxTilesPerView}`}
           onDecrease={() => update({ onlineImagery: { ...settings.onlineImagery, maxTilesPerView: clamp(settings.onlineImagery.maxTilesPerView - 8, 8, 128) } })}
           onIncrease={() => update({ onlineImagery: { ...settings.onlineImagery, maxTilesPerView: clamp(settings.onlineImagery.maxTilesPerView + 8, 8, 128) } })}
@@ -296,14 +297,42 @@ function Choice({ active, label, onPress }: { active: boolean; label: string; on
   );
 }
 
-function Stepper({ label, value, onDecrease, onIncrease }: { label: string; value: string; onDecrease: () => void; onIncrease: () => void }): React.JSX.Element {
+function Stepper({
+  label,
+  onDecrease,
+  onIncrease,
+  testID,
+  value,
+}: {
+  label: string;
+  onDecrease: () => void;
+  onIncrease: () => void;
+  testID?: string;
+  value: string;
+}): React.JSX.Element {
   return (
-    <View style={styles.stepper}>
+    <View style={styles.stepper} testID={testID}>
       <Text style={styles.stepperLabel}>{label}</Text>
       <View style={styles.stepperControls}>
-        <Pressable onPress={onDecrease} style={styles.stepperButton}><Text style={styles.stepperButtonText}>-</Text></Pressable>
-        <Text style={styles.stepperValue}>{value}</Text>
-        <Pressable onPress={onIncrease} style={styles.stepperButton}><Text style={styles.stepperButtonText}>+</Text></Pressable>
+        <Pressable
+          accessibilityLabel={`Decrease ${label}`}
+          accessibilityRole="button"
+          onPress={onDecrease}
+          style={styles.stepperButton}
+          testID={testID ? `${testID}-decrease` : undefined}
+        >
+          <Text style={styles.stepperButtonText}>-</Text>
+        </Pressable>
+        <Text style={styles.stepperValue} testID={testID ? `${testID}-value` : undefined}>{value}</Text>
+        <Pressable
+          accessibilityLabel={`Increase ${label}`}
+          accessibilityRole="button"
+          onPress={onIncrease}
+          style={styles.stepperButton}
+          testID={testID ? `${testID}-increase` : undefined}
+        >
+          <Text style={styles.stepperButtonText}>+</Text>
+        </Pressable>
       </View>
     </View>
   );

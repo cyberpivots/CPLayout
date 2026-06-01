@@ -246,11 +246,17 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
                 <Text key={warning} style={styles.warningNote}>{warning}</Text>
               ))}
               <View style={styles.decisionActions}>
-                <ReviewButton icon={<Eye size={16} color={previewSelected ? "#ffffff" : "#254234"} />} label={previewSelected ? "Previewing" : "Preview"} primary={previewSelected} onPress={() => onPreviewRecommendation?.(previewSelected ? null : recommendation)} />
-                <ReviewButton icon={<Check size={16} color="#ffffff" />} label="Accept" primary onPress={() => recordDecision(recommendation, "accepted")} />
-                <ReviewButton icon={<MapPinned size={16} color={hardFailures.length > 0 ? "#8b1e18" : "#ffffff"} />} label="Apply" primary={hardFailures.length === 0} disabled={hardFailures.length > 0} onPress={() => applyRecommendation(recommendation)} />
-                <ReviewButton icon={<X size={16} color="#254234" />} label="Reject" onPress={() => recordDecision(recommendation, "rejected")} />
-                <ReviewButton icon={<Clock3 size={16} color="#254234" />} label="Defer" onPress={() => recordDecision(recommendation, "deferred")} />
+                <ReviewButton
+                  accessibilityLabel={`${previewSelected ? "Stop previewing" : "Preview"} recommendation ${recommendation.summary}`}
+                  icon={<Eye size={16} color={previewSelected ? "#ffffff" : "#254234"} />}
+                  label={previewSelected ? "Previewing" : "Preview"}
+                  primary={previewSelected}
+                  onPress={() => onPreviewRecommendation?.(previewSelected ? null : recommendation)}
+                />
+                <ReviewButton accessibilityLabel={`Accept recommendation ${recommendation.summary}`} icon={<Check size={16} color="#ffffff" />} label="Accept" primary onPress={() => recordDecision(recommendation, "accepted")} />
+                <ReviewButton accessibilityLabel={`Apply projected XY geometry from recommendation ${recommendation.summary}`} icon={<MapPinned size={16} color={hardFailures.length > 0 ? "#8b1e18" : "#ffffff"} />} label="Apply" primary={hardFailures.length === 0} disabled={hardFailures.length > 0} onPress={() => applyRecommendation(recommendation)} />
+                <ReviewButton accessibilityLabel={`Reject recommendation ${recommendation.summary}`} icon={<X size={16} color="#254234" />} label="Reject" onPress={() => recordDecision(recommendation, "rejected")} />
+                <ReviewButton accessibilityLabel={`Defer recommendation ${recommendation.summary}`} icon={<Clock3 size={16} color="#254234" />} label="Defer" onPress={() => recordDecision(recommendation, "deferred")} />
               </View>
             </View>
           ); })}
@@ -292,9 +298,9 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
   );
 }
 
-function ReviewButton({ disabled = false, icon, label, onPress, primary = false }: { disabled?: boolean; icon: React.ReactNode; label: string; onPress: () => void; primary?: boolean }): React.JSX.Element {
+function ReviewButton({ accessibilityLabel, disabled = false, icon, label, onPress, primary = false }: { accessibilityLabel?: string; disabled?: boolean; icon: React.ReactNode; label: string; onPress: () => void; primary?: boolean }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.reviewButton, primary && styles.reviewButtonPrimary, disabled && styles.reviewButtonDisabled]}>
+    <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.reviewButton, primary && styles.reviewButtonPrimary, disabled && styles.reviewButtonDisabled]}>
       {icon}
       <Text style={[styles.reviewButtonText, primary && styles.reviewButtonTextPrimary, disabled && styles.reviewButtonTextDisabled]}>{label}</Text>
     </Pressable>

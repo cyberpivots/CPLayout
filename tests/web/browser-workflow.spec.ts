@@ -345,8 +345,13 @@ test("expert review recommendation preview does not dirty or apply geometry", as
   await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
   await expect(page.getByText(/Generated .* pivot candidate.* No geometry was applied./)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await page.getByRole("button", { name: "Preview" }).first().click();
-  await expect(page.getByRole("button", { name: "Previewing" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Preview recommendation/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Accept recommendation/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Apply projected XY geometry from recommendation/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Reject recommendation/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Defer recommendation/ }).first()).toBeVisible();
+  await page.getByRole("button", { name: /Preview recommendation/ }).first().click();
+  await expect(page.getByRole("button", { name: /Stop previewing recommendation/ })).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await expect(page.getByText("Unsaved edits")).toHaveCount(0);
   await saveScreen(page, testInfo, "expert-review-preview-no-mutation");
@@ -357,7 +362,7 @@ test("expert review accept records a decision without geometry mutation", async 
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-review").click();
   await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await page.getByRole("button", { name: "Accept" }).first().click();
+  await page.getByRole("button", { name: /Accept recommendation/ }).first().click();
   await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
   await expect(page.getByText(/accepted/i).first()).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
@@ -370,7 +375,7 @@ test("expert review reject records a decision without geometry mutation", async 
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-review").click();
   await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await page.getByRole("button", { name: "Reject" }).first().click();
+  await page.getByRole("button", { name: /Reject recommendation/ }).first().click();
   await expect(page.getByText(/Reject recorded .* projected XY geometry was not changed/)).toBeVisible();
   await expect(page.getByText(/rejected/i).first()).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
@@ -383,7 +388,7 @@ test("expert review defer records a decision without geometry mutation", async (
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-review").click();
   await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await page.getByRole("button", { name: "Defer" }).first().click();
+  await page.getByRole("button", { name: /Defer recommendation/ }).first().click();
   await expect(page.getByText(/Defer recorded .* projected XY geometry was not changed/)).toBeVisible();
   await expect(page.getByText(/deferred/i).first()).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
@@ -396,7 +401,7 @@ test("expert review apply confirmation does not dirty before confirm", async ({ 
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-review").click();
   await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await page.getByRole("button", { name: "Apply" }).first().click();
+  await page.getByRole("button", { name: /Apply projected XY geometry from recommendation/ }).first().click();
   const confirm = page.getByTestId("review-apply-confirmation");
   await expect(confirm).toBeVisible();
   await expect(confirm).toHaveAttribute("role", "alert");

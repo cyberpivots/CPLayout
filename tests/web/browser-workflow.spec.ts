@@ -311,6 +311,14 @@ test("settings rejected credentialed imagery never reaches map requests", async 
   await saveScreen(page, testInfo, "settings-rejected-imagery-no-request");
 });
 
+test("network allowlist blocks credential query strings on allowed imagery hosts", async ({ page }, testInfo) => {
+  await page.goto("/");
+  expect(isAllowedNetworkRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/0/0/0")).toBe(true);
+  expect(isAllowedNetworkRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/0/0/0?token=secret")).toBe(false);
+  expect(isAllowedExternalProofRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/0/0/0?api_key=secret")).toBe(false);
+  await saveScreen(page, testInfo, "network-credential-query-blocked");
+});
+
 test("settings custom imagery applies no-key local tile templates", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();
@@ -1177,6 +1185,7 @@ async function expectNoOverlap(page: Page, firstTestId: string, secondTestId: st
 }
 
 function isAllowedNetworkRequest(url: string, strictOffline = false): boolean {
+  if (hasCredentialQueryParameter(url)) return false;
   if (url.startsWith("http://127.0.0.1:")) return true;
   if (strictOffline) return url.startsWith("data:") || url.startsWith("blob:");
   if (url.startsWith("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/")) return true;
@@ -1184,7 +1193,18 @@ function isAllowedNetworkRequest(url: string, strictOffline = false): boolean {
 }
 
 function isAllowedExternalProofRequest(url: string): boolean {
+  if (hasCredentialQueryParameter(url)) return false;
   if (url.startsWith("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/")) return true;
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
   return false;
+}
+
+function hasCredentialQueryParameter(url: string): boolean {
+  const credentialKey = /^(api[_-]?key|key|token|access[_-]?token|signature|sig)$/i;
+  try {
+    const parsed = new URL(url);
+    return Array.from(parsed.searchParams.keys()).some((key) => credentialKey.test(key));
+  } catch {
+    return /[?&](api[_-]?key|key|token|access[_-]?token|signature|sig)=/i.test(url);
+  }
 }

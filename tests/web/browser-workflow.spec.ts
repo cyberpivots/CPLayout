@@ -367,6 +367,17 @@ test("files survey csv import dirties the project with projected point status", 
   await saveScreen(page, testInfo, "files-survey-csv-import-point");
 });
 
+test("files survey csv import rejects missing projected xy columns", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await page.getByTestId("files-survey-csv-import-input").fill("id,label,longitude,latitude\np1,No XY,-104,40\n");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await expect(page.getByTestId("files-status").getByText(/projected x and y columns/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "files-survey-csv-missing-xy-rejected");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

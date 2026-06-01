@@ -344,7 +344,7 @@ function BackendTile({ label, value }: { label: string; value: string }): React.
 
 function FileAction({ icon, label, onPress, primary = false }: { icon: React.ReactNode; label: string; onPress: () => void | Promise<void>; primary?: boolean }): React.JSX.Element {
   return (
-    <Pressable onPress={onPress} style={[styles.actionButton, primary && styles.actionButtonPrimary]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.actionButton, primary && styles.actionButtonPrimary]}>
       {icon}
       <Text style={[styles.actionText, primary && styles.actionTextPrimary]}>{label}</Text>
     </Pressable>

@@ -241,6 +241,21 @@ test("files status keeps the canonical archive message visible", async ({ page }
   await saveScreen(page, testInfo, "files-status-canonical-package");
 });
 
+test("files actions expose accessible browser buttons", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  await expect(page.getByRole("button", { name: "Save Local" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export ZIP" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import ZIP" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import KML/KMZ" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export KML" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export KMZ" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import GeoJSON" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import CSV" })).toBeVisible();
+  await saveScreen(page, testInfo, "files-action-buttons");
+});
+
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

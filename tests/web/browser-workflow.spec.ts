@@ -92,6 +92,20 @@ test("public proof map features can select the side-panel editor without geometr
   await saveScreen(page, testInfo, "public-proof-feature-selected");
 });
 
+test("workspace rail exposes the selected view state", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByTestId("workspace-nav-dashboard")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("workspace-nav-dashboard")).toHaveAttribute("aria-selected", "false");
+  await expect(page.getByTestId("workspace-nav-map")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("workspace-nav-review").click();
+  await expect(page.getByTestId("workspace-nav-map")).toHaveAttribute("aria-selected", "false");
+  await expect(page.getByTestId("workspace-nav-review")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "workspace-rail-selected-state");
+});
+
 test("survey rtk receiver starts closed without mutating the project", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();

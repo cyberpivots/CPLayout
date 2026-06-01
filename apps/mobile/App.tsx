@@ -896,7 +896,7 @@ function RailButton({ active, icon, label, onPress, testID }: { active: boolean;
     ? React.cloneElement(icon, { color: active ? "#ffffff" : "#d5e2db" })
     : icon;
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.railButton, active && styles.railButtonActive]} testID={testID}>
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} aria-selected={active} onPress={onPress} style={[styles.railButton, active && styles.railButtonActive]} testID={testID}>
       {tintedIcon}
       <Text style={[styles.railLabel, active && styles.railLabelActive]}>{label}</Text>
     </Pressable>

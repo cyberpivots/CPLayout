@@ -9,8 +9,29 @@ Use Python 3.12 with `uv`:
 ```sh
 cd tools/local-ml-companion
 uv venv --python 3.12
-uv pip install --index-url https://download.pytorch.org/whl/cu130 torch torchvision torchaudio
 uv pip install -e .
+```
+
+Install optional companion groups only in this local Python environment:
+
+```sh
+uv sync --extra all
+```
+
+These extras are not React Native runtime dependencies. Rasterio, GeoPandas, and rioxarray are for offline raster/vector inspection; scikit-image, Matplotlib, and Plotly are for local CV/report artifacts; Streamlit and Dash are local review UI tools; FastAPI, Uvicorn, and SQLAlchemy are optional localhost sidecar infrastructure. SQLAlchemy must not write CPLayout's Expo SQLite project database.
+
+Probe all companion dependency groups after installing extras:
+
+```sh
+uv run cplayout-ml probe-companion-deps --groups all --require-installed
+```
+
+`probe-companion-deps` is an import smoke test only. It does not call cloud services, download model weights, mutate project geometry, or write the CPLayout project database.
+
+Install CUDA PyTorch after `uv sync` when a GPU-backed run is needed:
+
+```sh
+uv pip install --index-url https://download.pytorch.org/whl/cu130 torch torchvision torchaudio
 ```
 
 The CUDA-backed probe must pass before output is treated as GPU-backed:
@@ -157,6 +178,106 @@ uv run cplayout-ml summarize-boundary-experiments \
 ```
 
 These commands are offline/local only. They reject hidden-key provenance, do not upload imagery or telemetry, and do not mutate canonical project geometry.
+
+## Companion GIS/CV Evidence Packets
+
+The companion can prepare local GIS/CV evidence packets without changing the CPLayout project schema. Projected/local `XY` remains canonical, and image-space detections, WGS84 display coordinates, screenshots, masks, and scores stay evidence unless a valid project-CRS calibration exists.
+
+Hash and inspect local raster/proof artifacts:
+
+```sh
+uv run cplayout-ml prepare-raster-fixtures \
+  --manifest ./fixtures/raster-fixtures.json \
+  --output-dir ./out/raster-fixtures \
+  --project-id sample-project \
+  --project-crs EPSG:32613
+```
+
+Pass `--require-projected-output` only when projected raster output is expected. The command rejects missing or geographic raster CRS in that mode.
+
+Validate local operator vector labels:
+
+```sh
+uv run cplayout-ml validate-vector-labels \
+  --input ./fixtures/operator-labels.geojson \
+  --output-dir ./out/vector-labels \
+  --project-id sample-project \
+  --project-crs EPSG:32613
+```
+
+When GeoPandas is installed and a valid CRS transform is available, labels can be exported as projected-XY review evidence. Otherwise WGS84 or unknown-CRS labels remain evidence-only warnings.
+
+Build an importable review packet:
+
+```sh
+uv run cplayout-ml build-evidence-packet \
+  --project-id sample-project \
+  --project-crs EPSG:32613 \
+  --raster-fixtures ./out/raster-fixtures/raster-fixture-metadata.json \
+  --vector-labels ./out/vector-labels/vector-label-validation.json \
+  --cv-candidates ./out/cv-candidates.json \
+  --output-dir ./out/evidence-packet
+```
+
+Outputs are `companion-evidence-packet.json`, `companion-evidence-packet-recommendations.geojson`, and `companion-evidence-packet-projected-xy.geojson`. The JSON uses the existing project review data schema so it can import through the Review tab. Candidates without valid projected-XY calibration are metadata-only recommendations with hard failures, so Apply XY stays blocked.
+
+Run a read-only local Streamlit dashboard dry run:
+
+```sh
+uv run cplayout-ml serve-review-dashboard \
+  --packet ./out/evidence-packet/companion-evidence-packet.json \
+  --dry-run
+```
+
+Streamlit is the primary review dashboard. It shows packet health, CRS/calibration status, evidence records, model recommendations, hard failures, artifact hashes, projected-XY features, warnings, and local provenance. The dashboard is read-only: it has no Apply action, writes no CPLayout project database, requires no key, and keeps any geometry change behind the existing browser Review Apply XY path.
+
+Use the secondary Dash/Plotly comparison dashboard when candidate filtering is needed:
+
+```sh
+uv run cplayout-ml serve-review-dashboard \
+  --packet ./out/evidence-packet/companion-evidence-packet.json \
+  --engine dash \
+  --port 8502 \
+  --dry-run
+```
+
+Write a local Plotly HTML comparison report:
+
+```sh
+uv run cplayout-ml serve-review-dashboard \
+  --packet ./out/evidence-packet/companion-evidence-packet.json \
+  --export-html ./out/evidence-packet/companion-comparison.html
+```
+
+The static report writes a local `plotly.min.js` asset beside the HTML and rejects CDN/cloud script references. It is a local review artifact only.
+
+Run the optional localhost API dry run:
+
+```sh
+uv run cplayout-ml serve-companion-api \
+  --workspace ./out \
+  --dry-run
+```
+
+The sidecar exposes local-only endpoints:
+
+- `GET /health`
+- `GET /review-packet?path=...`
+- `POST /packets/build`
+- `GET /artifacts/hash?path=...`
+
+`POST /packets/build` runs the same in-process evidence-packet builder under the configured workspace. It does not execute arbitrary commands. All paths must stay inside the workspace, hidden keys are rejected, non-local binds are rejected, and output remains advisory Review evidence until imported and applied through projected-XY gates.
+
+Optionally record API reads/builds in a companion-owned experiment index:
+
+```sh
+uv run cplayout-ml serve-companion-api \
+  --workspace ./out \
+  --experiment-db ./out/companion-experiment.sqlite \
+  --dry-run
+```
+
+The experiment index uses SQLAlchemy with a companion `.sqlite` file under the workspace. It must not target CPLayout's Expo SQLite/project database.
 
 For a complete local Google Earth proof packet and companion CV run, use the top-level orchestration script:
 

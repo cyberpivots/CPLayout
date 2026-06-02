@@ -9,6 +9,7 @@ workspace evidence remain authoritative.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Keyword:
     term: str
+    tokens: tuple[str, ...]
     weight: int
 
 
@@ -24,7 +26,13 @@ class Keyword:
 class RouteDefinition:
     route_id: str
     skill: str
+    agent: str
     note: str
+    complexity_band: str
+    reasoning_effort: str
+    spawn_policy: str
+    routing_reason: str
+    validation_expectations: tuple[str, ...]
     priority: int
     positive_keywords: tuple[Keyword, ...]
     negative_keywords: tuple[Keyword, ...]
@@ -36,7 +44,55 @@ class RouteMatch:
     score: int
 
 
-ROUTE_DATA_PATH = Path(__file__).with_name("cplayout_route_data.json")
+ROUTE_DATA_FILENAME = "cplayout_route_data.json"
+TOKEN_RE = re.compile(r"[a-z0-9_]+")
+COMPLEXITY_ORDER = {"low": 0, "medium": 1, "high": 2, "xhigh": 3}
+REASONING_EFFORTS = frozenset(("minimal", "low", "medium", "high", "xhigh"))
+SPAWN_POLICIES = frozenset(("required", "optional", "not_useful"))
+EXPLICIT_MULTI_AGENT_TERMS = (
+    "multi-agent",
+    "multi agent",
+    "subagent",
+    "subagents",
+    "expert panel",
+    "expert panels",
+    "expert-agent panel",
+    "expert-agent panels",
+    "agent panel",
+    "agent panels",
+    "parallel agent",
+    "parallel agents",
+    "spawn agent",
+    "spawn agents",
+    "specialist team",
+    "specialist teams",
+    "delegate to agents",
+)
+
+
+@dataclass(frozen=True)
+class RouteData:
+    max_routes: int
+    min_score: int
+    default_complexity_band: str
+    default_reasoning_effort: str
+    base_validation_expectations: tuple[str, ...]
+    routes: tuple[RouteDefinition, ...]
+
+
+def _repo_route_data_path(start: Path) -> Path | None:
+    for candidate in (start, *start.parents):
+        route_data_path = candidate / ".codex" / "hooks" / ROUTE_DATA_FILENAME
+        if route_data_path.exists():
+            return route_data_path
+    return None
+
+
+def _route_data_path() -> Path:
+    cwd_route_data = _repo_route_data_path(Path.cwd())
+    if cwd_route_data is not None:
+        return cwd_route_data
+    return Path(__file__).with_name(ROUTE_DATA_FILENAME)
 
 
 def _keywords(raw_keywords: object) -> tuple[Keyword, ...]:
@@ -52,19 +108,43 @@ def _keywords(raw_keywords: object) -> tuple[Keyword, ...]:
             raise ValueError("route keyword term must be a non-empty string")
         if not isinstance(weight, int) or weight <= 0:
             raise ValueError("route keyword weight must be a positive integer")
-        keywords.append(Keyword(term=term.lower(), weight=weight))
+        tokens = _tokens(term)
+        if not tokens:
+            raise ValueError("route keyword term must contain at least one token")
+        keywords.append(Keyword(term=term.lower(), tokens=tokens, weight=weight))
     return tuple(keywords)
 
 
-def load_route_data(path: Path = ROUTE_DATA_PATH) -> tuple[int, int, tuple[RouteDefinition, ...]]:
+def _string_list(raw_value: object, field_name: str) -> tuple[str, ...]:
+    if not isinstance(raw_value, list):
+        raise ValueError(f"{field_name} must be a list")
+    values: list[str] = []
+    for raw_item in raw_value:
+        if not isinstance(raw_item, str) or not raw_item.strip():
+            raise ValueError(f"{field_name} entries must be non-empty strings")
+        values.append(raw_item.strip())
+    return tuple(values)
+
+
+def load_route_data(path: Path | None = None) -> RouteData:
+    path = _route_data_path() if path is None else path
     raw_data = json.loads(path.read_text(encoding="utf-8"))
     max_routes = raw_data.get("maxRoutes")
     min_score = raw_data.get("minScore")
+    default_complexity_band = raw_data.get("defaultComplexityBand")
+    default_reasoning_effort = raw_data.get("defaultReasoningEffort")
+    base_validation_expectations = _string_list(
+        raw_data.get("baseValidationExpectations"), "baseValidationExpectations"
+    )
     raw_routes = raw_data.get("routes")
     if not isinstance(max_routes, int) or max_routes <= 0:
         raise ValueError("maxRoutes must be a positive integer")
     if not isinstance(min_score, int) or min_score < 0:
         raise ValueError("minScore must be a non-negative integer")
+    if default_complexity_band not in COMPLEXITY_ORDER:
+        raise ValueError("defaultComplexityBand must be one of low, medium, high, xhigh")
+    if default_reasoning_effort not in REASONING_EFFORTS:
+        raise ValueError("defaultReasoningEffort must be a supported reasoning effort")
     if not isinstance(raw_routes, list):
         raise ValueError("routes must be a list")
 
@@ -74,27 +154,57 @@ def load_route_data(path: Path = ROUTE_DATA_PATH) -> tuple[int, int, tuple[Route
             raise ValueError("route must be an object")
         route_id = raw_route.get("id")
         skill = raw_route.get("skill")
+        agent = raw_route.get("agent")
         note = raw_route.get("note")
+        complexity_band = raw_route.get("complexityBand")
+        reasoning_effort = raw_route.get("reasoningEffort")
+        spawn_policy = raw_route.get("spawnPolicy")
+        routing_reason = raw_route.get("routingReason")
         priority = raw_route.get("priority")
         if not isinstance(route_id, str) or not route_id.strip():
             raise ValueError("route id must be a non-empty string")
         if not isinstance(skill, str) or not skill.strip():
             raise ValueError(f"{route_id}: skill must be a non-empty string")
+        if not isinstance(agent, str) or not agent.strip():
+            raise ValueError(f"{route_id}: agent must be a non-empty string")
         if not isinstance(note, str) or not note.strip():
             raise ValueError(f"{route_id}: note must be a non-empty string")
+        if complexity_band not in COMPLEXITY_ORDER:
+            raise ValueError(f"{route_id}: complexityBand must be one of low, medium, high, xhigh")
+        if reasoning_effort not in REASONING_EFFORTS:
+            raise ValueError(f"{route_id}: reasoningEffort must be a supported reasoning effort")
+        if spawn_policy not in SPAWN_POLICIES:
+            raise ValueError(f"{route_id}: spawnPolicy must be required, optional, or not_useful")
+        if not isinstance(routing_reason, str) or not routing_reason.strip():
+            raise ValueError(f"{route_id}: routingReason must be a non-empty string")
         if not isinstance(priority, int):
             raise ValueError(f"{route_id}: priority must be an integer")
         routes.append(
             RouteDefinition(
                 route_id=route_id,
                 skill=skill,
+                agent=agent,
                 note=note,
+                complexity_band=complexity_band,
+                reasoning_effort=reasoning_effort,
+                spawn_policy=spawn_policy,
+                routing_reason=routing_reason,
+                validation_expectations=_string_list(
+                    raw_route.get("validationExpectations"), f"{route_id}.validationExpectations"
+                ),
                 priority=priority,
                 positive_keywords=_keywords(raw_route.get("positiveKeywords")),
                 negative_keywords=_keywords(raw_route.get("negativeKeywords")),
             )
         )
-    return max_routes, min_score, tuple(routes)
+    return RouteData(
+        max_routes=max_routes,
+        min_score=min_score,
+        default_complexity_band=default_complexity_band,
+        default_reasoning_effort=default_reasoning_effort,
+        base_validation_expectations=base_validation_expectations,
+        routes=tuple(routes),
+    )
 
 
 def _read_payload() -> tuple[dict[str, object], bool]:
@@ -129,9 +239,24 @@ def _prompt_from_payload(payload: dict[str, object]) -> str:
     return ""
 
 
-def _score_route(normalized_prompt: str, route: RouteDefinition) -> int:
-    positive = sum(keyword.weight for keyword in route.positive_keywords if keyword.term in normalized_prompt)
-    negative = sum(keyword.weight for keyword in route.negative_keywords if keyword.term in normalized_prompt)
+def _tokens(text: str) -> tuple[str, ...]:
+    return tuple(TOKEN_RE.findall(text.lower()))
+
+
+def _has_phrase(prompt_tokens: tuple[str, ...], phrase_tokens: tuple[str, ...]) -> bool:
+    if not phrase_tokens or len(phrase_tokens) > len(prompt_tokens):
+        return False
+    phrase_len = len(phrase_tokens)
+    return any(prompt_tokens[index : index + phrase_len] == phrase_tokens for index in range(len(prompt_tokens)))
+
+
+def _keyword_matches(prompt_tokens: tuple[str, ...], keyword: Keyword) -> bool:
+    return _has_phrase(prompt_tokens, keyword.tokens)
+
+
+def _score_route(prompt_tokens: tuple[str, ...], route: RouteDefinition) -> int:
+    positive = sum(keyword.weight for keyword in route.positive_keywords if _keyword_matches(prompt_tokens, keyword))
+    negative = sum(keyword.weight for keyword in route.negative_keywords if _keyword_matches(prompt_tokens, keyword))
     return positive - negative
 
 
@@ -142,35 +267,111 @@ def match_routes(
     min_score: int | None = None,
     routes: tuple[RouteDefinition, ...] | None = None,
 ) -> list[RouteMatch]:
-    loaded_max_routes, loaded_min_score, loaded_routes = load_route_data()
-    max_routes = loaded_max_routes if max_routes is None else max_routes
-    min_score = loaded_min_score if min_score is None else min_score
-    routes = loaded_routes if routes is None else routes
-    normalized = prompt.lower()
+    route_data = load_route_data()
+    max_routes = route_data.max_routes if max_routes is None else max_routes
+    min_score = route_data.min_score if min_score is None else min_score
+    routes = route_data.routes if routes is None else routes
+    prompt_tokens = _tokens(prompt)
     matches: list[RouteMatch] = []
     for route in routes:
-        score = _score_route(normalized, route)
+        score = _score_route(prompt_tokens, route)
         if score >= min_score:
             matches.append(RouteMatch(route=route, score=score))
     matches.sort(key=lambda match: (-match.score, match.route.priority, match.route.route_id))
     return matches[:max_routes]
 
 
-def _context(matches: list[RouteMatch], shape_unknown: bool) -> str:
+def _highest_complexity(matches: list[RouteMatch], default_band: str) -> str:
+    if not matches:
+        return default_band
+    return max(
+        (match.route.complexity_band for match in matches),
+        key=lambda band: COMPLEXITY_ORDER.get(band, 0),
+    )
+
+
+def _highest_reasoning(matches: list[RouteMatch], default_effort: str) -> str:
+    if any(match.route.reasoning_effort == "xhigh" for match in matches):
+        return "xhigh"
+    if any(match.route.reasoning_effort == "high" for match in matches):
+        return "high"
+    if any(match.route.reasoning_effort == "medium" for match in matches):
+        return "medium"
+    if any(match.route.reasoning_effort == "low" for match in matches):
+        return "low"
+    return default_effort
+
+
+def has_explicit_multi_agent_request(prompt: str) -> bool:
+    prompt_tokens = _tokens(prompt)
+    return any(_has_phrase(prompt_tokens, _tokens(term)) for term in EXPLICIT_MULTI_AGENT_TERMS)
+
+
+def subagent_decision(prompt: str, matches: list[RouteMatch]) -> tuple[str, str]:
+    if has_explicit_multi_agent_request(prompt):
+        return "required", "Prompt explicitly asks for multi-agent, subagent, panel, parallel-agent, or delegation work."
+    if matches:
+        return "optional", "Matched specialists are useful for bounded read-only exploration or validation triage."
+    return "not useful", "No specialist route matched; use coordinator preflight and narrow source-backed judgment."
+
+
+def _validation_expectations(route_data: RouteData, matches: list[RouteMatch]) -> list[str]:
+    expectations = list(route_data.base_validation_expectations)
+    for match in matches:
+        for expectation in match.route.validation_expectations:
+            if expectation not in expectations:
+                expectations.append(expectation)
+    return expectations[:6]
+
+
+def optimized_reprompt(
+    prompt: str,
+    matches: list[RouteMatch],
+    route_data: RouteData | None = None,
+) -> str:
+    route_data = load_route_data() if route_data is None else route_data
+    complexity = _highest_complexity(matches, route_data.default_complexity_band)
+    reasoning = _highest_reasoning(matches, route_data.default_reasoning_effort)
+    decision, _reason = subagent_decision(prompt, matches)
+    specialists = ", ".join(match.route.agent for match in matches) if matches else "coordinator only"
+    return (
+        f"Use {reasoning} reasoning ({complexity}). Start with AGENTS.md plus git status. "
+        f"Route through {specialists}. Subagent decision: {decision}. "
+        "Keep hooks advisory unless installed through managed requirements. "
+        "Preserve offline/no-cost operation, projected/local XY canonical geometry, and evidence-only KML/KMZ/imagery boundaries."
+    )
+
+
+def _context(prompt: str, matches: list[RouteMatch], shape_unknown: bool) -> str:
+    route_data = load_route_data()
+    complexity = _highest_complexity(matches, route_data.default_complexity_band)
+    reasoning = _highest_reasoning(matches, route_data.default_reasoning_effort)
+    decision, decision_reason = subagent_decision(prompt, matches)
+    validation = _validation_expectations(route_data, matches)
     lines = [
-        "CPLayout prompt triage advisory:",
+        "CPLayout coordinator contract:",
         "- Start non-trivial work with AGENTS.md plus git status preflight.",
         "- Preserve offline-first, no-cost operation and projected/local XY canonical geometry.",
         "- Treat Google Earth/KML styling and imagery/CV output as evidence unless the project schema explicitly changes.",
         "- Hooks are advisory context, not enforcement or proof of runtime behavior.",
+        f"- Complexity band: {complexity}; reasoning effort: {reasoning}.",
+        f"- Subagents: {decision}. {decision_reason}",
     ]
     if matches:
         lines.append("- Matched specialists:")
         for match in matches:
             route = match.route
-            lines.append(f"  - {route.route_id} via ${route.skill} (score {match.score}): {route.note}")
+            lines.append(
+                "  - "
+                f"{route.route_id} via ${route.skill}, agent {route.agent} "
+                f"(score {match.score}, {route.complexity_band}/{route.reasoning_effort}, "
+                f"spawn {route.spawn_policy}): {route.routing_reason}"
+            )
     else:
         lines.append("- No specialist keywords matched; use workspace preflight and narrow source-backed planning.")
+    lines.append("- Validation expectations:")
+    lines.extend(f"  - {expectation}" for expectation in validation)
+    lines.append(f"- Optimized re-prompt: {optimized_reprompt(prompt, matches, route_data)}")
     if shape_unknown:
         lines.append("- Hook input shape was incomplete or non-JSON; verify prompt scope before mutation.")
     return "\n".join(lines)
@@ -181,13 +382,14 @@ def main() -> int:
     if payload.get("hook_event_name") not in (None, "UserPromptSubmit"):
         return 0
 
-    matches = match_routes(_prompt_from_payload(payload))
+    prompt = _prompt_from_payload(payload)
+    matches = match_routes(prompt)
     print(
         json.dumps(
             {
                 "hookSpecificOutput": {
                     "hookEventName": "UserPromptSubmit",
-                    "additionalContext": _context(matches, shape_unknown),
+                    "additionalContext": _context(prompt, matches, shape_unknown),
                 }
             }
         )

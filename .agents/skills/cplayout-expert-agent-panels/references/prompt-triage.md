@@ -17,12 +17,39 @@ Use this reference when a prompt asks for specialist routing, agent panels, sour
 - Start non-trivial work with `AGENTS.md` and `git status --short`.
 - Prefer local repo evidence before memory and external research.
 - Use current official or primary sources for package, platform, Codex, Google Earth, database, and engineering claims.
-- Keep hooks advisory. They add routing context but do not enforce policy or prove behavior.
+- Keep project-local hooks advisory. They add routing context but do not enforce policy or prove behavior unless installed through managed `requirements.toml` and verified after restart.
+- Treat managed-hook planning as a Codex policy task: separate local repo facts from official OpenAI docs and record trust, restart, and runtime-verification gaps.
 - Keep custom agents read-only unless the coordinator assigns a bounded mutation scope to a worker.
 - Keep projected/local `XY` canonical geometry separate from WGS84 display/input, KML/KMZ styling, imagery evidence, and operator labels.
 
+## Coordinator Contract
+
+The `UserPromptSubmit` hook should emit a compact contract for non-trivial prompts:
+
+- matched specialist routes with route id, skill, configured agent, score, complexity band, reasoning effort, spawn policy, and routing reason,
+- required preflight: re-read `AGENTS.md`, run `git status --short`, and preserve unrelated dirty work,
+- auditable subagent decision: `required`, `optional`, or `not useful`, with a short reason,
+- complexity band and reasoning effort from route metadata,
+- optimized re-prompt that preserves CPLayout no-cost/offline-first, projected/local `XY`, and evidence-only KML/KMZ/imagery boundaries,
+- validation expectations merged from base hook checks and matched routes.
+
+Route matching should be token/phrase-aware rather than raw substring matching so broad words such as `agent`, `hook`, `layout`, or `web` do not match inside unrelated words or route by themselves.
+
+Complexity bands:
+
+- `xhigh`: CPLayout architecture, managed policy, storage/native/runtime claims, Google Earth proof, release gates, multi-package mutation, and process enforcement.
+- `high`: hook, skill, and agent implementation or review.
+- `medium`: fixture-only route tests, docs-only registry updates, and bounded read-only scans.
+- `low`: trivial status or formatting only when the user explicitly requests a narrow low-effort task.
+
+Subagent decision rules:
+
+- `required`: the user explicitly asks for multi-agent, subagent, panel, parallel-agent, delegation, or specialist-team work.
+- `optional`: specialists matched and can help with bounded read-only exploration or validation triage.
+- `not useful`: no specialist route matched and coordinator-only preflight is enough.
+
 ## Validation
 
-- For skill and agent surface changes, run `npm run validate:skills`, TOML/JSON parsing, hook sample execution, `git diff --check`, and `npm audit`.
+- For skill, hook, and agent surface changes, run `npm run validate:skills`, TOML/JSON parsing, hook sample execution, `git diff --check`, and `npm audit`.
 - For TypeScript or UI changes, also run `npm run validate`.
 - For visible UI changes, run a web/dev-server check and capture Playwright evidence when available.

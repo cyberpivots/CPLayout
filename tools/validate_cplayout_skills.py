@@ -33,6 +33,8 @@ REQUIRED_DOCS = (
     "docs/agent-prompt-registry.md",
     "docs/agent-source-ledger.md",
     "docs/agent-known-gaps.md",
+    "docs/codex-managed-hook-deployment.md",
+    "docs/examples/cplayout-managed-requirements.toml",
     ".agents/skills/cplayout-expert-agent-panels/references/prompt-triage.md",
 )
 
@@ -43,6 +45,10 @@ REQUIRED_ROUTE_IDS = {
     "cplayout_database_specialist",
     "cplayout_kb_curator",
 }
+
+COMPLEXITY_BANDS = {"low", "medium", "high", "xhigh"}
+REASONING_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
+SPAWN_POLICIES = {"required", "optional", "not_useful"}
 
 HOOK_SAMPLES = (
     (
@@ -79,6 +85,29 @@ HOOK_SAMPLES = (
 )
 
 
+STOP_MULTI_AGENT_ADVISORY_SAMPLE = (
+    "Stop multi-agent advisory",
+    ".codex/hooks/cplayout_stop_multi_agent.py",
+    {
+        "hook_event_name": "Stop",
+        "prompt": "Use multi-agent expert panels to review managed hook enforcement.",
+        "assistant_response": "Implemented the change and ran tests.",
+    },
+)
+
+STOP_ACCEPTED_FALLBACK_SAMPLE = (
+    "Stop accepted fallback",
+    ".codex/hooks/cplayout_stop_multi_agent.py",
+    {
+        "hook_event_name": "Stop",
+        "prompt": "Use multi-agent expert panels to review managed hook enforcement.",
+        "assistant_response": (
+            "Subagent decision: optional. Accepted fallback: local coordinator only because no subagent tool is available."
+        ),
+    },
+)
+
+
 def run(command: list[str], *, cwd: Path = ROOT) -> tuple[bool, str]:
     result = subprocess.run(
         command,
@@ -110,6 +139,7 @@ def validate_toml() -> list[str]:
     errors: list[str] = []
     toml_paths = [ROOT / ".codex" / "config.toml"]
     toml_paths.extend(ROOT.glob(".codex/agents/*.toml"))
+    toml_paths.extend(ROOT.glob("docs/examples/*.toml"))
     for path in sorted(toml_paths):
         try:
             tomllib.loads(path.read_text(encoding="utf-8"))
@@ -138,7 +168,7 @@ def validate_hooks() -> list[str]:
         errors.append(".codex/hooks.json: UserPromptSubmit command does not reference cplayout_prompt_triage.py")
     hook_config = hooks.get("hooks", {})
     configured_events = set(hook_config) if isinstance(hook_config, dict) else set()
-    for event_name in ("UserPromptSubmit", "SubagentStart", "PreToolUse"):
+    for event_name in ("UserPromptSubmit", "SubagentStart", "PreToolUse", "Stop"):
         if event_name not in configured_events:
             errors.append(f".codex/hooks.json: missing {event_name} hook")
 
@@ -177,6 +207,48 @@ def validate_hooks() -> list[str]:
         if "deny" not in label and not isinstance(output.get("additionalContext"), str):
             errors.append(f"{label} sample missing additionalContext")
         print(f"[hook] {label} sample: ok")
+
+    label, rel_script, sample = STOP_MULTI_AGENT_ADVISORY_SAMPLE
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / rel_script)],
+        cwd=ROOT,
+        input=json.dumps(sample),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if proc.returncode != 0:
+        errors.append(f"{label} sample failed: {proc.stdout.strip()}")
+    else:
+        try:
+            parsed = json.loads(proc.stdout)
+            output = parsed["hookSpecificOutput"]
+        except Exception as exc:  # noqa: BLE001 - report parser detail.
+            errors.append(f"{label} sample output invalid: {exc}")
+        else:
+            if output.get("hookEventName") != "Stop":
+                errors.append(f"{label} sample has wrong hookEventName")
+            if not isinstance(output.get("additionalContext"), str):
+                errors.append(f"{label} sample missing additionalContext")
+            print(f"[hook] {label} sample: ok")
+
+    label, rel_script, sample = STOP_ACCEPTED_FALLBACK_SAMPLE
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / rel_script)],
+        cwd=ROOT,
+        input=json.dumps(sample),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if proc.returncode != 0:
+        errors.append(f"{label} sample failed: {proc.stdout.strip()}")
+    elif proc.stdout.strip():
+        errors.append(f"{label} sample should not emit advisory output")
+    else:
+        print(f"[hook] {label} sample: ok")
     return errors
 
 
@@ -192,6 +264,23 @@ def validate_route_data() -> list[str]:
         errors.append("cplayout_route_data.json: maxRoutes must be 3")
     if not isinstance(route_data.get("minScore"), int):
         errors.append("cplayout_route_data.json: minScore must be an integer")
+    if route_data.get("defaultComplexityBand") not in COMPLEXITY_BANDS:
+        errors.append("cplayout_route_data.json: defaultComplexityBand is invalid")
+    if route_data.get("defaultReasoningEffort") not in REASONING_EFFORTS:
+        errors.append("cplayout_route_data.json: defaultReasoningEffort is invalid")
+    if not isinstance(route_data.get("baseValidationExpectations"), list):
+        errors.append("cplayout_route_data.json: baseValidationExpectations must be a list")
+
+    agent_names = set()
+    for path in ROOT.glob(".codex/agents/*.toml"):
+        try:
+            parsed = tomllib.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 - parser detail reported elsewhere too.
+            errors.append(f"{path.relative_to(ROOT)}: {exc}")
+            continue
+        name = parsed.get("name")
+        if isinstance(name, str):
+            agent_names.add(name)
 
     route_ids: list[str] = []
     routes = route_data.get("routes")
@@ -204,6 +293,27 @@ def validate_route_data() -> list[str]:
         route_id = route.get("id")
         if isinstance(route_id, str):
             route_ids.append(route_id)
+        skill = route.get("skill")
+        if not isinstance(skill, str) or not (ROOT / ".agents" / "skills" / skill / "SKILL.md").exists():
+            errors.append(f"cplayout_route_data.json: {route_id}.skill does not reference a local skill")
+        agent = route.get("agent")
+        if not isinstance(agent, str) or agent not in agent_names:
+            errors.append(f"cplayout_route_data.json: {route_id}.agent does not reference a configured agent")
+        if route.get("complexityBand") not in COMPLEXITY_BANDS:
+            errors.append(f"cplayout_route_data.json: {route_id}.complexityBand is invalid")
+        if route.get("reasoningEffort") not in REASONING_EFFORTS:
+            errors.append(f"cplayout_route_data.json: {route_id}.reasoningEffort is invalid")
+        if route.get("spawnPolicy") not in SPAWN_POLICIES:
+            errors.append(f"cplayout_route_data.json: {route_id}.spawnPolicy is invalid")
+        for field in ("note", "routingReason"):
+            value = route.get(field)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"cplayout_route_data.json: {route_id}.{field} must be non-empty")
+        expectations = route.get("validationExpectations")
+        if not isinstance(expectations, list) or not all(
+            isinstance(expectation, str) and expectation.strip() for expectation in expectations
+        ):
+            errors.append(f"cplayout_route_data.json: {route_id}.validationExpectations must be non-empty strings")
         for field in ("positiveKeywords", "negativeKeywords"):
             keywords = route.get(field)
             if not isinstance(keywords, list):

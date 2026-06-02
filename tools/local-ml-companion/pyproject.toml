@@ -6,9 +6,46 @@ requires-python = ">=3.12"
 dependencies = [
   "dvc>=3.60",
   "mlflow>=3.0",
+  "numpy",
   "opencv-python-headless>=4.10",
   "pandas>=2.2",
   "scikit-learn>=1.5",
+]
+
+[project.optional-dependencies]
+gis = [
+  "geopandas",
+  "rasterio",
+  "rioxarray",
+]
+vision = [
+  "matplotlib",
+  "plotly",
+  "scikit-image",
+]
+dashboard = [
+  "dash",
+  "streamlit",
+]
+api = [
+  "fastapi",
+  "httpx",
+  "sqlalchemy",
+  "uvicorn",
+]
+all = [
+  "dash",
+  "fastapi",
+  "geopandas",
+  "matplotlib",
+  "plotly",
+  "rasterio",
+  "rioxarray",
+  "scikit-image",
+  "sqlalchemy",
+  "streamlit",
+  "httpx",
+  "uvicorn",
 ]
 
 [project.scripts]

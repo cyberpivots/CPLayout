@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
 import sys
 import unittest
 
@@ -19,6 +21,9 @@ spec.loader.exec_module(triage)
 class PromptTriageTests(unittest.TestCase):
     def route_ids(self, prompt: str) -> list[str]:
         return [match.route.route_id for match in triage.match_routes(prompt)]
+
+    def hook_context(self, prompt: str) -> str:
+        return triage._context(prompt, triage.match_routes(prompt), False)  # noqa: SLF001 - hook contract test.
 
     def test_strong_imagery_prompt_selects_imagery_route(self) -> None:
         routes = self.route_ids("Use Google Earth Pro KML imagery to prove visual fidelity.")
@@ -41,23 +46,73 @@ class PromptTriageTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 self.assertEqual(self.route_ids(prompt), [])
 
+    def test_token_matching_does_not_match_inside_words(self) -> None:
+        self.assertEqual(self.route_ids("Review imageboard management storagebags with no CPLayout task."), [])
+
+    def test_phrase_matching_handles_punctuation(self) -> None:
+        routes = self.route_ids("Capture Google-Earth KMZ render proof with non-black evidence.")
+        self.assertEqual(routes[0], "cplayout_imagery_mapper")
+
     def test_mixed_prompt_is_capped_and_deterministic(self) -> None:
         routes = self.route_ids(
-            "Use Google Earth imagery and SQLite to improve center pivot UI with an agent hook registry."
+            "Use Google Earth imagery, Expo SQLite, center pivot UI, and managed hook registry."
         )
         self.assertLessEqual(len(routes), 3)
         self.assertEqual(
             routes,
             [
-                "cplayout_imagery_mapper",
-                "cplayout_center_pivot_designer",
                 "cplayout_database_specialist",
+                "cplayout_kb_curator",
+                "cplayout_imagery_mapper",
             ],
         )
 
     def test_negative_keywords_reduce_false_positives(self) -> None:
         routes = self.route_ids("Do database only work on SQLite schema; no imagery and no pivot design.")
         self.assertEqual(routes, ["cplayout_database_specialist"])
+
+    def test_route_metadata_is_loaded(self) -> None:
+        route_data = triage.load_route_data()
+        curator = next(route for route in route_data.routes if route.route_id == "cplayout_kb_curator")
+        self.assertEqual(curator.agent, "cplayout_kb_curator")
+        self.assertEqual(curator.complexity_band, "xhigh")
+        self.assertEqual(curator.reasoning_effort, "xhigh")
+        self.assertEqual(curator.spawn_policy, "optional")
+        self.assertTrue(curator.routing_reason)
+        self.assertTrue(curator.validation_expectations)
+
+    def test_coordinator_contract_includes_complexity_and_reprompt(self) -> None:
+        context = self.hook_context("Implement multi-agent managed hook enforcement with prompt triage.")
+        self.assertIn("CPLayout coordinator contract:", context)
+        self.assertIn("Complexity band: xhigh; reasoning effort: xhigh.", context)
+        self.assertIn("Subagents: required.", context)
+        self.assertIn("Optimized re-prompt:", context)
+        self.assertIn("cplayout_kb_curator", context)
+
+    def test_optimized_reprompt_text_carries_subagent_decision(self) -> None:
+        prompt = "Use multi-agent managed hooks for CPLayout route classification."
+        reprompt = triage.optimized_reprompt(prompt, triage.match_routes(prompt))
+        self.assertIn("Subagent decision: required.", reprompt)
+        self.assertIn("projected/local XY", reprompt)
+        self.assertIn("managed requirements", reprompt)
+
+    def test_malformed_payload_still_returns_shape_warning(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(HOOK_PATH)],
+            input="Use managed hook enforcement.",
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        output = json.loads(result.stdout)["hookSpecificOutput"]
+        self.assertEqual(output["hookEventName"], "UserPromptSubmit")
+        self.assertIn("Hook input shape was incomplete or non-JSON", output["additionalContext"])
+
+    def test_no_match_prompt_gets_coordinator_only_contract(self) -> None:
+        context = self.hook_context("Format this sentence with no CPLayout domain change.")
+        self.assertIn("No specialist keywords matched", context)
+        self.assertIn("Subagents: not useful.", context)
 
 
 if __name__ == "__main__":

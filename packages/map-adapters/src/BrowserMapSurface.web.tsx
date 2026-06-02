@@ -497,7 +497,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         </View>
 
         {canEditOnMap && mode === "mark_obstacle" ? (
-          <View style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
+          <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["obstacle", "road", "ditch", "fence", "tree", "building", "canal", "exclusion"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
             ))}
@@ -544,7 +544,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         ) : null}
 
         {canEditOnMap && mode === "place_pivot" ? (
-          <View style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
+          <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["pivot_center", "water_source", "power_source"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
             ))}
@@ -552,7 +552,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         ) : null}
 
         {canEditOnMap && mode === "capture_point" ? (
-          <View style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
+          <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["control_point", "field_boundary", "obstacle", "note_point"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
             ))}
@@ -560,7 +560,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         ) : null}
 
         {canEditOnMap && mode === "measure" ? (
-          <View style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
+          <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {UTILITY_FEATURE_OPTIONS.map((option) => (
               <Chip
                 key={option.kind}

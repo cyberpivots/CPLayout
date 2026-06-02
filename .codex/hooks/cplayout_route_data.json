@@ -1,11 +1,27 @@
 {
   "maxRoutes": 3,
   "minScore": 10,
+  "defaultComplexityBand": "xhigh",
+  "defaultReasoningEffort": "xhigh",
+  "baseValidationExpectations": [
+    "Re-read AGENTS.md and run git status --short before non-trivial work.",
+    "Run npm run validate:skills for hook, skill, agent, or record changes.",
+    "Run git diff --check and npm audit before reporting success."
+  ],
   "routes": [
     {
       "id": "cplayout_imagery_mapper",
       "skill": "cplayout-imagery-mapping-agent",
+      "agent": "cplayout_imagery_mapper",
+      "complexityBand": "xhigh",
+      "reasoningEffort": "xhigh",
+      "spawnPolicy": "optional",
       "note": "Keep KML/KMZ styling visual-only and require evidence before any imagery/CV or Google Earth render claim.",
+      "routingReason": "Imagery, KML/KMZ, Google Earth, ML/CV, or field-boundary evidence needs the imagery mapper lens.",
+      "validationExpectations": [
+        "Do not claim Google Earth visual fidelity without direct non-black rendered evidence.",
+        "Keep imagery/CV output as evidence until accepted geometry routes through projected-XY validation."
+      ],
       "priority": 10,
       "positiveKeywords": [
         { "term": "google earth", "weight": 12 },
@@ -40,7 +56,16 @@
     {
       "id": "cplayout_interface_developer",
       "skill": "cplayout-interface-development-agent",
+      "agent": "cplayout_interface_developer",
+      "complexityBand": "high",
+      "reasoningEffort": "xhigh",
+      "spawnPolicy": "optional",
       "note": "Preserve offline-first Expo boundaries and run visible UI proof when screens change.",
+      "routingReason": "Expo, React Native, web, screen, component, or visible workflow work needs interface verification.",
+      "validationExpectations": [
+        "Run npm run validate after TypeScript or UI changes.",
+        "For visible UI changes, run web proof and capture Playwright evidence when available."
+      ],
       "priority": 20,
       "positiveKeywords": [
         { "term": "react native", "weight": 12 },
@@ -66,7 +91,16 @@
     {
       "id": "cplayout_center_pivot_designer",
       "skill": "cplayout-center-pivot-design-agent",
+      "agent": "cplayout_center_pivot_designer",
+      "complexityBand": "xhigh",
+      "reasoningEffort": "xhigh",
+      "spawnPolicy": "optional",
       "note": "Separate source-backed design evidence from advisory software scoring.",
+      "routingReason": "Center pivot, corner-arm, lateral, linear, irrigation, or scoring prompts need design evidence review.",
+      "validationExpectations": [
+        "Keep irrigation design output advisory unless accepted by qualified human review.",
+        "Separate source-backed facts, heuristics, and unknown field constraints."
+      ],
       "priority": 30,
       "positiveKeywords": [
         { "term": "center pivot", "weight": 12 },
@@ -95,7 +129,16 @@
     {
       "id": "cplayout_database_specialist",
       "skill": "cplayout-database-agent",
+      "agent": "cplayout_database_specialist",
+      "complexityBand": "xhigh",
+      "reasoningEffort": "xhigh",
+      "spawnPolicy": "optional",
       "note": "Keep native SQLite, web storage, and project archive contracts explicit.",
+      "routingReason": "SQLite, project-store, archive, schema, migration, or persistence prompts need storage contract review.",
+      "validationExpectations": [
+        "Keep native SQLite, ZIP sharing, and web SQLite behind documented runtime gates.",
+        "Validate project archives through packages/project-store and packages/core contracts."
+      ],
       "priority": 40,
       "positiveKeywords": [
         { "term": "expo sqlite", "weight": 12 },
@@ -121,9 +164,28 @@
     {
       "id": "cplayout_kb_curator",
       "skill": "cplayout-expert-agent-panels",
+      "agent": "cplayout_kb_curator",
+      "complexityBand": "xhigh",
+      "reasoningEffort": "xhigh",
+      "spawnPolicy": "optional",
       "note": "Record verified facts, sources, validation, and unresolved gaps separately.",
+      "routingReason": "Skills, hooks, agents, managed policy, source ledgers, known gaps, prompt registry, or process enforcement need curator review.",
+      "validationExpectations": [
+        "Update source ledger, known gaps, and prompt registry when process facts or durable guidance change.",
+        "Use official OpenAI docs for Codex hooks, subagents, managed configuration, and requirements claims."
+      ],
       "priority": 50,
       "positiveKeywords": [
+        { "term": "requirements.toml", "weight": 14 },
+        { "term": "managed hook", "weight": 14 },
+        { "term": "managed hooks", "weight": 14 },
+        { "term": "managed policy", "weight": 12 },
+        { "term": "hook enforcement", "weight": 12 },
+        { "term": "process enforcement", "weight": 12 },
+        { "term": "prompt triage", "weight": 12 },
+        { "term": "route classification", "weight": 12 },
+        { "term": "coordinator contract", "weight": 12 },
+        { "term": "reasoning band", "weight": 10 },
         { "term": "source ledger", "weight": 10 },
         { "term": "known gap", "weight": 10 },
         { "term": "prompt registry", "weight": 10 },

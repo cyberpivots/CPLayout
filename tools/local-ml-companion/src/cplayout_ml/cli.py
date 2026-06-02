@@ -12,7 +12,13 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
+from .api import serve_companion_api
+from .dashboard import serve_review_dashboard
+from .evidence_packet import build_evidence_packet
 from .ml_loop import prepare_vision_dataset, run_boundary_experiment, summarize_boundary_experiments
+from .optional_imports import companion_dependency_probe
+from .raster_fixtures import prepare_raster_fixtures
+from .vector_labels import validate_vector_labels
 
 MODEL_NAME = "baseline-local-layout-ranker"
 MODEL_VERSION = "0.1.0"
@@ -50,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     subcommands.add_parser("probe-gpu", help="Verify WSL NVIDIA and PyTorch CUDA visibility.")
+    deps_probe = subcommands.add_parser("probe-companion-deps", help="Smoke-test optional local companion dependency groups.")
+    deps_probe.add_argument("--groups", nargs="+", default=["all"], help='Groups to probe: all, base, gis, vision, dashboard, api. Comma-separated values are accepted.')
+    deps_probe.add_argument("--require-installed", action="store_true", help="Return a non-zero exit code when any selected dependency import fails.")
 
     boundary_probe = subcommands.add_parser("probe-boundary-detector", help="Report local OpenCV/SAM2 field-boundary detector availability.")
     boundary_probe.add_argument("--sam2-config", type=Path, help=f"SAM2 config path. Defaults to ${SAM2_CONFIG_ENV}.")
@@ -156,9 +165,52 @@ def main(argv: list[str] | None = None) -> int:
     summarize_experiments.add_argument("--input", required=True, type=Path, nargs="+", help="Experiment report JSON files or experiment output directories.")
     summarize_experiments.add_argument("--output-dir", required=True, type=Path, help="Directory for JSON and Markdown comparison output.")
 
+    raster_fixtures = subcommands.add_parser("prepare-raster-fixtures", help="Hash and validate local raster/proof artifacts for companion-only GIS review.")
+    raster_fixtures.add_argument("--manifest", required=True, type=Path, help="JSON manifest with rasters[], fixtures[], or artifacts[] entries.")
+    raster_fixtures.add_argument("--output-dir", required=True, type=Path, help="Directory for raster-fixture-metadata.json.")
+    raster_fixtures.add_argument("--project-id", help="Project id to record when the manifest omits projectId.")
+    raster_fixtures.add_argument("--project-crs", help="Projected/local project CRS to record when the manifest omits projectCrs.")
+    raster_fixtures.add_argument("--require-projected-output", action="store_true", help="Reject fixtures without a projected raster CRS.")
+    raster_fixtures.add_argument("--created-at", default=DEFAULT_CREATED_AT)
+
+    vector_labels = subcommands.add_parser("validate-vector-labels", help="Validate local operator vector labels and export projected-XY evidence when CRS allows.")
+    vector_labels.add_argument("--input", required=True, type=Path, help="Local GeoJSON/vector label file.")
+    vector_labels.add_argument("--output-dir", required=True, type=Path)
+    vector_labels.add_argument("--project-id", required=True)
+    vector_labels.add_argument("--project-crs", required=True)
+    vector_labels.add_argument("--created-at", default=DEFAULT_CREATED_AT)
+
+    evidence_packet = subcommands.add_parser("build-evidence-packet", help="Combine local raster/vector/CV/scoring outputs into existing review import records.")
+    evidence_packet.add_argument("--project-id", required=True)
+    evidence_packet.add_argument("--project-crs", required=True)
+    evidence_packet.add_argument("--output-dir", required=True, type=Path)
+    evidence_packet.add_argument("--raster-fixtures", type=Path, help="Optional raster-fixture-metadata.json.")
+    evidence_packet.add_argument("--vector-labels", type=Path, help="Optional vector-label-validation.json.")
+    evidence_packet.add_argument("--cv-candidates", type=Path, help="Optional local CV candidate JSON.")
+    evidence_packet.add_argument("--score-report", type=Path, help="Optional local scoring/evaluation report JSON.")
+    evidence_packet.add_argument("--source-artifact", type=Path, action="append", default=[], help="Additional local artifact to hash into the packet.")
+    evidence_packet.add_argument("--created-at", default=DEFAULT_CREATED_AT)
+
+    dashboard = subcommands.add_parser("serve-review-dashboard", help="Launch a read-only local Streamlit review dashboard over an evidence packet.")
+    dashboard.add_argument("--packet", required=True, type=Path, help="companion-evidence-packet.json to review.")
+    dashboard.add_argument("--engine", choices=["streamlit", "dash"], default="streamlit", help="Dashboard engine. Streamlit remains the primary default.")
+    dashboard.add_argument("--host", default="127.0.0.1", help="Localhost bind address. Non-local binds are rejected.")
+    dashboard.add_argument("--port", type=int, default=8501)
+    dashboard.add_argument("--export-html", type=Path, help="Write a local Plotly comparison report instead of launching a server.")
+    dashboard.add_argument("--dry-run", action="store_true", help="Print the local launch plan without starting Streamlit.")
+
+    companion_api = subcommands.add_parser("serve-companion-api", help="Launch an optional localhost FastAPI wrapper around companion file-bridge outputs.")
+    companion_api.add_argument("--workspace", type=Path, default=Path("."), help="Local workspace root for read-only packet access.")
+    companion_api.add_argument("--host", default="127.0.0.1", help="Localhost bind address. Non-local binds are rejected.")
+    companion_api.add_argument("--port", type=int, default=8765)
+    companion_api.add_argument("--experiment-db", type=Path, help="Optional companion-owned experiment .sqlite path; never the CPLayout project DB.")
+    companion_api.add_argument("--dry-run", action="store_true", help="Print the local launch plan without starting FastAPI.")
+
     args = parser.parse_args(argv)
     if args.command == "probe-gpu":
         return probe_gpu()
+    if args.command == "probe-companion-deps":
+        return probe_companion_deps(args.groups, args.require_installed)
     if args.command == "probe-boundary-detector":
         return probe_boundary_detector(args.sam2_config, args.sam2_checkpoint)
     if args.command == "recommend-layout":
@@ -237,8 +289,47 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "summarize-boundary-experiments":
         return summarize_boundary_experiments(args.input, args.output_dir)
+    if args.command == "prepare-raster-fixtures":
+        return prepare_raster_fixtures(
+            args.manifest,
+            args.output_dir,
+            args.project_id,
+            args.project_crs,
+            args.require_projected_output,
+            args.created_at,
+        )
+    if args.command == "validate-vector-labels":
+        return validate_vector_labels(
+            args.input,
+            args.output_dir,
+            args.project_id,
+            args.project_crs,
+            args.created_at,
+        )
+    if args.command == "build-evidence-packet":
+        return build_evidence_packet(
+            args.project_id,
+            args.project_crs,
+            args.output_dir,
+            args.raster_fixtures,
+            args.vector_labels,
+            args.cv_candidates,
+            args.score_report,
+            args.source_artifact,
+            args.created_at,
+        )
+    if args.command == "serve-review-dashboard":
+        return serve_review_dashboard(args.packet, args.host, args.port, args.dry_run, args.engine, args.export_html)
+    if args.command == "serve-companion-api":
+        return serve_companion_api(args.workspace, args.host, args.port, args.experiment_db, args.dry_run)
     parser.error("Unsupported command.")
     return 2
+
+
+def probe_companion_deps(groups: list[str], require_installed: bool) -> int:
+    result = companion_dependency_probe(groups, require_installed)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 1 if require_installed and not result["available"] else 0
 
 
 def evaluate_vision_fixtures(manifest_path: Path, output_dir: Path) -> int:

@@ -29,11 +29,15 @@ This registry records the repo-local specialist prompt surfaces and the session-
 
 Prompt triage is implemented as an advisory `UserPromptSubmit` hook in `.codex/hooks.json`, backed by `.codex/hooks/cplayout_prompt_triage.py` and `.codex/hooks/cplayout_route_data.json`. It injects routing context only; it does not block work, enforce policy, or prove runtime behavior.
 
-The route data uses weighted positive and negative keywords. A route score is the sum of matched positive weights minus matched negative weights. Routes are emitted only when their score is at least `minScore`, then sorted by score descending, route priority ascending, and route id. Hook output is capped by `maxRoutes`, currently `3`, so broad prompts do not flood the context window with every specialist.
+The route data uses token/phrase-aware weighted positive and negative keywords. A route score is the sum of matched positive weights minus matched negative weights. Routes are emitted only when their score is at least `minScore`, then sorted by score descending, route priority ascending, and route id. Hook output is capped by `maxRoutes`, currently `3`, so broad prompts do not flood the context window with every specialist.
+
+Every route declares `agent`, `complexityBand`, `reasoningEffort`, `spawnPolicy`, `routingReason`, and `validationExpectations`. The hook emits a coordinator contract with matched specialists, required preflight, subagent decision (`required`, `optional`, or `not useful`), complexity band, reasoning effort, optimized re-prompt, and validation expectations.
 
 Broad terms such as `agent`, `hook`, `layout`, and `web` are intentionally low weight. They should not route by themselves; they only help rank a route when stronger task-specific terms are also present.
 
 ML/CV pivot-locating prompts route through the imagery mapper, center pivot designer, and KB curator when they include terms such as `pivot center detection`, `automatic pivot locating`, `TRUE_PIVOT_CENTER`, `Hough circle`, `radial alignment`, `machine learning`, `100 iteration`, or `weighted vote`. This keeps automatic center-pivot locating work tied to imagery evidence, design plausibility, source records, and the no-automatic-geometry-mutation boundary.
+
+Managed-hook and process-enforcement prompts route through `cplayout_kb_curator` when they include terms such as `requirements.toml`, `managed hook`, `hook enforcement`, `process enforcement`, `prompt triage`, `route classification`, `coordinator contract`, or `reasoning band`. These prompts are `xhigh` because they affect Codex policy surfaces and multi-agent coordination.
 
 Whole-codebase 100-iteration improvement prompts use route id `whole-codebase-100-loop`: expected artifact is `docs/whole-codebase-improvement-loop-2026-06-01.md` plus milestone evidence summaries under `docs/evidence/continuous-improvement/`. This route is `Xhigh` risk because it can span UI, storage, geometry, ML/CV, docs, validation, commits, and remote branch checkpoints.
 
@@ -45,6 +49,14 @@ Detailed routing guidance lives in `.agents/skills/cplayout-expert-agent-panels/
 
 - `SubagentStart` through `.codex/hooks/cplayout_subagent_start.py`, which injects CPLayout boundaries into spawned subagents: read `AGENTS.md`, preserve projected/local `XY`, avoid paid APIs and hidden keys, keep KML/KMZ styling visual-only, and require evidence before runtime proof claims.
 - `PreToolUse` through `.codex/hooks/cplayout_pre_tool_use.py`, which narrowly denies clearly destructive commands such as `git reset --hard`, `git clean -fd`, force push, and `npm audit fix --force`. Other CPLayout-sensitive patterns receive advisory context rather than a block.
+
+The local hook set now also includes `Stop` through `.codex/hooks/cplayout_stop_multi_agent.py`. It emits advisory context when an explicit multi-agent or subagent prompt ends without a subagent decision summary or accepted fallback explanation.
+
+## Managed Hook Deployment
+
+Project-local `.codex/hooks.json` is advisory because it depends on project trust, local hook feature settings, and hook review. Non-bypass deployment is documented in `docs/codex-managed-hook-deployment.md` with a parseable example in `docs/examples/cplayout-managed-requirements.toml`.
+
+The managed example pins `[features].hooks = true`, sets `allow_managed_hooks_only = true`, defines absolute managed hook directories, and registers `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, and `Stop` hooks. It still requires endpoint script deployment, Codex restart, and live `/hooks` verification before any enforcement claim.
 
 ## Session-Level Skill Snapshot
 

@@ -4,6 +4,8 @@ import {
   CheckCircle2,
   ClipboardList,
   Calculator,
+  Circle,
+  CircleDot,
   Database,
   Download,
   FolderOpen,
@@ -11,19 +13,28 @@ import {
   Layers,
   ListChecks,
   Map as MapIcon,
+  MapPin,
   MapPinned,
+  MousePointer2,
   PackageCheck,
+  Pentagon,
+  Route,
   RotateCcw,
   Ruler,
   Save,
   Satellite,
   SlidersHorizontal,
+  Sprout,
   Upload,
   UserRound,
+  UtilityPole,
+  Waypoints,
   WifiOff,
+  Wrench,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useReducer, useState } from "react";
 import {
+  Modal,
   Pressable,
   Platform,
   SafeAreaView,
@@ -57,9 +68,11 @@ import {
   MACHINE_CATALOG_PRESETS,
   applyMachineCatalogPreset,
   createProjectEditorState,
+  coordinateExample,
   defaultProjectSettings,
   formatCoordinate,
   mergeAppSettings,
+  parseCoordinateInput,
   parseAppSettings,
   projectSettingsFromApp,
   reduceProjectEditorState,
@@ -87,6 +100,7 @@ import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFe
 type WorkspaceView = "dashboard" | "map" | "survey" | "review" | "files" | "settings";
 type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "review" | "export";
+type DesignConsoleModal = "point" | "line" | "polygon" | "circle" | "pivot" | "obstacle" | "machine" | "endGun" | "cornerArm" | "calculate" | "layers" | null;
 
 function createBlankDesignProject(settings: AppSettings): PivotProject {
   const timestamp = new Date().toISOString();
@@ -144,6 +158,7 @@ export default function App(): React.JSX.Element {
     mode: DrawingMode;
     requestId: number;
   } | null>(null);
+  const [designConsoleModal, setDesignConsoleModal] = useState<DesignConsoleModal>(null);
   const [homeMapView, setHomeMapView] = useState(true);
   const [activeCatalogContext, setActiveCatalogContext] = useState<{
     customerId: string | null;
@@ -198,6 +213,10 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     setDesignScenarioPreview(null);
   }, [editor.revision]);
+
+  useEffect(() => {
+    if (homeMapView) setDesignConsoleModal(null);
+  }, [homeMapView]);
 
   function applyPivotCoordinate(coordinate: XY, wgs84?: LonLat): void {
     dispatchProject({ type: "place_pivot", point: coordinate, wgs84 });
@@ -348,6 +367,12 @@ export default function App(): React.JSX.Element {
       mode,
       requestId: (current?.requestId ?? 0) + 1,
     }));
+  }
+
+  function activateDesignConsoleTool(mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind): void {
+    activateGuidedMapTool(mode, activeLayer, featureKind);
+    setDesignConsoleModal(null);
+    setActiveView("map");
   }
 
   function routeToCustomerSelection(): void {
@@ -812,31 +837,52 @@ export default function App(): React.JSX.Element {
 
           {activeView === "map" && (
             <View style={[styles.layoutGrid, compactLayout && styles.layoutGridCompact]} testID="map-view">
-              <MapSurface
-                activeLayer={guidedMapTool?.activeLayer}
-                activeMapFeatureKind={guidedMapTool?.featureKind}
-                activeToolMode={guidedMapTool?.mode}
-                activeToolRequestId={guidedMapTool?.requestId}
-                homeView={homeMapView}
-                project={project}
-                result={result}
-                settings={settings}
-                selectedMapFeatureId={selectedMapFeatureId}
-                advisoryRecommendationPreview={advisoryRecommendationPreview}
-                onSettingsChange={commitSettings}
-                onMappingWorkflowModeChange={setWorkflowMode}
-                onCommitBoundaryDraft={(vertices) => dispatchProjectWithResult({ type: "commit_boundary_draft", vertices })}
-                onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProjectWithResult({ type: "commit_obstacle_draft", vertices, kind, confidence })}
-                onMoveBoundaryVertex={(vertexIndex, point) => dispatchProject({ type: "move_boundary_vertex", vertexIndex, point })}
-                onDeleteBoundaryVertex={(vertexIndex) => dispatchProject({ type: "delete_boundary_vertex", vertexIndex })}
-                onMoveObstacleVertex={(obstacleId, vertexIndex, point) => dispatchProject({ type: "move_obstacle_vertex", obstacleId, vertexIndex, point })}
-                onDeleteObstacleVertex={(obstacleId, vertexIndex) => dispatchProject({ type: "delete_obstacle_vertex", obstacleId, vertexIndex })}
-                onPlacePivot={(point, wgs84) => dispatchProject({ type: "place_pivot", point, wgs84 })}
-                onMoveInfrastructurePoint={(pointType, point, wgs84) => dispatchProject({ type: "move_infrastructure", pointType, point, wgs84 })}
-                onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
-                onAddMapFeature={addMapFeature}
-                onSelectMapFeature={setSelectedMapFeatureId}
-              />
+              <View style={styles.mapConsoleFrame}>
+                <MapSurface
+                  activeLayer={guidedMapTool?.activeLayer}
+                  activeMapFeatureKind={guidedMapTool?.featureKind}
+                  activeToolMode={guidedMapTool?.mode}
+                  activeToolRequestId={guidedMapTool?.requestId}
+                  homeView={homeMapView}
+                  project={project}
+                  result={result}
+                  settings={settings}
+                  selectedMapFeatureId={selectedMapFeatureId}
+                  advisoryRecommendationPreview={advisoryRecommendationPreview}
+                  onSettingsChange={commitSettings}
+                  onMappingWorkflowModeChange={setWorkflowMode}
+                  onCommitBoundaryDraft={(vertices) => dispatchProjectWithResult({ type: "commit_boundary_draft", vertices })}
+                  onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProjectWithResult({ type: "commit_obstacle_draft", vertices, kind, confidence })}
+                  onMoveBoundaryVertex={(vertexIndex, point) => dispatchProject({ type: "move_boundary_vertex", vertexIndex, point })}
+                  onDeleteBoundaryVertex={(vertexIndex) => dispatchProject({ type: "delete_boundary_vertex", vertexIndex })}
+                  onMoveObstacleVertex={(obstacleId, vertexIndex, point) => dispatchProject({ type: "move_obstacle_vertex", obstacleId, vertexIndex, point })}
+                  onDeleteObstacleVertex={(obstacleId, vertexIndex) => dispatchProject({ type: "delete_obstacle_vertex", obstacleId, vertexIndex })}
+                  onPlacePivot={(point, wgs84) => dispatchProject({ type: "place_pivot", point, wgs84 })}
+                  onMoveInfrastructurePoint={(pointType, point, wgs84) => dispatchProject({ type: "move_infrastructure", pointType, point, wgs84 })}
+                  onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
+                  onAddMapFeature={addMapFeature}
+                  onSelectMapFeature={setSelectedMapFeatureId}
+                />
+                {!homeMapView ? (
+                  <DesignActionHud
+                    activeModal={designConsoleModal}
+                    activeTool={guidedMapTool}
+                    dirty={isDirty}
+                    onActivateTool={activateDesignConsoleTool}
+                    onCalculate={() => {
+                      calculateDesignScenarios();
+                      setDesignConsoleModal("calculate");
+                    }}
+                    onOpenFiles={() => {
+                      setDesignConsoleModal(null);
+                      setActiveView("files");
+                    }}
+                    onOpenModal={setDesignConsoleModal}
+                    onToggleLayers={() => setDesignConsoleModal((current) => current === "layers" ? null : "layers")}
+                    settings={settings}
+                  />
+                ) : null}
+              </View>
               <View style={[styles.sidePanel, compactLayout && styles.sidePanelCompact]}>
                 {homeMapView ? (
                   selectedCustomer ? (
@@ -874,20 +920,6 @@ export default function App(): React.JSX.Element {
                   )
                 ) : (
                   <>
-                    <DesignBuilderPanel
-                      editorError={editor.lastError}
-                      onActivateMapTool={activateGuidedMapTool}
-                      onCalculate={calculateDesignScenarios}
-                      onCommitBoundaryVertices={(vertices) => dispatchProjectWithResult({ type: "commit_boundary_draft", vertices })}
-                      onPlacePivot={(point) => dispatchProjectWithResult({ type: "place_pivot", point })}
-                      onReplaceObstaclePolygon={(obstacleId, vertices) => dispatchProjectWithResult({ type: "replace_obstacle_polygon", obstacleId, vertices })}
-                      onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
-                      preview={designScenarioPreview}
-                      project={project}
-                      result={result}
-                      settings={settings}
-                    />
-
                     <Text style={styles.sectionTitle}>Map Inspector</Text>
                     <View style={styles.metricGrid}>
                       <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
@@ -898,14 +930,10 @@ export default function App(): React.JSX.Element {
                       <MetricTile label="Obstacle hits" value={`${result.metrics.obstacleConflictCount}`} tone={result.metrics.obstacleConflictCount > 0 ? "danger" : "good"} />
                       <MetricTile label="Hard path conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
                     </View>
-
-                    <CoordinateFormatPanel
-                      coordinate={project.pivotCenter}
-                      format={settings.coordinateDisplayFormat}
-                      onApply={applyPivotCoordinate}
-                      onFormatChange={(coordinateDisplayFormat) => commitSettings({ ...settings, coordinateDisplayFormat })}
-                      projectCrs={project.projectCrs}
-                    />
+                    <View style={styles.mapFeatureEditor} testID="design-console-status">
+                      <Text style={styles.mapFeatureTitle}>Design Console</Text>
+                      <Text style={styles.mapFeatureMeta}>Use the bottom HUD for drawing and focused inputs. GPS entry uses decimal degrees; projected XY is available only in Expert XY disclosures.</Text>
+                    </View>
 
                     {settings.mappingWorkflowMode === "layout" ? (
                       <>
@@ -1033,6 +1061,27 @@ export default function App(): React.JSX.Element {
           </ScrollView>
         </View>
       </View>
+      {!homeMapView ? (
+        <DesignConsoleDialog
+          activeModal={designConsoleModal}
+          editorError={editor.lastError}
+          onActivateTool={activateDesignConsoleTool}
+          onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
+          onCalculate={calculateDesignScenarios}
+          onClose={() => setDesignConsoleModal(null)}
+          onOpenFiles={() => {
+            setDesignConsoleModal(null);
+            setActiveView("files");
+          }}
+          onSettingsChange={commitSettings}
+          onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
+          preview={designScenarioPreview}
+          project={project}
+          result={result}
+          settings={settings}
+          visible={designConsoleModal !== null}
+        />
+      ) : null}
       {catalogDialogMode ? (
         <ProjectCatalogDialog
           contextPreview={catalogDialogContextPreview(catalogDialogMode)}
@@ -1131,6 +1180,630 @@ const WALKTHROUGH_MODULES: Array<{
   { id: "review", title: "Expert Review", checkpoint: "Review center findings and recommendations are resolved or deferred." },
   { id: "export", title: "Export Package", checkpoint: "ZIP/KML/GeoJSON are exported after saving local edits." },
 ];
+
+function DesignActionHud({
+  activeModal,
+  activeTool,
+  dirty,
+  onActivateTool,
+  onCalculate,
+  onOpenFiles,
+  onOpenModal,
+  onToggleLayers,
+  settings,
+}: {
+  activeModal: DesignConsoleModal;
+  activeTool: { activeLayer: DrawingLayerType; featureKind?: ProjectMapFeatureKind; mode: DrawingMode; requestId: number } | null;
+  dirty: boolean;
+  onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
+  onCalculate: () => void;
+  onOpenFiles: () => void;
+  onOpenModal: (modal: DesignConsoleModal) => void;
+  onToggleLayers: () => void;
+  settings: AppSettings;
+}): React.JSX.Element {
+  const designMode = settings.mappingWorkflowMode === "design";
+  return (
+    <View style={styles.designActionHud} testID="design-action-hud">
+      <HudToolButton
+        active={activeTool?.mode === "pan"}
+        icon={(color) => <MousePointer2 size={19} color={color} />}
+        label="Pan"
+        onPress={() => onActivateTool("pan", "field_boundary")}
+        testID="design-action-pan"
+      />
+      <HudToolButton
+        active={activeModal === "point"}
+        icon={(color) => <MapPin size={19} color={color} />}
+        label="Point"
+        onPress={() => onOpenModal("point")}
+        testID="design-action-point"
+      />
+      <HudToolButton
+        active={activeModal === "line"}
+        icon={(color) => <Route size={19} color={color} />}
+        label="Line"
+        onPress={() => onOpenModal("line")}
+        testID="design-action-line"
+      />
+      <HudToolButton
+        active={activeModal === "polygon" || activeTool?.mode === "draw_boundary" || activeTool?.mode === "mark_obstacle"}
+        icon={(color) => <Pentagon size={19} color={color} />}
+        label="Polygon"
+        onPress={() => onOpenModal("polygon")}
+        testID="design-action-polygon"
+      />
+      <HudToolButton
+        active={activeModal === "circle" || activeTool?.featureKind === "end_gun_arc"}
+        icon={(color) => <Circle size={19} color={color} />}
+        label="Circle"
+        onPress={() => onOpenModal("circle")}
+        testID="design-action-circle"
+      />
+      <HudToolButton
+        active={activeModal === "pivot" || activeTool?.activeLayer === "pivot_center"}
+        icon={(color) => <CircleDot size={19} color={color} />}
+        label="Pivot"
+        onPress={() => onOpenModal("pivot")}
+        testID="design-action-pivot"
+      />
+      <HudToolButton
+        active={activeModal === "obstacle" || activeTool?.mode === "mark_obstacle"}
+        icon={(color) => <Sprout size={19} color={color} />}
+        label="Obstacles"
+        onPress={() => onOpenModal("obstacle")}
+        testID="design-action-obstacles"
+      />
+      <HudToolButton
+        active={activeModal === "machine"}
+        icon={(color) => <Wrench size={19} color={color} />}
+        label="Machine"
+        onPress={() => onOpenModal("machine")}
+        testID="design-action-machine"
+      />
+      <HudToolButton
+        active={activeModal === "endGun"}
+        icon={(color) => <Ruler size={19} color={color} />}
+        label="End Gun"
+        onPress={() => onOpenModal("endGun")}
+        testID="design-action-end-gun"
+      />
+      <HudToolButton
+        active={activeModal === "cornerArm" || activeTool?.featureKind === "corner_swing_limit"}
+        icon={(color) => <Waypoints size={19} color={color} />}
+        label="Corner"
+        onPress={() => onOpenModal("cornerArm")}
+        testID="design-action-corner-arm"
+      />
+      <HudToolButton
+        active={activeModal === "calculate"}
+        icon={(color) => <Calculator size={19} color={color} />}
+        label="Calc"
+        onPress={onCalculate}
+        testID="design-action-calculate"
+      />
+      <HudToolButton
+        active={activeModal === "layers"}
+        icon={(color) => <Layers size={19} color={color} />}
+        label="Layers"
+        onPress={onToggleLayers}
+        testID="design-action-layers"
+      />
+      <HudToolButton
+        active={false}
+        icon={(color) => <Download size={19} color={color} />}
+        label={dirty ? "Files *" : "Files"}
+        onPress={onOpenFiles}
+        testID="design-action-files"
+      />
+      {!designMode ? (
+        <Text style={styles.designHudNotice}>Layout mode is read-only for pointer edits.</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function HudToolButton({
+  active,
+  icon,
+  label,
+  onPress,
+  testID,
+}: {
+  active: boolean;
+  icon: (color: string) => React.ReactNode;
+  label: string;
+  onPress: () => void;
+  testID?: string;
+}): React.JSX.Element {
+  const color = active ? "#ffffff" : "#173428";
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      aria-pressed={active}
+      onPress={onPress}
+      style={[styles.designHudButton, active && styles.designHudButtonActive]}
+      testID={testID}
+    >
+      {icon(color)}
+      <Text style={[styles.designHudButtonText, active && styles.designHudButtonTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function DesignConsoleDialog({
+  activeModal,
+  editorError,
+  onActivateTool,
+  onApplyPivot,
+  onCalculate,
+  onClose,
+  onOpenFiles,
+  onSettingsChange,
+  onUpdateMachine,
+  preview,
+  project,
+  result,
+  settings,
+  visible,
+}: {
+  activeModal: DesignConsoleModal;
+  editorError: string | null;
+  onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
+  onApplyPivot: (point: XY, wgs84?: LonLat) => boolean;
+  onCalculate: () => void;
+  onClose: () => void;
+  onOpenFiles: () => void;
+  onSettingsChange: (settings: AppSettings) => void;
+  onUpdateMachine: (machine: PivotMachine) => boolean;
+  preview: DesignScenarioPreview[] | null;
+  project: PivotProject;
+  result: ReturnType<typeof evaluateLayout>;
+  settings: AppSettings;
+  visible: boolean;
+}): React.JSX.Element | null {
+  if (!activeModal) return null;
+  const copy = designConsoleCopy(activeModal);
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+      <View style={styles.consoleModalBackdrop} testID="design-console-dialog-backdrop">
+        <View accessibilityViewIsModal style={styles.consoleDialog} testID="design-console-dialog">
+          <View style={styles.consoleDialogHeader}>
+            <View style={styles.consoleIconBadge}>{copy.icon}</View>
+            <View style={styles.consoleDialogTitleBlock}>
+              <Text style={styles.consoleDialogTitle}>{copy.title}</Text>
+              <Text style={styles.consoleDialogMeta}>{copy.meta}</Text>
+            </View>
+            <Pressable accessibilityLabel="Close design console dialog" accessibilityRole="button" onPress={onClose} style={styles.consoleCloseButton} testID="design-console-close">
+              <Text style={styles.consoleCloseText}>Close</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.consoleDialogBody} contentContainerStyle={styles.consoleDialogBodyContent}>
+            {activeModal === "point" ? <PointToolSheet onActivateTool={onActivateTool} /> : null}
+            {activeModal === "line" ? <LineToolSheet onActivateTool={onActivateTool} /> : null}
+            {activeModal === "polygon" ? <PolygonToolSheet onActivateTool={onActivateTool} /> : null}
+            {activeModal === "circle" ? <CircleToolSheet onActivateTool={onActivateTool} /> : null}
+            {activeModal === "obstacle" ? <ObstacleToolSheet onActivateTool={onActivateTool} /> : null}
+            {activeModal === "pivot" ? <PivotGpsCoordinateForm onApply={onApplyPivot} project={project} /> : null}
+            {activeModal === "machine" ? (
+              <MachineSettingsForm machine={project.machine} onChange={onUpdateMachine} unitSystem={settings.unitSystem} />
+            ) : null}
+            {activeModal === "endGun" ? (
+              <EndGunSettingsForm machine={project.machine} onChange={onUpdateMachine} result={result} unitSystem={settings.unitSystem} />
+            ) : null}
+            {activeModal === "cornerArm" ? (
+              <CornerArmSheet
+                footprintCount={(project.mapFeatures ?? []).filter((feature) => feature.kind === "corner_swing_limit").length}
+                machine={project.machine}
+                onActivateTool={onActivateTool}
+                result={result}
+              />
+            ) : null}
+            {activeModal === "calculate" ? (
+              <CalculateSheet
+                editorError={editorError}
+                onCalculate={onCalculate}
+                preview={preview}
+                result={result}
+                settings={settings}
+              />
+            ) : null}
+            {activeModal === "layers" ? (
+              <LayersSheet
+                onOpenFiles={onOpenFiles}
+                onSettingsChange={onSettingsChange}
+                settings={settings}
+              />
+            ) : null}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function designConsoleCopy(modal: NonNullable<DesignConsoleModal>): { icon: React.ReactNode; meta: string; title: string } {
+  const color = "#eef7f1";
+  switch (modal) {
+    case "point":
+      return { icon: <MapPin size={21} color={color} />, title: "Point Tools", meta: "Place pivot, water, power, control, and utility point records from map clicks." };
+    case "line":
+      return { icon: <Route size={21} color={color} />, title: "Line And Path Tools", meta: "Draw projected XY line features from map clicks; decimal GPS stays the display layer." };
+    case "polygon":
+      return { icon: <Pentagon size={21} color={color} />, title: "Polygon Tools", meta: "Choose the feature type, then click vertices on the map and commit through validation." };
+    case "circle":
+      return { icon: <Circle size={21} color={color} />, title: "Circle Tools", meta: "Use center plus radius-point clicks for advisory circular map features." };
+    case "pivot":
+      return { icon: <CircleDot size={21} color={color} />, title: "Pivot GPS Entry", meta: "Default entry is WGS84 decimal degrees; projected XY remains internal." };
+    case "obstacle":
+      return { icon: <Sprout size={21} color={color} />, title: "Obstacle And Constraint Tools", meta: "Draw no-spray and hard-conflict polygons without changing map viewport state." };
+    case "machine":
+      return { icon: <Wrench size={21} color={color} />, title: "Machine", meta: "Set spans, overhang, sweep, and clearance buffers from source-backed or custom inputs." };
+    case "endGun":
+      return { icon: <Ruler size={21} color={color} />, title: "End Gun", meta: "End-gun throw and shutoff arcs are separate from corner-arm advisory footprints." };
+    case "cornerArm":
+      return { icon: <Waypoints size={21} color={color} />, title: "Corner Arm Advisory", meta: "Operator/vendor footprint evidence only; manufacturer kinematics are not modeled." };
+    case "calculate":
+      return { icon: <Calculator size={21} color={color} />, title: "Calculate", meta: "Preview scenarios and metrics without save/export side effects." };
+    case "layers":
+      return { icon: <Layers size={21} color={color} />, title: "Layers", meta: "Reference and imagery settings remain no-key, local-first, and non-persistent unless stored in project settings." };
+  }
+}
+
+function PointToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
+  return (
+    <View style={styles.consoleChoiceGrid}>
+      <ConsoleChoiceButton label="Pivot Map Click" meta="Click the map to place pivot center." onPress={() => onActivateTool("place_pivot", "pivot_center")} />
+      <ConsoleChoiceButton label="Water Source" meta="Click the map to move the water source." onPress={() => onActivateTool("place_pivot", "water_source")} />
+      <ConsoleChoiceButton label="Power Source" meta="Click the map to move the power source." onPress={() => onActivateTool("place_pivot", "power_source")} />
+      <ConsoleChoiceButton label="Control Point" meta="Capture a manual control point." onPress={() => onActivateTool("capture_point", "control_point")} />
+      <ConsoleChoiceButton label="Note Point" meta="Capture a map note point." onPress={() => onActivateTool("capture_point", "note_point")} />
+      <ConsoleChoiceButton label="Pump Feature" meta="Save a pump location map feature from one click." onPress={() => onActivateTool("measure", "control_point", "pump_location")} />
+      <ConsoleChoiceButton label="Power Pole" meta="Save a utility pole map feature from one click." onPress={() => onActivateTool("measure", "control_point", "power_pole")} />
+      <ConsoleChoiceButton label="Tree Point" meta="Save a tree map feature from one click." onPress={() => onActivateTool("measure", "control_point", "tree")} />
+    </View>
+  );
+}
+
+function LineToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
+  const lineKinds: Array<{ kind: ProjectMapFeatureKind; label: string; meta: string }> = [
+    { kind: "underground_pipeline", label: "Pipeline", meta: "Click line vertices for buried main or lateral route." },
+    { kind: "power_line", label: "Power Line", meta: "Click vertices for overhead or buried power path." },
+    { kind: "fence", label: "Fence", meta: "Trace fence path as a utility line." },
+    { kind: "access_lane", label: "Access Lane", meta: "Trace farm access or service path." },
+    { kind: "ditch", label: "Ditch", meta: "Trace ditch path as a utility line." },
+    { kind: "canal", label: "Canal", meta: "Trace canal path as a utility line." },
+    { kind: "road", label: "Road", meta: "Trace road edge or access road path." },
+  ];
+  return (
+    <View style={styles.consoleChoiceGrid}>
+      {lineKinds.map((option) => (
+        <ConsoleChoiceButton key={option.kind} label={option.label} meta={option.meta} onPress={() => onActivateTool("measure", "control_point", option.kind)} />
+      ))}
+    </View>
+  );
+}
+
+function PolygonToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
+  return (
+    <View style={styles.consoleChoiceGrid}>
+      <ConsoleChoiceButton label="Field Boundary" meta="Click vertices; snap or double-click near the first point to close." onPress={() => onActivateTool("draw_boundary", "field_boundary")} />
+      <ConsoleChoiceButton label="Obstacle / No-Spray" meta="Draw a hard-conflict no-spray exclusion polygon." onPress={() => onActivateTool("mark_obstacle", "exclusion")} />
+      <ConsoleChoiceButton label="Building Footprint" meta="Draw a building obstacle polygon." onPress={() => onActivateTool("mark_obstacle", "building")} />
+      <ConsoleChoiceButton label="Corner-Arm Footprint" meta="Draw advisory vendor/operator footprint evidence." onPress={() => onActivateTool("measure", "control_point", "corner_swing_limit")} />
+    </View>
+  );
+}
+
+function CircleToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
+  return (
+    <View style={styles.consoleChoiceGrid}>
+      <ConsoleChoiceButton label="End-Gun Circle" meta="Click center, then radius point; save as an advisory end-gun map feature." onPress={() => onActivateTool("measure", "control_point", "end_gun_arc")} />
+    </View>
+  );
+}
+
+function ObstacleToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
+  const obstacleLayers: Array<{ layer: DrawingLayerType; label: string; meta: string }> = [
+    { layer: "exclusion", label: "No-Spray Area", meta: "Hard conflict and no-spray polygon." },
+    { layer: "road", label: "Road", meta: "Road obstacle polygon." },
+    { layer: "ditch", label: "Ditch", meta: "Ditch obstacle polygon." },
+    { layer: "fence", label: "Fence", meta: "Fence obstacle polygon." },
+    { layer: "building", label: "Building", meta: "Building footprint obstacle." },
+    { layer: "canal", label: "Canal", meta: "Canal obstacle polygon." },
+    { layer: "tree", label: "Tree Row", meta: "Tree or grove obstacle polygon." },
+  ];
+  return (
+    <View style={styles.consoleChoiceGrid}>
+      {obstacleLayers.map((option) => (
+        <ConsoleChoiceButton key={option.layer} label={option.label} meta={option.meta} onPress={() => onActivateTool("mark_obstacle", option.layer)} />
+      ))}
+    </View>
+  );
+}
+
+function ConsoleChoiceButton({ label, meta, onPress }: { label: string; meta: string; onPress: () => void }): React.JSX.Element {
+  return (
+    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={styles.consoleChoiceButton}>
+      <Text style={styles.consoleChoiceTitle}>{label}</Text>
+      <Text style={styles.consoleChoiceMeta}>{meta}</Text>
+    </Pressable>
+  );
+}
+
+function PivotGpsCoordinateForm({ onApply, project }: { onApply: (point: XY, wgs84?: LonLat) => boolean; project: PivotProject }): React.JSX.Element {
+  const gpsDefault = useMemo(() => {
+    try {
+      return { ok: true as const, value: formatCoordinate({ projected: project.pivotCenter, projectCrs: project.projectCrs }, "decimal_degrees", 7), error: null };
+    } catch (error) {
+      return { ok: false as const, value: coordinateExample("decimal_degrees"), error: error instanceof Error ? error.message : String(error) };
+    }
+  }, [project.pivotCenter, project.projectCrs]);
+  const [gpsText, setGpsText] = useState(gpsDefault.value);
+  const [expertOpen, setExpertOpen] = useState(false);
+  const [x, setX] = useState(project.pivotCenter.x.toFixed(3));
+  const [y, setY] = useState(project.pivotCenter.y.toFixed(3));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setGpsText(gpsDefault.value);
+    setX(project.pivotCenter.x.toFixed(3));
+    setY(project.pivotCenter.y.toFixed(3));
+    setError(null);
+  }, [gpsDefault.value, project.pivotCenter.x, project.pivotCenter.y]);
+
+  function applyGps(): void {
+    if (!gpsDefault.ok) {
+      setError(`GPS unavailable until CRS/calibration is set: ${gpsDefault.error}`);
+      return;
+    }
+    const parsed = parseCoordinateInput(gpsText, "decimal_degrees", project.projectCrs);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    const accepted = onApply(parsed.coordinate.projected, parsed.coordinate.wgs84);
+    setError(accepted ? null : "Pivot coordinate was rejected by project validation.");
+  }
+
+  function applyExpertXy(): void {
+    try {
+      const accepted = onApply({ x: requiredFiniteNumber(x, "Pivot X"), y: requiredFiniteNumber(y, "Pivot Y") });
+      setError(accepted ? null : "Pivot XY was rejected by project validation.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <View style={styles.machineForm}>
+      <View style={styles.formField}>
+        <Text style={styles.formLabel}>Pivot latitude, longitude</Text>
+        <TextInput
+          accessibilityLabel="Pivot latitude and longitude decimal degrees"
+          editable={gpsDefault.ok}
+          keyboardType="numbers-and-punctuation"
+          onChangeText={(value) => {
+            setGpsText(value);
+            if (error) setError(null);
+          }}
+          style={[styles.textInput, !gpsDefault.ok && styles.inputDisabled]}
+          testID="pivot-gps-input"
+          value={gpsText}
+        />
+        <Text style={styles.mapFeatureMeta}>
+          Decimal degrees in WGS84, formatted as latitude, longitude. The reducer receives projected XY after CRS conversion.
+        </Text>
+        {!gpsDefault.ok ? <Text style={styles.formError}>GPS unavailable until CRS/calibration is set: {gpsDefault.error}</Text> : null}
+      </View>
+      {error ? <Text style={styles.formError}>{error}</Text> : null}
+      <View style={styles.inlineActions}>
+        <SmallActionButton disabled={!gpsDefault.ok} label="Apply GPS" onPress={applyGps} />
+        <SmallActionButton label={expertOpen ? "Hide Expert XY" : "Expert XY"} onPress={() => setExpertOpen((open) => !open)} />
+      </View>
+      {expertOpen ? (
+        <View style={styles.expertPanel} testID="pivot-expert-xy">
+          <Text style={styles.mapFeatureTitle}>Expert XY</Text>
+          <Text style={styles.mapFeatureMeta}>Projected/local XY is canonical internal geometry. Use this only for diagnostics or surveyed project coordinates.</Text>
+          <View style={styles.formGrid}>
+            <FormField label="Pivot X" value={x} onChangeText={setX} />
+            <FormField label="Pivot Y" value={y} onChangeText={setY} />
+          </View>
+          <View style={styles.inlineActions}>
+            <SmallActionButton label="Apply Expert XY" onPress={applyExpertXy} />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function EndGunSettingsForm({
+  machine,
+  onChange,
+  result,
+  unitSystem,
+}: {
+  machine: PivotMachine;
+  onChange: (machine: PivotMachine) => boolean | void;
+  result: ReturnType<typeof evaluateLayout>;
+  unitSystem: PivotProject["unitSystem"];
+}): React.JSX.Element {
+  const firstRange = machine.endGunAngleRanges?.[0] ?? null;
+  const [throwDistance, setThrowDistance] = useState(formatDistanceInputValue(machine.endGunThrowMeters, unitSystem));
+  const [arcEnabled, setArcEnabled] = useState(Boolean(firstRange));
+  const [startAngle, setStartAngle] = useState(firstRange ? String(firstRange.startAngleDegrees) : "0");
+  const [stopAngle, setStopAngle] = useState(firstRange ? String(firstRange.stopAngleDegrees) : "120");
+  const [direction, setDirection] = useState<"clockwise" | "counterclockwise">(firstRange?.direction ?? "counterclockwise");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextRange = machine.endGunAngleRanges?.[0] ?? null;
+    setThrowDistance(formatDistanceInputValue(machine.endGunThrowMeters, unitSystem));
+    setArcEnabled(Boolean(nextRange));
+    setStartAngle(nextRange ? String(nextRange.startAngleDegrees) : "0");
+    setStopAngle(nextRange ? String(nextRange.stopAngleDegrees) : "120");
+    setDirection(nextRange?.direction ?? "counterclockwise");
+    setError(null);
+  }, [machine, unitSystem]);
+
+  function apply(): void {
+    try {
+      const nextMachine: PivotMachine = {
+        ...machine,
+        endGunThrowMeters: requiredNonNegativeDistanceInput(throwDistance, unitSystem, "End gun throw"),
+        endGunAngleRanges: arcEnabled
+          ? [{
+            startAngleDegrees: requiredFiniteNumber(startAngle, "End gun arc start"),
+            stopAngleDegrees: requiredFiniteNumber(stopAngle, "End gun arc stop"),
+            direction,
+          }]
+          : [],
+      };
+      const accepted = onChange(nextMachine);
+      setError(accepted === false ? "End-gun settings were rejected by project validation." : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <View style={styles.machineForm}>
+      <View style={styles.metricGrid}>
+        <MetricTile label="End-gun acres" value={formatAreaFromAcres(result.metrics.endGunAcres, unitSystem)} />
+        <MetricTile label="No-spray conflicts" value={`${result.metrics.noSprayConflictCount}`} tone={result.metrics.noSprayConflictCount > 0 ? "warn" : "good"} />
+      </View>
+      <Text style={styles.mapFeatureMeta}>
+        Use throw distance and optional shutoff arcs for end-gun review. Corner-arm footprints remain separate advisory map features.
+      </Text>
+      {error ? <Text style={styles.formError}>{error}</Text> : null}
+      <View style={styles.formGrid}>
+        <FormField label={`Throw (${unitSystem === "metric" ? "m" : "ft/in"})`} value={throwDistance} onChangeText={setThrowDistance} />
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Arc mode</Text>
+          <View style={styles.controlRow}>
+            <ActionButton label="Full sweep" selected={!arcEnabled} onPress={() => setArcEnabled(false)} />
+            <ActionButton label="Angle range" selected={arcEnabled} onPress={() => setArcEnabled(true)} />
+          </View>
+        </View>
+        {arcEnabled ? (
+          <>
+            <FormField label="Start angle" value={startAngle} onChangeText={setStartAngle} />
+            <FormField label="Stop angle" value={stopAngle} onChangeText={setStopAngle} />
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Direction</Text>
+              <View style={styles.controlRow}>
+                <ActionButton label="CW" selected={direction === "clockwise"} onPress={() => setDirection("clockwise")} />
+                <ActionButton label="CCW" selected={direction === "counterclockwise"} onPress={() => setDirection("counterclockwise")} />
+              </View>
+            </View>
+          </>
+        ) : null}
+      </View>
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Apply End Gun" onPress={apply} />
+      </View>
+    </View>
+  );
+}
+
+function CornerArmSheet({
+  footprintCount,
+  machine,
+  onActivateTool,
+  result,
+}: {
+  footprintCount: number;
+  machine: PivotMachine;
+  onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
+  result: ReturnType<typeof evaluateLayout>;
+}): React.JSX.Element {
+  return (
+    <View style={styles.machineForm}>
+      <View style={styles.metricGrid}>
+        <MetricTile label="Advisory footprints" value={`${footprintCount}`} />
+        <MetricTile label="Tower track conflicts" value={`${result.metrics.towerTrackConflictCount}`} tone={result.metrics.towerTrackConflictCount > 0 ? "danger" : "good"} />
+      </View>
+      <Text style={styles.mapFeatureMeta}>
+        Corner-arm support is advisory only. Store vendor/operator supplied footprint, track, and coverage evidence as map features; CPLayout does not model manufacturer-specific corner-arm kinematics without source-backed geometry data.
+      </Text>
+      <Text style={styles.mapFeatureMeta}>
+        Catalog compatibility: {machine.catalogSelection ? `${machine.catalogSelection.manufacturer} ${machine.catalogSelection.model} is selected as an advisory snapshot.` : "No catalog preset selected; verify compatibility from operator/vendor sources."}
+      </Text>
+      <View style={styles.consoleChoiceGrid}>
+        <ConsoleChoiceButton label="Draw Footprint Polygon" meta="Click vertices for an advisory corner-arm swing or coverage footprint." onPress={() => onActivateTool("measure", "control_point", "corner_swing_limit")} />
+        <ConsoleChoiceButton label="Draw Track Evidence" meta="Trace track or operator-supplied evidence as a utility line." onPress={() => onActivateTool("measure", "control_point", "access_lane")} />
+      </View>
+    </View>
+  );
+}
+
+function CalculateSheet({
+  editorError,
+  onCalculate,
+  preview,
+  result,
+  settings,
+}: {
+  editorError: string | null;
+  onCalculate: () => void;
+  preview: DesignScenarioPreview[] | null;
+  result: ReturnType<typeof evaluateLayout>;
+  settings: AppSettings;
+}): React.JSX.Element {
+  return (
+    <View style={styles.machineForm}>
+      <View style={styles.metricGrid}>
+        <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} />
+        <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
+        <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
+      </View>
+      <Pressable accessibilityRole="button" onPress={onCalculate} style={styles.calculateButton} testID="design-console-calculate">
+        <Calculator size={16} color="#ffffff" />
+        <Text style={styles.calculateButtonText}>Calculate Preview</Text>
+      </Pressable>
+      {editorError ? <Text style={styles.formError}>{editorError}</Text> : null}
+      <ScenarioPreviewList preview={preview} settings={settings} />
+    </View>
+  );
+}
+
+function LayersSheet({
+  onOpenFiles,
+  onSettingsChange,
+  settings,
+}: {
+  onOpenFiles: () => void;
+  onSettingsChange: (settings: AppSettings) => void;
+  settings: AppSettings;
+}): React.JSX.Element {
+  return (
+    <View style={styles.machineForm}>
+      <View style={styles.metricGrid}>
+        <MetricTile label="Imagery" value={settings.onlineImagery.enabled ? "On" : "Off"} />
+        <MetricTile label="Reference overlay" value={settings.referenceOverlay.mode === "off" ? "Off" : settings.referenceOverlay.mode} />
+        <MetricTile label="Coordinate display" value={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
+      </View>
+      <Text style={styles.mapFeatureMeta}>
+        Online imagery remains no-key public reference only. Custom URLs and local package paths are local settings and are not stored in project ZIPs.
+      </Text>
+      <View style={styles.inlineActions}>
+        <SmallActionButton
+          label={settings.onlineImagery.enabled ? "Imagery Off" : "Imagery On"}
+          onPress={() => onSettingsChange({ ...settings, onlineImagery: { ...settings.onlineImagery, enabled: !settings.onlineImagery.enabled } })}
+        />
+        <SmallActionButton
+          label={settings.referenceOverlay.mode === "off" ? "Overlay On" : "Overlay Off"}
+          onPress={() => onSettingsChange({ ...settings, referenceOverlay: { ...settings.referenceOverlay, mode: settings.referenceOverlay.mode === "off" ? "manual" : "off" } })}
+        />
+        <SmallActionButton label="Import / Export" onPress={onOpenFiles} />
+      </View>
+    </View>
+  );
+}
 
 function DesignBuilderPanel({
   editorError,
@@ -2293,27 +2966,19 @@ function mapFeatureGeometryLabel(feature: ProjectMapFeature): string {
 }
 
 function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: PivotMachine; onChange: (machine: PivotMachine) => void; unitSystem: PivotProject["unitSystem"] }): React.JSX.Element {
-  const firstEndGunRange = machine.endGunAngleRanges?.[0] ?? null;
   const [spans, setSpans] = useState(formatDistanceInputList(machine.spanLengthsMeters, unitSystem));
   const [overhang, setOverhang] = useState(formatDistanceInputValue(machine.overhangMeters, unitSystem));
-  const [endGun, setEndGun] = useState(formatDistanceInputValue(machine.endGunThrowMeters, unitSystem));
   const [towerClearance, setTowerClearance] = useState(formatDistanceInputValue(machine.towerClearanceBufferMeters, unitSystem));
   const [machineClearance, setMachineClearance] = useState(formatDistanceInputValue(machine.machineClearanceBufferMeters, unitSystem));
   const [startAngle, setStartAngle] = useState(machine.sweep.mode === "partial_circle" ? String(machine.sweep.startAngleDegrees) : "210");
   const [stopAngle, setStopAngle] = useState(machine.sweep.mode === "partial_circle" ? String(machine.sweep.stopAngleDegrees) : "35");
   const [direction, setDirection] = useState<"clockwise" | "counterclockwise">(machine.sweep.mode === "partial_circle" ? machine.sweep.direction : "counterclockwise");
   const [mode, setMode] = useState<PivotSweep["mode"]>(machine.sweep.mode);
-  const [endGunArcEnabled, setEndGunArcEnabled] = useState(Boolean(firstEndGunRange));
-  const [endGunArcStart, setEndGunArcStart] = useState(firstEndGunRange ? String(firstEndGunRange.startAngleDegrees) : "0");
-  const [endGunArcStop, setEndGunArcStop] = useState(firstEndGunRange ? String(firstEndGunRange.stopAngleDegrees) : "120");
-  const [endGunArcDirection, setEndGunArcDirection] = useState<"clockwise" | "counterclockwise">(firstEndGunRange?.direction ?? "counterclockwise");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const nextEndGunRange = machine.endGunAngleRanges?.[0] ?? null;
     setSpans(formatDistanceInputList(machine.spanLengthsMeters, unitSystem));
     setOverhang(formatDistanceInputValue(machine.overhangMeters, unitSystem));
-    setEndGun(formatDistanceInputValue(machine.endGunThrowMeters, unitSystem));
     setTowerClearance(formatDistanceInputValue(machine.towerClearanceBufferMeters, unitSystem));
     setMachineClearance(formatDistanceInputValue(machine.machineClearanceBufferMeters, unitSystem));
     setMode(machine.sweep.mode);
@@ -2322,10 +2987,6 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
       setStopAngle(String(machine.sweep.stopAngleDegrees));
       setDirection(machine.sweep.direction);
     }
-    setEndGunArcEnabled(Boolean(nextEndGunRange));
-    setEndGunArcStart(nextEndGunRange ? String(nextEndGunRange.startAngleDegrees) : "0");
-    setEndGunArcStop(nextEndGunRange ? String(nextEndGunRange.stopAngleDegrees) : "120");
-    setEndGunArcDirection(nextEndGunRange?.direction ?? "counterclockwise");
   }, [machine, unitSystem]);
 
   function apply(): void {
@@ -2335,14 +2996,6 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
         ...machine,
         spanLengthsMeters: spanValues,
         overhangMeters: requiredNonNegativeDistanceInput(overhang, unitSystem, "Overhang"),
-        endGunThrowMeters: requiredNonNegativeDistanceInput(endGun, unitSystem, "End gun"),
-        endGunAngleRanges: endGunArcEnabled
-          ? [{
-            startAngleDegrees: requiredFiniteNumber(endGunArcStart, "End gun arc start"),
-            stopAngleDegrees: requiredFiniteNumber(endGunArcStop, "End gun arc stop"),
-            direction: endGunArcDirection,
-          }]
-          : [],
         towerClearanceBufferMeters: requiredNonNegativeDistanceInput(towerClearance, unitSystem, "Tower clearance"),
         machineClearanceBufferMeters: requiredNonNegativeDistanceInput(machineClearance, unitSystem, "Machine clearance"),
         sweep: mode === "full_circle"
@@ -2371,13 +3024,12 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
   }
 
   const unitLabel = unitSystem === "metric" ? "m" : "ft/in";
-  const endGunMeters = safeDistanceInput(endGun, unitSystem);
-  const wetRadiusMeters = machineRadiusMeters(machine) + Math.max(0, endGunMeters ?? machine.endGunThrowMeters);
+  const wetRadiusMeters = machineRadiusMeters(machine) + Math.max(0, machine.endGunThrowMeters);
 
   return (
     <View style={styles.machineForm}>
       <Text style={styles.mapFeatureMeta}>
-        Derived wet radius {formatDistance(wetRadiusMeters, unitSystem)}{unitSystem === "us_survey_feet" ? ` (${formatFeetInches(wetRadiusMeters)})` : ""} · base radius {formatDistance(machineRadiusMeters(machine), unitSystem)}
+        Base machine radius {formatDistance(machineRadiusMeters(machine), unitSystem)} · current end-gun adjusted wet radius {formatDistance(wetRadiusMeters, unitSystem)}{unitSystem === "us_survey_feet" ? ` (${formatFeetInches(wetRadiusMeters)})` : ""}. Edit end-gun throw and shutoff arcs in the End Gun sheet.
       </Text>
       <View style={styles.machineCatalogPanel}>
         <Text style={styles.formLabel}>Source-backed presets</Text>
@@ -2406,29 +3058,8 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
       <View style={styles.formGrid}>
         <FormField label={`Spans (${unitLabel}, comma separated)`} value={spans} onChangeText={setSpans} />
         <FormField label={`Overhang (${unitLabel})`} value={overhang} onChangeText={setOverhang} />
-        <FormField label={`End gun throw (${unitLabel})`} value={endGun} onChangeText={setEndGun} />
         <FormField label={`Tower clearance (${unitLabel})`} value={towerClearance} onChangeText={setTowerClearance} />
         <FormField label={`Machine clearance (${unitLabel})`} value={machineClearance} onChangeText={setMachineClearance} />
-        <View style={styles.formField}>
-          <Text style={styles.formLabel}>End gun arc mode</Text>
-          <View style={styles.controlRow}>
-            <ActionButton label="Full sweep" selected={!endGunArcEnabled} onPress={() => setEndGunArcEnabled(false)} />
-            <ActionButton label="Angle range" selected={endGunArcEnabled} onPress={() => setEndGunArcEnabled(true)} />
-          </View>
-        </View>
-        {endGunArcEnabled ? (
-          <>
-            <FormField label="End gun start angle" value={endGunArcStart} onChangeText={setEndGunArcStart} />
-            <FormField label="End gun stop angle" value={endGunArcStop} onChangeText={setEndGunArcStop} />
-            <View style={styles.formField}>
-              <Text style={styles.formLabel}>End gun direction</Text>
-              <View style={styles.controlRow}>
-                <ActionButton label="CW" selected={endGunArcDirection === "clockwise"} onPress={() => setEndGunArcDirection("clockwise")} />
-                <ActionButton label="CCW" selected={endGunArcDirection === "counterclockwise"} onPress={() => setEndGunArcDirection("counterclockwise")} />
-              </View>
-            </View>
-          </>
-        ) : null}
         {mode === "partial_circle" ? (
           <>
             <FormField label="Start angle" value={startAngle} onChangeText={setStartAngle} />
@@ -2814,6 +3445,63 @@ const styles = StyleSheet.create({
   layoutGridCompact: {
     gap: 12,
   },
+  mapConsoleFrame: {
+    flexBasis: 620,
+    flexGrow: 1,
+    flexShrink: 1,
+    gap: 10,
+    minWidth: 0,
+  },
+  designActionHud: {
+    alignItems: "center",
+    backgroundColor: "#fbfcf8",
+    borderColor: "#c8d6cc",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  designHudButton: {
+    alignItems: "center",
+    backgroundColor: "#eef4ef",
+    borderColor: "#cbd8ce",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 74,
+    flexGrow: 1,
+    gap: 4,
+    justifyContent: "center",
+    maxWidth: 104,
+    minHeight: 52,
+    minWidth: 66,
+    paddingHorizontal: 7,
+    paddingVertical: 7,
+  },
+  designHudButtonActive: {
+    backgroundColor: "#173428",
+    borderColor: "#173428",
+  },
+  designHudButtonText: {
+    color: "#173428",
+    fontSize: 10,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  designHudButtonTextActive: {
+    color: "#ffffff",
+  },
+  designHudNotice: {
+    color: "#7a4a12",
+    flexBasis: "100%",
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 15,
+    textAlign: "center",
+  },
   sidePanel: {
     backgroundColor: "#fbfcf8",
     borderColor: "#d8ded6",
@@ -3012,6 +3700,117 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
     padding: 12,
+  },
+  consoleModalBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(12, 22, 17, 0.48)",
+    flex: 1,
+    justifyContent: "flex-end",
+    padding: 12,
+  },
+  consoleDialog: {
+    backgroundColor: "#fbfcf8",
+    borderColor: "#cbd8ce",
+    borderRadius: 8,
+    borderWidth: 1,
+    maxHeight: "88%",
+    maxWidth: 760,
+    overflow: "hidden",
+    width: "100%",
+  },
+  consoleDialogHeader: {
+    alignItems: "center",
+    backgroundColor: "#f3f7f0",
+    borderBottomColor: "#d7e0d8",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  consoleIconBadge: {
+    alignItems: "center",
+    backgroundColor: "#254234",
+    borderRadius: 8,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  consoleDialogTitleBlock: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  consoleDialogTitle: {
+    color: "#17241c",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  consoleDialogMeta: {
+    color: "#53665b",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 16,
+  },
+  consoleCloseButton: {
+    backgroundColor: "#eef4ef",
+    borderColor: "#c7d6ca",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  consoleCloseText: {
+    color: "#173428",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  consoleDialogBody: {
+    minHeight: 0,
+  },
+  consoleDialogBodyContent: {
+    gap: 12,
+    padding: 14,
+  },
+  consoleChoiceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  consoleChoiceButton: {
+    backgroundColor: "#f6faf5",
+    borderColor: "#d5e0d6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 190,
+    flexGrow: 1,
+    gap: 5,
+    minHeight: 76,
+    minWidth: 0,
+    padding: 12,
+  },
+  consoleChoiceTitle: {
+    color: "#17241c",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  consoleChoiceMeta: {
+    color: "#5b6b61",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 16,
+  },
+  expertPanel: {
+    backgroundColor: "#f6faf5",
+    borderColor: "#d5e0d6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  inputDisabled: {
+    backgroundColor: "#edf1ec",
+    color: "#65746a",
   },
   designBuilderPanel: {
     borderColor: "#cbd8ce",

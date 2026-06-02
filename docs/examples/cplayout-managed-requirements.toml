@@ -1,0 +1,46 @@
+# Example managed requirements for CPLayout Codex hooks.
+# Install this as a managed requirements.toml after copying hook scripts to the
+# absolute managed directories below. Replace the paths for your fleet.
+
+allow_managed_hooks_only = true
+
+[features]
+hooks = true
+
+[hooks]
+managed_dir = "/opt/cplayout-codex/hooks"
+windows_managed_dir = 'C:\ProgramData\CPLayout\CodexHooks'
+
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "python3 /opt/cplayout-codex/hooks/cplayout_prompt_triage.py"
+command_windows = 'py -3 C:\ProgramData\CPLayout\CodexHooks\cplayout_prompt_triage.py'
+timeout = 20
+statusMessage = "Injecting managed CPLayout prompt triage"
+
+[[hooks.SubagentStart]]
+matcher = "*"
+[[hooks.SubagentStart.hooks]]
+type = "command"
+command = "python3 /opt/cplayout-codex/hooks/cplayout_subagent_start.py"
+command_windows = 'py -3 C:\ProgramData\CPLayout\CodexHooks\cplayout_subagent_start.py'
+timeout = 20
+statusMessage = "Injecting managed CPLayout subagent boundaries"
+
+[[hooks.PreToolUse]]
+matcher = "Bash|functions\\.exec_command|apply_patch|Edit|Write|mcp__.*"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "python3 /opt/cplayout-codex/hooks/cplayout_pre_tool_use.py"
+command_windows = 'py -3 C:\ProgramData\CPLayout\CodexHooks\cplayout_pre_tool_use.py'
+timeout = 20
+statusMessage = "Checking managed CPLayout tool guardrails"
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "python3 /opt/cplayout-codex/hooks/cplayout_stop_multi_agent.py"
+command_windows = 'py -3 C:\ProgramData\CPLayout\CodexHooks\cplayout_stop_multi_agent.py'
+timeout = 20
+statusMessage = "Checking managed CPLayout multi-agent summary"

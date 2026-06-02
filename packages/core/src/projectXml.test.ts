@@ -64,6 +64,21 @@ assert.equal(imported.project.wgs84Companion?.status, "projected");
 assert.equal(imported.project.wgs84Companion?.coordinateSystem, "decimal_degrees");
 assert.match(imported.warnings.join("\n"), /projected XY as canonical/);
 
+const gpsOnlySourceProject = { ...projectWithFeatures, surveyPoints: [], mapFeatures: [] };
+const gpsOnlyXml = exportProjectMapXml(gpsOnlySourceProject).replace(/\s+x="[^"]+"\s+y="[^"]+"/g, "");
+assert.doesNotMatch(gpsOnlyXml, /\sx="/);
+assert.doesNotMatch(gpsOnlyXml, /\sy="/);
+const importedGpsOnly = importProjectMapXmlToProject(gpsOnlyXml);
+assert.equal(importedGpsOnly.project.fieldBoundary.length, gpsOnlySourceProject.fieldBoundary.length);
+assert.ok(Math.abs(importedGpsOnly.project.pivotCenter.x - gpsOnlySourceProject.pivotCenter.x) < 0.001);
+assert.ok(Math.abs(importedGpsOnly.project.pivotCenter.y - gpsOnlySourceProject.pivotCenter.y) < 0.001);
+assert.match(importedGpsOnly.warnings.join("\n"), /GPS-only decimal-degree XML values were converted/);
+
+assert.throws(
+  () => importProjectMapXmlToProject(gpsOnlyXml.replace(`projectCrs="${gpsOnlySourceProject.projectCrs}"`, `projectCrs="EPSG:4326"`)),
+  /GPS coordinates require project CRS\/calibration/,
+);
+
 assert.throws(
   () => importProjectMapXmlToProject(`<!DOCTYPE cplayoutMap><cplayoutMap version="${CPLAYOUT_MAP_XML_VERSION}"/>`),
   /DOCTYPE/,

@@ -1,5 +1,6 @@
 import { DOMParser } from "@xmldom/xmldom";
 
+import { projectLonLatToXy } from "./coordinates";
 import { defaultProjectSettings } from "./settings";
 import { PivotProjectSchema, withWgs84Companion } from "./projectDocument";
 import type {
@@ -103,6 +104,7 @@ export function importProjectMapXmlToProject(xmlText: string): CplayoutMapXmlImp
   const fieldBoundaryElement = requiredChild(root, "fieldBoundary");
   const infrastructureElement = requiredChild(root, "infrastructure");
   const machineElement = requiredChild(root, "machine");
+  const convertedGpsOnly = hasGpsOnlyCoordinate(root);
 
   const project: PivotProject = {
     id: requiredAttr(root, "projectId"),
@@ -113,20 +115,23 @@ export function importProjectMapXmlToProject(xmlText: string): CplayoutMapXmlImp
       ...defaultProjectSettings(),
       unitSystem,
     },
-    fieldBoundary: verticesFrom(fieldBoundaryElement),
-    pivotCenter: infrastructurePoint(infrastructureElement, "pivot_center"),
-    waterSource: infrastructurePoint(infrastructureElement, "water_source"),
-    powerSource: infrastructurePoint(infrastructureElement, "power_source"),
+    fieldBoundary: verticesFrom(fieldBoundaryElement, projectCrs),
+    pivotCenter: infrastructurePoint(infrastructureElement, "pivot_center", projectCrs),
+    waterSource: infrastructurePoint(infrastructureElement, "water_source", projectCrs),
+    powerSource: infrastructurePoint(infrastructureElement, "power_source", projectCrs),
     machine: machineFrom(machineElement),
-    obstacles: children(optionalChild(root, "obstacles"), "obstacle").map(obstacleFrom),
-    surveyPoints: children(optionalChild(root, "surveyPoints"), "surveyPoint").map(surveyPointFrom),
+    obstacles: children(optionalChild(root, "obstacles"), "obstacle").map((obstacle) => obstacleFrom(obstacle, projectCrs)),
+    surveyPoints: children(optionalChild(root, "surveyPoints"), "surveyPoint").map((point) => surveyPointFrom(point, projectCrs)),
     mapPackages: [],
-    mapFeatures: children(optionalChild(root, "mapFeatures"), "mapFeature").map(mapFeatureFrom),
+    mapFeatures: children(optionalChild(root, "mapFeatures"), "mapFeature").map((feature) => mapFeatureFrom(feature, projectCrs)),
   };
 
   return {
     project: withWgs84Companion(PivotProjectSchema.parse(project)),
-    warnings: ["CPLayout XML imported projected XY as canonical geometry; decimal GPS values were treated as display companions."],
+    warnings: [
+      "CPLayout XML imported projected XY as canonical geometry; decimal GPS values were treated as display companions.",
+      ...(convertedGpsOnly ? ["GPS-only decimal-degree XML values were converted into projected XY using the project CRS before validation."] : []),
+    ],
   };
 }
 
@@ -253,12 +258,12 @@ function angleRangeFrom(element: XmlElement): PivotAngleRange {
   };
 }
 
-function obstacleFrom(element: XmlElement): ObstacleZone {
+function obstacleFrom(element: XmlElement, projectCrs: string): ObstacleZone {
   return {
     id: requiredAttr(element, "id"),
     name: requiredAttr(element, "name"),
     kind: enumAttr(element, "kind", OBSTACLE_KINDS),
-    polygon: verticesFrom(requiredChild(element, "polygon")),
+    polygon: verticesFrom(requiredChild(element, "polygon"), projectCrs),
     bufferMeters: nonNegativeNumberAttr(element, "bufferMeters"),
     hardConflict: booleanAttr(element, "hardConflict"),
     noSpray: booleanAttr(element, "noSpray"),
@@ -266,12 +271,12 @@ function obstacleFrom(element: XmlElement): ObstacleZone {
   };
 }
 
-function surveyPointFrom(element: XmlElement): SurveyPoint {
+function surveyPointFrom(element: XmlElement, projectCrs: string): SurveyPoint {
   return {
     id: requiredAttr(element, "id"),
     label: requiredAttr(element, "label"),
     role: enumAttr(element, "role", SURVEY_ROLES),
-    projected: pointFrom(element),
+    projected: pointFrom(element, projectCrs),
     wgs84: lonLatFrom(element),
     observedAt: requiredAttr(element, "observedAt"),
     source: enumAttr(element, "source", SURVEY_SOURCES),
@@ -280,13 +285,13 @@ function surveyPointFrom(element: XmlElement): SurveyPoint {
   };
 }
 
-function mapFeatureFrom(element: XmlElement): ProjectMapFeature {
+function mapFeatureFrom(element: XmlElement, projectCrs: string): ProjectMapFeature {
   const geometryElement = requiredChild(element, "geometry");
   const feature: ProjectMapFeature = {
     id: requiredAttr(element, "id"),
     name: requiredAttr(element, "name"),
     kind: enumAttr(element, "kind", MAP_FEATURE_KINDS),
-    geometry: geometryFrom(geometryElement),
+    geometry: geometryFrom(geometryElement, projectCrs),
     confidence: enumAttr(element, "confidence", SOURCE_CONFIDENCES),
     notes: attr(element, "notes") || undefined,
   };
@@ -299,25 +304,35 @@ function mapFeatureFrom(element: XmlElement): ProjectMapFeature {
   return feature;
 }
 
-function geometryFrom(element: XmlElement): ProjectMapFeatureGeometry {
+function geometryFrom(element: XmlElement, projectCrs: string): ProjectMapFeatureGeometry {
   const type = enumAttr(element, "type", ["Point", "LineString", "Polygon", "Circle"]);
-  if (type === "Point") return { type, point: pointFrom(requiredChild(element, "point")) };
-  if (type === "Circle") return { type, center: pointFrom(requiredChild(element, "center")), radiusMeters: positiveNumberAttr(element, "radiusMeters") };
-  return { type, vertices: verticesFrom(element) };
+  if (type === "Point") return { type, point: pointFrom(requiredChild(element, "point"), projectCrs) };
+  if (type === "Circle") return { type, center: pointFrom(requiredChild(element, "center"), projectCrs), radiusMeters: positiveNumberAttr(element, "radiusMeters") };
+  return { type, vertices: verticesFrom(element, projectCrs) };
 }
 
-function infrastructurePoint(parent: XmlElement, role: string): XY {
+function infrastructurePoint(parent: XmlElement, role: string, projectCrs: string): XY {
   const point = children(parent, "point").find((candidate) => attr(candidate, "role") === role);
   if (!point) throw new Error(`CPLayout XML infrastructure is missing ${role}.`);
-  return pointFrom(point);
+  return pointFrom(point, projectCrs);
 }
 
-function verticesFrom(parent: XmlElement): XY[] {
-  return children(parent, "vertex").map(pointFrom);
+function verticesFrom(parent: XmlElement, projectCrs: string): XY[] {
+  return children(parent, "vertex").map((vertex) => pointFrom(vertex, projectCrs));
 }
 
-function pointFrom(element: XmlElement): XY {
-  return { x: finiteNumberAttr(element, "x"), y: finiteNumberAttr(element, "y") };
+function pointFrom(element: XmlElement, projectCrs: string): XY {
+  const x = attr(element, "x");
+  const y = attr(element, "y");
+  if (x !== null && y !== null) return { x: finiteNumber(x, "x"), y: finiteNumber(y, "y") };
+  const wgs84 = lonLatFrom(element);
+  if (!wgs84) throw new Error(`CPLayout XML ${localName(element)} is missing projected x/y or decimal longitude/latitude.`);
+  try {
+    return projectLonLatToXy(wgs84, projectCrs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`CPLayout XML ${localName(element)} GPS coordinates require project CRS/calibration before import: ${message}`);
+  }
 }
 
 function lonLatFrom(element: XmlElement): LonLat | undefined {
@@ -344,6 +359,15 @@ function requiredChild(parent: XmlElement, tagName: string): XmlElement {
 
 function optionalChild(parent: XmlElement | null | undefined, tagName: string): XmlElement | null {
   return children(parent, tagName)[0] ?? null;
+}
+
+function hasGpsOnlyCoordinate(root: XmlElement): boolean {
+  return Array.from(root.getElementsByTagName("*")).some((element) => {
+    const xmlElement = element as XmlElement;
+    return attr(xmlElement, "longitude") !== null
+      && attr(xmlElement, "latitude") !== null
+      && (attr(xmlElement, "x") === null || attr(xmlElement, "y") === null);
+  });
 }
 
 function localName(element: XmlElement): string {

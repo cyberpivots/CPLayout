@@ -1,0 +1,82 @@
+import assert from "node:assert/strict";
+
+import { CPLAYOUT_MAP_XML_VERSION, exportProjectMapXml, importProjectMapXmlToProject } from "./projectXml";
+import { sampleProject } from "./sampleProject";
+
+const projectWithFeatures = {
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "corner-footprint-a",
+      name: "Corner footprint A",
+      kind: "corner_swing_limit" as const,
+      geometry: {
+        type: "Polygon" as const,
+        vertices: sampleProject.fieldBoundary.slice(0, 4),
+      },
+      confidence: "user_estimated" as const,
+      notes: "Operator supplied advisory footprint.",
+    },
+    {
+      id: "end-gun-radius-a",
+      name: "End gun radius marker",
+      kind: "end_gun_arc" as const,
+      geometry: {
+        type: "Circle" as const,
+        center: sampleProject.pivotCenter,
+        radiusMeters: 24,
+      },
+      confidence: "user_estimated" as const,
+      properties: { advisoryOnly: true },
+    },
+  ],
+  machine: {
+    ...sampleProject.machine,
+    catalogSelection: {
+      catalogId: "valley-8000-public-preset",
+      manufacturer: "Valley",
+      model: "8000 Series",
+      sourceUrl: "https://www.valleyirrigation.com/8000",
+      sourceAccessedAt: "2026-06-02",
+      advisoryOnly: true as const,
+    },
+  },
+};
+
+const xml = exportProjectMapXml(projectWithFeatures);
+assert.match(xml, new RegExp(CPLAYOUT_MAP_XML_VERSION));
+assert.match(xml, /canonicalGeometry="projected_xy"/);
+assert.match(xml, /gpsCoordinateSystem="decimal_degrees"/);
+assert.match(xml, /<mapFeature id="corner-footprint-a"/);
+assert.match(xml, /<geometry type="Circle" radiusMeters="24">/);
+assert.match(xml, /catalogId="valley-8000-public-preset"/);
+assert.doesNotMatch(xml, /tileUrlTemplate|packageDirectory|hidden/i);
+
+const imported = importProjectMapXmlToProject(xml);
+assert.equal(imported.project.id, projectWithFeatures.id);
+assert.equal(imported.project.projectCrs, projectWithFeatures.projectCrs);
+assert.equal(imported.project.fieldBoundary.length, projectWithFeatures.fieldBoundary.length);
+assert.equal(imported.project.mapFeatures?.length, 2);
+assert.equal(imported.project.mapFeatures?.[0].geometry.type, "Polygon");
+assert.equal(imported.project.mapFeatures?.[1].geometry.type, "Circle");
+assert.equal(imported.project.machine.catalogSelection?.catalogId, "valley-8000-public-preset");
+assert.equal(imported.project.wgs84Companion?.status, "projected");
+assert.equal(imported.project.wgs84Companion?.coordinateSystem, "decimal_degrees");
+assert.match(imported.warnings.join("\n"), /projected XY as canonical/);
+
+assert.throws(
+  () => importProjectMapXmlToProject(`<!DOCTYPE cplayoutMap><cplayoutMap version="${CPLAYOUT_MAP_XML_VERSION}"/>`),
+  /DOCTYPE/,
+);
+
+assert.throws(
+  () => importProjectMapXmlToProject(`<notCplayout/>`),
+  /root element/,
+);
+
+assert.throws(
+  () => importProjectMapXmlToProject(xml.replace(CPLAYOUT_MAP_XML_VERSION, "old-version")),
+  /Unsupported CPLayout XML version/,
+);
+
+console.log("project XML tests passed");

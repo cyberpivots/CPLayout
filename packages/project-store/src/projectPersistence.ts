@@ -206,7 +206,7 @@ function obstacleToGeometryRow(projectId: string, obstacle: ObstacleZone): Geome
 }
 
 function mapFeatureToGeometryRow(projectId: string, feature: ProjectMapFeature): GeometryPersistenceRow {
-  const vertices = feature.geometry.type === "Point" ? [feature.geometry.point] : feature.geometry.vertices;
+  const vertices = mapFeatureGeometryVertices(feature);
   return {
     id: `${projectId}:map-feature:${feature.id}`,
     layerType: "map_feature",
@@ -217,11 +217,28 @@ function mapFeatureToGeometryRow(projectId: string, feature: ProjectMapFeature):
       ...(feature.properties ?? {}),
       featureId: feature.id,
       geometryType: feature.geometry.type,
+      radiusMeters: feature.geometry.type === "Circle" ? feature.geometry.radiusMeters : null,
       notes: feature.notes ?? null,
     },
     vertices,
     bounds: boundsForPoints(vertices),
   };
+}
+
+function mapFeatureGeometryVertices(feature: ProjectMapFeature): XY[] {
+  if (feature.geometry.type === "Point") return [feature.geometry.point];
+  if (feature.geometry.type === "LineString" || feature.geometry.type === "Polygon") return feature.geometry.vertices;
+  return [feature.geometry.center, ...circleVertices(feature.geometry.center, feature.geometry.radiusMeters, 32)];
+}
+
+function circleVertices(center: XY, radiusMeters: number, segments: number): XY[] {
+  return Array.from({ length: segments }, (_value, index) => {
+    const angle = (index / segments) * Math.PI * 2;
+    return {
+      x: center.x + Math.cos(angle) * radiusMeters,
+      y: center.y + Math.sin(angle) * radiusMeters,
+    };
+  });
 }
 
 function layoutEvidenceStatement(record: LayoutEvidenceRecord): SqlStatementPlan {

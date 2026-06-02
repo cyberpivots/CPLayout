@@ -10,8 +10,7 @@ import {
   type XY,
 } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
-
-export type UtilityFeatureGeometry = ProjectMapFeature["geometry"]["type"];
+import { defaultMapFeatureName, type UtilityFeatureGeometry } from "./mapTools";
 
 export type BrowserMapClickIntent =
   | { type: "none"; reason: "pan" | "edit_vertices" | "review_layout_no_mutation" }
@@ -66,7 +65,7 @@ export function browserMapClickToProjectedIntent(params: BrowserMapClickIntentPa
     return {
       type: "add_map_feature_point",
       feature: {
-        name: defaultMapFeatureName(params.featureKind, 1),
+        name: defaultMapFeatureName(params.featureKind, params.featureGeometry, 1),
         kind: params.featureKind,
         geometry: { type: "Point", point },
         confidence,
@@ -80,10 +79,6 @@ export function browserMapClickToProjectedIntent(params: BrowserMapClickIntentPa
 
 export function confidenceForImagery(imageryEnabled: boolean): SourceConfidence {
   return imageryEnabled ? "imagery_digitized" : "user_estimated";
-}
-
-export function defaultMapFeatureName(kind: ProjectMapFeatureKind, vertexCount: number): string {
-  return `${kind.replaceAll("_", " ")} ${vertexCount > 1 ? "line" : "point"}`;
 }
 
 function surveyRoleForLayer(layer: DrawingLayerType): SurveyPoint["role"] {

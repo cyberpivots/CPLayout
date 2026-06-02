@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   calculateTowerPoints,
   createSectorPolygon,
+  endGunRadiusMeters,
+  evaluateMechanicalConflicts,
   evaluateLayout,
   machineRadiusMeters,
   polygonAreaSquareMeters,
@@ -37,6 +39,8 @@ const result = evaluateLayout(sampleProject);
 assert.ok(result.metrics.fieldAcres > 120);
 assert.ok(result.metrics.irrigatedAcres > 25);
 assert.ok(result.metrics.coveragePercent > 15);
+assert.ok(result.metrics.noSprayConflictCount >= 0);
+assert.ok(result.metrics.hardMechanicalConflictCount >= 0);
 assert.ok(result.warnings.length >= 1);
 
 const fieldBoundedProject = {
@@ -63,6 +67,63 @@ const boundaryCrossing = validateWetCoverageWithinField({
 });
 assert.equal(boundaryCrossing.feasible, false);
 assert.ok(boundaryCrossing.outsideFieldAreaSquareMeters > 0);
+
+const endGunFullSweep = evaluateLayout(fieldBoundedProject);
+const endGunArcProject = {
+  ...fieldBoundedProject,
+  machine: {
+    ...fieldBoundedProject.machine,
+    endGunThrowMeters: 20,
+    endGunAngleRanges: [
+      { startAngleDegrees: 0, stopAngleDegrees: 90, direction: "counterclockwise" as const },
+    ],
+  },
+};
+const endGunArcResult = evaluateLayout(endGunArcProject);
+const fullEndGunProject = {
+  ...fieldBoundedProject,
+  machine: {
+    ...fieldBoundedProject.machine,
+    endGunThrowMeters: 20,
+    endGunAngleRanges: [],
+  },
+};
+const fullEndGunResult = evaluateLayout(fullEndGunProject);
+assert.equal(endGunRadiusMeters(endGunArcProject.machine), 40);
+assert.ok(endGunArcResult.metrics.endGunAcres > endGunFullSweep.metrics.endGunAcres);
+assert.ok(endGunArcResult.metrics.endGunAcres < fullEndGunResult.metrics.endGunAcres);
+
+const hardConflictProject = {
+  ...fieldBoundedProject,
+  machine: {
+    ...fieldBoundedProject.machine,
+    spanLengthsMeters: [35],
+    towerClearanceBufferMeters: 4,
+    machineClearanceBufferMeters: 4,
+  },
+  obstacles: [
+    {
+      id: "tower-road",
+      name: "Tower road crossing",
+      kind: "road" as const,
+      polygon: [
+        { x: 82, y: 46 },
+        { x: 90, y: 46 },
+        { x: 90, y: 54 },
+        { x: 82, y: 54 },
+      ],
+      bufferMeters: 0,
+      hardConflict: true,
+      noSpray: false,
+      confidence: "user_estimated" as const,
+    },
+  ],
+};
+const hardConflictResult = evaluateLayout(hardConflictProject);
+assert.equal(hardConflictResult.metrics.noSprayConflictCount, 0);
+assert.equal(hardConflictResult.metrics.hardMechanicalConflictCount, 1);
+assert.equal(hardConflictResult.metrics.towerTrackConflictCount, 1);
+assert.ok(evaluateMechanicalConflicts(hardConflictProject).some((conflict) => conflict.conflictType === "tower_track"));
 
 assert.throws(
   () => evaluateLayout({ ...sampleProject, projectCrs: "EPSG:4326" }),

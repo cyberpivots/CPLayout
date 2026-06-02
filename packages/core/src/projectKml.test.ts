@@ -186,6 +186,35 @@ assert.match(styledMapPoints.kml, /<styleUrl>#cplayout-map-point<\/styleUrl>/);
 assert.match(styledMapPoints.kml, /Power Line A/);
 assert.match(styledMapPoints.kml, /<styleUrl>#cplayout-map-line-power<\/styleUrl>/);
 
+const extendedMapFeatureKml = exportProjectGoogleEarthKml({
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "corner-footprint-a",
+      name: "Corner Footprint A",
+      kind: "corner_swing_limit",
+      geometry: { type: "Polygon", vertices: boundaryRing },
+      confidence: "user_estimated",
+    },
+    {
+      id: "end-gun-circle-a",
+      name: "End Gun Circle A",
+      kind: "end_gun_arc",
+      geometry: { type: "Circle", center: sampleProject.pivotCenter, radiusMeters: 24 },
+      confidence: "user_estimated",
+    },
+  ],
+});
+assert.match(extendedMapFeatureKml.kml, /Corner Footprint A/);
+assert.match(extendedMapFeatureKml.kml, /End Gun Circle A/);
+assert.match(extendedMapFeatureKml.kml, /mapFeatureGeometry/);
+const importedExtendedMapFeatureKml = importGoogleEarthKmlToProject(sampleProject, extendedMapFeatureKml.kml, {
+  selectedItemIds: ["corner-footprint-a", "end-gun-circle-a"],
+});
+assert.equal(importedExtendedMapFeatureKml.importedMapFeatureCount, 2);
+assert.equal(importedExtendedMapFeatureKml.project.mapFeatures?.at(-2)?.geometry.type, "Polygon");
+assert.equal(importedExtendedMapFeatureKml.project.mapFeatures?.at(-1)?.geometry.type, "Circle");
+
 const renamedUtility = exportProjectGoogleEarthKml({
   ...sampleProject,
   mapFeatures: [
@@ -219,12 +248,16 @@ function proofLayoutResultFor(project: typeof realCenterPivotProofProject, obsta
     endGunAcres: 7,
     outsideFieldAcres: 0,
     obstacleConflictCount,
+    noSprayConflictCount: obstacleConflictCount,
+    hardMechanicalConflictCount: 0,
+    towerTrackConflictCount: 0,
   },
   baseCoverage: [[project.fieldBoundary]],
   endGunCoverage: [[project.fieldBoundary]],
   allowedCoverage: [[project.fieldBoundary]],
   outsideFieldCoverage: [],
   obstacles: project.obstacles.map((obstacle) => [obstacle.polygon]),
+  mechanicalConflicts: [],
   towers: [
     {
       towerIndex: 1,

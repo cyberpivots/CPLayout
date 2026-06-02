@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardList,
+  Calculator,
   Database,
   Download,
   FolderOpen,
@@ -53,7 +54,10 @@ import { useProjectRepository, type ProjectWorkspaceStatus } from "./src/hooks/u
 import type { CustomerRecord } from "@cplayout/project-store";
 import {
   COORDINATE_FORMAT_LABELS,
+  MACHINE_CATALOG_PRESETS,
+  applyMachineCatalogPreset,
   createProjectEditorState,
+  defaultProjectSettings,
   formatCoordinate,
   mergeAppSettings,
   parseAppSettings,
@@ -71,16 +75,57 @@ import {
   type ModelRecommendation,
   type PivotMachine,
   type PivotProject,
+  type ProjectEditorAction,
   type ProjectMapFeature,
+  type ProjectMapFeatureKind,
   type PivotSweep,
   type XY,
 } from "@cplayout/core";
-import { evaluateLayout, exportScenarioGeoJson, machineRadiusMeters } from "@cplayout/geometry";
-import { formatAreaFromAcres, formatDistance } from "@cplayout/core";
+import { buildDesignScenarioPreview, evaluateLayout, exportScenarioGeoJson, machineRadiusMeters, type DesignScenarioPreview, type DrawingLayerType, type DrawingMode } from "@cplayout/geometry";
+import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFeetInches, parseDistanceInput } from "@cplayout/core";
 
 type WorkspaceView = "dashboard" | "map" | "survey" | "review" | "files" | "settings";
 type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "review" | "export";
+
+function createBlankDesignProject(settings: AppSettings): PivotProject {
+  const timestamp = new Date().toISOString();
+  const compactTimestamp = timestamp.replace(/[^0-9]/g, "").slice(0, 14);
+  const origin = { x: 501000, y: 4506200 };
+  const fieldBoundary = [
+    { x: origin.x, y: origin.y },
+    { x: origin.x + 400, y: origin.y },
+    { x: origin.x + 400, y: origin.y + 400 },
+    { x: origin.x, y: origin.y + 400 },
+  ];
+
+  return {
+    id: `blank-design-${compactTimestamp}`,
+    name: "Blank Field Design",
+    projectCrs: "EPSG:32613",
+    unitSystem: settings.unitSystem,
+    settings: defaultProjectSettings(),
+    fieldBoundary,
+    pivotCenter: { x: origin.x + 200, y: origin.y + 200 },
+    waterSource: { x: origin.x + 160, y: origin.y + 160 },
+    powerSource: { x: origin.x + 40, y: origin.y + 360 },
+    machine: {
+      id: "blank-design-machine",
+      name: "Blank concept pivot",
+      spanLengthsMeters: [55, 55, 55],
+      overhangMeters: 15,
+      endGunThrowMeters: 0,
+      endGunAngleRanges: [],
+      towerClearanceBufferMeters: 5,
+      machineClearanceBufferMeters: 8,
+      sweep: { mode: "full_circle" },
+    },
+    obstacles: [],
+    surveyPoints: [],
+    mapPackages: [],
+    mapFeatures: [],
+  };
+}
 
 export default function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>("workspace");
@@ -92,6 +137,13 @@ export default function App(): React.JSX.Element {
   const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(sampleProject.id));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
   const [advisoryRecommendationPreview, setAdvisoryRecommendationPreview] = useState<ModelRecommendation | null>(null);
+  const [designScenarioPreview, setDesignScenarioPreview] = useState<DesignScenarioPreview[] | null>(null);
+  const [guidedMapTool, setGuidedMapTool] = useState<{
+    activeLayer: DrawingLayerType;
+    featureKind?: ProjectMapFeatureKind;
+    mode: DrawingMode;
+    requestId: number;
+  } | null>(null);
   const [homeMapView, setHomeMapView] = useState(true);
   const [activeCatalogContext, setActiveCatalogContext] = useState<{
     customerId: string | null;
@@ -143,19 +195,9 @@ export default function App(): React.JSX.Element {
     }
   }, [project.mapFeatures, selectedMapFeatureId]);
 
-  function updateSweep(sweep: PivotSweep): void {
-    dispatchProject({ type: "update_machine", machine: { ...project.machine, sweep } });
-  }
-
-  function changeEndGun(delta: number): void {
-    dispatchProject({
-      type: "update_machine",
-      machine: {
-        ...project.machine,
-        endGunThrowMeters: Math.max(0, project.machine.endGunThrowMeters + delta),
-      },
-    });
-  }
+  useEffect(() => {
+    setDesignScenarioPreview(null);
+  }, [editor.revision]);
 
   function applyPivotCoordinate(coordinate: XY, wgs84?: LonLat): void {
     dispatchProject({ type: "place_pivot", point: coordinate, wgs84 });
@@ -167,6 +209,16 @@ export default function App(): React.JSX.Element {
     dispatchProject({ type: "apply_model_recommendation", recommendation });
     setAdvisoryRecommendationPreview(null);
     return null;
+  }
+
+  function dispatchProjectWithResult(action: ProjectEditorAction): boolean {
+    const nextEditor = reduceProjectEditorState(editor, action);
+    dispatchProject(action);
+    return nextEditor.lastError === null;
+  }
+
+  function calculateDesignScenarios(): void {
+    setDesignScenarioPreview(buildDesignScenarioPreview(project, { maxOptimizedCandidates: 3 }));
   }
 
   function commitSettings(nextSettings: AppSettings): void {
@@ -198,6 +250,15 @@ export default function App(): React.JSX.Element {
   function loadProjectDashboard(nextProject: PivotProject, context?: Partial<typeof activeCatalogContext>): void {
     loadProject(nextProject, context);
     setActiveView("dashboard");
+  }
+
+  function startBlankDesign(): void {
+    loadProject(createBlankDesignProject(settings), {
+      customerId: null,
+      projectId: null,
+      fieldMapId: null,
+      designId: null,
+    });
   }
 
   async function saveCurrentProject(): Promise<void> {
@@ -270,9 +331,23 @@ export default function App(): React.JSX.Element {
     dispatchProject({ type: "update_map_feature", feature: { ...feature, name: trimmedName } });
   }
 
+  function updateMapFeature(feature: ProjectMapFeature): void {
+    dispatchProject({ type: "update_map_feature", feature });
+  }
+
   function deleteMapFeature(featureId: string): void {
     dispatchProject({ type: "delete_map_feature", id: featureId });
     setSelectedMapFeatureId(null);
+  }
+
+  function activateGuidedMapTool(mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind): void {
+    setWorkflowMode("design");
+    setGuidedMapTool((current) => ({
+      activeLayer,
+      featureKind,
+      mode,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
   }
 
   function routeToCustomerSelection(): void {
@@ -664,7 +739,7 @@ export default function App(): React.JSX.Element {
           <View style={[styles.statusRow, compactLayout && styles.statusRowCompact]}>
             <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline storage" />
             {settings.onlineImagery.enabled ? <StatusPill icon={<Satellite size={15} color="#254234" />} label="USGS imagery on" /> : null}
-            <StatusPill icon={<MapPinned size={15} color="#254234" />} label={workflowModeLabel(settings.mappingWorkflowMode)} />
+            <StatusPill icon={<MapPinned size={15} color="#254234" />} label={homeMapView ? "Catalog" : workflowModeLabel(settings.mappingWorkflowMode)} />
             <StatusPill icon={<Satellite size={15} color="#254234" />} label={`${settings.gpsQuality.minimumFixType.replaceAll("_", " ")} gate`} />
             <StatusPill icon={<Ruler size={15} color="#254234" />} label={homeMapView ? "North America" : project.projectCrs} />
             <StatusPill icon={<SlidersHorizontal size={15} color="#254234" />} label={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
@@ -689,6 +764,7 @@ export default function App(): React.JSX.Element {
             activeView={activeView}
             catalog={repository.catalog}
             compact={compactLayout}
+            mapFocus={compactLayout && activeView === "map" && !homeMapView}
             onCreateCustomer={openCustomerCreateDialog}
             onCreateDesign={() => openCatalogDialog("design")}
             onCreateFieldMap={() => openCatalogDialog("fieldMap")}
@@ -700,6 +776,7 @@ export default function App(): React.JSX.Element {
               selectProjectCatalogOnly(projectId);
             }}
             onOpenSample={() => loadProjectDashboard(sampleProject, { customerId: null, projectId: null, fieldMapId: null, designId: null })}
+            onStartBlankDesign={startBlankDesign}
             onSelectCustomer={selectCustomerFolder}
             onSelectProject={selectProjectCatalogOnly}
             onSelectFieldMap={selectFieldMapCatalogOnly}
@@ -736,6 +813,10 @@ export default function App(): React.JSX.Element {
           {activeView === "map" && (
             <View style={[styles.layoutGrid, compactLayout && styles.layoutGridCompact]} testID="map-view">
               <MapSurface
+                activeLayer={guidedMapTool?.activeLayer}
+                activeMapFeatureKind={guidedMapTool?.featureKind}
+                activeToolMode={guidedMapTool?.mode}
+                activeToolRequestId={guidedMapTool?.requestId}
                 homeView={homeMapView}
                 project={project}
                 result={result}
@@ -744,8 +825,8 @@ export default function App(): React.JSX.Element {
                 advisoryRecommendationPreview={advisoryRecommendationPreview}
                 onSettingsChange={commitSettings}
                 onMappingWorkflowModeChange={setWorkflowMode}
-                onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
-                onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
+                onCommitBoundaryDraft={(vertices) => dispatchProjectWithResult({ type: "commit_boundary_draft", vertices })}
+                onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProjectWithResult({ type: "commit_obstacle_draft", vertices, kind, confidence })}
                 onMoveBoundaryVertex={(vertexIndex, point) => dispatchProject({ type: "move_boundary_vertex", vertexIndex, point })}
                 onDeleteBoundaryVertex={(vertexIndex) => dispatchProject({ type: "delete_boundary_vertex", vertexIndex })}
                 onMoveObstacleVertex={(obstacleId, vertexIndex, point) => dispatchProject({ type: "move_obstacle_vertex", obstacleId, vertexIndex, point })}
@@ -786,12 +867,27 @@ export default function App(): React.JSX.Element {
                       catalog={repository.catalog}
                       notice={catalogNotice}
                       onCreateCustomer={openCustomerCreateDialog}
+                      onStartBlankDesign={startBlankDesign}
                       repository={repository}
                       settings={settings}
                     />
                   )
                 ) : (
                   <>
+                    <DesignBuilderPanel
+                      editorError={editor.lastError}
+                      onActivateMapTool={activateGuidedMapTool}
+                      onCalculate={calculateDesignScenarios}
+                      onCommitBoundaryVertices={(vertices) => dispatchProjectWithResult({ type: "commit_boundary_draft", vertices })}
+                      onPlacePivot={(point) => dispatchProjectWithResult({ type: "place_pivot", point })}
+                      onReplaceObstaclePolygon={(obstacleId, vertices) => dispatchProjectWithResult({ type: "replace_obstacle_polygon", obstacleId, vertices })}
+                      onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
+                      preview={designScenarioPreview}
+                      project={project}
+                      result={result}
+                      settings={settings}
+                    />
+
                     <Text style={styles.sectionTitle}>Map Inspector</Text>
                     <View style={styles.metricGrid}>
                       <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
@@ -800,6 +896,7 @@ export default function App(): React.JSX.Element {
                       <MetricTile label="End gun" value={formatAreaFromAcres(result.metrics.endGunAcres, settings.unitSystem)} tone="neutral" />
                       <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
                       <MetricTile label="Obstacle hits" value={`${result.metrics.obstacleConflictCount}`} tone={result.metrics.obstacleConflictCount > 0 ? "danger" : "good"} />
+                      <MetricTile label="Hard path conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
                     </View>
 
                     <CoordinateFormatPanel
@@ -828,26 +925,7 @@ export default function App(): React.JSX.Element {
                       feature={selectedMapFeature}
                       onDelete={deleteMapFeature}
                       onRename={updateMapFeatureName}
-                    />
-
-                    <Text style={styles.sectionTitle}>Mode Controls</Text>
-                    <View style={styles.controlRow}>
-                      <ActionButton label="Full circle" selected={project.machine.sweep.mode === "full_circle"} onPress={() => updateSweep({ mode: "full_circle" })} />
-                      <ActionButton
-                        label="Part circle"
-                        selected={project.machine.sweep.mode === "partial_circle"}
-                        onPress={() => updateSweep({ mode: "partial_circle", startAngleDegrees: 210, stopAngleDegrees: 35, direction: "counterclockwise" })}
-                      />
-                    </View>
-                    <View style={styles.controlRow}>
-                      <ActionButton label="- End gun" onPress={() => changeEndGun(-6)} />
-                      <ActionButton label="+ End gun" onPress={() => changeEndGun(6)} />
-                    </View>
-
-                    <Text style={styles.sectionTitle}>Machine</Text>
-                    <MachineSettingsForm
-                      machine={project.machine}
-                      onChange={(machine) => dispatchProject({ type: "update_machine", machine })}
+                      onUpdate={updateMapFeature}
                     />
 
                     <Text style={styles.sectionTitle}>Validation</Text>
@@ -1054,16 +1132,300 @@ const WALKTHROUGH_MODULES: Array<{
   { id: "export", title: "Export Package", checkpoint: "ZIP/KML/GeoJSON are exported after saving local edits." },
 ];
 
+function DesignBuilderPanel({
+  editorError,
+  onActivateMapTool,
+  onCalculate,
+  onCommitBoundaryVertices,
+  onPlacePivot,
+  onReplaceObstaclePolygon,
+  onUpdateMachine,
+  preview,
+  project,
+  result,
+  settings,
+}: {
+  editorError: string | null;
+  onActivateMapTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
+  onCalculate: () => void;
+  onCommitBoundaryVertices: (vertices: XY[]) => boolean;
+  onPlacePivot: (point: XY) => boolean;
+  onReplaceObstaclePolygon: (obstacleId: string, vertices: XY[]) => boolean;
+  onUpdateMachine: (machine: PivotMachine) => boolean;
+  preview: DesignScenarioPreview[] | null;
+  project: PivotProject;
+  result: ReturnType<typeof evaluateLayout>;
+  settings: AppSettings;
+}): React.JSX.Element {
+  const [selectedObstacleId, setSelectedObstacleId] = useState(project.obstacles[0]?.id ?? null);
+  const selectedObstacle = project.obstacles.find((obstacle) => obstacle.id === selectedObstacleId) ?? project.obstacles[0] ?? null;
+  const cornerArmFootprintCount = (project.mapFeatures ?? []).filter((feature) => feature.kind === "corner_swing_limit").length;
+
+  useEffect(() => {
+    if (!selectedObstacleId || !project.obstacles.some((obstacle) => obstacle.id === selectedObstacleId)) {
+      setSelectedObstacleId(project.obstacles[0]?.id ?? null);
+    }
+  }, [project.obstacles, selectedObstacleId]);
+
+  return (
+    <View style={styles.designBuilderPanel} testID="design-builder-panel">
+      <View style={styles.designBuilderHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>Design Builder</Text>
+          <Text style={styles.mapFeatureMeta}>Projected XY workflow · Calculate before save/export</Text>
+        </View>
+        <SmallActionButton label="Design Mode" onPress={() => onActivateMapTool("pan", "field_boundary")} />
+      </View>
+
+      <DesignStep index={1} title="Field Boundary" meta={`${project.fieldBoundary.length} vertices`}>
+        <View style={styles.inlineActions}>
+          <SmallActionButton label="Draw Boundary" onPress={() => onActivateMapTool("draw_boundary", "field_boundary")} />
+          <SmallActionButton label="Edit Vertices" onPress={() => onActivateMapTool("edit_vertices", "field_boundary")} />
+        </View>
+        <ProjectedPolygonEditor
+          label="Boundary XY"
+          onApply={onCommitBoundaryVertices}
+          vertices={project.fieldBoundary}
+        />
+      </DesignStep>
+
+      <DesignStep index={2} title="Pivot Center" meta={formatDistance(machineRadiusMeters(project.machine), settings.unitSystem)}>
+        <View style={styles.inlineActions}>
+          <SmallActionButton label="Map Click" onPress={() => onActivateMapTool("place_pivot", "pivot_center")} />
+          <SmallActionButton label="Survey Point" onPress={() => onActivateMapTool("capture_point", "pivot_center")} />
+        </View>
+        <PivotCoordinateForm
+          onApply={onPlacePivot}
+          point={project.pivotCenter}
+        />
+      </DesignStep>
+
+      <DesignStep index={3} title="Machine Radius" meta={formatDistance(machineRadiusMeters(project.machine), settings.unitSystem)}>
+        <MachineSettingsForm machine={project.machine} onChange={onUpdateMachine} unitSystem={settings.unitSystem} />
+      </DesignStep>
+
+      <DesignStep index={4} title="Obstacles And Utilities" meta={`${project.obstacles.length} obstacles · ${(project.mapFeatures ?? []).length} utility features`}>
+        <View style={styles.inlineActions}>
+          <SmallActionButton label="Draw Obstacle" onPress={() => onActivateMapTool("mark_obstacle", "obstacle")} />
+          <SmallActionButton label="Utility Line" onPress={() => onActivateMapTool("measure", "control_point")} />
+        </View>
+        {project.obstacles.length > 0 ? (
+          <>
+            <View style={styles.controlRow}>
+              {project.obstacles.map((obstacle) => (
+                <ActionButton
+                  key={obstacle.id}
+                  label={obstacle.name}
+                  onPress={() => setSelectedObstacleId(obstacle.id)}
+                  selected={selectedObstacle?.id === obstacle.id}
+                />
+              ))}
+            </View>
+            {selectedObstacle ? (
+              <ProjectedPolygonEditor
+                label={`${selectedObstacle.name} XY`}
+                onApply={(vertices) => onReplaceObstaclePolygon(selectedObstacle.id, vertices)}
+                vertices={selectedObstacle.polygon}
+              />
+            ) : null}
+          </>
+        ) : (
+          <Text style={styles.mapFeatureMeta}>No obstacle polygons are committed yet.</Text>
+        )}
+      </DesignStep>
+
+      <DesignStep index={5} title="End Gun" meta={`${formatDistance(project.machine.endGunThrowMeters, settings.unitSystem)} throw · ${project.machine.endGunAngleRanges?.length ?? 0} angle ranges`}>
+        <View style={styles.metricGrid}>
+          <MetricTile label="End-gun arcs" value={`${project.machine.endGunAngleRanges?.length ?? 0}`} />
+          <MetricTile label="No-spray conflicts" value={`${result.metrics.noSprayConflictCount}`} tone={result.metrics.noSprayConflictCount > 0 ? "warn" : "good"} />
+          <MetricTile label="End-gun acres" value={formatAreaFromAcres(result.metrics.endGunAcres, settings.unitSystem)} />
+        </View>
+        <View style={styles.inlineActions}>
+          <SmallActionButton label="End Gun Circle" onPress={() => onActivateMapTool("measure", "control_point", "end_gun_arc")} />
+        </View>
+        <Text style={styles.mapFeatureMeta}>End-gun throw and angle ranges live in the machine form. Use the End gun utility circle for advisory radius or shutoff review marks.</Text>
+      </DesignStep>
+
+      <DesignStep index={6} title="Corner Arm" meta={`${cornerArmFootprintCount} advisory footprints`}>
+        <View style={styles.metricGrid}>
+          <MetricTile label="Corner footprints" value={`${cornerArmFootprintCount}`} />
+          <MetricTile label="Tower tracks" value={`${result.metrics.towerTrackConflictCount}`} tone={result.metrics.towerTrackConflictCount > 0 ? "danger" : "good"} />
+        </View>
+        <View style={styles.inlineActions}>
+          <SmallActionButton label="Corner Footprint" onPress={() => onActivateMapTool("measure", "control_point", "corner_swing_limit")} />
+        </View>
+        <Text style={styles.mapFeatureMeta}>Corner-arm inputs are advisory footprints only until operator/vendor coverage and track geometry are supplied. They do not change end-gun settings.</Text>
+      </DesignStep>
+
+      <DesignStep index={7} title="Calculate Preview" meta={preview ? `${preview.length} scenarios` : "Not calculated"}>
+        <Pressable accessibilityRole="button" onPress={onCalculate} style={styles.calculateButton} testID="design-builder-calculate">
+          <Calculator size={16} color="#ffffff" />
+          <Text style={styles.calculateButtonText}>Calculate</Text>
+        </Pressable>
+        {editorError ? <Text style={styles.formError}>{editorError}</Text> : null}
+        <ScenarioPreviewList preview={preview} settings={settings} />
+      </DesignStep>
+    </View>
+  );
+}
+
+function DesignStep({ children, index, meta, title }: { children: React.ReactNode; index: number; meta: string; title: string }): React.JSX.Element {
+  return (
+    <View style={styles.designStep}>
+      <View style={styles.designStepHeader}>
+        <View style={styles.designStepBadge}>
+          <Text style={styles.designStepBadgeText}>{index}</Text>
+        </View>
+        <View style={styles.designStepTitleBlock}>
+          <Text style={styles.designStepTitle}>{title}</Text>
+          <Text style={styles.mapFeatureMeta}>{meta}</Text>
+        </View>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function PivotCoordinateForm({ onApply, point }: { onApply: (point: XY) => boolean; point: XY }): React.JSX.Element {
+  const [x, setX] = useState(point.x.toFixed(3));
+  const [y, setY] = useState(point.y.toFixed(3));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setX(point.x.toFixed(3));
+    setY(point.y.toFixed(3));
+  }, [point.x, point.y]);
+
+  function apply(): void {
+    try {
+      const next = { x: requiredFiniteNumber(x, "Pivot X"), y: requiredFiniteNumber(y, "Pivot Y") };
+      const accepted = onApply(next);
+      setError(accepted ? null : "Pivot coordinate was rejected by project validation.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <View style={styles.machineForm}>
+      {error ? <Text style={styles.formError}>{error}</Text> : null}
+      <View style={styles.formGrid}>
+        <FormField label="Pivot X" value={x} onChangeText={setX} />
+        <FormField label="Pivot Y" value={y} onChangeText={setY} />
+      </View>
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Apply XY" onPress={apply} />
+      </View>
+    </View>
+  );
+}
+
+function ProjectedPolygonEditor({ label, onApply, vertices }: { label: string; onApply: (vertices: XY[]) => boolean; vertices: XY[] }): React.JSX.Element {
+  const [text, setText] = useState(formatXyLines(vertices));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setText(formatXyLines(vertices));
+  }, [vertices]);
+
+  function apply(): void {
+    try {
+      const parsed = parseXyLines(text);
+      const accepted = onApply(parsed);
+      setError(accepted ? null : `${label} was rejected by polygon validation.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function addRow(): void {
+    try {
+      const current = parseXyLinesAllowEmpty(text);
+      const last = current.at(-1) ?? { x: 0, y: 0 };
+      setText(formatXyLines([...current, { x: last.x + 10, y: last.y }]));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function removeLast(): void {
+    try {
+      setText(formatXyLines(parseXyLinesAllowEmpty(text).slice(0, -1)));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function rotateFirst(): void {
+    try {
+      const current = parseXyLinesAllowEmpty(text);
+      if (current.length < 2) return;
+      setText(formatXyLines([...current.slice(1), current[0]]));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <View style={styles.xyEditor}>
+      <Text style={styles.formLabel}>{label}</Text>
+      <TextInput
+        accessibilityLabel={label}
+        multiline
+        onChangeText={setText}
+        style={[styles.textInput, styles.xyTextArea]}
+        value={text}
+      />
+      {error ? <Text style={styles.formError}>{error}</Text> : null}
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Add Row" onPress={addRow} />
+        <SmallActionButton label="Remove Last" onPress={removeLast} />
+        <SmallActionButton label="Reorder" onPress={rotateFirst} />
+        <SmallActionButton label="Apply XY" onPress={apply} />
+      </View>
+    </View>
+  );
+}
+
+function ScenarioPreviewList({ preview, settings }: { preview: DesignScenarioPreview[] | null; settings: AppSettings }): React.JSX.Element {
+  if (!preview) {
+    return <Text style={styles.mapFeatureMeta}>Scenario metrics update only after Calculate.</Text>;
+  }
+  return (
+    <View style={styles.scenarioList} testID="design-builder-scenarios">
+      {preview.map((scenario) => (
+        <View key={scenario.id} style={[styles.scenarioRow, scenario.feasible ? styles.scenarioRowFeasible : styles.scenarioRowRejected]}>
+          <View style={styles.scenarioRowHeader}>
+            <Text style={styles.rowTitle}>{scenario.label}</Text>
+            <Text style={styles.scenarioScore}>{scenario.feasible ? scenario.score.toFixed(1) : "Review"}</Text>
+          </View>
+          <Text style={styles.rowMeta}>
+            {formatAreaFromAcres(scenario.metrics.irrigatedAcres, settings.unitSystem)} · {scenario.metrics.coveragePercent.toFixed(1)}% · outside {formatAreaFromAcres(scenario.metrics.outsideFieldAcres, settings.unitSystem)}
+          </Text>
+          {scenario.rejectionReasons.length > 0 ? (
+            <Text style={styles.mapFeatureMeta}>{scenario.rejectionReasons[0]}</Text>
+          ) : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function CatalogHomePanel({
   catalog,
   notice,
   onCreateCustomer,
+  onStartBlankDesign,
   repository,
   settings,
 }: {
   catalog: ProjectWorkspaceStatus["catalog"];
   notice: string | null;
   onCreateCustomer: () => void;
+  onStartBlankDesign: () => void;
   repository: ProjectWorkspaceStatus;
   settings: AppSettings;
 }): React.JSX.Element {
@@ -1090,10 +1452,11 @@ function CatalogHomePanel({
       ) : null}
       <View style={styles.inlineActions}>
         <SmallActionButton label="Add Customer" onPress={onCreateCustomer} />
+        <SmallActionButton label="Start Blank Design" onPress={onStartBlankDesign} />
       </View>
       <View style={styles.warningItem}>
         <MapPinned size={17} color="#9a4c1c" />
-        <Text style={styles.warningText}>Open a saved design from the tree to enable Design drawing. New projects and field maps stay catalog-only until a real design is imported or started.</Text>
+        <Text style={styles.warningText}>Use Start Blank Design or open a saved design from the tree to enable drawing. Catalog maps are navigation-only.</Text>
       </View>
     </>
   );
@@ -1570,6 +1933,7 @@ function ProjectTreeRail({
   activeView,
   catalog,
   compact,
+  mapFocus,
   onCreateCustomer,
   onCreateDesign,
   onCreateFieldMap,
@@ -1579,6 +1943,7 @@ function ProjectTreeRail({
   onOpenFieldMap,
   onOpenProject,
   onOpenSample,
+  onStartBlankDesign,
   onSelectCustomer,
   onSelectFieldMap,
   onSelectProject,
@@ -1592,6 +1957,7 @@ function ProjectTreeRail({
   activeView: WorkspaceView;
   catalog: ProjectWorkspaceStatus["catalog"];
   compact: boolean;
+  mapFocus: boolean;
   onCreateCustomer: () => void | Promise<void>;
   onCreateDesign: () => void | Promise<void>;
   onCreateFieldMap: () => void | Promise<void>;
@@ -1601,6 +1967,7 @@ function ProjectTreeRail({
   onOpenFieldMap: (fieldMapId: string) => void | Promise<void>;
   onOpenProject: (projectId: string) => void | Promise<void>;
   onOpenSample: () => void;
+  onStartBlankDesign: () => void;
   onSelectCustomer: (customerId: string) => void;
   onSelectFieldMap: (fieldMapId: string) => void;
   onSelectProject: (projectId: string) => void;
@@ -1613,91 +1980,94 @@ function ProjectTreeRail({
     : null;
 
   return (
-    <View style={[styles.leftRail, compact && styles.leftRailCompact]} testID="workspace-rail">
-      <View style={styles.projectTreePanel} testID="project-tree-rail">
-        <View style={styles.projectTreeHeader}>
-          <FolderOpen size={18} color="#d5e2db" />
-          <Text style={styles.projectTreeTitle}>{activeProject ? activeProject.name : "Project Catalog"}</Text>
-        </View>
-        <View style={styles.projectTreeActions} testID="project-tree-actions">
-          <SmallActionButton label="Customer" onPress={onCreateCustomer} />
-          <SmallActionButton disabled={!activeContext.customerId} label="Project" onPress={onCreateProject} />
-          <SmallActionButton disabled={!activeContext.projectId} label="Field Map" onPress={onCreateFieldMap} />
-          <SmallActionButton disabled={!activeContext.fieldMapId} label="Design" onPress={onCreateDesign} />
-          <SmallActionButton label="Open Sample" onPress={onOpenSample} />
-        </View>
-        <ScrollView style={[styles.projectTreeScroll, compact && styles.projectTreeScrollCompact]} contentContainerStyle={styles.projectTreeContent} testID="project-tree-scroll">
-          {catalog.customers.length === 0 ? (
-            <Text style={styles.projectTreeEmpty}>No customer folders yet.</Text>
-          ) : null}
-          {visibleCustomers.map((customer) => {
-            const projects = catalog.projects.filter((project) => project.customerId === customer.id);
-            return (
-              <View key={customer.id} style={styles.projectTreeGroup}>
-                <ProjectTreeNode
-                  active={activeContext.customerId === customer.id}
-                  depth={0}
-                  icon={<FolderOpen size={15} color="#d5e2db" />}
-                  label={customer.displayName}
-                  meta={`${projects.length} project${projects.length === 1 ? "" : "s"}`}
-                  onOpen={() => onSelectCustomer(customer.id)}
-                  onSelect={() => onSelectCustomer(customer.id)}
-                  testID={`catalog-customer-${customer.id}`}
-                />
-                {projects.map((projectRecord) => {
-                  const fieldMaps = catalog.fieldMaps.filter((fieldMap) => fieldMap.projectId === projectRecord.id);
-                  const showProjectChildren = activeContext.projectId === null || activeContext.projectId === projectRecord.id;
-                  return (
-                    <View key={projectRecord.id}>
-                      <ProjectTreeNode
-                        active={activeContext.projectId === projectRecord.id}
-                        depth={1}
-                        icon={<Database size={14} color="#d5e2db" />}
-                        label={projectRecord.name}
-                        meta={`${fieldMaps.length} field map${fieldMaps.length === 1 ? "" : "s"}`}
-                        onOpen={() => onOpenProject(projectRecord.id)}
-                        onSelect={() => onSelectProject(projectRecord.id)}
-                        testID={`catalog-project-${projectRecord.id}`}
-                      />
-                      {showProjectChildren ? fieldMaps.map((fieldMap) => {
-                        const designs = catalog.designs.filter((design) => design.fieldMapId === fieldMap.id);
-                        return (
-                          <View key={fieldMap.id}>
-                            <ProjectTreeNode
-                              active={activeContext.fieldMapId === fieldMap.id}
-                              depth={2}
-                              icon={<MapIcon size={14} color="#d5e2db" />}
-                              label={fieldMap.name}
-                              meta={`${designs.length} design${designs.length === 1 ? "" : "s"}`}
-                              onOpen={() => onOpenFieldMap(fieldMap.id)}
-                              onSelect={() => onSelectFieldMap(fieldMap.id)}
-                              testID={`catalog-field-map-${fieldMap.id}`}
-                            />
-                            {designs.map((design) => (
+    <View style={[styles.leftRail, compact && styles.leftRailCompact, mapFocus && styles.leftRailCompactMapFocus]} testID="workspace-rail">
+      {!mapFocus ? (
+        <View style={styles.projectTreePanel} testID="project-tree-rail">
+          <View style={styles.projectTreeHeader}>
+            <FolderOpen size={18} color="#d5e2db" />
+            <Text style={styles.projectTreeTitle}>{activeProject ? activeProject.name : "Project Catalog"}</Text>
+          </View>
+          <View style={styles.projectTreeActions} testID="project-tree-actions">
+            <SmallActionButton label="Customer" onPress={onCreateCustomer} />
+            <SmallActionButton disabled={!activeContext.customerId} label="Project" onPress={onCreateProject} />
+            <SmallActionButton disabled={!activeContext.projectId} label="Field Map" onPress={onCreateFieldMap} />
+            <SmallActionButton disabled={!activeContext.fieldMapId} label="Design" onPress={onCreateDesign} />
+            <SmallActionButton label="Blank Design" onPress={onStartBlankDesign} />
+            <SmallActionButton label="Open Sample" onPress={onOpenSample} />
+          </View>
+          <ScrollView style={[styles.projectTreeScroll, compact && styles.projectTreeScrollCompact]} contentContainerStyle={styles.projectTreeContent} testID="project-tree-scroll">
+            {catalog.customers.length === 0 ? (
+              <Text style={styles.projectTreeEmpty}>No customer folders yet.</Text>
+            ) : null}
+            {visibleCustomers.map((customer) => {
+              const projects = catalog.projects.filter((project) => project.customerId === customer.id);
+              return (
+                <View key={customer.id} style={styles.projectTreeGroup}>
+                  <ProjectTreeNode
+                    active={activeContext.customerId === customer.id}
+                    depth={0}
+                    icon={<FolderOpen size={15} color="#d5e2db" />}
+                    label={customer.displayName}
+                    meta={`${projects.length} project${projects.length === 1 ? "" : "s"}`}
+                    onOpen={() => onSelectCustomer(customer.id)}
+                    onSelect={() => onSelectCustomer(customer.id)}
+                    testID={`catalog-customer-${customer.id}`}
+                  />
+                  {projects.map((projectRecord) => {
+                    const fieldMaps = catalog.fieldMaps.filter((fieldMap) => fieldMap.projectId === projectRecord.id);
+                    const showProjectChildren = activeContext.projectId === null || activeContext.projectId === projectRecord.id;
+                    return (
+                      <View key={projectRecord.id}>
+                        <ProjectTreeNode
+                          active={activeContext.projectId === projectRecord.id}
+                          depth={1}
+                          icon={<Database size={14} color="#d5e2db" />}
+                          label={projectRecord.name}
+                          meta={`${fieldMaps.length} field map${fieldMaps.length === 1 ? "" : "s"}`}
+                          onOpen={() => onOpenProject(projectRecord.id)}
+                          onSelect={() => onSelectProject(projectRecord.id)}
+                          testID={`catalog-project-${projectRecord.id}`}
+                        />
+                        {showProjectChildren ? fieldMaps.map((fieldMap) => {
+                          const designs = catalog.designs.filter((design) => design.fieldMapId === fieldMap.id);
+                          return (
+                            <View key={fieldMap.id}>
                               <ProjectTreeNode
-                                active={activeContext.designId === design.id}
-                                depth={3}
-                                icon={<Layers size={14} color="#d5e2db" />}
-                                key={design.id}
-                                label={design.name}
-                                meta={design.isActive ? "active design" : "layout variant"}
-                                onOpen={() => onOpenDesign(design.id)}
+                                active={activeContext.fieldMapId === fieldMap.id}
+                                depth={2}
+                                icon={<MapIcon size={14} color="#d5e2db" />}
+                                label={fieldMap.name}
+                                meta={`${designs.length} design${designs.length === 1 ? "" : "s"}`}
+                                onOpen={() => onOpenFieldMap(fieldMap.id)}
                                 onSelect={() => onSelectFieldMap(fieldMap.id)}
-                                testID={`catalog-design-${design.id}`}
+                                testID={`catalog-field-map-${fieldMap.id}`}
                               />
-                            ))}
-                          </View>
-                        );
-                      }) : null}
-                    </View>
-                  );
-                })}
-              </View>
-            );
-          })}
-        </ScrollView>
-      </View>
-      <View style={[styles.projectTreeNav, compact && styles.projectTreeNavCompact]}>
+                              {designs.map((design) => (
+                                <ProjectTreeNode
+                                  active={activeContext.designId === design.id}
+                                  depth={3}
+                                  icon={<Layers size={14} color="#d5e2db" />}
+                                  key={design.id}
+                                  label={design.name}
+                                  meta={design.isActive ? "active design" : "layout variant"}
+                                  onOpen={() => onOpenDesign(design.id)}
+                                  onSelect={() => onSelectFieldMap(fieldMap.id)}
+                                  testID={`catalog-design-${design.id}`}
+                                />
+                              ))}
+                            </View>
+                          );
+                        }) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+      <View style={[styles.projectTreeNav, compact && styles.projectTreeNavCompact, mapFocus && styles.projectTreeNavMapFocus]}>
         <RailButton active={activeView === "dashboard"} icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
         <RailButton active={activeView === "map"} icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
         <RailButton active={activeView === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
@@ -1801,10 +2171,12 @@ function MapFeatureEditor({
   feature,
   onDelete,
   onRename,
+  onUpdate,
 }: {
   feature: ProjectMapFeature | null;
   onDelete: (featureId: string) => void;
   onRename: (feature: ProjectMapFeature, name: string) => void;
+  onUpdate: (feature: ProjectMapFeature) => void;
 }): React.JSX.Element {
   const [name, setName] = useState(feature?.name ?? "");
 
@@ -1821,7 +2193,7 @@ function MapFeatureEditor({
     );
   }
 
-  const geometryLabel = feature.geometry.type === "Point" ? "Point" : `${feature.geometry.vertices.length} point line`;
+  const geometryLabel = mapFeatureGeometryLabel(feature);
 
   return (
     <View style={styles.mapFeatureEditor}>
@@ -1840,46 +2212,139 @@ function MapFeatureEditor({
         <SmallActionButton disabled={name.trim().length === 0 || name.trim() === feature.name} label="Rename" onPress={() => onRename(feature, name)} />
         <SmallActionButton label="Delete" onPress={() => onDelete(feature.id)} />
       </View>
+      {feature.geometry.type === "Point" ? (
+        <PivotCoordinateForm
+          onApply={(point) => {
+            onUpdate({ ...feature, geometry: { type: "Point", point } });
+            return true;
+          }}
+          point={feature.geometry.point}
+        />
+      ) : feature.geometry.type === "Circle" ? (
+        <CircleFeatureEditor feature={{ ...feature, geometry: feature.geometry }} onUpdate={onUpdate} />
+      ) : feature.geometry.type === "LineString" ? (
+        <ProjectedPolygonEditor
+          label={`${feature.name} line XY`}
+          onApply={(vertices) => {
+            if (vertices.length < 2) throw new Error("Line feature needs at least two projected XY rows.");
+            onUpdate({ ...feature, geometry: { type: "LineString", vertices } });
+            return true;
+          }}
+          vertices={feature.geometry.vertices}
+        />
+      ) : (
+        <ProjectedPolygonEditor
+          label={`${feature.name} polygon XY`}
+          onApply={(vertices) => {
+            if (vertices.length < 3) throw new Error("Polygon feature needs at least three projected XY rows.");
+            onUpdate({ ...feature, geometry: { type: "Polygon", vertices } });
+            return true;
+          }}
+          vertices={feature.geometry.vertices}
+        />
+      )}
     </View>
   );
 }
 
-function MachineSettingsForm({ machine, onChange }: { machine: PivotMachine; onChange: (machine: PivotMachine) => void }): React.JSX.Element {
-  const [spans, setSpans] = useState(machine.spanLengthsMeters.join(", "));
-  const [overhang, setOverhang] = useState(String(machine.overhangMeters));
-  const [endGun, setEndGun] = useState(String(machine.endGunThrowMeters));
-  const [towerClearance, setTowerClearance] = useState(String(machine.towerClearanceBufferMeters));
-  const [machineClearance, setMachineClearance] = useState(String(machine.machineClearanceBufferMeters));
+function CircleFeatureEditor({ feature, onUpdate }: { feature: ProjectMapFeature & { geometry: { type: "Circle"; center: XY; radiusMeters: number } }; onUpdate: (feature: ProjectMapFeature) => void }): React.JSX.Element {
+  const [radius, setRadius] = useState(String(roundCoordinate(feature.geometry.radiusMeters)));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRadius(String(roundCoordinate(feature.geometry.radiusMeters)));
+  }, [feature.geometry.radiusMeters]);
+
+  function applyRadius(): void {
+    try {
+      const radiusMeters = requiredPositiveNumber(radius, "Circle radius");
+      onUpdate({ ...feature, geometry: { ...feature.geometry, radiusMeters } });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <View style={styles.machineForm}>
+      {error ? <Text style={styles.formError}>{error}</Text> : null}
+      <PivotCoordinateForm
+        onApply={(center) => {
+          onUpdate({ ...feature, geometry: { ...feature.geometry, center } });
+          return true;
+        }}
+        point={feature.geometry.center}
+      />
+      <View style={styles.formGrid}>
+        <FormField label="Radius (m)" value={radius} onChangeText={setRadius} />
+      </View>
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Apply Radius" onPress={applyRadius} />
+      </View>
+    </View>
+  );
+}
+
+function mapFeatureGeometryLabel(feature: ProjectMapFeature): string {
+  if (feature.geometry.type === "Point") return "Point";
+  if (feature.geometry.type === "LineString") return `${feature.geometry.vertices.length} point line`;
+  if (feature.geometry.type === "Polygon") return `${feature.geometry.vertices.length} point polygon`;
+  return `Circle · ${formatDistance(feature.geometry.radiusMeters, "metric")} radius`;
+}
+
+function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: PivotMachine; onChange: (machine: PivotMachine) => void; unitSystem: PivotProject["unitSystem"] }): React.JSX.Element {
+  const firstEndGunRange = machine.endGunAngleRanges?.[0] ?? null;
+  const [spans, setSpans] = useState(formatDistanceInputList(machine.spanLengthsMeters, unitSystem));
+  const [overhang, setOverhang] = useState(formatDistanceInputValue(machine.overhangMeters, unitSystem));
+  const [endGun, setEndGun] = useState(formatDistanceInputValue(machine.endGunThrowMeters, unitSystem));
+  const [towerClearance, setTowerClearance] = useState(formatDistanceInputValue(machine.towerClearanceBufferMeters, unitSystem));
+  const [machineClearance, setMachineClearance] = useState(formatDistanceInputValue(machine.machineClearanceBufferMeters, unitSystem));
   const [startAngle, setStartAngle] = useState(machine.sweep.mode === "partial_circle" ? String(machine.sweep.startAngleDegrees) : "210");
   const [stopAngle, setStopAngle] = useState(machine.sweep.mode === "partial_circle" ? String(machine.sweep.stopAngleDegrees) : "35");
   const [direction, setDirection] = useState<"clockwise" | "counterclockwise">(machine.sweep.mode === "partial_circle" ? machine.sweep.direction : "counterclockwise");
   const [mode, setMode] = useState<PivotSweep["mode"]>(machine.sweep.mode);
+  const [endGunArcEnabled, setEndGunArcEnabled] = useState(Boolean(firstEndGunRange));
+  const [endGunArcStart, setEndGunArcStart] = useState(firstEndGunRange ? String(firstEndGunRange.startAngleDegrees) : "0");
+  const [endGunArcStop, setEndGunArcStop] = useState(firstEndGunRange ? String(firstEndGunRange.stopAngleDegrees) : "120");
+  const [endGunArcDirection, setEndGunArcDirection] = useState<"clockwise" | "counterclockwise">(firstEndGunRange?.direction ?? "counterclockwise");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setSpans(machine.spanLengthsMeters.join(", "));
-    setOverhang(String(machine.overhangMeters));
-    setEndGun(String(machine.endGunThrowMeters));
-    setTowerClearance(String(machine.towerClearanceBufferMeters));
-    setMachineClearance(String(machine.machineClearanceBufferMeters));
+    const nextEndGunRange = machine.endGunAngleRanges?.[0] ?? null;
+    setSpans(formatDistanceInputList(machine.spanLengthsMeters, unitSystem));
+    setOverhang(formatDistanceInputValue(machine.overhangMeters, unitSystem));
+    setEndGun(formatDistanceInputValue(machine.endGunThrowMeters, unitSystem));
+    setTowerClearance(formatDistanceInputValue(machine.towerClearanceBufferMeters, unitSystem));
+    setMachineClearance(formatDistanceInputValue(machine.machineClearanceBufferMeters, unitSystem));
     setMode(machine.sweep.mode);
     if (machine.sweep.mode === "partial_circle") {
       setStartAngle(String(machine.sweep.startAngleDegrees));
       setStopAngle(String(machine.sweep.stopAngleDegrees));
       setDirection(machine.sweep.direction);
     }
-  }, [machine]);
+    setEndGunArcEnabled(Boolean(nextEndGunRange));
+    setEndGunArcStart(nextEndGunRange ? String(nextEndGunRange.startAngleDegrees) : "0");
+    setEndGunArcStop(nextEndGunRange ? String(nextEndGunRange.stopAngleDegrees) : "120");
+    setEndGunArcDirection(nextEndGunRange?.direction ?? "counterclockwise");
+  }, [machine, unitSystem]);
 
   function apply(): void {
     try {
-      const spanValues = spans.split(",").map((value) => requiredPositiveNumber(value.trim(), "Span length"));
+      const spanValues = spans.split(",").map((value) => requiredPositiveDistanceInput(value.trim(), unitSystem, "Span length"));
       const nextMachine: PivotMachine = {
         ...machine,
         spanLengthsMeters: spanValues,
-        overhangMeters: requiredNonNegativeNumber(overhang, "Overhang"),
-        endGunThrowMeters: requiredNonNegativeNumber(endGun, "End gun"),
-        towerClearanceBufferMeters: requiredNonNegativeNumber(towerClearance, "Tower clearance"),
-        machineClearanceBufferMeters: requiredNonNegativeNumber(machineClearance, "Machine clearance"),
+        overhangMeters: requiredNonNegativeDistanceInput(overhang, unitSystem, "Overhang"),
+        endGunThrowMeters: requiredNonNegativeDistanceInput(endGun, unitSystem, "End gun"),
+        endGunAngleRanges: endGunArcEnabled
+          ? [{
+            startAngleDegrees: requiredFiniteNumber(endGunArcStart, "End gun arc start"),
+            stopAngleDegrees: requiredFiniteNumber(endGunArcStop, "End gun arc stop"),
+            direction: endGunArcDirection,
+          }]
+          : [],
+        towerClearanceBufferMeters: requiredNonNegativeDistanceInput(towerClearance, unitSystem, "Tower clearance"),
+        machineClearanceBufferMeters: requiredNonNegativeDistanceInput(machineClearance, unitSystem, "Machine clearance"),
         sweep: mode === "full_circle"
           ? { mode: "full_circle" }
           : {
@@ -1896,8 +2361,42 @@ function MachineSettingsForm({ machine, onChange }: { machine: PivotMachine; onC
     }
   }
 
+  function applyCatalogPreset(presetId: string): void {
+    try {
+      setError(null);
+      onChange(applyMachineCatalogPreset(machine, presetId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const unitLabel = unitSystem === "metric" ? "m" : "ft/in";
+  const endGunMeters = safeDistanceInput(endGun, unitSystem);
+  const wetRadiusMeters = machineRadiusMeters(machine) + Math.max(0, endGunMeters ?? machine.endGunThrowMeters);
+
   return (
     <View style={styles.machineForm}>
+      <Text style={styles.mapFeatureMeta}>
+        Derived wet radius {formatDistance(wetRadiusMeters, unitSystem)}{unitSystem === "us_survey_feet" ? ` (${formatFeetInches(wetRadiusMeters)})` : ""} · base radius {formatDistance(machineRadiusMeters(machine), unitSystem)}
+      </Text>
+      <View style={styles.machineCatalogPanel}>
+        <Text style={styles.formLabel}>Source-backed presets</Text>
+        <View style={styles.controlRow}>
+          {MACHINE_CATALOG_PRESETS.map((preset) => (
+            <ActionButton
+              key={preset.id}
+              label={`${preset.manufacturer} ${preset.model}`}
+              onPress={() => applyCatalogPreset(preset.id)}
+              selected={machine.catalogSelection?.catalogId === preset.id}
+            />
+          ))}
+        </View>
+        <Text style={styles.mapFeatureMeta}>
+          {machine.catalogSelection
+            ? `${machine.catalogSelection.manufacturer} ${machine.catalogSelection.model} selected · advisory snapshot only`
+            : "Use a preset or custom/as-built distances; catalog selections are advisory until vendor/operator verified."}
+        </Text>
+      </View>
       <View style={styles.controlRow}>
         <ActionButton label="Full circle" selected={mode === "full_circle"} onPress={() => setMode("full_circle")} />
         <ActionButton label="Part circle" selected={mode === "partial_circle"} onPress={() => setMode("partial_circle")} />
@@ -1905,11 +2404,31 @@ function MachineSettingsForm({ machine, onChange }: { machine: PivotMachine; onC
       </View>
       {error ? <Text style={styles.formError}>{error}</Text> : null}
       <View style={styles.formGrid}>
-        <FormField label="Spans (m, comma separated)" value={spans} onChangeText={setSpans} />
-        <FormField label="Overhang (m)" value={overhang} onChangeText={setOverhang} />
-        <FormField label="End gun throw (m)" value={endGun} onChangeText={setEndGun} />
-        <FormField label="Tower clearance (m)" value={towerClearance} onChangeText={setTowerClearance} />
-        <FormField label="Machine clearance (m)" value={machineClearance} onChangeText={setMachineClearance} />
+        <FormField label={`Spans (${unitLabel}, comma separated)`} value={spans} onChangeText={setSpans} />
+        <FormField label={`Overhang (${unitLabel})`} value={overhang} onChangeText={setOverhang} />
+        <FormField label={`End gun throw (${unitLabel})`} value={endGun} onChangeText={setEndGun} />
+        <FormField label={`Tower clearance (${unitLabel})`} value={towerClearance} onChangeText={setTowerClearance} />
+        <FormField label={`Machine clearance (${unitLabel})`} value={machineClearance} onChangeText={setMachineClearance} />
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>End gun arc mode</Text>
+          <View style={styles.controlRow}>
+            <ActionButton label="Full sweep" selected={!endGunArcEnabled} onPress={() => setEndGunArcEnabled(false)} />
+            <ActionButton label="Angle range" selected={endGunArcEnabled} onPress={() => setEndGunArcEnabled(true)} />
+          </View>
+        </View>
+        {endGunArcEnabled ? (
+          <>
+            <FormField label="End gun start angle" value={endGunArcStart} onChangeText={setEndGunArcStart} />
+            <FormField label="End gun stop angle" value={endGunArcStop} onChangeText={setEndGunArcStop} />
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>End gun direction</Text>
+              <View style={styles.controlRow}>
+                <ActionButton label="CW" selected={endGunArcDirection === "clockwise"} onPress={() => setEndGunArcDirection("clockwise")} />
+                <ActionButton label="CCW" selected={endGunArcDirection === "counterclockwise"} onPress={() => setEndGunArcDirection("counterclockwise")} />
+              </View>
+            </View>
+          </>
+        ) : null}
         {mode === "partial_circle" ? (
           <>
             <FormField label="Start angle" value={startAngle} onChangeText={setStartAngle} />
@@ -1940,6 +2459,59 @@ function FormField({ label, onChangeText, value }: { label: string; onChangeText
       />
     </View>
   );
+}
+
+function formatXyLines(vertices: XY[]): string {
+  return vertices.map((vertex) => `${roundCoordinate(vertex.x)}, ${roundCoordinate(vertex.y)}`).join("\n");
+}
+
+function parseXyLines(text: string): XY[] {
+  const vertices = parseXyLinesAllowEmpty(text);
+  if (vertices.length === 0) throw new Error("Enter at least one projected XY row.");
+  return vertices;
+}
+
+function parseXyLinesAllowEmpty(text: string): XY[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line, index) => {
+      const parts = line.split(/[,\s]+/).filter((part) => part.length > 0);
+      if (parts.length < 2) throw new Error(`XY row ${index + 1} needs x and y.`);
+      return {
+        x: requiredFiniteNumber(parts[0], `XY row ${index + 1} x`),
+        y: requiredFiniteNumber(parts[1], `XY row ${index + 1} y`),
+      };
+    });
+}
+
+function roundCoordinate(value: number): string {
+  return Number(value.toFixed(3)).toString();
+}
+
+function formatDistanceInputList(values: number[], unitSystem: PivotProject["unitSystem"]): string {
+  return values.map((value) => formatDistanceInputValue(value, unitSystem)).join(", ");
+}
+
+function requiredPositiveDistanceInput(value: string, unitSystem: PivotProject["unitSystem"], label: string): number {
+  const parsed = parseDistanceInput(value, unitSystem, label);
+  if (parsed <= 0) throw new Error(`${label} must be greater than zero.`);
+  return parsed;
+}
+
+function requiredNonNegativeDistanceInput(value: string, unitSystem: PivotProject["unitSystem"], label: string): number {
+  const parsed = parseDistanceInput(value, unitSystem, label);
+  if (parsed < 0) throw new Error(`${label} cannot be negative.`);
+  return parsed;
+}
+
+function safeDistanceInput(value: string, unitSystem: PivotProject["unitSystem"]): number | null {
+  try {
+    return parseDistanceInput(value, unitSystem, "Distance");
+  } catch {
+    return null;
+  }
 }
 
 function requiredPositiveNumber(value: string, label: string): number {
@@ -2034,6 +2606,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     width: "100%",
   },
+  leftRailCompactMapFocus: {
+    maxHeight: 108,
+    paddingVertical: 8,
+  },
   workspaceScroll: {
     flex: 1,
   },
@@ -2122,6 +2698,10 @@ const styles = StyleSheet.create({
   projectTreeNavCompact: {
     flexDirection: "row",
     flexWrap: "wrap",
+  },
+  projectTreeNavMapFocus: {
+    borderTopWidth: 0,
+    paddingTop: 0,
   },
   railButton: {
     alignItems: "center",
@@ -2433,6 +3013,107 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 12,
   },
+  designBuilderPanel: {
+    borderColor: "#cbd8ce",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 12,
+  },
+  designBuilderHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "space-between",
+  },
+  designStep: {
+    borderColor: "#dce3da",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 10,
+  },
+  designStepHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  designStepBadge: {
+    alignItems: "center",
+    backgroundColor: "#254234",
+    borderRadius: 8,
+    height: 28,
+    justifyContent: "center",
+    width: 28,
+  },
+  designStepBadgeText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  designStepTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  designStepTitle: {
+    color: "#17241c",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  xyEditor: {
+    gap: 8,
+  },
+  xyTextArea: {
+    minHeight: 112,
+    textAlignVertical: "top",
+  },
+  calculateButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#254234",
+    borderColor: "#254234",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 7,
+    minHeight: 40,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  calculateButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  scenarioList: {
+    gap: 8,
+  },
+  scenarioRow: {
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 5,
+    padding: 10,
+  },
+  scenarioRowFeasible: {
+    backgroundColor: "#eef8f0",
+    borderColor: "#9fc7a9",
+  },
+  scenarioRowRejected: {
+    backgroundColor: "#fff7e6",
+    borderColor: "#e0c074",
+  },
+  scenarioRowHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between",
+  },
+  scenarioScore: {
+    color: "#254234",
+    fontSize: 13,
+    fontWeight: "900",
+  },
   customerDetailHeader: {
     alignItems: "center",
     flexDirection: "row",
@@ -2570,6 +3251,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
     padding: 12,
+  },
+  machineCatalogPanel: {
+    backgroundColor: "#f7faf5",
+    borderColor: "#dce3da",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 10,
   },
   formGrid: {
     flexDirection: "row",

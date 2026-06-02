@@ -138,12 +138,19 @@ export const LayoutDecisionRecordSchema = z.object({
   reason: z.string().min(1),
 });
 
+const PivotAngleRangeSchema = z.object({
+  startAngleDegrees: z.number().finite(),
+  stopAngleDegrees: z.number().finite(),
+  direction: z.enum(["clockwise", "counterclockwise"]),
+});
+
 const PivotMachineSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   spanLengthsMeters: z.array(z.number().positive()).min(1),
   overhangMeters: z.number().min(0),
   endGunThrowMeters: z.number().min(0),
+  endGunAngleRanges: z.array(PivotAngleRangeSchema).optional().default([]),
   towerClearanceBufferMeters: z.number().min(0),
   machineClearanceBufferMeters: z.number().min(0),
   sweep: z.discriminatedUnion("mode", [

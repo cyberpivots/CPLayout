@@ -2,8 +2,9 @@ import { z } from "zod";
 
 import { MapPackageManifestSchema } from "./mapTilePackages";
 import { ProjectSettingsSchema } from "./settings";
-import type { PivotProject } from "./types";
+import type { LonLat, PivotProject, ProjectMapFeatureGeometry, ProjectWgs84Companion, XY } from "./types";
 import { assertProjectedCrs } from "./units";
+import { projectXyToLonLat } from "./coordinates";
 
 export const PROJECT_DOCUMENT_VERSION = "pivot-project-v1";
 
@@ -44,12 +45,19 @@ const SurveyPointSchema = z.object({
   notes: z.string().optional(),
 });
 
+const PivotAngleRangeSchema = z.object({
+  startAngleDegrees: z.number().finite(),
+  stopAngleDegrees: z.number().finite(),
+  direction: z.enum(["clockwise", "counterclockwise"]),
+});
+
 const PivotMachineSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   spanLengthsMeters: z.array(z.number().positive()).min(1),
   overhangMeters: z.number().min(0),
   endGunThrowMeters: z.number().min(0),
+  endGunAngleRanges: z.array(PivotAngleRangeSchema).optional().default([]),
   towerClearanceBufferMeters: z.number().min(0),
   machineClearanceBufferMeters: z.number().min(0),
   sweep: z.discriminatedUnion("mode", [
@@ -61,6 +69,14 @@ const PivotMachineSchema = z.object({
       direction: z.enum(["clockwise", "counterclockwise"]),
     }),
   ]),
+  catalogSelection: z.object({
+    catalogId: z.string().min(1),
+    manufacturer: z.string().min(1),
+    model: z.string().min(1),
+    sourceUrl: z.string().url(),
+    sourceAccessedAt: z.string().min(1),
+    advisoryOnly: z.literal(true),
+  }).optional(),
 });
 
 const ObstacleZoneSchema = z.object({
@@ -99,6 +115,15 @@ const ProjectMapFeatureGeometrySchema = z.discriminatedUnion("type", [
     type: z.literal("LineString"),
     vertices: z.array(XySchema).min(2),
   }),
+  z.object({
+    type: z.literal("Polygon"),
+    vertices: z.array(XySchema).min(3),
+  }),
+  z.object({
+    type: z.literal("Circle"),
+    center: XySchema,
+    radiusMeters: z.number().positive(),
+  }),
 ]);
 
 const ProjectMapFeatureSchema = z.object({
@@ -109,6 +134,40 @@ const ProjectMapFeatureSchema = z.object({
   confidence: z.enum(["rtk_fixed", "rtk_float", "dgps", "autonomous_gps", "imagery_digitized", "imported_cad", "user_estimated", "optimized"]),
   notes: z.string().optional(),
   properties: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+});
+
+const ProjectMapFeatureWgs84GeometrySchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("Point"),
+    point: LonLatSchema,
+  }),
+  z.object({
+    type: z.literal("LineString"),
+    vertices: z.array(LonLatSchema).min(2),
+  }),
+  z.object({
+    type: z.literal("Polygon"),
+    vertices: z.array(LonLatSchema).min(3),
+  }),
+  z.object({
+    type: z.literal("Circle"),
+    center: LonLatSchema,
+    radiusMeters: z.number().positive(),
+  }),
+]);
+
+const ProjectWgs84CompanionSchema = z.object({
+  status: z.enum(["projected", "unavailable"]),
+  source: z.literal("derived_from_project_xy"),
+  coordinateSystem: z.literal("decimal_degrees"),
+  projectCrs: z.string().min(1),
+  error: z.string().optional(),
+  fieldBoundary: z.array(LonLatSchema).optional(),
+  pivotCenter: LonLatSchema.optional(),
+  waterSource: LonLatSchema.optional(),
+  powerSource: LonLatSchema.optional(),
+  obstacles: z.array(z.object({ id: z.string().min(1), polygon: z.array(LonLatSchema).min(3) })).optional(),
+  mapFeatures: z.array(z.object({ id: z.string().min(1), geometry: ProjectMapFeatureWgs84GeometrySchema })).optional(),
 });
 
 export const PivotProjectSchema = z.object({
@@ -126,6 +185,7 @@ export const PivotProjectSchema = z.object({
   surveyPoints: z.array(SurveyPointSchema),
   mapPackages: z.array(MapPackageManifestSchema).optional(),
   mapFeatures: z.array(ProjectMapFeatureSchema).optional().default([]),
+  wgs84Companion: ProjectWgs84CompanionSchema.optional(),
 }).superRefine((project, context) => {
   try {
     assertProjectedCrs(project.projectCrs);
@@ -144,18 +204,64 @@ const ProjectDocumentSchema = z.object({
 });
 
 export function serializeProjectDocument(project: PivotProject): string {
+  const parsedProject = PivotProjectSchema.parse(project);
   return JSON.stringify({
     documentVersion: PROJECT_DOCUMENT_VERSION,
-    project: PivotProjectSchema.parse(project),
+    project: withWgs84Companion(parsedProject),
   }, null, 2);
 }
 
 export function parseProjectDocument(input: string | unknown): PivotProject {
   const raw = typeof input === "string" ? JSON.parse(input) : input;
   if (isRecord(raw) && raw.documentVersion === PROJECT_DOCUMENT_VERSION) {
-    return ProjectDocumentSchema.parse(raw).project;
+    return withWgs84Companion(ProjectDocumentSchema.parse(raw).project);
   }
-  return PivotProjectSchema.parse(raw);
+  return withWgs84Companion(PivotProjectSchema.parse(raw));
+}
+
+export function withWgs84Companion(project: PivotProject): PivotProject {
+  return {
+    ...project,
+    wgs84Companion: deriveWgs84Companion(project),
+  };
+}
+
+export function deriveWgs84Companion(project: PivotProject): ProjectWgs84Companion {
+  try {
+    const projectPoint = (point: XY): LonLat => projectXyToLonLat(point, project.projectCrs);
+    const mapFeatureGeometry = (geometry: ProjectMapFeatureGeometry) => {
+      switch (geometry.type) {
+        case "Point":
+          return { type: "Point" as const, point: projectPoint(geometry.point) };
+        case "LineString":
+          return { type: "LineString" as const, vertices: geometry.vertices.map(projectPoint) };
+        case "Polygon":
+          return { type: "Polygon" as const, vertices: geometry.vertices.map(projectPoint) };
+        case "Circle":
+          return { type: "Circle" as const, center: projectPoint(geometry.center), radiusMeters: geometry.radiusMeters };
+      }
+    };
+    return {
+      status: "projected",
+      source: "derived_from_project_xy",
+      coordinateSystem: "decimal_degrees",
+      projectCrs: project.projectCrs,
+      fieldBoundary: project.fieldBoundary.map(projectPoint),
+      pivotCenter: projectPoint(project.pivotCenter),
+      waterSource: projectPoint(project.waterSource),
+      powerSource: projectPoint(project.powerSource),
+      obstacles: project.obstacles.map((obstacle) => ({ id: obstacle.id, polygon: obstacle.polygon.map(projectPoint) })),
+      mapFeatures: (project.mapFeatures ?? []).map((feature) => ({ id: feature.id, geometry: mapFeatureGeometry(feature.geometry) })),
+    };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      source: "derived_from_project_xy",
+      coordinateSystem: "decimal_degrees",
+      projectCrs: project.projectCrs,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

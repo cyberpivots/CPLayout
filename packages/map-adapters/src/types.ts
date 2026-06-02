@@ -1,4 +1,4 @@
-import type { AppSettings, InfrastructurePoint, LayoutResult, LonLat, MappingWorkflowMode, ModelRecommendation, ObstacleZone, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
+import type { AppSettings, InfrastructurePoint, LayoutResult, LonLat, MappingWorkflowMode, ModelRecommendation, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 
 export interface MapSurfaceProps {
@@ -7,14 +7,16 @@ export interface MapSurfaceProps {
   settings: AppSettings;
   activeToolMode?: DrawingMode;
   activeLayer?: DrawingLayerType;
+  activeMapFeatureKind?: ProjectMapFeatureKind;
+  activeToolRequestId?: number;
   draftVertices?: XY[];
   homeView?: boolean;
   selectedMapFeatureId?: string | null;
   advisoryRecommendationPreview?: ModelRecommendation | null;
   onSettingsChange?: (settings: AppSettings) => void;
   onMappingWorkflowModeChange?: (mode: MappingWorkflowMode) => void;
-  onCommitBoundaryDraft?: (vertices: XY[]) => void;
-  onCommitObstacleDraft?: (vertices: XY[], kind: ObstacleZone["kind"], confidence?: SourceConfidence) => void;
+  onCommitBoundaryDraft?: (vertices: XY[]) => boolean | void;
+  onCommitObstacleDraft?: (vertices: XY[], kind: ObstacleZone["kind"], confidence?: SourceConfidence) => boolean | void;
   onMoveBoundaryVertex?: (vertexIndex: number, point: XY) => void;
   onDeleteBoundaryVertex?: (vertexIndex: number) => void;
   onMoveObstacleVertex?: (obstacleId: string, vertexIndex: number, point: XY) => void;

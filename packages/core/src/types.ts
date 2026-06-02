@@ -76,15 +76,32 @@ export interface PartialCircleSweep {
 
 export type PivotSweep = FullCircleSweep | PartialCircleSweep;
 
+export interface PivotAngleRange {
+  startAngleDegrees: number;
+  stopAngleDegrees: number;
+  direction: "clockwise" | "counterclockwise";
+}
+
+export interface MachineCatalogSelection {
+  catalogId: string;
+  manufacturer: string;
+  model: string;
+  sourceUrl: string;
+  sourceAccessedAt: string;
+  advisoryOnly: true;
+}
+
 export interface PivotMachine {
   id: string;
   name: string;
   spanLengthsMeters: number[];
   overhangMeters: number;
   endGunThrowMeters: number;
+  endGunAngleRanges?: PivotAngleRange[];
   towerClearanceBufferMeters: number;
   machineClearanceBufferMeters: number;
   sweep: PivotSweep;
+  catalogSelection?: MachineCatalogSelection;
 }
 
 export interface ObstacleZone {
@@ -115,7 +132,9 @@ export type ProjectMapFeatureKind =
 
 export type ProjectMapFeatureGeometry =
   | { type: "Point"; point: XY }
-  | { type: "LineString"; vertices: XY[] };
+  | { type: "LineString"; vertices: XY[] }
+  | { type: "Polygon"; vertices: XY[] }
+  | { type: "Circle"; center: XY; radiusMeters: number };
 
 export interface ProjectMapFeature {
   id: string;
@@ -125,6 +144,26 @@ export interface ProjectMapFeature {
   confidence: SourceConfidence;
   notes?: string;
   properties?: Record<string, string | number | boolean | null>;
+}
+
+export type ProjectMapFeatureWgs84Geometry =
+  | { type: "Point"; point: LonLat }
+  | { type: "LineString"; vertices: LonLat[] }
+  | { type: "Polygon"; vertices: LonLat[] }
+  | { type: "Circle"; center: LonLat; radiusMeters: number };
+
+export interface ProjectWgs84Companion {
+  status: "projected" | "unavailable";
+  source: "derived_from_project_xy";
+  coordinateSystem: "decimal_degrees";
+  projectCrs: string;
+  error?: string;
+  fieldBoundary?: LonLat[];
+  pivotCenter?: LonLat;
+  waterSource?: LonLat;
+  powerSource?: LonLat;
+  obstacles?: Array<{ id: string; polygon: LonLat[] }>;
+  mapFeatures?: Array<{ id: string; geometry: ProjectMapFeatureWgs84Geometry }>;
 }
 
 export interface PivotProject {
@@ -142,6 +181,7 @@ export interface PivotProject {
   surveyPoints: SurveyPoint[];
   mapPackages?: MapPackageManifest[];
   mapFeatures?: ProjectMapFeature[];
+  wgs84Companion?: ProjectWgs84Companion;
 }
 
 export interface TowerPoint {
@@ -158,6 +198,17 @@ export interface LayoutMetrics {
   endGunAcres: number;
   outsideFieldAcres: number;
   obstacleConflictCount: number;
+  noSprayConflictCount: number;
+  hardMechanicalConflictCount: number;
+  towerTrackConflictCount: number;
+}
+
+export interface LayoutMechanicalConflict {
+  obstacleId: string;
+  obstacleKind: ObstacleZone["kind"];
+  obstacleName: string;
+  conflictType: "machine_path" | "tower_track";
+  areaSquareMeters: number;
 }
 
 export interface LayoutResult {
@@ -167,6 +218,7 @@ export interface LayoutResult {
   allowedCoverage: MultiPolygonXY;
   outsideFieldCoverage: MultiPolygonXY;
   obstacles: MultiPolygonXY;
+  mechanicalConflicts: LayoutMechanicalConflict[];
   towers: TowerPoint[];
   warnings: string[];
 }

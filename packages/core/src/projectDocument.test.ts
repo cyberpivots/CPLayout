@@ -10,6 +10,9 @@ const parsed = parseProjectDocument(serialized);
 assert.equal(parsed.id, sampleProject.id);
 assert.equal(parsed.projectCrs, "EPSG:32613");
 assert.deepEqual(parsed.pivotCenter, sampleProject.pivotCenter);
+assert.equal(parsed.wgs84Companion?.status, "projected");
+assert.equal(parsed.wgs84Companion?.coordinateSystem, "decimal_degrees");
+assert.equal(parsed.wgs84Companion?.fieldBoundary?.length, sampleProject.fieldBoundary.length);
 assert.equal(parsed.settings?.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in (parsed.settings?.offlineMaps ?? {}), false);
 assert.equal("onlineImagery" in (parsed.settings ?? {}), false);
@@ -17,6 +20,22 @@ assert.equal("referenceOverlay" in (parsed.settings ?? {}), false);
 assert.doesNotMatch(serialized, /onlineImagery|referenceOverlay|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 assert.equal(parsed.settings?.mappingWorkflowMode, "design");
 assert.deepEqual(parsed.mapFeatures, []);
+
+const parsedWithStaleCompanion = parseProjectDocument({
+  documentVersion: PROJECT_DOCUMENT_VERSION,
+  project: {
+    ...sampleProject,
+    wgs84Companion: {
+      status: "projected",
+      source: "derived_from_project_xy",
+      coordinateSystem: "decimal_degrees",
+      projectCrs: sampleProject.projectCrs,
+      pivotCenter: { longitude: 0, latitude: 0 },
+    },
+  },
+});
+assert.notDeepEqual(parsedWithStaleCompanion.wgs84Companion?.pivotCenter, { longitude: 0, latitude: 0 });
+assert.deepEqual(parsedWithStaleCompanion.wgs84Companion?.pivotCenter, parsed.wgs84Companion?.pivotCenter);
 
 const parsedWithLocalOnlyDrafts = parseProjectDocument({
   ...sampleProject,
@@ -67,6 +86,28 @@ const parsedMapFeatures = parseProjectDocument({
   ],
 });
 assert.equal(parsedMapFeatures.mapFeatures?.[0].kind, "underground_pipeline");
+
+const parsedExtendedMapFeatures = parseProjectDocument({
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "corner-footprint-a",
+      name: "Corner footprint A",
+      kind: "corner_swing_limit",
+      geometry: { type: "Polygon", vertices: sampleProject.fieldBoundary.slice(0, 3) },
+      confidence: "user_estimated",
+    },
+    {
+      id: "end-gun-radius-a",
+      name: "End gun radius A",
+      kind: "end_gun_arc",
+      geometry: { type: "Circle", center: sampleProject.pivotCenter, radiusMeters: 24 },
+      confidence: "user_estimated",
+    },
+  ],
+});
+assert.equal(parsedExtendedMapFeatures.mapFeatures?.[0].geometry.type, "Polygon");
+assert.equal(parsedExtendedMapFeatures.mapFeatures?.[1].geometry.type, "Circle");
 
 const parsedLegacySettings = parseProjectDocument({
   ...sampleProject,

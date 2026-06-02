@@ -115,6 +115,30 @@ assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "pipeli
 state = reduceProjectEditorState(state, { type: "redo" });
 assert.equal(state.project.mapFeatures?.some((feature) => feature.id === "pipeline-a"), false);
 
+state = reduceProjectEditorState(state, {
+  type: "add_map_feature",
+  feature: {
+    id: "corner-footprint-a",
+    name: "Corner Footprint A",
+    kind: "corner_swing_limit",
+    geometry: { type: "Polygon", vertices: boundary.slice(0, 3) },
+    confidence: "user_estimated",
+  },
+});
+assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "corner-footprint-a")?.geometry.type, "Polygon");
+state = reduceProjectEditorState(state, {
+  type: "add_map_feature",
+  feature: {
+    id: "end-gun-circle-a",
+    name: "End Gun Circle A",
+    kind: "end_gun_arc",
+    geometry: { type: "Circle", center: state.project.pivotCenter, radiusMeters: 24 },
+    confidence: "user_estimated",
+  },
+});
+assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "end-gun-circle-a")?.geometry.type, "Circle");
+assert.equal(state.project.wgs84Companion?.mapFeatures?.some((feature) => feature.id === "end-gun-circle-a" && feature.geometry.type === "Circle"), true);
+
 const obstacleId = state.project.obstacles.at(-1)?.id ?? "";
 state = reduceProjectEditorState(state, {
   type: "move_obstacle_vertex",
@@ -127,6 +151,22 @@ assert.deepEqual(state.project.obstacles.at(-1)?.polygon[1], { x: 501050, y: 450
 state = reduceProjectEditorState(state, { type: "delete_obstacle_vertex", obstacleId, vertexIndex: 2 });
 assert.equal(state.lastError, "Obstacle needs at least three vertices before commit.");
 assert.equal(state.project.obstacles.at(-1)?.polygon.length, 3);
+
+const replacedObstacleVertices = [
+  { x: 501010, y: 4506010 },
+  { x: 501060, y: 4506010 },
+  { x: 501060, y: 4506060 },
+  { x: 501010, y: 4506060 },
+];
+state = reduceProjectEditorState(state, { type: "replace_obstacle_polygon", obstacleId, vertices: replacedObstacleVertices });
+assert.deepEqual(state.project.obstacles.find((obstacle) => obstacle.id === obstacleId)?.polygon, replacedObstacleVertices);
+const invalidObstacleReplace = reduceProjectEditorState(state, {
+  type: "replace_obstacle_polygon",
+  obstacleId,
+  vertices: replacedObstacleVertices.slice(0, 2),
+});
+assert.match(invalidObstacleReplace.lastError ?? "", /at least three vertices/);
+assert.deepEqual(invalidObstacleReplace.project.obstacles.find((obstacle) => obstacle.id === obstacleId)?.polygon, replacedObstacleVertices);
 
 const deletedBoundary = reduceProjectEditorState(state, { type: "delete_boundary_vertex", vertexIndex: 3 });
 assert.equal(deletedBoundary.project.fieldBoundary.length, 3);

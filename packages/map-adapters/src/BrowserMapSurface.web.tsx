@@ -15,6 +15,7 @@ import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
+import { resolveDraftVertexIntent } from "@cplayout/geometry";
 import {
   resolveReferenceOverlaySource,
   resolveOnlineImageryProvider,
@@ -28,26 +29,21 @@ import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 import {
   browserMapClickToProjectedIntent,
   confidenceForImagery,
-  defaultMapFeatureName,
   type BrowserMapClickIntent,
-  type UtilityFeatureGeometry,
 } from "./browserMapInteraction";
+import {
+  defaultMapFeatureName,
+  draftVerticesToFeatureGeometry,
+  featureDraftMinimumVertices,
+  featureOptionForKind,
+  UTILITY_FEATURE_OPTIONS,
+  type UtilityFeatureGeometry,
+} from "./mapTools";
 import { projectLayoutToWgs84FeatureCollection, projectWgs84Bounds, projectWgs84Center } from "./mapOverlayGeoJson";
 import { registerPmtilesProtocolOnce } from "./pmtilesProtocol.web";
 import { buildReferenceOverlayStyleParts } from "./referenceOverlayStyle";
 import { SvgMapSurface } from "./SvgMapSurface";
 import type { MapSurfaceProps } from "./types";
-
-const UTILITY_FEATURE_OPTIONS: { kind: ProjectMapFeatureKind; label: string; geometry: UtilityFeatureGeometry }[] = [
-  { kind: "underground_pipeline", label: "Pipe", geometry: "LineString" },
-  { kind: "power_line", label: "Power", geometry: "LineString" },
-  { kind: "fence", label: "Fence", geometry: "LineString" },
-  { kind: "access_lane", label: "Lane", geometry: "LineString" },
-  { kind: "ditch", label: "Ditch", geometry: "LineString" },
-  { kind: "pump_location", label: "Pump", geometry: "Point" },
-  { kind: "power_pole", label: "Pole", geometry: "Point" },
-  { kind: "tree", label: "Tree", geometry: "Point" },
-];
 
 interface InteractionState {
   activeLayer: DrawingLayerType;
@@ -61,6 +57,10 @@ interface InteractionState {
 
 export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const {
+    activeLayer: externalActiveLayer,
+    activeMapFeatureKind,
+    activeToolMode,
+    activeToolRequestId,
     project,
     result,
     settings,
@@ -212,6 +212,13 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }, [activeLayer, mapFeatureKind, mapFeatureOption.geometry, mode, project.projectCrs, settings.mappingWorkflowMode, settings.onlineImagery.enabled]);
 
   useEffect(() => {
+    if (!canEditOnMap) return;
+    if (activeMapFeatureKind) setMapFeatureKind(activeMapFeatureKind);
+    if (activeToolMode) setTool(activeToolMode, externalActiveLayer);
+    else if (externalActiveLayer) setActiveLayer(externalActiveLayer);
+  }, [activeMapFeatureKind, activeToolMode, activeToolRequestId, canEditOnMap, externalActiveLayer]);
+
+  useEffect(() => {
     if (homeView) {
       clearDraft("Select or create a field map/design from the project tree before editing projected XY geometry.");
       setMode("pan");
@@ -239,6 +246,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       zoom: activeProvider ? Math.min(15, activeProvider.maxZoom) : 14,
     });
     mapRef.current = map;
+    map.doubleClickZoom.disable();
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
     const fitProject = () => fitBoundsToProject(map, projectionFrame.bounds, activeProvider);
@@ -246,13 +254,19 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       fitProject();
       setTimeout(() => map.resize(), 0);
     });
-    map.on("click", (event) => {
+    let lastTouchHandledAt = 0;
+    let touchStartPoint: { x: number; y: number } | null = null;
+    const applyMapEvent = (
+      point: maplibregl.PointLike,
+      lngLat: { lng: number; lat: number },
+      closeRequested: boolean,
+    ): void => {
       const current = interactionRef.current;
       if (homeView) {
         setStatus("North America map is a catalog view. Open a field map or design before editing projected XY geometry.");
         return;
       }
-      const selectedFeatureId = mapFeatureIdAtPoint(map, event.point);
+      const selectedFeatureId = mapFeatureIdAtPoint(map, point);
       if (selectedFeatureId && (current.mode === "pan" || current.workflowMode === "layout")) {
         callbacksRef.current.onSelectMapFeature?.(selectedFeatureId);
         setStatus(`Selected map feature ${selectedFeatureId}. Project geometry is unchanged.`);
@@ -260,9 +274,47 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       }
       const intent = browserMapClickToProjectedIntent({
         ...current,
+        lonLat: { longitude: lngLat.lng, latitude: lngLat.lat },
+      });
+      applyClickIntent(intent, closeRequested);
+    };
+    map.on("click", (event) => {
+      if (Date.now() - lastTouchHandledAt < 350) return;
+      applyMapEvent(event.point, event.lngLat, false);
+    });
+    map.on("touchstart", (event) => {
+      const originalEvent = event.originalEvent;
+      if (originalEvent.touches.length !== 1) {
+        touchStartPoint = null;
+        return;
+      }
+      touchStartPoint = pointLikeToXY(event.point);
+    });
+    map.on("touchmove", (event) => {
+      if (!touchStartPoint) return;
+      const point = pointLikeToXY(event.point);
+      if (distanceBetweenPoints(touchStartPoint, point) > 10) touchStartPoint = null;
+    });
+    map.on("touchend", (event) => {
+      const originalEvent = event.originalEvent;
+      const startPoint = touchStartPoint;
+      touchStartPoint = null;
+      if (!startPoint) return;
+      if (originalEvent.changedTouches.length !== 1 || originalEvent.touches.length > 0) return;
+      if (distanceBetweenPoints(startPoint, pointLikeToXY(event.point)) > 10) return;
+      event.preventDefault();
+      lastTouchHandledAt = Date.now();
+      applyMapEvent(event.point, event.lngLat, false);
+    });
+    map.on("dblclick", (event) => {
+      event.preventDefault();
+      const current = interactionRef.current;
+      if (homeView || current.workflowMode !== "design") return;
+      const intent = browserMapClickToProjectedIntent({
+        ...current,
         lonLat: { longitude: event.lngLat.lng, latitude: event.lngLat.lat },
       });
-      applyClickIntent(intent);
+      applyClickIntent(intent, true);
     });
     map.on("error", (event) => {
       const message = event.error?.message;
@@ -301,14 +353,13 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     }
   }
 
-  function applyClickIntent(intent: BrowserMapClickIntent): void {
+  function applyClickIntent(intent: BrowserMapClickIntent, closeRequested: boolean): void {
     if (intent.type === "none") {
       if (intent.reason === "review_layout_no_mutation") setStatus("Layout mode is RTK-only; switch to Design for pointer-based geometry edits.");
       return;
     }
     if (intent.type === "draft_vertex") {
-      setDraftVertices((current) => [...current, intent.vertex]);
-      setStatus(`Added projected XY draft vertex ${intent.vertex.x.toFixed(2)}, ${intent.vertex.y.toFixed(2)}.`);
+      handleDraftVertexIntent(intent.vertex, closeRequested);
       return;
     }
     if (intent.type === "place_pivot") {
@@ -331,28 +382,53 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }
 
   function commitDraft(): void {
-    if (!canEditOnMap || draftVertices.length < 3) return;
-    let committedStatus: string | null = null;
-    if (mode === "draw_boundary") {
-      callbacksRef.current.onCommitBoundaryDraft?.(draftVertices);
-      committedStatus = `Committed field boundary with ${draftVertices.length} projected XY vertices.`;
-    } else if (mode === "mark_obstacle") {
-      callbacksRef.current.onCommitObstacleDraft?.(draftVertices, obstacleKindForLayer(activeLayer), confidenceForImagery(settings.onlineImagery.enabled));
-      committedStatus = `Committed ${obstacleKindForLayer(activeLayer)} obstacle with ${draftVertices.length} projected XY vertices.`;
-    }
-    if (committedStatus) clearDraft(committedStatus);
+    commitDraftVertices(draftVertices);
   }
 
-  function saveMapFeatureLine(): void {
-    if (!canEditOnMap || mode !== "measure" || mapFeatureOption.geometry !== "LineString" || draftVertices.length < 2) return;
+  function commitDraftVertices(vertices: XY[]): void {
+    if (!canEditOnMap || vertices.length < 3) return;
+    let committedStatus: string | null = null;
+    let committed = false;
+    if (mode === "draw_boundary") {
+      committed = callbacksRef.current.onCommitBoundaryDraft?.(vertices) !== false;
+      committedStatus = `Committed field boundary with ${vertices.length} projected XY vertices.`;
+    } else if (mode === "mark_obstacle") {
+      committed = callbacksRef.current.onCommitObstacleDraft?.(vertices, obstacleKindForLayer(activeLayer), confidenceForImagery(settings.onlineImagery.enabled)) !== false;
+      committedStatus = `Committed ${obstacleKindForLayer(activeLayer)} obstacle with ${vertices.length} projected XY vertices.`;
+    }
+    if (committed && committedStatus) clearDraft(committedStatus);
+    if (!committed && committedStatus) setStatus("Draft validation failed. Fix the projected XY vertices before clearing or committing.");
+  }
+
+  function handleDraftVertexIntent(vertex: XY, closeRequested: boolean): void {
+    const intent = resolveDraftVertexIntent({
+      closeRequested,
+      currentVertices: draftVertices,
+      mode,
+      vertex,
+      vertexSnapToleranceMeters: settings.drawing.vertexSnapToleranceMeters,
+    });
+    if (intent.type === "commit") {
+      commitDraftVertices(intent.vertices);
+      return;
+    }
+    setDraftVertices((current) => [...current, intent.vertex]);
+    setStatus(`Added projected XY draft vertex ${intent.vertex.x.toFixed(2)}, ${intent.vertex.y.toFixed(2)}.`);
+  }
+
+  function saveMapFeatureFromDraft(): void {
+    if (!canEditOnMap || mode !== "measure") return;
+    const minimumVertices = featureDraftMinimumVertices(mapFeatureOption.geometry);
+    if (minimumVertices === 0 || draftVertices.length < minimumVertices) return;
+    const geometry = draftVerticesToFeatureGeometry(mapFeatureOption.geometry, draftVertices);
     callbacksRef.current.onAddMapFeature?.({
-      name: defaultMapFeatureName(mapFeatureKind, draftVertices.length),
+      name: defaultMapFeatureName(mapFeatureKind, mapFeatureOption.geometry, draftVertices.length),
       kind: mapFeatureKind,
-      geometry: { type: "LineString", vertices: draftVertices },
+      geometry,
       confidence: confidenceForImagery(settings.onlineImagery.enabled),
       notes: settings.onlineImagery.enabled ? "Traced from browser imagery; verify with field survey." : undefined,
     });
-    clearDraft(`Saved ${mapFeatureKind.replaceAll("_", " ")} line with ${draftVertices.length} projected XY vertices as a map feature.`);
+    clearDraft(`Saved ${mapFeatureKind.replaceAll("_", " ")} ${mapFeatureStatusLabel(mapFeatureOption.geometry, draftVertices.length)} as a map feature.`);
   }
 
   function clearDraft(nextStatus = "Draft cleared. Committed projected XY geometry is unchanged."): void {
@@ -370,8 +446,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   }
 
   const canCommitDraft = canEditOnMap && draftVertices.length >= 3 && (mode === "draw_boundary" || mode === "mark_obstacle");
-  const canSaveFeature = canEditOnMap && mode === "measure" && mapFeatureOption.geometry === "LineString" && draftVertices.length >= 2;
+  const canSaveFeature = canEditOnMap
+    && mode === "measure"
+    && mapFeatureOption.geometry !== "Point"
+    && draftVertices.length >= featureDraftMinimumVertices(mapFeatureOption.geometry);
   const canToggleReferenceOverlay = Boolean(onSettingsChange && referenceOverlay.canRender);
+  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${utilitySaveHint(mode, mapFeatureOption.geometry)}${advisoryRecommendationPreview ? " · advisory preview visible" : ""}`;
 
   return (
     <View style={styles.shell} testID="browser-map-workbench">
@@ -492,16 +572,14 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        <View style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
-          <View style={styles.statusTextGroup}>
+        <View pointerEvents="box-none" style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
+          <View pointerEvents="none" style={styles.statusTextGroup}>
             <Text style={styles.statusText}>{status}</Text>
-            <Text style={styles.statusMeta}>
-              {mode.replaceAll("_", " ")} · {draftVertices.length} draft pts{utilitySaveHint(mode, mapFeatureOption.geometry)}{advisoryRecommendationPreview ? " · advisory preview visible" : ""}
-            </Text>
+            <Text style={styles.statusMeta}>{statusMetaText}</Text>
           </View>
-          <View style={styles.hudActions} testID="browser-map-hud-actions">
+          <View pointerEvents="box-none" style={styles.hudActions} testID="browser-map-hud-actions">
             <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="browser-action-commit" />
-            <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureLine} primary={canSaveFeature} testID="browser-action-save-feature" />
+            <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="browser-action-save-feature" />
             <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="browser-action-clear" />
           </View>
         </View>
@@ -572,6 +650,7 @@ function buildWorkbenchStyle(
     fillLayer("end-gun-fill", "end_gun_coverage", "#33a79b", 0.28),
     fillLayer("outside-fill", "outside_field_coverage", "#d8893f", 0.28),
     fillLayer("obstacle-fill", "obstacle", "#b73f35", 0.5),
+    fillLayer("map-feature-polygon", "map_feature", "#7c5b14", 0.18, ["all", ["==", ["geometry-type"], "Polygon"], ["==", ["get", "layerType"], "map_feature"]]),
     lineLayer("field-line", "field_boundary", "#111c17", 3),
     lineLayer("obstacle-line", "obstacle", "#6d251f", 2),
     lineLayer("map-feature-line", "map_feature", "#7c5b14", 3, ["all", ["==", ["geometry-type"], "LineString"], ["==", ["get", "layerType"], "map_feature"]]),
@@ -601,12 +680,18 @@ function formatReferenceOverlayStatus(referenceOverlay: ReturnType<typeof resolv
   return `${referenceOverlay.autoApplied ? "Auto-applied" : "Manual"}: ${referenceOverlay.packageName ?? referenceOverlay.packageId} · ${referenceOverlay.schema.replaceAll("_", " ")}`;
 }
 
-function fillLayer(id: string, layerType: string, color: string, opacity: number): StyleSpecification["layers"][number] {
+function fillLayer(
+  id: string,
+  layerType: string,
+  color: string,
+  opacity: number,
+  filter: unknown[] = ["==", ["get", "layerType"], layerType],
+): StyleSpecification["layers"][number] {
   return {
     id,
     type: "fill",
     source: "layout",
-    filter: ["==", ["get", "layerType"], layerType],
+    filter: filter as never,
     paint: {
       "fill-color": color,
       "fill-opacity": opacity,
@@ -679,7 +764,7 @@ function syncLayoutSource(
 
 function mapFeatureIdAtPoint(map: maplibregl.Map, point: maplibregl.PointLike): string | null {
   const features = map.queryRenderedFeatures(point, {
-    layers: ["map-feature-line", "map-feature-point"],
+    layers: ["map-feature-polygon", "map-feature-line", "map-feature-point"],
   });
   const id = features.find((feature) => typeof feature.properties?.id === "string")?.properties?.id;
   return typeof id === "string" && id.length > 0 ? id : null;
@@ -696,10 +781,6 @@ function toMapLibreTileTemplate(template: string): string {
     .replace(/\{row\}/gi, "{y}");
 }
 
-function featureOptionForKind(kind: ProjectMapFeatureKind): { kind: ProjectMapFeatureKind; label: string; geometry: UtilityFeatureGeometry } {
-  return UTILITY_FEATURE_OPTIONS.find((option) => option.kind === kind) ?? UTILITY_FEATURE_OPTIONS[0];
-}
-
 function obstacleKindForLayer(layer: DrawingLayerType): ObstacleZone["kind"] {
   if (layer === "road" || layer === "ditch" || layer === "fence" || layer === "building" || layer === "canal" || layer === "tree" || layer === "exclusion") {
     return layer;
@@ -713,7 +794,26 @@ function toolLabel(mode: DrawingMode): string {
 
 function utilitySaveHint(mode: DrawingMode, geometry: UtilityFeatureGeometry): string {
   if (mode !== "measure") return "";
-  return geometry === "Point" ? " · point saves on map click" : " · line needs 2 pts";
+  if (geometry === "Point") return " · point saves on map click";
+  if (geometry === "Circle") return " · circle needs center + radius";
+  if (geometry === "Polygon") return " · polygon needs 3 pts";
+  return " · line needs 2 pts";
+}
+
+function mapFeatureStatusLabel(geometry: UtilityFeatureGeometry, vertexCount: number): string {
+  if (geometry === "LineString") return `line with ${vertexCount} projected XY vertices`;
+  if (geometry === "Polygon") return `polygon with ${vertexCount} projected XY vertices`;
+  if (geometry === "Circle") return "circle with projected XY center and radius points";
+  return "point in projected XY";
+}
+
+function pointLikeToXY(point: maplibregl.PointLike): { x: number; y: number } {
+  if (Array.isArray(point)) return { x: point[0], y: point[1] };
+  return { x: point.x, y: point.y };
+}
+
+function distanceBetweenPoints(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
 function ModeSwitch({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
@@ -850,19 +950,21 @@ const styles = StyleSheet.create({
     borderColor: "#c9d6cb",
     borderRadius: 8,
     borderWidth: 1,
+    bottom: 42,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
     left: 12,
-    maxWidth: "78%",
+    maxWidth: "92%",
     padding: 6,
     position: "absolute",
-    top: 12,
+    right: 12,
   },
   toolHudCompact: {
+    bottom: 44,
     left: 8,
     maxWidth: "94%",
-    top: 8,
+    right: 8,
   },
   toolButton: {
     alignItems: "center",
@@ -999,7 +1101,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(17,28,23,0.92)",
     borderRadius: 8,
-    bottom: 72,
+    bottom: 112,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
@@ -1012,7 +1114,7 @@ const styles = StyleSheet.create({
   },
   statusHudCompact: {
     alignItems: "flex-start",
-    bottom: 84,
+    bottom: 132,
     left: 8,
     right: 8,
   },

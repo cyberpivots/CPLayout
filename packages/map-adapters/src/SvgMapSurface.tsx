@@ -27,6 +27,7 @@ import {
   DrawingMapAction,
   DrawingMapState,
   reduceDrawingMapState,
+  resolveDraftVertexIntent,
   screenPointToWorld,
   snapPointToGeometry,
   viewportToSvgViewBox,
@@ -37,26 +38,21 @@ import type { InfrastructurePoint, MapStyle, MappingWorkflowMode, ObstacleZone, 
 import { resolveReferenceOverlaySource } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
+import {
+  defaultMapFeatureName,
+  draftVerticesToFeatureGeometry,
+  featureDraftMinimumVertices,
+  featureOptionForKind,
+  UTILITY_FEATURE_OPTIONS,
+  type UtilityFeatureGeometry,
+} from "./mapTools";
 import type { MapSurfaceProps } from "./types";
 
 type SelectedVertex =
   | { layer: "field_boundary"; vertexIndex: number }
   | { layer: "obstacle"; obstacleId: string; vertexIndex: number };
 
-type UtilityFeatureGeometry = ProjectMapFeature["geometry"]["type"];
 type MapPalette = ReturnType<typeof paletteForMapStyle>;
-
-const UTILITY_FEATURE_OPTIONS: { kind: ProjectMapFeatureKind; label: string; geometry: UtilityFeatureGeometry }[] = [
-  { kind: "underground_pipeline", label: "Pipe", geometry: "LineString" },
-  { kind: "power_line", label: "Power line", geometry: "LineString" },
-  { kind: "fence", label: "Fence", geometry: "LineString" },
-  { kind: "access_lane", label: "Lane", geometry: "LineString" },
-  { kind: "ditch", label: "Ditch", geometry: "LineString" },
-  { kind: "pump_location", label: "Pump", geometry: "Point" },
-  { kind: "power_pole", label: "Pole", geometry: "Point" },
-  { kind: "tree", label: "Tree", geometry: "Point" },
-  { kind: "end_gun_mark", label: "End gun", geometry: "Point" },
-];
 
 const CATALOG_HOME_BOUNDS = {
   minX: -168,
@@ -66,6 +62,10 @@ const CATALOG_HOME_BOUNDS = {
 };
 
 export function SvgMapSurface({
+  activeLayer: externalActiveLayer,
+  activeMapFeatureKind,
+  activeToolMode,
+  activeToolRequestId,
   homeView = false,
   project,
   result,
@@ -107,7 +107,7 @@ export function SvgMapSurface({
       ...result.outsideFieldCoverage.flat(),
       ...result.endGunCoverage.flat(),
       ...project.obstacles.map((obstacle) => obstacle.polygon),
-      ...mapFeatures.flatMap((feature) => feature.geometry.type === "LineString" ? [feature.geometry.vertices] : []),
+      ...mapFeatures.flatMap(mapFeatureRings),
     ]
     : [];
   const bounds = showProjectGeometry ? boundsForGeometry(allRings) : CATALOG_HOME_BOUNDS;
@@ -129,6 +129,7 @@ export function SvgMapSurface({
   const [mapFeatureKind, setMapFeatureKind] = useState<ProjectMapFeatureKind>("underground_pipeline");
   const [lastSnap, setLastSnap] = useState<{ point: XY; kind: "vertex" | "feature" } | null>(null);
   const lastSvgPressAt = useRef(0);
+  const pressStartPoint = useRef<{ x: number; y: number } | null>(null);
   const palette = paletteForMapStyle(settings.mapStyle);
   const mapFeatureOption = featureOptionForKind(mapFeatureKind);
   const activeSelectedMapFeatureId = selectedMapFeatureId ?? localSelectedMapFeatureId;
@@ -188,9 +189,9 @@ export function SvgMapSurface({
   );
   const panHandlers = panResponder.panHandlers;
   const svgInteractionProps = Platform.OS === "web"
-    ? { onClick: addDraftVertexFromWebClick, onPress: addDraftVertexFromPress }
+    ? { onClick: addDraftVertexFromWebClick, onDoubleClick: closeDraftFromWebDoubleClick, onPress: addDraftVertexFromPress }
     : { onPress: addDraftVertexFromPress };
-  const mapClickLayerProps = Platform.OS === "web" ? { onClick: addDraftVertexFromWebClick } : {};
+  const mapClickLayerProps = Platform.OS === "web" ? { onClick: addDraftVertexFromWebClick, onDoubleClick: closeDraftFromWebDoubleClick } : {};
   const canCommitCurrentDraft = designMode && canCommitDraft(mapState);
   const canSaveCurrentMapFeature = designMode && canSaveMapFeature(mapState, mapFeatureOption.geometry);
   const mapClickLayerActive = designMode && mapState.mode !== "pan" && mapState.mode !== "edit_vertices";
@@ -206,6 +207,21 @@ export function SvgMapSurface({
     });
   }, [designMode]);
 
+  useEffect(() => {
+    if (!designMode) return;
+    if (activeMapFeatureKind) setMapFeatureKind(activeMapFeatureKind);
+    setMapState((current) => {
+      let next = current;
+      if (externalActiveLayer && externalActiveLayer !== next.activeLayer) {
+        next = reduceDrawingMapState(next, { type: "set_active_layer", activeLayer: externalActiveLayer });
+      }
+      if (activeToolMode && activeToolMode !== next.mode) {
+        next = reduceDrawingMapState(next, { type: "set_mode", mode: activeToolMode });
+      }
+      return next;
+    });
+  }, [activeMapFeatureKind, activeToolMode, activeToolRequestId, designMode, externalActiveLayer]);
+
   function dispatch(action: DrawingMapAction): void {
     setMapState((current) => reduceDrawingMapState(current, action));
   }
@@ -216,12 +232,49 @@ export function SvgMapSurface({
     addDraftVertexAtScreenPoint(event.nativeEvent.locationX, event.nativeEvent.locationY);
   }
 
+  function startPressGesture(event: GestureResponderEvent): void {
+    pressStartPoint.current = { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY };
+  }
+
+  function updatePressGesture(event: GestureResponderEvent): void {
+    const start = pressStartPoint.current;
+    if (!start) return;
+    const next = { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY };
+    if (Math.hypot(next.x - start.x, next.y - start.y) > 10) pressStartPoint.current = null;
+  }
+
+  function releasePressGesture(event: GestureResponderEvent): void {
+    const start = pressStartPoint.current;
+    pressStartPoint.current = null;
+    if (!start) return;
+    const next = { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY };
+    if (Math.hypot(next.x - start.x, next.y - start.y) > 10) return;
+    addDraftVertexFromPress(event);
+  }
+
   function addDraftVertexFromWebClick(event: { nativeEvent?: { offsetX?: number; offsetY?: number }; currentTarget?: { getBoundingClientRect?: () => { left: number; top: number } }; clientX?: number; clientY?: number }): void {
     if (Date.now() - lastSvgPressAt.current < 80) return;
     const bounds = event.currentTarget?.getBoundingClientRect?.();
     const xPixels = event.nativeEvent?.offsetX ?? (bounds ? (event.clientX ?? 0) - bounds.left : 0);
     const yPixels = event.nativeEvent?.offsetY ?? (bounds ? (event.clientY ?? 0) - bounds.top : 0);
     addDraftVertexAtScreenPoint(xPixels, yPixels);
+  }
+
+  function closeDraftFromWebDoubleClick(event: { preventDefault?: () => void; stopPropagation?: () => void; nativeEvent?: { offsetX?: number; offsetY?: number }; currentTarget?: { getBoundingClientRect?: () => { left: number; top: number } }; clientX?: number; clientY?: number }): void {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    if (!designMode) return;
+    const bounds = event.currentTarget?.getBoundingClientRect?.();
+    const xPixels = event.nativeEvent?.offsetX ?? (bounds ? (event.clientX ?? 0) - bounds.left : 0);
+    const yPixels = event.nativeEvent?.offsetY ?? (bounds ? (event.clientY ?? 0) - bounds.top : 0);
+    if (!Number.isFinite(xPixels) || !Number.isFinite(yPixels)) return;
+    const rawVertex = screenPointToWorld(
+      mapState.viewport,
+      { xPixels, yPixels },
+      { widthPixels: mapPixelWidth, heightPixels: mapPixelHeight },
+    );
+    const vertex = snapWorldPoint(rawVertex);
+    handleDraftVertexIntent(vertex, true);
   }
 
   function addDraftVertexAtScreenPoint(xPixels: number, yPixels: number): void {
@@ -258,7 +311,7 @@ export function SvgMapSurface({
       return;
     }
     if (!canAddDraftVertex(mapState.mode)) return;
-    dispatch({ type: "add_draft_vertex", vertex });
+    handleDraftVertexIntent(vertex, false);
   }
 
   function addDraftVertexAtViewCenter(): void {
@@ -273,16 +326,36 @@ export function SvgMapSurface({
   }
 
   function commitDraft(): void {
+    commitDraftVertices(mapState.draftVertices);
+  }
+
+  function commitDraftVertices(vertices: XY[]): void {
     if (!designMode) return;
-    if (mapState.draftVertices.length < 3) return;
+    if (vertices.length < 3) return;
+    let committed = false;
     if (mapState.mode === "draw_boundary") {
-      onCommitBoundaryDraft?.(mapState.draftVertices);
+      committed = onCommitBoundaryDraft?.(vertices) !== false;
     } else if (mapState.mode === "mark_obstacle") {
-      onCommitObstacleDraft?.(mapState.draftVertices, obstacleKindForLayer(mapState.activeLayer));
+      committed = onCommitObstacleDraft?.(vertices, obstacleKindForLayer(mapState.activeLayer)) !== false;
     } else {
       return;
     }
-    dispatch({ type: "clear_draft" });
+    if (committed) dispatch({ type: "clear_draft" });
+  }
+
+  function handleDraftVertexIntent(vertex: XY, closeRequested: boolean): void {
+    const intent = resolveDraftVertexIntent({
+      closeRequested,
+      currentVertices: mapState.draftVertices,
+      mode: mapState.mode,
+      vertex,
+      vertexSnapToleranceMeters: settings.drawing.vertexSnapToleranceMeters,
+    });
+    if (intent.type === "commit") {
+      commitDraftVertices(intent.vertices);
+      return;
+    }
+    dispatch({ type: "add_draft_vertex", vertex: intent.vertex });
   }
 
   function setToolMode(mode: DrawingMapState["mode"], layer?: DrawingLayerType): void {
@@ -345,12 +418,16 @@ export function SvgMapSurface({
           project.pivotCenter,
           project.waterSource,
           project.powerSource,
-          ...mapFeatures.flatMap((feature) => feature.geometry.type === "Point" ? [feature.geometry.point] : []),
+          ...mapFeatures.flatMap((feature) => {
+            if (feature.geometry.type === "Point") return [feature.geometry.point];
+            if (feature.geometry.type === "Circle") return [feature.geometry.center];
+            return [];
+          }),
         ],
         rings: [
           project.fieldBoundary,
           ...project.obstacles.map((obstacle) => obstacle.polygon),
-          ...mapFeatures.flatMap((feature) => feature.geometry.type === "LineString" ? [feature.geometry.vertices] : []),
+          ...mapFeatures.flatMap(mapFeatureRings),
           mapState.draftVertices,
         ],
       },
@@ -375,7 +452,7 @@ export function SvgMapSurface({
   function commitMapFeaturePoint(point: XY): void {
     if (!designMode) return;
     onAddMapFeature?.({
-      name: defaultMapFeatureName(mapFeatureKind, 1),
+      name: defaultMapFeatureName(mapFeatureKind, mapFeatureOption.geometry, 1),
       kind: mapFeatureKind,
       geometry: { type: "Point", point },
       confidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
@@ -383,13 +460,14 @@ export function SvgMapSurface({
     });
   }
 
-  function commitMapFeatureLine(): void {
+  function commitMapFeatureFromDraft(): void {
     if (!designMode) return;
-    if (mapState.draftVertices.length < 2 || mapFeatureOption.geometry !== "LineString") return;
+    if (mapFeatureOption.geometry === "Point") return;
+    if (mapState.draftVertices.length < featureDraftMinimumVertices(mapFeatureOption.geometry)) return;
     onAddMapFeature?.({
-      name: defaultMapFeatureName(mapFeatureKind, mapState.draftVertices.length),
+      name: defaultMapFeatureName(mapFeatureKind, mapFeatureOption.geometry, mapState.draftVertices.length),
       kind: mapFeatureKind,
-      geometry: { type: "LineString", vertices: mapState.draftVertices },
+      geometry: draftVerticesToFeatureGeometry(mapFeatureOption.geometry, mapState.draftVertices),
       confidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
       notes: settings.onlineImagery.enabled ? "Traced from online imagery preview; verify by field survey." : undefined,
     });
@@ -401,7 +479,7 @@ export function SvgMapSurface({
     if (mapFeatureOption.geometry === "Point") {
       commitMapFeaturePoint(snapWorldPoint(mapState.viewport.center));
     } else {
-      commitMapFeatureLine();
+      commitMapFeatureFromDraft();
     }
   }
 
@@ -553,7 +631,9 @@ export function SvgMapSurface({
         {mapClickLayerActive ? (
           <View
             accessibilityLabel="Map drawing click layer"
-            onResponderRelease={addDraftVertexFromPress}
+            onResponderGrant={startPressGesture}
+            onResponderMove={updatePressGesture}
+            onResponderRelease={releasePressGesture}
             onStartShouldSetResponder={() => true}
             style={[styles.mapClickLayer, compactLayout && styles.mapClickLayerCompact]}
             testID="layout-map-click-layer"
@@ -701,7 +781,14 @@ function canCommitDraft(mapState: DrawingMapState): boolean {
 }
 
 function canSaveMapFeature(mapState: DrawingMapState, geometry: UtilityFeatureGeometry): boolean {
-  return mapState.mode === "measure" && (geometry === "Point" || mapState.draftVertices.length >= 2);
+  return mapState.mode === "measure" && (geometry === "Point" || mapState.draftVertices.length >= featureDraftMinimumVertices(geometry));
+}
+
+function mapFeatureRings(feature: ProjectMapFeature): XY[][] {
+  if (feature.geometry.type === "Point") return [];
+  if (feature.geometry.type === "LineString") return [feature.geometry.vertices];
+  if (feature.geometry.type === "Polygon") return [feature.geometry.vertices];
+  return [createCirclePolygon(feature.geometry.center, feature.geometry.radiusMeters, 72)];
 }
 
 function setToolLayerForMode(mode: DrawingMapState["mode"], layer?: DrawingLayerType): DrawingLayerType | null {
@@ -739,14 +826,6 @@ function measureText(vertices: XY[]): string {
 function selectedVertexText(vertex: SelectedVertex): string {
   if (vertex.layer === "field_boundary") return `selected boundary vertex ${vertex.vertexIndex + 1}`;
   return `selected obstacle vertex ${vertex.vertexIndex + 1}`;
-}
-
-function featureOptionForKind(kind: ProjectMapFeatureKind): { kind: ProjectMapFeatureKind; label: string; geometry: UtilityFeatureGeometry } {
-  return UTILITY_FEATURE_OPTIONS.find((option) => option.kind === kind) ?? UTILITY_FEATURE_OPTIONS[0];
-}
-
-function defaultMapFeatureName(kind: ProjectMapFeatureKind, vertexCount: number): string {
-  return `${kind.replaceAll("_", " ")} ${vertexCount > 1 ? "line" : "point"}`;
 }
 
 function Grid({ minX, maxX, minY, maxY, stroke }: { minX: number; maxX: number; minY: number; maxY: number; stroke: string }): React.JSX.Element {
@@ -914,6 +993,52 @@ function MapFeatureSymbol({
           {...svgElementInteractionProps(onSelect)}
         />
         <SvgText x={mid.x + 12} y={-mid.y - 10} fill={color} fontSize={18} fontWeight="900">
+          {feature.name}
+        </SvgText>
+      </>
+    );
+  }
+  if (feature.geometry.type === "Polygon") {
+    const vertices = feature.geometry.vertices;
+    if (vertices.length < 3) return <></>;
+    const path = ringsToSvgPath([[vertices]]);
+    const mid = centroid(vertices);
+    return (
+      <>
+        <Path
+          d={path}
+          fill={color}
+          opacity={selected ? 0.24 : 0.14}
+          stroke={color}
+          strokeDasharray={dashForMapFeature(feature.kind)}
+          strokeLinejoin="round"
+          strokeWidth={strokeWidth}
+          {...svgElementInteractionProps(onSelect)}
+        />
+        <SvgText x={mid.x + 12} y={-mid.y - 10} fill={color} fontSize={18} fontWeight="900">
+          {feature.name}
+        </SvgText>
+      </>
+    );
+  }
+  if (feature.geometry.type === "Circle") {
+    const point = feature.geometry.center;
+    const y = -point.y;
+    return (
+      <>
+        <Circle
+          cx={point.x}
+          cy={y}
+          fill={color}
+          opacity={selected ? 0.2 : 0.12}
+          r={feature.geometry.radiusMeters}
+          stroke={color}
+          strokeDasharray={dashForMapFeature(feature.kind)}
+          strokeWidth={strokeWidth}
+          {...svgElementInteractionProps(onSelect)}
+        />
+        <Circle cx={point.x} cy={y} fill="#fffef8" r={selected ? 10 : 7} stroke={color} strokeWidth={4} />
+        <SvgText x={point.x + feature.geometry.radiusMeters + 10} y={y + 6} fill={color} fontSize={18} fontWeight="900">
           {feature.name}
         </SvgText>
       </>

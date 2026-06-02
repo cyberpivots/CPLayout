@@ -23,6 +23,20 @@ const projectWithMapFeature = {
       geometry: { type: "LineString" as const, vertices: sampleProject.fieldBoundary.slice(0, 2) },
       confidence: "imagery_digitized" as const,
     },
+    {
+      id: "corner-footprint-a",
+      name: "Corner Footprint A",
+      kind: "corner_swing_limit" as const,
+      geometry: { type: "Polygon" as const, vertices: sampleProject.fieldBoundary.slice(0, 3) },
+      confidence: "user_estimated" as const,
+    },
+    {
+      id: "end-gun-circle-a",
+      name: "End Gun Circle A",
+      kind: "end_gun_arc" as const,
+      geometry: { type: "Circle" as const, center: sampleProject.pivotCenter, radiusMeters: 24 },
+      confidence: "user_estimated" as const,
+    },
   ],
 };
 const featureCollectionWithMapFeature = projectLayoutToWgs84FeatureCollection(projectWithMapFeature, evaluateLayout(projectWithMapFeature));
@@ -31,6 +45,8 @@ const boundsWithMapFeature = projectWgs84Bounds(projectWithMapFeature);
 assert.equal(featureCollection.type, "FeatureCollection");
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "field_boundary"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Pipeline A"));
+assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Corner Footprint A" && feature.geometry.type === "MultiPolygon"));
+assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "End Gun Circle A" && feature.geometry.type === "MultiPolygon"));
 assert.ok(bounds.every((value) => Number.isFinite(value)));
 assert.ok(boundsWithMapFeature.every((value) => Number.isFinite(value)));
 assert.ok(center.every((value) => Number.isFinite(value)));

@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import {
   exportProjectGoogleEarthKml,
+  exportProjectMapXml,
   parseLayoutDecisionRecord,
   parseLayoutEvidenceRecord,
   parseModelRecommendation,
@@ -26,6 +27,7 @@ export const PROJECT_JSON_FILENAME = "project.json";
 export const PROJECT_MANIFEST_FILENAME = "manifest.json";
 export const PROJECT_GEOJSON_FILENAME = "exports/scenario.geojson";
 export const PROJECT_GOOGLE_EARTH_KML_FILENAME = "exports/google-earth.kml";
+export const PROJECT_MAP_XML_FILENAME = "exports/map-data.xml";
 export const SURVEY_CSV_FILENAME = "exports/survey-points.csv";
 export const METRICS_CSV_FILENAME = "exports/scenario-metrics.csv";
 export const MAP_PACKAGES_CSV_FILENAME = "exports/map-packages.csv";
@@ -91,6 +93,7 @@ export function buildProjectArchiveBundle(
       PROJECT_JSON_FILENAME,
       PROJECT_GEOJSON_FILENAME,
       PROJECT_GOOGLE_EARTH_KML_FILENAME,
+      PROJECT_MAP_XML_FILENAME,
       SURVEY_CSV_FILENAME,
       METRICS_CSV_FILENAME,
       MAP_PACKAGES_CSV_FILENAME,
@@ -108,6 +111,7 @@ export function buildProjectArchiveBundle(
       [PROJECT_JSON_FILENAME]: serializeProjectDocument(project),
       [PROJECT_GEOJSON_FILENAME]: JSON.stringify(geoJson, null, 2),
       [PROJECT_GOOGLE_EARTH_KML_FILENAME]: exportProjectGoogleEarthKml(project, result).kml,
+      [PROJECT_MAP_XML_FILENAME]: exportProjectMapXml(project),
       [SURVEY_CSV_FILENAME]: surveyPointsToCsv(project.surveyPoints),
       [METRICS_CSV_FILENAME]: metricsToCsv(result),
       [MAP_PACKAGES_CSV_FILENAME]: mapPackagesToCsv(project),
@@ -290,6 +294,7 @@ const PROJECT_ARCHIVE_ALLOWED_FILENAMES = new Set([
   PROJECT_JSON_FILENAME,
   PROJECT_GEOJSON_FILENAME,
   PROJECT_GOOGLE_EARTH_KML_FILENAME,
+  PROJECT_MAP_XML_FILENAME,
   SURVEY_CSV_FILENAME,
   METRICS_CSV_FILENAME,
   MAP_PACKAGES_CSV_FILENAME,

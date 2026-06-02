@@ -39,9 +39,14 @@ export function projectLayoutToWgs84FeatureCollection(
           confidence: feature.confidence,
           notes: feature.notes ?? "",
         };
-        return feature.geometry.type === "Point"
-          ? pointFeature(project, "map_feature", feature.geometry.point, properties)
-          : lineFeature(project, "map_feature", feature.geometry.vertices, properties);
+        if (feature.geometry.type === "Point") return pointFeature(project, "map_feature", feature.geometry.point, properties);
+        if (feature.geometry.type === "LineString") return lineFeature(project, "map_feature", feature.geometry.vertices, properties);
+        if (feature.geometry.type === "Polygon") return polygonFeature(project, "map_feature", [[feature.geometry.vertices]], properties);
+        return polygonFeature(project, "map_feature", [[circleVertices(feature.geometry.center, feature.geometry.radiusMeters)]], {
+          ...properties,
+          mapFeatureGeometry: "Circle",
+          radiusMeters: feature.geometry.radiusMeters,
+        });
       }),
       ...(draftVertices.length === 1 ? [pointFeature(project, "draft_vertices", draftVertices[0], { count: 1 })] : []),
       ...(draftVertices.length >= 2 ? [lineFeature(project, "draft_vertices", draftVertices, { count: draftVertices.length })] : []),
@@ -56,7 +61,11 @@ export function projectWgs84Bounds(project: PivotProject): [number, number, numb
     project.waterSource,
     project.powerSource,
     ...project.obstacles.flatMap((obstacle) => obstacle.polygon),
-    ...(project.mapFeatures ?? []).flatMap((feature) => feature.geometry.type === "Point" ? [feature.geometry.point] : feature.geometry.vertices),
+    ...(project.mapFeatures ?? []).flatMap((feature) => {
+      if (feature.geometry.type === "Point") return [feature.geometry.point];
+      if (feature.geometry.type === "Circle") return [feature.geometry.center, ...circleVertices(feature.geometry.center, feature.geometry.radiusMeters, 16)];
+      return feature.geometry.vertices;
+    }),
   ].map((point) => projectXyToLonLat(point, project.projectCrs));
   const longitudes = coordinates.map((coordinate) => coordinate.longitude);
   const latitudes = coordinates.map((coordinate) => coordinate.latitude);
@@ -121,4 +130,14 @@ function closedRing(ring: XY[]): XY[] {
   const first = ring[0];
   const last = ring[ring.length - 1];
   return first.x === last.x && first.y === last.y ? ring : [...ring, first];
+}
+
+function circleVertices(center: XY, radiusMeters: number, segments = 72): XY[] {
+  return Array.from({ length: segments }, (_value, index) => {
+    const angle = (index / segments) * Math.PI * 2;
+    return {
+      x: center.x + Math.cos(angle) * radiusMeters,
+      y: center.y + Math.sin(angle) * radiusMeters,
+    };
+  });
 }

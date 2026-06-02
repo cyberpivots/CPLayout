@@ -1,6 +1,6 @@
 import { importProjectedGeoJsonToProject, importSurveyCsvToProject } from "./projectImports";
 import { modelRecommendationHardFailures, type ModelRecommendation } from "./layoutEvidence";
-import { PivotProjectSchema } from "./projectDocument";
+import { PivotProjectSchema, withWgs84Companion } from "./projectDocument";
 import type { ProjectSettings } from "./settings";
 import type { LonLat, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, UnitSystem, XY } from "./types";
 
@@ -22,6 +22,7 @@ export type ProjectEditorAction =
   | { type: "delete_boundary_vertex"; vertexIndex: number }
   | { type: "move_obstacle_vertex"; obstacleId: string; vertexIndex: number; point: XY }
   | { type: "delete_obstacle_vertex"; obstacleId: string; vertexIndex: number }
+  | { type: "replace_obstacle_polygon"; obstacleId: string; vertices: XY[] }
   | { type: "place_pivot"; point: XY; wgs84?: LonLat }
   | { type: "move_infrastructure"; pointType: InfrastructurePoint; point: XY; wgs84?: LonLat }
   | { type: "add_survey_point"; point: Omit<SurveyPoint, "id" | "observedAt"> & { id?: string; observedAt?: string } }
@@ -44,7 +45,7 @@ export type ProjectEditorAction =
 
 export function createProjectEditorState(project: PivotProject): ProjectEditorState {
   return {
-    project: PivotProjectSchema.parse(project),
+    project: withWgs84Companion(PivotProjectSchema.parse(project)),
     past: [],
     future: [],
     lastError: null,
@@ -78,6 +79,8 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
         return moveObstacleVertex(state, action.obstacleId, action.vertexIndex, action.point);
       case "delete_obstacle_vertex":
         return deleteObstacleVertex(state, action.obstacleId, action.vertexIndex);
+      case "replace_obstacle_polygon":
+        return replaceObstaclePolygon(state, action.obstacleId, action.vertices);
       case "place_pivot":
         return moveInfrastructurePoint(state, "pivot_center", action.point, action.wgs84);
       case "move_infrastructure":
@@ -128,7 +131,7 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
 }
 
 function applyProjectChange(state: ProjectEditorState, nextProject: PivotProject): ProjectEditorState {
-  const parsedProject = PivotProjectSchema.parse(nextProject);
+  const parsedProject = withWgs84Companion(PivotProjectSchema.parse(nextProject));
   return {
     project: parsedProject,
     past: [...state.past, state.project],
@@ -347,6 +350,18 @@ function deleteObstacleVertex(state: ProjectEditorState, obstacleId: string, ver
     throw new Error(`Obstacle ${obstacleId} was not found.`);
   }
   return applyProjectChange(state, { ...state.project, obstacles });
+}
+
+function replaceObstaclePolygon(state: ProjectEditorState, obstacleId: string, vertices: XY[]): ProjectEditorState {
+  if (!state.project.obstacles.some((obstacle) => obstacle.id === obstacleId)) {
+    throw new Error(`Obstacle ${obstacleId} was not found.`);
+  }
+  return applyProjectChange(state, {
+    ...state.project,
+    obstacles: state.project.obstacles.map((obstacle) => obstacle.id === obstacleId
+      ? { ...obstacle, polygon: validatedRing(vertices, "Obstacle") }
+      : obstacle),
+  });
 }
 
 function replaceVertex(vertices: XY[], vertexIndex: number, point: XY, label: string): XY[] {

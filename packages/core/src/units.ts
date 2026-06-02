@@ -12,6 +12,10 @@ export function metersToFeet(meters: number): number {
   return meters * FEET_PER_METER;
 }
 
+export function feetToMeters(feet: number): number {
+  return feet / FEET_PER_METER;
+}
+
 export function formatAcres(acres: number): string {
   return `${acres.toFixed(1)} ac`;
 }
@@ -30,6 +34,49 @@ export function formatAreaFromAcres(acres: number, unitSystem: UnitSystem): stri
 export function formatDistance(meters: number, unitSystem: UnitSystem): string {
   if (unitSystem === "metric") return formatMeters(meters);
   return `${metersToFeet(meters).toFixed(1)} ft`;
+}
+
+export function formatDistanceInputValue(meters: number, unitSystem: UnitSystem): string {
+  if (unitSystem === "metric") return trimFixed(meters, 2);
+  return trimFixed(metersToFeet(meters), 2);
+}
+
+export function parseDistanceInput(value: string, unitSystem: UnitSystem, label: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`${label} is required.`);
+  if (unitSystem === "metric") return parseMetricDistance(trimmed, label);
+  return parseUsSurveyDistance(trimmed, label);
+}
+
+export function formatFeetInches(meters: number): string {
+  const totalInches = Math.round(metersToFeet(meters) * 12);
+  const sign = totalInches < 0 ? "-" : "";
+  const absoluteInches = Math.abs(totalInches);
+  const feet = Math.floor(absoluteInches / 12);
+  const inches = absoluteInches % 12;
+  return `${sign}${feet}' ${inches}"`;
+}
+
+function parseMetricDistance(value: string, label: string): number {
+  const normalized = value.toLowerCase().replace(/\s*m(?:eters?)?$/, "").trim();
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) throw new Error(`${label} must be a finite metric distance.`);
+  return parsed;
+}
+
+function parseUsSurveyDistance(value: string, label: string): number {
+  const feetInches = /^\s*([+-]?\d+(?:\.\d+)?)\s*(?:'|ft|feet)?(?:\s+(\d+(?:\.\d+)?)\s*(?:"|in|inch|inches)?)?\s*$/i.exec(value);
+  if (!feetInches) throw new Error(`${label} must be feet or feet/inches.`);
+  const feet = Number(feetInches[1]);
+  const inches = feetInches[2] === undefined ? 0 : Number(feetInches[2]);
+  if (!Number.isFinite(feet) || !Number.isFinite(inches)) throw new Error(`${label} must be a finite feet/inches distance.`);
+  if (inches < 0 || inches >= 12) throw new Error(`${label} inches must be between 0 and 12.`);
+  const sign = feet < 0 ? -1 : 1;
+  return feetToMeters(feet + sign * (inches / 12));
+}
+
+function trimFixed(value: number, digits: number): string {
+  return value.toFixed(digits).replace(/\.?0+$/, "");
 }
 
 export function normalizeCrsName(crs: string): string {

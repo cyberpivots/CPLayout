@@ -58,6 +58,20 @@ export interface SnapGeometry {
   rings?: XY[][];
 }
 
+export type DraftCloseReason = "first_point_snap" | "double_click";
+
+export type DraftVertexIntent =
+  | { type: "append"; vertex: XY }
+  | { type: "commit"; vertices: XY[]; reason: DraftCloseReason };
+
+export interface DraftVertexIntentParams {
+  closeRequested?: boolean;
+  currentVertices: XY[];
+  mode: DrawingMode;
+  vertex: XY;
+  vertexSnapToleranceMeters: number;
+}
+
 export type DrawingMapAction =
   | { type: "pan"; delta: XY }
   | { type: "pan_screen"; dxPixels: number; dyPixels: number; screenWidthPixels: number; screenHeightPixels: number }
@@ -221,6 +235,36 @@ export function snapPointToGeometry(
     return { ...nearestFeature, kind: "feature" };
   }
   return null;
+}
+
+export function resolveDraftVertexIntent({
+  closeRequested = false,
+  currentVertices,
+  mode,
+  vertex,
+  vertexSnapToleranceMeters,
+}: DraftVertexIntentParams): DraftVertexIntent {
+  if (!canDraftPolygonClose(mode)) return { type: "append", vertex };
+  if (currentVertices.length < 2) return { type: "append", vertex };
+
+  if (closeRequested) {
+    const vertices = currentVertices.length >= 3 ? currentVertices : [...currentVertices, vertex];
+    return vertices.length >= 3
+      ? { type: "commit", vertices, reason: "double_click" }
+      : { type: "append", vertex };
+  }
+
+  const first = currentVertices[0];
+  const snapTolerance = Math.max(0, vertexSnapToleranceMeters);
+  if (currentVertices.length >= 3 && distance(first, vertex) <= snapTolerance) {
+    return { type: "commit", vertices: currentVertices, reason: "first_point_snap" };
+  }
+
+  return { type: "append", vertex };
+}
+
+function canDraftPolygonClose(mode: DrawingMode): boolean {
+  return mode === "draw_boundary" || mode === "mark_obstacle";
 }
 
 function nearestPoint(point: XY, candidates: XY[]): { point: XY; distanceMeters: number } | null {

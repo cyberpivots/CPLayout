@@ -39,10 +39,24 @@ const projectWithMapFeatures = {
       },
       confidence: "user_estimated" as const,
     },
+    {
+      id: "corner-footprint-a",
+      name: "Corner footprint A",
+      kind: "corner_swing_limit" as const,
+      geometry: { type: "Polygon" as const, vertices: sampleProject.fieldBoundary.slice(0, 3) },
+      confidence: "user_estimated" as const,
+    },
+    {
+      id: "end-gun-circle-a",
+      name: "End gun circle A",
+      kind: "end_gun_arc" as const,
+      geometry: { type: "Circle" as const, center: sampleProject.pivotCenter, radiusMeters: 24 },
+      confidence: "user_estimated" as const,
+    },
   ],
 };
 const mapFeatureRows = buildProjectGeometryRows(projectWithMapFeatures).filter((row) => row.layerType === "map_feature");
-assert.equal(mapFeatureRows.length, 2);
+assert.equal(mapFeatureRows.length, 4);
 assert.equal(mapFeatureRows[0].id, `${sampleProject.id}:map-feature:pump-pad`);
 assert.equal(mapFeatureRows[0].featureKind, "pump_location");
 assert.equal(mapFeatureRows[0].vertices.length, 1);
@@ -50,6 +64,11 @@ assert.equal(mapFeatureRows[0].properties.geometryType, "Point");
 assert.equal(mapFeatureRows[0].properties.inspected, true);
 assert.equal(mapFeatureRows[1].featureKind, "underground_pipeline");
 assert.equal(mapFeatureRows[1].vertices.length, 2);
+assert.equal(mapFeatureRows[2].properties.geometryType, "Polygon");
+assert.equal(mapFeatureRows[2].vertices.length, 3);
+assert.equal(mapFeatureRows[3].properties.geometryType, "Circle");
+assert.equal(mapFeatureRows[3].properties.radiusMeters, 24);
+assert.ok(mapFeatureRows[3].vertices.length > 8);
 
 const plan = buildSaveProjectStatementPlan(sampleProject, evaluateLayout(sampleProject));
 assert.ok(plan.some((statement) => statement.sql.includes("INSERT INTO project_snapshots")));

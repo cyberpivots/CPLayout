@@ -5,6 +5,7 @@ import {
   PROJECT_GEOJSON_FILENAME,
   PROJECT_GOOGLE_EARTH_KML_FILENAME,
   PROJECT_JSON_FILENAME,
+  PROJECT_MAP_XML_FILENAME,
   LAYOUT_DECISIONS_JSONL_FILENAME,
   LAYOUT_EVIDENCE_JSONL_FILENAME,
   MAP_PACKAGES_CSV_FILENAME,
@@ -31,6 +32,9 @@ assert.ok(bundle.files[PROJECT_JSON_FILENAME].includes(sampleProject.id));
 assert.ok(bundle.files[PROJECT_JSON_FILENAME].includes("pivot-project-v1"));
 assert.ok(bundle.files[PROJECT_GEOJSON_FILENAME].includes("FeatureCollection"));
 assert.ok(bundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME].includes("field_boundary"));
+assert.ok(bundle.files[PROJECT_MAP_XML_FILENAME].includes("cplayout-map-v1"));
+assert.ok(bundle.files[PROJECT_MAP_XML_FILENAME].includes("gpsCoordinateSystem=\"decimal_degrees\""));
+assert.ok(bundle.manifest.files.includes(PROJECT_MAP_XML_FILENAME));
 assert.ok(bundle.files[MAP_PACKAGES_CSV_FILENAME].startsWith("id,name,packageType"));
 assert.doesNotMatch(bundle.files[PROJECT_JSON_FILENAME], /onlineImagery|referenceOverlay|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 
@@ -137,6 +141,20 @@ const projectWithMapFeatures = {
       confidence: "user_estimated" as const,
       notes: "Planning-grade route.",
     },
+    {
+      id: "corner-footprint-a",
+      name: "Corner footprint A",
+      kind: "corner_swing_limit" as const,
+      geometry: { type: "Polygon" as const, vertices: sampleProject.fieldBoundary.slice(0, 3) },
+      confidence: "user_estimated" as const,
+    },
+    {
+      id: "end-gun-circle-a",
+      name: "End gun circle A",
+      kind: "end_gun_arc" as const,
+      geometry: { type: "Circle" as const, center: sampleProject.pivotCenter, radiusMeters: 24 },
+      confidence: "user_estimated" as const,
+    },
   ],
 };
 const mapFeatureBundle = buildProjectArchiveBundle(
@@ -149,9 +167,11 @@ assert.match(bundle.files[PROJECT_JSON_FILENAME], /"mapFeatures": \[\]/);
 assert.match(mapFeatureBundle.files[PROJECT_JSON_FILENAME], /"mapFeatures"/);
 assert.match(mapFeatureBundle.files[PROJECT_JSON_FILENAME], /buried-main/);
 const importedMapFeatureProject = importProjectArchiveZip(exportProjectArchiveZip(mapFeatureBundle));
-assert.equal(importedMapFeatureProject.mapFeatures?.length, 2);
+assert.equal(importedMapFeatureProject.mapFeatures?.length, 4);
 assert.equal(importedMapFeatureProject.mapFeatures?.[0].kind, "pump_location");
 assert.equal(importedMapFeatureProject.mapFeatures?.[1].geometry.type, "LineString");
+assert.equal(importedMapFeatureProject.mapFeatures?.[2].geometry.type, "Polygon");
+assert.equal(importedMapFeatureProject.mapFeatures?.[3].geometry.type, "Circle");
 
 const evidenceRecord: LayoutEvidenceRecord = {
   id: "evidence-001",

@@ -50,6 +50,11 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
 
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await expect(page.getByTestId("design-builder-panel")).toBeVisible();
+  await expect(page.getByText("Scenario metrics update only after Calculate.")).toBeVisible();
+  await page.getByTestId("design-builder-calculate").click();
+  await expect(page.getByTestId("design-builder-scenarios")).toContainText("Current layout");
+  await expect(page.getByText("Saved")).toBeVisible();
   await page.getByTestId("browser-reference-layers-button").click();
   await expect(page.getByTestId("browser-reference-layers-panel")).toContainText("USGS The National Map Imagery Topo");
   await expect(page.getByTestId("browser-reference-layers-panel")).toContainText("public no-key raster");
@@ -79,6 +84,47 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
 
   const disallowed = networkLog.filter((url) => !isAllowedExternalProofRequest(url));
   expect(disallowed).toEqual([]);
+});
+
+test("catalog blank design starts a drawable boundary workflow", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByText("Use Start Blank Design or open a saved design from the tree to enable drawing. Catalog maps are navigation-only.")).toBeVisible();
+  await expect(page.getByTestId("browser-tool-boundary")).toBeHidden();
+
+  await page.getByRole("button", { name: "Start Blank Design" }).click();
+  await expect(page.getByText("Blank Field Design", { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await expect(page.getByTestId("design-builder-panel")).toBeVisible();
+  await expect(page.getByTestId("browser-tool-boundary")).toBeVisible();
+
+  await page.getByTestId("browser-tool-boundary").click();
+  const map = page.getByLabel("CPLayout MapLibre imagery workbench");
+  await map.scrollIntoViewIfNeeded();
+  const mapBox = await map.boundingBox();
+  expect(mapBox).not.toBeNull();
+  const boundaryClicks = [
+    { x: mapBox!.width * 0.28, y: mapBox!.height * 0.26 },
+    { x: mapBox!.width * 0.72, y: mapBox!.height * 0.28 },
+    { x: mapBox!.width * 0.70, y: mapBox!.height * 0.38 },
+    { x: mapBox!.width * 0.30, y: mapBox!.height * 0.36 },
+  ];
+  for (const point of boundaryClicks) {
+    const x = mapBox!.x + point.x;
+    const y = mapBox!.y + point.y;
+    if (testInfo.project.name === "mobile-390") {
+      await page.touchscreen.tap(x, y);
+    } else {
+      await page.mouse.click(x, y);
+    }
+    await page.waitForTimeout(250);
+  }
+  await expect(page.getByText(/draw boundary .* 4 draft pts/)).toBeVisible();
+
+  await page.getByTestId("browser-action-commit").click();
+  await expect(page.getByText("Committed field boundary with 4 projected XY vertices.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state")).toContainText("Unsaved edits");
+  await saveScreen(page, testInfo, "catalog-blank-design-boundary-draw");
 });
 
 test("map-first catalog tree creates customer projects and field maps without hidden sample designs", async ({ page }, testInfo) => {
@@ -401,6 +447,47 @@ test("browser utility point save keeps projected feature status explicit", async
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   await expect(page.getByText("Unsaved edits")).toBeVisible();
   await saveScreen(page, testInfo, "utility-point-save-status");
+});
+
+test("design builder selects end-gun circle and corner footprint utility tools", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+
+  const map = page.getByLabel("CPLayout MapLibre imagery workbench");
+  const endGunCircle = page.getByRole("button", { name: "End Gun Circle" });
+  await endGunCircle.scrollIntoViewIfNeeded();
+  await endGunCircle.click();
+  await map.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("browser-tool-utility")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "End gun", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await map.click({ position: { x: 180, y: 210 } });
+  await map.click({ position: { x: 250, y: 230 } });
+  await expect(page.getByText(/measure .* 2 draft pts .* circle needs center \+ radius/)).toBeVisible();
+  await page.getByTestId("browser-action-save-feature").click();
+  await expect(page.getByText("Saved end gun arc circle with projected XY center and radius points as a map feature.")).toBeVisible();
+
+  await page.getByTestId("browser-tool-pan").click();
+  await endGunCircle.scrollIntoViewIfNeeded();
+  await endGunCircle.click();
+  await map.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("browser-tool-utility")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "End gun", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  const cornerFootprint = page.getByRole("button", { name: "Corner Footprint" });
+  await cornerFootprint.scrollIntoViewIfNeeded();
+  await cornerFootprint.click();
+  await map.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", { name: "Corner", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await map.click({ position: { x: 160, y: 210 } });
+  await map.click({ position: { x: 240, y: 215 } });
+  await map.click({ position: { x: 225, y: 260 } });
+  await expect(page.getByText(/measure .* 3 draft pts .* polygon needs 3 pts/)).toBeVisible();
+  await page.getByTestId("browser-action-save-feature").click();
+  await expect(page.getByText("Saved corner swing limit polygon with 3 projected XY vertices as a map feature.")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "design-builder-feature-kind-tools");
 });
 
 test("browser map tool buttons expose active state", async ({ page }, testInfo) => {
@@ -1308,7 +1395,7 @@ test("dashboard review warnings expose actionable layout guidance", async ({ pag
   await page.getByRole("button", { name: "Open Sample" }).click();
   const warnings = page.getByTestId("dashboard-review-warnings");
   await expect(warnings.getByText("Review Warnings")).toBeVisible();
-  await expect(warnings.getByText("1 obstacle or exclusion zone intersects the modeled wet area.")).toBeVisible();
+  await expect(warnings.getByText("1 no-spray obstacle or exclusion zone removes modeled wet coverage.")).toBeVisible();
   await expect(warnings.getByText("1 obstacle conflict detected.")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-review-warning-guidance");
 });

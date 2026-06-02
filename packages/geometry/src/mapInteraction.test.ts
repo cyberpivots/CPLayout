@@ -4,6 +4,7 @@ import {
   createDrawingMapState,
   createInitialViewport,
   reduceDrawingMapState,
+  resolveDraftVertexIntent,
   screenPointToWorld,
   snapPointToGeometry,
   viewportToSvgViewBox,
@@ -132,5 +133,47 @@ const unsnapped = snapPointToGeometry(
   { vertexSnapToleranceMeters: 1, featureSnapToleranceMeters: 3 },
 );
 assert.equal(unsnapped, null);
+
+const draftTriangle = [
+  { x: 0, y: 0 },
+  { x: 100, y: 0 },
+  { x: 100, y: 100 },
+];
+const closeByFirstPointSnap = resolveDraftVertexIntent({
+  currentVertices: draftTriangle,
+  mode: "draw_boundary",
+  vertex: { x: 0.25, y: -0.1 },
+  vertexSnapToleranceMeters: 1,
+});
+assert.deepEqual(closeByFirstPointSnap, {
+  type: "commit",
+  vertices: draftTriangle,
+  reason: "first_point_snap",
+});
+
+const closeByDoubleClick = resolveDraftVertexIntent({
+  closeRequested: true,
+  currentVertices: draftTriangle.slice(0, 2),
+  mode: "mark_obstacle",
+  vertex: draftTriangle[2],
+  vertexSnapToleranceMeters: 1,
+});
+assert.deepEqual(closeByDoubleClick, {
+  type: "commit",
+  vertices: draftTriangle,
+  reason: "double_click",
+});
+
+const measureAppend = resolveDraftVertexIntent({
+  closeRequested: true,
+  currentVertices: draftTriangle,
+  mode: "measure",
+  vertex: { x: 0, y: 0 },
+  vertexSnapToleranceMeters: 1,
+});
+assert.deepEqual(measureAppend, {
+  type: "append",
+  vertex: { x: 0, y: 0 },
+});
 
 console.log("map interaction tests passed");

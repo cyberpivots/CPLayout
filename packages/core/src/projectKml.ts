@@ -361,7 +361,21 @@ export function importGoogleEarthKmlToProject(
       skippedFeatureCount += 1;
       continue;
     }
-    if (isBoundaryCandidate(candidate.properties, candidate.name)) {
+    const explicitMapFeatureKind = explicitMapFeatureKindFromProperties(candidate.properties);
+    if (explicitMapFeatureKind) {
+      classified.push({
+        item: {
+          id: itemId,
+          name: candidate.name,
+          classification: "map_feature",
+          geometryType: "Polygon",
+          selected: selectedByDefault(itemId, selectedItemIds),
+          warning: candidate.holeCount > 0 ? `${candidate.holeCount} inner ring${candidate.holeCount === 1 ? "" : "s"} ignored.` : undefined,
+        },
+        kind: "map_feature",
+        feature: mapFeatureFromPolygon(project, candidate, itemId, explicitMapFeatureKind),
+      });
+    } else if (isBoundaryCandidate(candidate.properties, candidate.name)) {
       hasBoundaryCandidate = true;
       const selected = selectedByDefault(itemId, selectedItemIds);
       if (fieldBoundaryAssigned && selected) {
@@ -628,8 +642,18 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
     };
     if (mapFeature.geometry.type === "Point") {
       features.push(pointFeature(mapFeature.name, mapFeature.kind, mapFeature.geometry.point, project.projectCrs, baseProperties));
-    } else {
+    } else if (mapFeature.geometry.type === "LineString") {
       features.push(lineFeature(mapFeature.name, mapFeature.kind, mapFeature.geometry.vertices, project.projectCrs, baseProperties));
+    } else if (mapFeature.geometry.type === "Polygon") {
+      features.push(polygonFeature(mapFeature.name, mapFeature.kind, closeRing(mapFeature.geometry.vertices, project.projectCrs), baseProperties));
+    } else {
+      features.push(polygonFeature(mapFeature.name, mapFeature.kind, closeRing(circleVertices(mapFeature.geometry.center, mapFeature.geometry.radiusMeters), project.projectCrs), {
+        ...baseProperties,
+        mapFeatureGeometry: "Circle",
+        centerX: String(mapFeature.geometry.center.x),
+        centerY: String(mapFeature.geometry.center.y),
+        radiusMeters: String(mapFeature.geometry.radiusMeters),
+      }));
     }
   }
 
@@ -684,6 +708,8 @@ function allProjectLookAtPoints(project: PivotProject, result?: LayoutResult): X
   for (const feature of project.mapFeatures ?? []) {
     if (feature.geometry.type === "Point") {
       points.push(feature.geometry.point);
+    } else if (feature.geometry.type === "Circle") {
+      points.push(feature.geometry.center);
     } else {
       points.push(...feature.geometry.vertices);
     }
@@ -1249,6 +1275,38 @@ function mapFeatureFromLine(
   };
 }
 
+function mapFeatureFromPolygon(
+  project: PivotProject,
+  candidate: PolygonCandidate,
+  id: string,
+  kind: ProjectMapFeatureKind,
+): ProjectMapFeature {
+  const requestedGeometry = readStringProperty(candidate.properties, ["mapFeatureGeometry", "map_feature_geometry"]);
+  const centerX = readProperty(candidate.properties, ["centerX", "center_x"]);
+  const centerY = readProperty(candidate.properties, ["centerY", "center_y"]);
+  const radiusMeters = readProperty(candidate.properties, ["radiusMeters", "radius_meters"]);
+  const geometry: ProjectMapFeature["geometry"] =
+    requestedGeometry?.toLowerCase() === "circle" && Number.isFinite(Number(centerX)) && Number.isFinite(Number(centerY)) && Number.isFinite(Number(radiusMeters))
+      ? {
+        type: "Circle",
+        center: { x: Number(centerX), y: Number(centerY) },
+        radiusMeters: Number(radiusMeters),
+      }
+      : {
+        type: "Polygon",
+        vertices: candidate.ring,
+      };
+  return {
+    id: uniqueId(new Set((project.mapFeatures ?? []).map((feature) => feature.id)), readStringProperty(candidate.properties, ["id", "@id"]) ?? id),
+    name: candidate.name,
+    kind,
+    geometry,
+    confidence: confidenceOrDefault(readStringProperty(candidate.properties, ["confidence", "sourceConfidence"]), "imagery_digitized"),
+    notes: readStringProperty(candidate.properties, ["description", "notes"]) ?? undefined,
+    properties: stringProperties(candidate.properties),
+  };
+}
+
 function candidateItemId(properties: Record<string, unknown>, name: string, fallbackIndex: number): string {
   return sanitizeId(readStringProperty(properties, ["id", "@id"]) ?? name) || `kml-item-${fallbackIndex}`;
 }
@@ -1265,6 +1323,17 @@ function mapFeatureKindFromProperties(properties: Record<string, unknown>, name:
   if (MAP_FEATURE_KINDS.includes(normalizedKind as ProjectMapFeatureKind)) return normalizedKind as ProjectMapFeatureKind;
   const normalizedName = name.toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
   return MAP_FEATURE_KINDS.find((kind) => normalizedName.includes(kind)) ?? null;
+}
+
+function explicitMapFeatureKindFromProperties(properties: Record<string, unknown>): ProjectMapFeatureKind | null {
+  const featureType = (readStringProperty(properties, ["cplayoutFeatureType", "cplayout_feature_type"]) ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("-", "_")
+    .replaceAll(" ", "_");
+  if (featureType !== "map_feature") return null;
+  const kind = mapFeatureKindFromProperties(properties, "");
+  return kind ?? "corner_swing_limit";
 }
 
 function lineMapFeatureKindFromName(name: string): ProjectMapFeatureKind | null {
@@ -1302,6 +1371,16 @@ function stringProperties(properties: Record<string, unknown>): Record<string, s
     }
   }
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function circleVertices(center: XY, radiusMeters: number, segments = 72): XY[] {
+  return Array.from({ length: segments }, (_value, index) => {
+    const angle = (index / segments) * Math.PI * 2;
+    return {
+      x: center.x + Math.cos(angle) * radiusMeters,
+      y: center.y + Math.sin(angle) * radiusMeters,
+    };
+  });
 }
 
 function confidenceOrDefault(value: string | null, fallback: SourceConfidence): SourceConfidence {

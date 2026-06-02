@@ -1,4 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import type { UnzipFileInfo } from "fflate";
 import { z } from "zod";
 
 import {
@@ -31,6 +32,10 @@ export const MAP_PACKAGES_CSV_FILENAME = "exports/map-packages.csv";
 export const LAYOUT_EVIDENCE_JSONL_FILENAME = "exports/layout-evidence.jsonl";
 export const LAYOUT_DECISIONS_JSONL_FILENAME = "exports/layout-decisions.jsonl";
 export const MODEL_RECOMMENDATIONS_GEOJSON_FILENAME = "exports/model-recommendations.geojson";
+export const PROJECT_ARCHIVE_MAX_COMPRESSED_BYTES = 25 * 1024 * 1024;
+export const PROJECT_ARCHIVE_MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024;
+export const PROJECT_ARCHIVE_MAX_ENTRY_BYTES = 50 * 1024 * 1024;
+export const PROJECT_ARCHIVE_MAX_FILE_COUNT = 16;
 
 export interface ProjectArchiveManifest {
   archiveVersion: typeof PROJECT_ARCHIVE_VERSION;
@@ -119,7 +124,17 @@ export function exportProjectArchiveZip(bundle: ProjectArchiveBundle): Uint8Arra
 }
 
 export function importProjectArchiveZip(data: Uint8Array): PivotProject {
-  const unzipped = unzipSync(data);
+  if (data.byteLength > PROJECT_ARCHIVE_MAX_COMPRESSED_BYTES) {
+    throw new Error(`Project archive compressed size exceeds ${PROJECT_ARCHIVE_MAX_COMPRESSED_BYTES} bytes.`);
+  }
+
+  const archiveState = { fileCount: 0, totalUncompressedBytes: 0 };
+  const unzipped = unzipSync(data, {
+    filter: (file) => {
+      validateProjectArchiveEntry(file, archiveState);
+      return true;
+    },
+  });
   const manifestBytes = unzipped[PROJECT_MANIFEST_FILENAME];
   const projectBytes = unzipped[PROJECT_JSON_FILENAME];
   if (!manifestBytes || !projectBytes) {
@@ -130,6 +145,7 @@ export function importProjectArchiveZip(data: Uint8Array): PivotProject {
   for (const requiredFile of [PROJECT_MANIFEST_FILENAME, PROJECT_JSON_FILENAME]) {
     if (!manifest.files.includes(requiredFile)) throw new Error(`Project archive manifest must list ${requiredFile}.`);
   }
+  validateProjectArchiveManifestFiles(manifest, Object.keys(unzipped));
 
   const project = parseProjectDocument(strFromU8(projectBytes));
   if (manifest.projectId !== project.id) throw new Error("Project archive manifest projectId does not match project.json.");
@@ -267,6 +283,68 @@ function projectAdjacentArchiveFiles(
     );
   }
   return files;
+}
+
+const PROJECT_ARCHIVE_ALLOWED_FILENAMES = new Set([
+  PROJECT_MANIFEST_FILENAME,
+  PROJECT_JSON_FILENAME,
+  PROJECT_GEOJSON_FILENAME,
+  PROJECT_GOOGLE_EARTH_KML_FILENAME,
+  SURVEY_CSV_FILENAME,
+  METRICS_CSV_FILENAME,
+  MAP_PACKAGES_CSV_FILENAME,
+  LAYOUT_EVIDENCE_JSONL_FILENAME,
+  LAYOUT_DECISIONS_JSONL_FILENAME,
+  MODEL_RECOMMENDATIONS_GEOJSON_FILENAME,
+]);
+
+function validateProjectArchiveEntry(
+  file: UnzipFileInfo,
+  state: { fileCount: number; totalUncompressedBytes: number },
+): void {
+  validateProjectArchivePath(file.name);
+  if (!PROJECT_ARCHIVE_ALLOWED_FILENAMES.has(file.name)) {
+    throw new Error(`Project archive contains unsupported file: ${file.name}.`);
+  }
+  state.fileCount += 1;
+  if (state.fileCount > PROJECT_ARCHIVE_MAX_FILE_COUNT) {
+    throw new Error(`Project archive contains more than ${PROJECT_ARCHIVE_MAX_FILE_COUNT} files.`);
+  }
+  if (file.originalSize > PROJECT_ARCHIVE_MAX_ENTRY_BYTES) {
+    throw new Error(`Project archive entry ${file.name} exceeds ${PROJECT_ARCHIVE_MAX_ENTRY_BYTES} uncompressed bytes.`);
+  }
+  state.totalUncompressedBytes += file.originalSize;
+  if (state.totalUncompressedBytes > PROJECT_ARCHIVE_MAX_UNCOMPRESSED_BYTES) {
+    throw new Error(`Project archive uncompressed size exceeds ${PROJECT_ARCHIVE_MAX_UNCOMPRESSED_BYTES} bytes.`);
+  }
+}
+
+function validateProjectArchiveManifestFiles(manifest: ProjectArchiveManifest, archiveFilenames: string[]): void {
+  const manifestFiles = new Set(manifest.files);
+  for (const filename of manifest.files) {
+    validateProjectArchivePath(filename);
+    if (!PROJECT_ARCHIVE_ALLOWED_FILENAMES.has(filename)) {
+      throw new Error(`Project archive manifest lists unsupported file: ${filename}.`);
+    }
+  }
+  for (const filename of archiveFilenames) {
+    if (!manifestFiles.has(filename)) {
+      throw new Error(`Project archive contains ${filename}, but manifest.json does not list it.`);
+    }
+  }
+}
+
+function validateProjectArchivePath(filename: string): void {
+  if (filename.length === 0 || filename.length > 180) {
+    throw new Error(`Project archive contains unsafe path length: ${filename}.`);
+  }
+  if (filename.startsWith("/") || filename.startsWith("\\") || /^[A-Za-z]:/.test(filename) || filename.includes("\\")) {
+    throw new Error(`Project archive contains unsafe path: ${filename}.`);
+  }
+  const parts = filename.split("/");
+  if (parts.some((part) => part.length === 0 || part === "." || part === "..")) {
+    throw new Error(`Project archive contains unsafe path: ${filename}.`);
+  }
 }
 
 function modelRecommendationFeatures(recommendation: ModelRecommendation): object[] {

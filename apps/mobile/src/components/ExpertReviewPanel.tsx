@@ -51,10 +51,8 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
       const data = await loadProjectReviewDataAsync(project.id);
       setReviewData(data);
       setImportText("");
-      const autoApplied = await autoApplyBoundaryAssist(imported);
-      if (!autoApplied) {
-        setStatus(`Imported ${imported.length} model recommendation${imported.length === 1 ? "" : "s"} with ${data.evidenceRecords.length} evidence record${data.evidenceRecords.length === 1 ? "" : "s"}.`);
-      }
+      onPreviewRecommendation?.(null);
+      setStatus(`Imported ${imported.length} model recommendation${imported.length === 1 ? "" : "s"} with ${data.evidenceRecords.length} evidence record${data.evidenceRecords.length === 1 ? "" : "s"}. No projected XY geometry was applied.`);
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -102,13 +100,9 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
 
   async function applyRecommendation(recommendation: ModelRecommendation): Promise<void> {
     try {
-      if (!hasProjectedGeometry(recommendation)) {
-        setStatus(`Recommendation ${recommendation.id} has no projected XY geometry to apply.`);
-        return;
-      }
-      const hardFailures = modelRecommendationHardFailures(recommendation);
-      if (hardFailures.length > 0) {
-        setStatus(`Apply XY blocked for ${recommendation.id}: ${hardFailures.join("; ")}`);
+      const applyBlockers = recommendationApplyBlockers(recommendation, reviewData.layoutDecisions);
+      if (applyBlockers.length > 0) {
+        setStatus(`Apply XY blocked for ${recommendation.id}: ${applyBlockers.join("; ")}`);
         return;
       }
       setPendingApply(recommendation);
@@ -126,7 +120,6 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
         setStatus(applyError);
         return;
       }
-      await recordDecision(recommendation, "accepted");
       onPreviewRecommendation?.(null);
       setPendingApply(null);
       setStatus(`Applied projected XY geometry from ${recommendation.id}. Save Local persists the edited project; Undo is available in the layout editor.`);
@@ -141,31 +134,6 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
     setStatus(recommendationId
       ? `Apply canceled for ${recommendationId}; projected XY geometry was not changed.`
       : "Apply canceled; projected XY geometry was not changed.");
-  }
-
-  async function autoApplyBoundaryAssist(imported: ModelRecommendation[]): Promise<boolean> {
-    const recommendation = sortedRecommendations(imported).find(isAutoApplyBoundaryAssist);
-    if (!recommendation) return false;
-    const applyError = onApplyRecommendation(recommendation);
-    if (applyError) {
-      setStatus(`Imported ML Boundary Assist evidence, but auto-apply was blocked: ${applyError}`);
-      return true;
-    }
-    const createdAt = new Date().toISOString();
-    const nextData = await appendLayoutDecisionAsync(project.id, {
-      id: `${recommendation.id}:auto-accepted:${createdAt.replace(/[^0-9]/g, "").slice(0, 17)}`,
-      projectId: project.id,
-      createdAt,
-      decidedBy: "import",
-      decision: "accepted",
-      recommendationId: recommendation.id,
-      evidenceIds: recommendation.evidenceIds,
-      reason: "Auto-applied GPU-backed experimental ML Boundary Assist projected-XY boundary to the current unsaved editor workspace after strict import gates; Save remains explicit and Undo is available.",
-    });
-    setReviewData(nextData);
-    onPreviewRecommendation?.(null);
-    setStatus(`Imported ML Boundary Assist evidence and changed the unsaved editor workspace from ${recommendation.id}. Save remains explicit, Undo is available, and the recommendation is not survey-grade.`);
-    return true;
   }
 
   return (
@@ -209,7 +177,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
           ) : sortedRecommendations(reviewData.modelRecommendations).map((recommendation) => {
             const evidenceRecords = evidenceForRecommendation(recommendation, reviewData.evidenceRecords);
             const previewSelected = recommendation.id === selectedPreviewRecommendationId;
-            const hardFailures = modelRecommendationHardFailures(recommendation);
+            const applyBlockers = recommendationApplyBlockers(recommendation, reviewData.layoutDecisions);
             return (
             <View key={recommendation.id} style={styles.recommendation}>
               <View style={styles.recommendationHeader}>
@@ -222,7 +190,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
                 <Text style={styles.reviewStatus}>{deriveRecommendationReviewState(recommendation, reviewData.layoutDecisions)}</Text>
               </View>
               <Text style={styles.geometrySummary}>{geometrySummary(recommendation)}</Text>
-              {hardFailures.length > 0 ? <Text style={styles.infeasibleNote}>Apply XY blocked: {hardFailures.join("; ")}</Text> : null}
+              {applyBlockers.length > 0 ? <Text style={styles.infeasibleNote}>Apply XY blocked: {applyBlockers.join("; ")}</Text> : null}
               {gpuSummary(recommendation, evidenceRecords) ? <Text style={styles.geometrySummary}>{gpuSummary(recommendation, evidenceRecords)}</Text> : null}
               {scoreBreakdownSummary(recommendation) ? <Text style={styles.geometrySummary}>{scoreBreakdownSummary(recommendation)}</Text> : null}
               <View style={styles.evidenceRecordList}>
@@ -254,7 +222,7 @@ export function ExpertReviewPanel({ onApplyRecommendation, onPreviewRecommendati
                   onPress={() => onPreviewRecommendation?.(previewSelected ? null : recommendation)}
                 />
                 <ReviewButton accessibilityLabel={`Accept recommendation ${recommendation.summary}`} icon={<Check size={16} color="#ffffff" />} label="Accept" primary onPress={() => recordDecision(recommendation, "accepted")} />
-                <ReviewButton accessibilityLabel={`Apply projected XY geometry from recommendation ${recommendation.summary}`} icon={<MapPinned size={16} color={hardFailures.length > 0 ? "#8b1e18" : "#ffffff"} />} label="Apply" primary={hardFailures.length === 0} disabled={hardFailures.length > 0} onPress={() => applyRecommendation(recommendation)} />
+                <ReviewButton accessibilityLabel={`Apply projected XY geometry from recommendation ${recommendation.summary}`} icon={<MapPinned size={16} color={applyBlockers.length > 0 ? "#8b1e18" : "#ffffff"} />} label="Apply" primary={applyBlockers.length === 0} disabled={applyBlockers.length > 0} onPress={() => applyRecommendation(recommendation)} />
                 <ReviewButton accessibilityLabel={`Reject recommendation ${recommendation.summary}`} icon={<X size={16} color="#254234" />} label="Reject" onPress={() => recordDecision(recommendation, "rejected")} />
                 <ReviewButton accessibilityLabel={`Defer recommendation ${recommendation.summary}`} icon={<Clock3 size={16} color="#254234" />} label="Defer" onPress={() => recordDecision(recommendation, "deferred")} />
               </View>
@@ -404,16 +372,20 @@ function hasProjectedGeometry(recommendation: ModelRecommendation): boolean {
   return Boolean(geometry.pivotCenter || geometry.fieldBoundary || geometry.machine || (geometry.obstaclePolygons && geometry.obstaclePolygons.length > 0));
 }
 
-function isAutoApplyBoundaryAssist(recommendation: ModelRecommendation): boolean {
-  const metadata = recommendation.metadata ?? {};
-  const hardFailures = Array.isArray(metadata.hardFailures) ? metadata.hardFailures : [];
-  return recommendation.reviewStatus === "accepted"
-    && Array.isArray(recommendation.proposedGeometry.fieldBoundary)
-    && recommendation.proposedGeometry.fieldBoundary.length >= 3
-    && metadata.schemaVersion === "cplayout-boundary-improvement-loop-v1"
-    && metadata.autoApplyEligible === true
-    && metadata.gpuBacked === true
-    && hardFailures.length === 0;
+function recommendationApplyBlockers(recommendation: ModelRecommendation, decisions: LayoutDecisionRecord[]): string[] {
+  const blockers = modelRecommendationHardFailures(recommendation);
+  if (!hasProjectedGeometry(recommendation)) blockers.push("No projected XY geometry is available to apply.");
+  if (!hasOperatorAcceptedDecision(recommendation, decisions)) blockers.push("Record an operator Accept decision before Apply XY.");
+  return [...new Set(blockers)];
+}
+
+function hasOperatorAcceptedDecision(recommendation: ModelRecommendation, decisions: LayoutDecisionRecord[]): boolean {
+  return decisions.some((decision) => (
+    decision.projectId === recommendation.projectId
+    && decision.recommendationId === recommendation.id
+    && decision.decidedBy === "operator"
+    && decision.decision === "accepted"
+  ));
 }
 
 function evidenceForRecommendation(

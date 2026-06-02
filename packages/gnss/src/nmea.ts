@@ -41,6 +41,7 @@ export interface NmeaChunkParseResult {
 export function parseNmeaSentence(sentence: string): ParsedNmeaSample | null {
   const trimmed = sentence.trim();
   if (!trimmed.startsWith("$")) return null;
+  if (!nmeaChecksumValid(trimmed)) return null;
 
   const withoutChecksum = trimmed.slice(1).split("*")[0];
   const fields = withoutChecksum.split(",");
@@ -211,6 +212,20 @@ export function surveyPointFromNmeaSamples(input: {
     confidence: quality.fixType === "rtk_fixed" ? "rtk_fixed" : quality.fixType === "rtk_float" ? "rtk_float" : "autonomous_gps",
     rtk: quality,
   };
+}
+
+export function nmeaChecksumValid(sentence: string): boolean {
+  const trimmed = sentence.trim();
+  const checksumMarker = trimmed.lastIndexOf("*");
+  if (checksumMarker === -1) return true;
+  if (!trimmed.startsWith("$") || checksumMarker <= 1 || checksumMarker + 3 !== trimmed.length) return false;
+  const expected = trimmed.slice(checksumMarker + 1).toUpperCase();
+  if (!/^[0-9A-F]{2}$/.test(expected)) return false;
+  let checksum = 0;
+  for (const character of trimmed.slice(1, checksumMarker)) {
+    checksum ^= character.charCodeAt(0);
+  }
+  return expected === checksum.toString(16).toUpperCase().padStart(2, "0");
 }
 
 function parseNmeaCoordinate(value: string | undefined, hemisphere: string | undefined): number | undefined {

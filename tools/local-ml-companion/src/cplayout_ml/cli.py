@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     vision.add_argument("--manifest", required=True, type=Path, help="Google Earth visual-fidelity manifest from the proof run.")
     vision.add_argument("--output-dir", required=True, type=Path, help="Directory for visual-layout-review outputs.")
     vision.add_argument("--project-id", required=True, help="CPLayout project id for review evidence linkage.")
-    vision.add_argument("--project-crs", required=True, help="Projected CPLayout CRS; EPSG:4326 is rejected.")
+    vision.add_argument("--project-crs", required=True, help="Projected CPLayout CRS; geographic CRS aliases are rejected.")
     vision.add_argument(
       "--project-reference",
       type=Path,
@@ -132,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     pivot_candidates.add_argument("--synthetic-fixture", action="store_true", help="Generate a deterministic local synthetic pivot fixture with known image-space truth.")
     pivot_candidates.add_argument("--output-dir", required=True, type=Path, help="Directory for pivot candidate review artifacts.")
     pivot_candidates.add_argument("--project-id", required=True, help="CPLayout project id for review evidence linkage.")
-    pivot_candidates.add_argument("--project-crs", required=True, help="Projected CPLayout CRS; EPSG:4326 is rejected.")
+    pivot_candidates.add_argument("--project-crs", required=True, help="Projected CPLayout CRS; geographic CRS aliases are rejected.")
     pivot_candidates.add_argument("--iterations", type=int, default=100, help="Detector iterations to run. Values below 1 are rejected.")
     pivot_candidates.add_argument("--truth-center-x", type=float, help="Optional image-space truth center X for --map-canvas.")
     pivot_candidates.add_argument("--truth-center-y", type=float, help="Optional image-space truth center Y for --map-canvas.")
@@ -1772,8 +1772,7 @@ def design_vision_review(
     sam2_checkpoint_arg: Path | None,
     created_at: str,
 ) -> int:
-    if project_crs == "EPSG:4326":
-        raise SystemExit("Design vision review requires CPLayout projected/local XY CRS, not EPSG:4326.")
+    require_projected_crs(project_crs, "design-vision-review")
     paths = {
         "kml": kml_path,
         "kmz": kmz_path,
@@ -2038,8 +2037,7 @@ def validate_project(project: dict[str, Any]) -> None:
     for key in ["id", "projectCrs", "fieldBoundary", "pivotCenter", "machine"]:
         if key not in project:
             raise SystemExit(f"Project is missing required field: {key}")
-    if project["projectCrs"] == "EPSG:4326":
-        raise SystemExit("CPLayout canonical project geometry must use a projected/local CRS, not EPSG:4326.")
+    require_projected_crs(str(project["projectCrs"]), "Project")
     if len(project["fieldBoundary"]) < 3:
         raise SystemExit("Project fieldBoundary must contain at least three projected XY vertices.")
 

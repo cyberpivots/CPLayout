@@ -74,15 +74,27 @@ function Find-CapturePath($Manifest, [string]$OutputPath, [string]$Filename) {
 }
 
 function Invoke-PythonVisionReview([string]$RepoRoot, [string[]]$Arguments) {
+  $pythonModuleRoot = Join-Path $RepoRoot "tools/local-ml-companion/src"
   $python = Get-Command python3 -ErrorAction SilentlyContinue
   if ($python) {
     Push-Location $RepoRoot
+    $previousPythonPath = $env:PYTHONPATH
     try {
-      & $python.Source @Arguments
+      $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($previousPythonPath)) {
+        $pythonModuleRoot
+      } else {
+        "$pythonModuleRoot$([System.IO.Path]::PathSeparator)$previousPythonPath"
+      }
+      & $python.Source -m cplayout_ml.cli @Arguments
       if ($LASTEXITCODE -ne 0) {
         throw "Python vision review failed with exit code $LASTEXITCODE."
       }
     } finally {
+      if ($null -eq $previousPythonPath) {
+        Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+      } else {
+        $env:PYTHONPATH = $previousPythonPath
+      }
       Pop-Location
     }
     return
@@ -93,7 +105,7 @@ function Invoke-PythonVisionReview([string]$RepoRoot, [string[]]$Arguments) {
     throw "python3 was not found, and wsl.exe is unavailable for the local ML companion."
   }
   $quotedArgs = @($Arguments | ForEach-Object { Quote-BashPath (Convert-ToWslPath $_) })
-  $command = "cd $(Quote-BashPath (Convert-ToWslPath $RepoRoot)) && python3 $($quotedArgs -join ' ')"
+  $command = "cd $(Quote-BashPath (Convert-ToWslPath $RepoRoot)) && PYTHONPATH=$(Quote-BashPath (Convert-ToWslPath $pythonModuleRoot)) python3 -m cplayout_ml.cli $($quotedArgs -join ' ')"
   & wsl.exe bash -lc $command
   if ($LASTEXITCODE -ne 0) {
     throw "WSL Python vision review failed with exit code $LASTEXITCODE."
@@ -207,9 +219,7 @@ $mapCanvasPath = Find-CapturePath -Manifest $manifest -OutputPath $runOutputPath
 $reviewOutputPath = Join-Path $runOutputPath "design-vision-review"
 New-Item -ItemType Directory -Force -Path $reviewOutputPath | Out-Null
 
-$cliPath = Join-Path $repoRoot "tools/local-ml-companion/src/cplayout_ml/cli.py"
 $visionArgs = @(
-  $cliPath,
   "design-vision-review",
   "--kml", $resolvedKmlPath,
   "--kmz", $resolvedKmzPath,

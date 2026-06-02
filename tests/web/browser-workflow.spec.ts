@@ -1399,6 +1399,9 @@ test("expert review apply confirmation does not dirty before confirm", async ({ 
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-review").click();
   await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
+  await page.getByRole("button", { name: /Accept recommendation/ }).first().click();
+  await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await page.getByRole("button", { name: /Apply projected XY geometry from recommendation/ }).first().click();
   const confirm = page.getByTestId("review-apply-confirmation");
   await expect(confirm).toBeVisible();
@@ -1421,6 +1424,9 @@ test("expert review apply xy marks the project dirty only after confirmation", a
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-review").click();
   await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await page.getByRole("button", { name: /Accept recommendation/ }).first().click();
+  await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await page.getByRole("button", { name: /Apply projected XY geometry from recommendation/ }).first().click();
   await expect(page.getByTestId("review-apply-confirmation")).toBeVisible();

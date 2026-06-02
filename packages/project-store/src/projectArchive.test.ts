@@ -9,6 +9,7 @@ import {
   LAYOUT_EVIDENCE_JSONL_FILENAME,
   MAP_PACKAGES_CSV_FILENAME,
   MODEL_RECOMMENDATIONS_GEOJSON_FILENAME,
+  PROJECT_ARCHIVE_MAX_COMPRESSED_BYTES,
   PROJECT_MANIFEST_FILENAME,
   buildProjectArchiveBundle,
   exportProjectArchiveZip,
@@ -291,6 +292,60 @@ assert.throws(
 assert.throws(
   () => importProjectArchiveZip(new Uint8Array([1, 2, 3])),
   /invalid zip data|unexpected EOF|central directory/i,
+);
+
+assert.throws(
+  () => importProjectArchiveZip(new Uint8Array(PROJECT_ARCHIVE_MAX_COMPRESSED_BYTES + 1)),
+  /compressed size exceeds/,
+);
+
+assert.throws(
+  () => importProjectArchiveZip(exportProjectArchiveZip({
+    ...bundle,
+    manifest: {
+      ...bundle.manifest,
+      files: [...bundle.manifest.files, "../evil.txt"],
+    },
+    files: {
+      ...bundle.files,
+      [PROJECT_MANIFEST_FILENAME]: JSON.stringify({
+        ...bundle.manifest,
+        files: [...bundle.manifest.files, "../evil.txt"],
+      }),
+      "../evil.txt": "escape",
+    },
+  })),
+  /unsafe path/,
+);
+
+assert.throws(
+  () => importProjectArchiveZip(exportProjectArchiveZip({
+    ...bundle,
+    manifest: {
+      ...bundle.manifest,
+      files: [...bundle.manifest.files, "exports/unexpected.json"],
+    },
+    files: {
+      ...bundle.files,
+      [PROJECT_MANIFEST_FILENAME]: JSON.stringify({
+        ...bundle.manifest,
+        files: [...bundle.manifest.files, "exports/unexpected.json"],
+      }),
+      "exports/unexpected.json": "{}",
+    },
+  })),
+  /unsupported file/,
+);
+
+assert.throws(
+  () => importProjectArchiveZip(exportProjectArchiveZip({
+    ...bundle,
+    files: {
+      ...bundle.files,
+      [LAYOUT_EVIDENCE_JSONL_FILENAME]: "",
+    },
+  })),
+  /manifest\.json does not list/,
 );
 
 console.log("project archive tests passed");

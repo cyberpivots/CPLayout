@@ -35,6 +35,7 @@ from cplayout_ml.cli import (
     run_pivot_locator_loop,
     synthetic_pivot_fixture,
     truth_labels_from_operator_boundary,
+    validate_project,
     vision_recommendation_geometry,
 )
 
@@ -903,6 +904,21 @@ class BoundaryDetectorTests(unittest.TestCase):
                     None,
                     "2026-06-01T00:00:00.000Z",
                 )
+
+    def test_validate_project_rejects_geographic_crs_aliases(self) -> None:
+        base_project = {
+            "id": "project-a",
+            "projectCrs": "LOCAL:TEST",
+            "fieldBoundary": [{"x": 0, "y": 0}, {"x": 10, "y": 0}, {"x": 0, "y": 10}],
+            "pivotCenter": {"x": 1, "y": 1},
+            "machine": {"spanLengthsMeters": [10]},
+        }
+        validate_project(base_project)
+
+        for crs in ["EPSG:4326", "CRS:84", "OGC:CRS84", "WGS84", "longitude latitude geographic"]:
+            with self.subTest(crs=crs):
+                with self.assertRaises(SystemExit):
+                    validate_project({**base_project, "projectCrs": crs})
 
 
 if __name__ == "__main__":

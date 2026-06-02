@@ -19,7 +19,7 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 ## SQLite Project Store
 
 1. Open the app and navigate to `Export`.
-2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v4`.
+2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v8`.
 3. Save the sample project.
 4. Close and relaunch the app.
 5. Refresh the project list and open the saved project.

@@ -1,4 +1,4 @@
-import type { ProjectSettings } from "./settings";
+import type { ProjectSettings, ReferenceOverlaySchema } from "./settings";
 
 export type UnitSystem = "metric" | "us_survey_feet";
 
@@ -180,6 +180,16 @@ export type TileContentType = "raster" | "vector";
 export type TileScheme = "xyz" | "tms";
 export type TilePackageInstallStatus = "metadata_only" | "available" | "missing" | "indexed";
 
+export interface VectorOverlayMetadata {
+  schema: ReferenceOverlaySchema;
+  sourceLayers: {
+    roads: string;
+    roadLabels: string;
+    borders: string;
+    places: string;
+  };
+}
+
 export interface MapPackageManifest {
   id: string;
   name: string;
@@ -197,6 +207,7 @@ export interface MapPackageManifest {
   };
   tileJsonUrl?: string;
   tileUrlTemplates?: string[];
+  vectorOverlay?: VectorOverlayMetadata;
   checksumSha256?: string;
   installStatus?: TilePackageInstallStatus;
   attribution: string;

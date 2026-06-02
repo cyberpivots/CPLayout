@@ -6,6 +6,7 @@ export * from "./projectDocument";
 export * from "./projectImports";
 export * from "./projectKml";
 export * from "./projectReducer";
+export * from "./referenceOverlays";
 export * from "./sampleProject";
 export * from "./settings";
 export * from "./types";

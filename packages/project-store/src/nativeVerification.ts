@@ -11,6 +11,7 @@ export const ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS = [
   "tile_scheme",
   "tilejson_url",
   "tile_url_templates_json",
+  "vector_overlay_json",
   "checksum_sha256",
   "install_status",
 ] as const;

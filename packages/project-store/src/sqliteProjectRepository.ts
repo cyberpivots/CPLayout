@@ -1,4 +1,4 @@
-import { parseProjectDocument } from "@cplayout/core";
+import { parseProjectDocument, serializeProjectDocument } from "@cplayout/core";
 import type { LayoutResult, PivotProject } from "@cplayout/core";
 import { buildSaveProjectStatementPlan } from "./projectPersistence";
 import { LOAD_ACTIVE_PROJECT_BY_ID_SQL } from "./projectRepositorySql";
@@ -7,13 +7,21 @@ import {
   defaultFieldMapId,
   LEGACY_CUSTOMER_ID,
   LEGACY_CUSTOMER_NAME,
+  assertCustomerPrimaryContact,
   normalizeCatalogSortName,
+  normalizeCustomerRecord,
   createCatalogId,
 } from "./projectCatalog";
 import { openProjectDatabaseAsync } from "./sqliteProjectStore";
 import type {
   CatalogProjectRecord,
+  CreatedProjectFieldMapWorkspace,
+  CreatedProjectWorkspace,
+  CreateProjectWithInitialFieldMapInput,
+  CreateProjectWithInitialDesignInput,
   CustomerRecord,
+  CustomerProfileInput,
+  CustomerProfileUpdateInput,
   DesignRecord,
   FieldMapRecord,
   ProjectCatalog,
@@ -136,7 +144,18 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
     async deleteProjectAsync(projectId: string): Promise<void> {
       const db = await openProjectDatabaseAsync();
       await db.withTransactionAsync(async () => {
-        await db.runAsync("UPDATE projects SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?;", projectId);
+        await db.runAsync(
+          `UPDATE projects
+          SET deleted_at = CURRENT_TIMESTAMP
+          WHERE id = ? OR id IN (
+            SELECT d.pivot_project_id
+            FROM designs d
+            JOIN field_maps f ON f.id = d.field_map_id
+            WHERE f.project_record_id = ? AND d.deleted_at IS NULL
+          );`,
+          projectId,
+          projectId,
+        );
         await db.runAsync("UPDATE project_records SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?;", projectId);
         await db.runAsync(
           `UPDATE field_maps
@@ -156,27 +175,314 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       });
     },
 
-    async createCustomerAsync(input: { displayName: string; sortName?: string }): Promise<CustomerRecord> {
+    async createCustomerAsync(input: CustomerProfileInput): Promise<CustomerRecord> {
       const db = await openProjectDatabaseAsync();
       const now = new Date().toISOString();
-      const displayName = normalizeCatalogSortName(input.displayName);
-      const record: CustomerRecord = {
+      const record = normalizeCustomerRecord({
         id: createCatalogId("customer", now),
-        displayName,
-        sortName: normalizeCatalogSortName(input.sortName ?? displayName),
+        ...input,
         createdAt: now,
         updatedAt: now,
-      };
+      });
+      if (!record) throw new Error("Customer folder could not be created.");
+      assertCustomerPrimaryContact(record);
       await db.runAsync(
-        `INSERT INTO customers (id, display_name, sort_name, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO customers (
+          id,
+          display_name,
+          sort_name,
+          company_name,
+          contact_name,
+          primary_contact_first_name,
+          primary_contact_middle_initial,
+          primary_contact_last_name,
+          primary_contact_suffix,
+          email,
+          phone,
+          location,
+          notes,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         record.id,
         record.displayName,
         record.sortName,
+        record.companyName,
+        record.contactName,
+        record.primaryContactFirstName,
+        record.primaryContactMiddleInitial,
+        record.primaryContactLastName,
+        record.primaryContactSuffix,
+        record.email,
+        record.phone,
+        record.location,
+        record.notes,
         record.createdAt,
         record.updatedAt,
       );
       return record;
+    },
+
+    async updateCustomerAsync(input: CustomerProfileUpdateInput): Promise<CustomerRecord> {
+      const db = await openProjectDatabaseAsync();
+      const existing = await db.getFirstAsync<{
+        id: string;
+        display_name: string;
+        sort_name: string;
+        company_name: string | null;
+        contact_name: string | null;
+        primary_contact_first_name: string | null;
+        primary_contact_middle_initial: string | null;
+        primary_contact_last_name: string | null;
+        primary_contact_suffix: string | null;
+        email: string | null;
+        phone: string | null;
+        location: string | null;
+        notes: string | null;
+        created_at: string;
+        updated_at: string;
+      }>(
+        `SELECT
+          id,
+          display_name,
+          sort_name,
+          company_name,
+          contact_name,
+          primary_contact_first_name,
+          primary_contact_middle_initial,
+          primary_contact_last_name,
+          primary_contact_suffix,
+          email,
+          phone,
+          location,
+          notes,
+          created_at,
+          updated_at
+        FROM customers
+        WHERE id = ? AND deleted_at IS NULL;`,
+        input.id,
+      );
+      if (!existing) throw new Error("Customer folder was not found in the local catalog.");
+      const now = new Date().toISOString();
+      const { id: _inputId, ...profileInput } = input;
+      const record = normalizeCustomerRecord({
+        id: existing.id,
+        displayName: existing.display_name,
+        sortName: existing.sort_name,
+        companyName: textField(existing.company_name),
+        contactName: textField(existing.contact_name),
+        primaryContactFirstName: textField(existing.primary_contact_first_name),
+        primaryContactMiddleInitial: textField(existing.primary_contact_middle_initial),
+        primaryContactLastName: textField(existing.primary_contact_last_name),
+        primaryContactSuffix: textField(existing.primary_contact_suffix),
+        email: textField(existing.email),
+        phone: textField(existing.phone),
+        location: textField(existing.location),
+        notes: textField(existing.notes),
+        ...profileInput,
+        createdAt: existing.created_at,
+        updatedAt: now,
+      });
+      if (!record) throw new Error("Customer folder could not be updated.");
+      assertCustomerPrimaryContact(record);
+      await db.runAsync(
+        `UPDATE customers
+        SET
+          display_name = ?,
+          sort_name = ?,
+          company_name = ?,
+          contact_name = ?,
+          primary_contact_first_name = ?,
+          primary_contact_middle_initial = ?,
+          primary_contact_last_name = ?,
+          primary_contact_suffix = ?,
+          email = ?,
+          phone = ?,
+          location = ?,
+          notes = ?,
+          updated_at = ?
+        WHERE id = ? AND deleted_at IS NULL;`,
+        record.displayName,
+        record.sortName,
+        record.companyName,
+        record.contactName,
+        record.primaryContactFirstName,
+        record.primaryContactMiddleInitial,
+        record.primaryContactLastName,
+        record.primaryContactSuffix,
+        record.email,
+        record.phone,
+        record.location,
+        record.notes,
+        record.updatedAt,
+        record.id,
+      );
+      return record;
+    },
+
+    async deleteCustomerAsync(customerId: string): Promise<void> {
+      const db = await openProjectDatabaseAsync();
+      const projectCount = await db.getFirstAsync<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM project_records WHERE customer_id = ? AND deleted_at IS NULL;",
+        customerId,
+      );
+      if (Number(projectCount?.count ?? 0) > 0) {
+        throw new Error("Customer folder still contains projects. Move or delete those projects before deleting the customer.");
+      }
+      await db.runAsync("UPDATE customers SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL;", customerId);
+    },
+
+    async createProjectWithInitialDesignAsync(input: CreateProjectWithInitialDesignInput): Promise<CreatedProjectWorkspace> {
+      const db = await openProjectDatabaseAsync();
+      const project = input.project;
+      const now = new Date().toISOString();
+      const projectRecord: CatalogProjectRecord = {
+        id: project.id,
+        customerId: input.customerId,
+        name: normalizeCatalogSortName(project.name),
+        projectCrs: project.projectCrs,
+        unitSystem: project.unitSystem,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const fieldMap: FieldMapRecord = {
+        id: input.fieldMapId ?? defaultFieldMapId(project.id),
+        projectId: project.id,
+        name: normalizeCatalogSortName(input.fieldMapName ?? "Primary Field Map"),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const design: DesignRecord = {
+        id: input.designId ?? defaultDesignId(project.id),
+        fieldMapId: fieldMap.id,
+        name: normalizeCatalogSortName(input.designName ?? "Base Design"),
+        pivotProjectId: project.id,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.withTransactionAsync(async () => {
+        const customer = await db.getFirstAsync<{ id: string }>(
+          "SELECT id FROM customers WHERE id = ? AND deleted_at IS NULL;",
+          input.customerId,
+        );
+        if (!customer) throw new Error("Select or create a customer folder before creating a project.");
+        const plan = buildSaveProjectStatementPlan(project, input.result);
+        for (const statement of plan) await db.runAsync(statement.sql, statement.params);
+        await db.runAsync(
+          `INSERT INTO project_records (id, customer_id, name, project_crs, unit_system, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            customer_id = excluded.customer_id,
+            name = excluded.name,
+            project_crs = excluded.project_crs,
+            unit_system = excluded.unit_system,
+            updated_at = excluded.updated_at,
+            deleted_at = NULL`,
+          projectRecord.id,
+          projectRecord.customerId,
+          projectRecord.name,
+          projectRecord.projectCrs,
+          projectRecord.unitSystem,
+          projectRecord.createdAt,
+          projectRecord.updatedAt,
+        );
+        await db.runAsync(
+          `INSERT INTO field_maps (id, project_record_id, name, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            project_record_id = excluded.project_record_id,
+            name = excluded.name,
+            updated_at = excluded.updated_at,
+            deleted_at = NULL`,
+          fieldMap.id,
+          fieldMap.projectId,
+          fieldMap.name,
+          fieldMap.createdAt,
+          fieldMap.updatedAt,
+        );
+        await db.runAsync(
+          `INSERT INTO designs (id, field_map_id, name, pivot_project_id, is_active, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 1, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            field_map_id = excluded.field_map_id,
+            name = excluded.name,
+            pivot_project_id = excluded.pivot_project_id,
+            is_active = excluded.is_active,
+            updated_at = excluded.updated_at,
+            deleted_at = NULL`,
+          design.id,
+          design.fieldMapId,
+          design.name,
+          design.pivotProjectId,
+          design.createdAt,
+          design.updatedAt,
+        );
+      });
+      return { project, projectRecord, fieldMap, design };
+    },
+
+    async createProjectWithInitialFieldMapAsync(input: CreateProjectWithInitialFieldMapInput): Promise<CreatedProjectFieldMapWorkspace> {
+      const db = await openProjectDatabaseAsync();
+      const now = new Date().toISOString();
+      const projectId = input.projectId ?? createCatalogId("project", now);
+      const projectRecord: CatalogProjectRecord = {
+        id: projectId,
+        customerId: input.customerId,
+        name: normalizeCatalogSortName(input.projectName),
+        projectCrs: normalizeCatalogSortName(input.projectCrs),
+        unitSystem: normalizeCatalogSortName(input.unitSystem),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const fieldMap: FieldMapRecord = {
+        id: input.fieldMapId ?? defaultFieldMapId(projectId),
+        projectId,
+        name: normalizeCatalogSortName(input.fieldMapName ?? "Primary Field Map"),
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.withTransactionAsync(async () => {
+        const customer = await db.getFirstAsync<{ id: string }>(
+          "SELECT id FROM customers WHERE id = ? AND deleted_at IS NULL;",
+          input.customerId,
+        );
+        if (!customer) throw new Error("Select or create a customer folder before creating a project.");
+        await db.runAsync(
+          `INSERT INTO project_records (id, customer_id, name, project_crs, unit_system, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            customer_id = excluded.customer_id,
+            name = excluded.name,
+            project_crs = excluded.project_crs,
+            unit_system = excluded.unit_system,
+            updated_at = excluded.updated_at,
+            deleted_at = NULL`,
+          projectRecord.id,
+          projectRecord.customerId,
+          projectRecord.name,
+          projectRecord.projectCrs,
+          projectRecord.unitSystem,
+          projectRecord.createdAt,
+          projectRecord.updatedAt,
+        );
+        await db.runAsync(
+          `INSERT INTO field_maps (id, project_record_id, name, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            project_record_id = excluded.project_record_id,
+            name = excluded.name,
+            updated_at = excluded.updated_at,
+            deleted_at = NULL`,
+          fieldMap.id,
+          fieldMap.projectId,
+          fieldMap.name,
+          fieldMap.createdAt,
+          fieldMap.updatedAt,
+        );
+      });
+      return { projectRecord, fieldMap };
     },
 
     async createProjectRecordAsync(input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord> {
@@ -210,6 +516,107 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
         record.updatedAt,
       );
       return record;
+    },
+
+    async renameProjectAsync(projectId: string, name: string): Promise<CatalogProjectRecord> {
+      const db = await openProjectDatabaseAsync();
+      const trimmedName = normalizeCatalogSortName(name);
+      const now = new Date().toISOString();
+      let updatedRecord: CatalogProjectRecord | null = null;
+      await db.withTransactionAsync(async () => {
+        const projectRecord = await db.getFirstAsync<{
+          id: string;
+          customer_id: string;
+          name: string;
+          project_crs: string;
+          unit_system: string;
+          created_at: string;
+          updated_at: string;
+        }>(
+          "SELECT id, customer_id, name, project_crs, unit_system, created_at, updated_at FROM project_records WHERE id = ? AND deleted_at IS NULL;",
+          projectId,
+        );
+        if (!projectRecord) throw new Error("Project folder was not found in the local catalog.");
+        updatedRecord = {
+          id: projectRecord.id,
+          customerId: projectRecord.customer_id,
+          name: trimmedName,
+          projectCrs: projectRecord.project_crs,
+          unitSystem: projectRecord.unit_system,
+          createdAt: projectRecord.created_at,
+          updatedAt: now,
+        };
+        await db.runAsync(
+          "UPDATE projects SET name = ?, updated_at = ?, deleted_at = NULL WHERE id = ?;",
+          trimmedName,
+          now,
+          projectId,
+        );
+        const snapshot = await db.getFirstAsync<{ project_json: string }>(
+          LOAD_ACTIVE_PROJECT_BY_ID_SQL,
+          projectId,
+        );
+        if (snapshot) {
+          const updatedProject = { ...parseProjectDocument(snapshot.project_json), name: trimmedName };
+          await db.runAsync(
+            "UPDATE project_snapshots SET project_json = ?, updated_at = ? WHERE project_id = ?;",
+            serializeProjectDocument(updatedProject),
+            now,
+            projectId,
+          );
+        }
+        await db.runAsync(
+          "UPDATE project_records SET name = ?, updated_at = ?, deleted_at = NULL WHERE id = ?;",
+          trimmedName,
+          now,
+          projectId,
+        );
+      });
+      if (!updatedRecord) throw new Error("Project folder was not found in the local catalog.");
+      return updatedRecord;
+    },
+
+    async moveProjectToCustomerAsync(projectId: string, customerId: string): Promise<CatalogProjectRecord> {
+      const db = await openProjectDatabaseAsync();
+      const now = new Date().toISOString();
+      let moved: CatalogProjectRecord | null = null;
+      await db.withTransactionAsync(async () => {
+        const customer = await db.getFirstAsync<{ id: string }>(
+          "SELECT id FROM customers WHERE id = ? AND deleted_at IS NULL;",
+          customerId,
+        );
+        if (!customer) throw new Error("Target customer folder was not found in the local catalog.");
+        const projectRecord = await db.getFirstAsync<{
+          id: string;
+          customer_id: string;
+          name: string;
+          project_crs: string;
+          unit_system: string;
+          created_at: string;
+          updated_at: string;
+        }>(
+          "SELECT id, customer_id, name, project_crs, unit_system, created_at, updated_at FROM project_records WHERE id = ? AND deleted_at IS NULL;",
+          projectId,
+        );
+        if (!projectRecord) throw new Error("Project folder was not found in the local catalog.");
+        moved = {
+          id: projectRecord.id,
+          customerId,
+          name: projectRecord.name,
+          projectCrs: projectRecord.project_crs,
+          unitSystem: projectRecord.unit_system,
+          createdAt: projectRecord.created_at,
+          updatedAt: now,
+        };
+        await db.runAsync(
+          "UPDATE project_records SET customer_id = ?, updated_at = ?, deleted_at = NULL WHERE id = ?;",
+          customerId,
+          now,
+          projectId,
+        );
+      });
+      if (!moved) throw new Error("Project folder was not found in the local catalog.");
+      return moved;
     },
 
     async createFieldMapRecordAsync(input: { id?: string; projectId: string; name: string }): Promise<FieldMapRecord> {
@@ -251,24 +658,36 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
         createdAt: now,
         updatedAt: now,
       };
-      await db.runAsync(
-        `INSERT INTO designs (id, field_map_id, name, pivot_project_id, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          field_map_id = excluded.field_map_id,
-          name = excluded.name,
-          pivot_project_id = excluded.pivot_project_id,
-          is_active = excluded.is_active,
-          updated_at = excluded.updated_at,
-          deleted_at = NULL`,
-        record.id,
-        record.fieldMapId,
-        record.name,
-        record.pivotProjectId,
-        record.isActive ? 1 : 0,
-        record.createdAt,
-        record.updatedAt,
-      );
+      await db.withTransactionAsync(async () => {
+        const fieldMap = await db.getFirstAsync<{ id: string }>(
+          "SELECT id FROM field_maps WHERE id = ? AND deleted_at IS NULL;",
+          input.fieldMapId,
+        );
+        if (!fieldMap) throw new Error("Field map was not found in the local catalog.");
+        const pivotProject = await db.getFirstAsync<{ id: string }>(
+          "SELECT id FROM projects WHERE id = ? AND deleted_at IS NULL;",
+          input.pivotProjectId,
+        );
+        if (!pivotProject) throw new Error("Create or import a saved design project before adding a design row.");
+        await db.runAsync(
+          `INSERT INTO designs (id, field_map_id, name, pivot_project_id, is_active, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            field_map_id = excluded.field_map_id,
+            name = excluded.name,
+            pivot_project_id = excluded.pivot_project_id,
+            is_active = excluded.is_active,
+            updated_at = excluded.updated_at,
+            deleted_at = NULL`,
+          record.id,
+          record.fieldMapId,
+          record.name,
+          record.pivotProjectId,
+          record.isActive ? 1 : 0,
+          record.createdAt,
+          record.updatedAt,
+        );
+      });
       return record;
     },
   };
@@ -280,9 +699,39 @@ async function readCatalogAsync(db: Awaited<ReturnType<typeof openProjectDatabas
     id: string;
     display_name: string;
     sort_name: string;
+    company_name: string | null;
+    contact_name: string | null;
+    primary_contact_first_name: string | null;
+    primary_contact_middle_initial: string | null;
+    primary_contact_last_name: string | null;
+    primary_contact_suffix: string | null;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    notes: string | null;
     created_at: string;
     updated_at: string;
-  }>("SELECT id, display_name, sort_name, created_at, updated_at FROM customers WHERE deleted_at IS NULL ORDER BY sort_name COLLATE NOCASE, display_name COLLATE NOCASE;");
+  }>(
+    `SELECT
+      id,
+      display_name,
+      sort_name,
+      company_name,
+      contact_name,
+      primary_contact_first_name,
+      primary_contact_middle_initial,
+      primary_contact_last_name,
+      primary_contact_suffix,
+      email,
+      phone,
+      location,
+      notes,
+      created_at,
+      updated_at
+    FROM customers
+    WHERE deleted_at IS NULL
+    ORDER BY sort_name COLLATE NOCASE, display_name COLLATE NOCASE;`,
+  );
   const projects = await db.getAllAsync<{
     id: string;
     customer_id: string;
@@ -309,13 +758,25 @@ async function readCatalogAsync(db: Awaited<ReturnType<typeof openProjectDatabas
     updated_at: string;
   }>("SELECT id, field_map_id, name, pivot_project_id, is_active, created_at, updated_at FROM designs WHERE deleted_at IS NULL ORDER BY is_active DESC, name COLLATE NOCASE;");
   return {
-    customers: customers.map((row) => ({
-      id: row.id,
-      displayName: row.display_name,
-      sortName: row.sort_name,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    })),
+    customers: customers
+      .map((row) => normalizeCustomerRecord({
+        id: row.id,
+        displayName: row.display_name,
+        sortName: row.sort_name,
+        companyName: textField(row.company_name),
+        contactName: textField(row.contact_name),
+        primaryContactFirstName: textField(row.primary_contact_first_name),
+        primaryContactMiddleInitial: textField(row.primary_contact_middle_initial),
+        primaryContactLastName: textField(row.primary_contact_last_name),
+        primaryContactSuffix: textField(row.primary_contact_suffix),
+        email: textField(row.email),
+        phone: textField(row.phone),
+        location: textField(row.location),
+        notes: textField(row.notes),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }))
+      .filter((customer): customer is CustomerRecord => Boolean(customer)),
     projects: projects.map((row) => ({
       id: row.id,
       customerId: row.customer_id,
@@ -438,12 +899,32 @@ async function ensureCatalogPathForProjectAsync(db: Awaited<ReturnType<typeof op
 
 async function insertLegacyCustomerAsync(db: Awaited<ReturnType<typeof openProjectDatabaseAsync>>, now: string): Promise<void> {
   await db.runAsync(
-    `INSERT OR IGNORE INTO customers (id, display_name, sort_name, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO customers (
+      id,
+      display_name,
+      sort_name,
+      company_name,
+      contact_name,
+      primary_contact_first_name,
+      primary_contact_middle_initial,
+      primary_contact_last_name,
+      primary_contact_suffix,
+      email,
+      phone,
+      location,
+      notes,
+      created_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, '', '', '', '', '', '', '', '', '', '', ?, ?)`,
     LEGACY_CUSTOMER_ID,
     LEGACY_CUSTOMER_NAME,
     LEGACY_CUSTOMER_NAME,
     now,
     now,
   );
+}
+
+function textField(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }

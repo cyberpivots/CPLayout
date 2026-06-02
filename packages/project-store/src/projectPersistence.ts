@@ -302,8 +302,8 @@ function surveyPointStatement(projectId: string, point: SurveyPoint): SqlStateme
 function mapPackageStatement(projectId: string, mapPackage: MapPackageManifest): SqlStatementPlan {
   const parsed = validateMapPackageManifest(mapPackage);
   return {
-    sql: `INSERT INTO map_packages (id, project_id, name, package_type, tile_content_type, uri, min_zoom, max_zoom, tile_scheme, min_longitude, min_latitude, max_longitude, max_latitude, tilejson_url, tile_url_templates_json, checksum_sha256, install_status, attribution, license_text, bytes, imported_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO map_packages (id, project_id, name, package_type, tile_content_type, uri, min_zoom, max_zoom, tile_scheme, min_longitude, min_latitude, max_longitude, max_latitude, tilejson_url, tile_url_templates_json, vector_overlay_json, checksum_sha256, install_status, attribution, license_text, bytes, imported_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       parsed.id,
       projectId,
@@ -320,6 +320,7 @@ function mapPackageStatement(projectId: string, mapPackage: MapPackageManifest):
       parsed.boundsWgs84.maxLatitude,
       parsed.tileJsonUrl ?? null,
       JSON.stringify(parsed.tileUrlTemplates ?? []),
+      parsed.vectorOverlay ? JSON.stringify(parsed.vectorOverlay) : null,
       parsed.checksumSha256 ?? null,
       parsed.installStatus ?? "metadata_only",
       parsed.attribution,

@@ -34,6 +34,7 @@ import {
   visibleWidthMeters,
 } from "@cplayout/geometry";
 import type { InfrastructurePoint, MapStyle, MappingWorkflowMode, ObstacleZone, ProjectMapFeature, ProjectMapFeatureKind, SurveyPoint } from "@cplayout/core";
+import { resolveReferenceOverlaySource } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
 import type { MapSurfaceProps } from "./types";
@@ -57,7 +58,15 @@ const UTILITY_FEATURE_OPTIONS: { kind: ProjectMapFeatureKind; label: string; geo
   { kind: "end_gun_mark", label: "End gun", geometry: "Point" },
 ];
 
+const CATALOG_HOME_BOUNDS = {
+  minX: -168,
+  minY: 15,
+  maxX: -52,
+  maxY: 72,
+};
+
 export function SvgMapSurface({
+  homeView = false,
   project,
   result,
   settings,
@@ -78,7 +87,9 @@ export function SvgMapSurface({
 }: MapSurfaceProps): React.JSX.Element {
   const { width: windowWidth } = useWindowDimensions();
   const compactLayout = windowWidth < 760;
-  const designMode = settings.mappingWorkflowMode === "design";
+  const catalogHomeView = homeView === true;
+  const designMode = settings.mappingWorkflowMode === "design" && !catalogHomeView;
+  const showProjectGeometry = !catalogHomeView;
   const mapFeatures = project.mapFeatures ?? [];
   const advisoryGeometry = advisoryRecommendationPreview?.proposedGeometry;
   const advisoryPivot = advisoryGeometry?.pivotCenter;
@@ -86,19 +97,21 @@ export function SvgMapSurface({
   const advisoryObstacles = advisoryGeometry?.obstaclePolygons ?? [];
   const advisoryRadius = advisoryGeometry?.machine ? machineRadiusMeters(advisoryGeometry.machine) : machineRadiusMeters(project.machine);
   const advisoryCoverage = advisoryPivot ? createCirclePolygon(advisoryPivot, advisoryRadius, 144) : [];
-  const allRings = [
-    project.fieldBoundary,
-    ...(advisoryBoundary ? [advisoryBoundary] : []),
-    ...advisoryObstacles,
-    ...(advisoryCoverage.length > 0 ? [advisoryCoverage] : []),
-    ...result.allowedCoverage.flat(),
-    ...result.outsideFieldCoverage.flat(),
-    ...result.endGunCoverage.flat(),
-    ...project.obstacles.map((obstacle) => obstacle.polygon),
-    ...mapFeatures.flatMap((feature) => feature.geometry.type === "LineString" ? [feature.geometry.vertices] : []),
-  ];
-  const bounds = boundsForGeometry(allRings);
-  const margin = 80;
+  const allRings = showProjectGeometry
+    ? [
+      project.fieldBoundary,
+      ...(advisoryBoundary ? [advisoryBoundary] : []),
+      ...advisoryObstacles,
+      ...(advisoryCoverage.length > 0 ? [advisoryCoverage] : []),
+      ...result.allowedCoverage.flat(),
+      ...result.outsideFieldCoverage.flat(),
+      ...result.endGunCoverage.flat(),
+      ...project.obstacles.map((obstacle) => obstacle.polygon),
+      ...mapFeatures.flatMap((feature) => feature.geometry.type === "LineString" ? [feature.geometry.vertices] : []),
+    ]
+    : [];
+  const bounds = showProjectGeometry ? boundsForGeometry(allRings) : CATALOG_HOME_BOUNDS;
+  const margin = showProjectGeometry ? 80 : 0;
   const initialViewport = useMemo(
     () => createInitialViewport({
       minX: bounds.minX - margin,
@@ -125,9 +138,9 @@ export function SvgMapSurface({
   const maxX = mapState.viewport.center.x + viewWidth / 2;
   const minY = -mapState.viewport.center.y - viewHeight / 2;
   const maxY = -mapState.viewport.center.y + viewHeight / 2;
-  const fieldPath = ringsToSvgPath([[project.fieldBoundary]]);
+  const fieldPath = showProjectGeometry ? ringsToSvgPath([[project.fieldBoundary]]) : "";
   const imageryPlan = useMemo(
-    () => settings.onlineImagery.enabled
+    () => !catalogHomeView && settings.onlineImagery.enabled
       ? planOnlineImageryTiles({
         viewport: mapState.viewport,
         projectCrs: project.projectCrs,
@@ -137,6 +150,7 @@ export function SvgMapSurface({
       })
       : null,
     [
+      catalogHomeView,
       mapState.viewport,
       project.projectCrs,
       settings.onlineImagery.enabled,
@@ -145,7 +159,17 @@ export function SvgMapSurface({
       settings.onlineImagery.providerId,
     ],
   );
-  const shouldShowMapLibrePreview = settings.onlineImagery.enabled && !supportsSvgOnlineImageryOverlay(project.projectCrs);
+  const shouldShowMapLibrePreview = !catalogHomeView && settings.onlineImagery.enabled && !supportsSvgOnlineImageryOverlay(project.projectCrs);
+  const referenceOverlayNotice = useMemo(
+    () => settings.referenceOverlay.mode !== "off"
+      ? resolveReferenceOverlaySource({
+        preferences: settings.referenceOverlay,
+        mapPackages: project.mapPackages ?? [],
+        target: Platform.OS === "web" ? "svg_mvp" : "native_maplibre_rn",
+      })
+      : null,
+    [project.mapPackages, settings.referenceOverlay],
+  );
 
   const panResponder = useMemo(
     () => PanResponder.create({
@@ -394,7 +418,9 @@ export function SvgMapSurface({
         <View>
           <Text style={styles.title}>Map Workspace</Text>
           <Text style={styles.subtitle}>
-            {project.projectCrs} · {workflowModeLabel(settings.mappingWorkflowMode)} · {mapState.mode.replaceAll("_", " ")} · zoom {mapState.viewport.zoomLevel.toFixed(2)}x
+            {catalogHomeView
+              ? "North America project catalog · no project geometry loaded"
+              : `${project.projectCrs} · ${workflowModeLabel(settings.mappingWorkflowMode)} · ${mapState.mode.replaceAll("_", " ")} · zoom ${mapState.viewport.zoomLevel.toFixed(2)}x`}
           </Text>
         </View>
         <WorkflowSegmentedControl
@@ -453,70 +479,76 @@ export function SvgMapSurface({
           ))}
           <MapBackground minX={minX} maxX={maxX} minY={minY} maxY={maxY} styleName={settings.mapStyle} />
           <Grid minX={minX} maxX={maxX} minY={minY} maxY={maxY} stroke={palette.grid} />
-          <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} />
-          <Path d={ringsToSvgPath(result.endGunCoverage)} fill={palette.endGun} opacity={0.25} />
-          <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} />
-          {advisoryCoverage.length > 0 ? <Path d={ringsToSvgPath([[advisoryCoverage]])} fill={palette.advisoryFill} opacity={0.16} stroke={palette.advisory} strokeDasharray="14 10" strokeWidth={5} /> : null}
-          {advisoryBoundary ? <Path d={ringsToSvgPath([[advisoryBoundary]])} fill="none" stroke={palette.advisoryBoundary} strokeDasharray="18 9" strokeWidth={7} /> : null}
-          {advisoryObstacles.map((polygon, index) => (
-            <Path key={`advisory-obstacle-${index}`} d={ringsToSvgPath([[polygon]])} fill={palette.advisoryWarning} opacity={0.24} stroke={palette.advisoryWarning} strokeDasharray="10 8" strokeWidth={4} />
-          ))}
-          <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
-          <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
-          <EditableRing
-            color={palette.fieldStroke}
-            layerLabel="Boundary"
-            selected={selectedVertex?.layer === "field_boundary" ? selectedVertex.vertexIndex : null}
-            vertices={project.fieldBoundary}
-            onSelect={designMode ? (vertexIndex) => selectVertex({ layer: "field_boundary", vertexIndex }) : undefined}
-          />
-          {project.obstacles.map((obstacle) => (
-            <React.Fragment key={obstacle.id}>
-              <ObstacleSymbol obstacle={obstacle} color={palette.obstacleStroke} />
+          {catalogHomeView ? (
+            <CatalogHomeOverlay minX={minX} maxX={maxX} minY={minY} maxY={maxY} palette={palette} />
+          ) : (
+            <>
+              <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} />
+              <Path d={ringsToSvgPath(result.endGunCoverage)} fill={palette.endGun} opacity={0.25} />
+              <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} />
+              {advisoryCoverage.length > 0 ? <Path d={ringsToSvgPath([[advisoryCoverage]])} fill={palette.advisoryFill} opacity={0.16} stroke={palette.advisory} strokeDasharray="14 10" strokeWidth={5} /> : null}
+              {advisoryBoundary ? <Path d={ringsToSvgPath([[advisoryBoundary]])} fill="none" stroke={palette.advisoryBoundary} strokeDasharray="18 9" strokeWidth={7} /> : null}
+              {advisoryObstacles.map((polygon, index) => (
+                <Path key={`advisory-obstacle-${index}`} d={ringsToSvgPath([[polygon]])} fill={palette.advisoryWarning} opacity={0.24} stroke={palette.advisoryWarning} strokeDasharray="10 8" strokeWidth={4} />
+              ))}
+              <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
+              <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
               <EditableRing
-                color={palette.obstacleStroke}
-                layerLabel={`${obstacle.name} obstacle`}
-                selected={selectedVertex?.layer === "obstacle" && selectedVertex.obstacleId === obstacle.id ? selectedVertex.vertexIndex : null}
-                vertices={obstacle.polygon}
-                onSelect={designMode ? (vertexIndex) => selectVertex({ layer: "obstacle", obstacleId: obstacle.id, vertexIndex }) : undefined}
+                color={palette.fieldStroke}
+                layerLabel="Boundary"
+                selected={selectedVertex?.layer === "field_boundary" ? selectedVertex.vertexIndex : null}
+                vertices={project.fieldBoundary}
+                onSelect={designMode ? (vertexIndex) => selectVertex({ layer: "field_boundary", vertexIndex }) : undefined}
               />
-            </React.Fragment>
-          ))}
-          {mapFeatures.map((feature) => (
-            <MapFeatureSymbol
-              key={feature.id}
-              feature={feature}
-              palette={palette}
-              selected={activeSelectedMapFeatureId === feature.id}
-              onSelect={() => selectMapFeature(feature.id)}
-            />
-          ))}
-          <DraftVertices vertices={mapState.draftVertices} color={palette.draft} />
-          {lastSnap ? <SnapMarker point={lastSnap.point} color={palette.snap} label={lastSnap.kind} /> : null}
-          <InfrastructureSymbol point={project.pivotCenter} color={palette.pivot} kind="pivot_center" label="Pivot" />
-          <InfrastructureSymbol point={project.waterSource} color={palette.water} kind="water_source" label="Water" />
-          <InfrastructureSymbol point={project.powerSource} color={palette.power} kind="power_source" label="Power" />
-          {advisoryPivot ? <AdvisoryPivotSymbol point={advisoryPivot} color={palette.advisory} /> : null}
-          {project.surveyPoints.map((point) => (
-            <SurveyPointSymbol key={point.id} point={point} color={palette.survey} />
-          ))}
-          {result.towers.map((tower) => (
-            <React.Fragment key={tower.towerIndex}>
-              <Line
-                x1={project.pivotCenter.x}
-                y1={-project.pivotCenter.y}
-                x2={tower.point.x}
-                y2={-tower.point.y}
-                stroke={palette.tower}
-                strokeDasharray="7 8"
-                strokeWidth={1.8}
-              />
-              <Circle cx={tower.point.x} cy={-tower.point.y} r={8} fill={palette.markerFill} stroke={palette.fieldStroke} strokeWidth={4} />
-              <SvgText x={tower.point.x + 12} y={-tower.point.y - 10} fill={palette.fieldStroke} fontSize={24} fontWeight="700">
-                T{tower.towerIndex}
-              </SvgText>
-            </React.Fragment>
-          ))}
+              {project.obstacles.map((obstacle) => (
+                <React.Fragment key={obstacle.id}>
+                  <ObstacleSymbol obstacle={obstacle} color={palette.obstacleStroke} />
+                  <EditableRing
+                    color={palette.obstacleStroke}
+                    layerLabel={`${obstacle.name} obstacle`}
+                    selected={selectedVertex?.layer === "obstacle" && selectedVertex.obstacleId === obstacle.id ? selectedVertex.vertexIndex : null}
+                    vertices={obstacle.polygon}
+                    onSelect={designMode ? (vertexIndex) => selectVertex({ layer: "obstacle", obstacleId: obstacle.id, vertexIndex }) : undefined}
+                  />
+                </React.Fragment>
+              ))}
+              {mapFeatures.map((feature) => (
+                <MapFeatureSymbol
+                  key={feature.id}
+                  feature={feature}
+                  palette={palette}
+                  selected={activeSelectedMapFeatureId === feature.id}
+                  onSelect={() => selectMapFeature(feature.id)}
+                />
+              ))}
+              <DraftVertices vertices={mapState.draftVertices} color={palette.draft} />
+              {lastSnap ? <SnapMarker point={lastSnap.point} color={palette.snap} label={lastSnap.kind} /> : null}
+              <InfrastructureSymbol point={project.pivotCenter} color={palette.pivot} kind="pivot_center" label="Pivot" />
+              <InfrastructureSymbol point={project.waterSource} color={palette.water} kind="water_source" label="Water" />
+              <InfrastructureSymbol point={project.powerSource} color={palette.power} kind="power_source" label="Power" />
+              {advisoryPivot ? <AdvisoryPivotSymbol point={advisoryPivot} color={palette.advisory} /> : null}
+              {project.surveyPoints.map((point) => (
+                <SurveyPointSymbol key={point.id} point={point} color={palette.survey} />
+              ))}
+              {result.towers.map((tower) => (
+                <React.Fragment key={tower.towerIndex}>
+                  <Line
+                    x1={project.pivotCenter.x}
+                    y1={-project.pivotCenter.y}
+                    x2={tower.point.x}
+                    y2={-tower.point.y}
+                    stroke={palette.tower}
+                    strokeDasharray="7 8"
+                    strokeWidth={1.8}
+                  />
+                  <Circle cx={tower.point.x} cy={-tower.point.y} r={8} fill={palette.markerFill} stroke={palette.fieldStroke} strokeWidth={4} />
+                  <SvgText x={tower.point.x + 12} y={-tower.point.y - 10} fill={palette.fieldStroke} fontSize={24} fontWeight="700">
+                    T{tower.towerIndex}
+                  </SvgText>
+                </React.Fragment>
+              ))}
+            </>
+          )}
         </Svg>
         {mapClickLayerActive ? (
           <View
@@ -576,7 +608,7 @@ export function SvgMapSurface({
         </View>
         ) : (
           <View style={styles.draftHud}>
-            <Text style={styles.draftHudText}>Layout · RTK-only mutation · pointer editing controls hidden</Text>
+            <Text style={styles.draftHudText}>{catalogHomeView ? "Catalog view · open a saved design to edit projected XY geometry" : "Layout · RTK-only mutation · pointer editing controls hidden"}</Text>
           </View>
         )}
         {imageryPlan ? (
@@ -593,6 +625,12 @@ export function SvgMapSurface({
                 {imageryPlan.provider.attribution} · {imageryPlan.provider.licenseText}
               </Text>
             )}
+          </View>
+        ) : null}
+        {referenceOverlayNotice ? (
+          <View style={styles.referenceOverlayBadge} testID="svg-reference-overlay-unavailable">
+            <Text style={styles.imageryBadgeText}>Reference overlays unavailable</Text>
+            <Text style={styles.imageryBadgeSubtext}>{referenceOverlayNotice.reason}</Text>
           </View>
         ) : null}
       </View>
@@ -637,15 +675,17 @@ export function SvgMapSurface({
       </View>
       ) : null}
 
-      <View style={styles.legend}>
-        <LegendSwatch color="#6cb6df" label="Allowed wet area" />
-        <LegendSwatch color="#63c7cf" label="End gun" />
-        <LegendSwatch color="#e68b58" label="Outside field" />
-        <LegendSwatch color="#c64f43" label="Obstacle/no-spray" />
-        <LegendSwatch color={palette.survey} label="Survey/object point" />
-        <LegendSwatch color={palette.utility} label="Utility map feature" />
-        <LegendSwatch color={palette.advisory} label="Advisory preview" />
-      </View>
+      {!catalogHomeView ? (
+        <View style={styles.legend}>
+          <LegendSwatch color="#6cb6df" label="Allowed wet area" />
+          <LegendSwatch color="#63c7cf" label="End gun" />
+          <LegendSwatch color="#e68b58" label="Outside field" />
+          <LegendSwatch color="#c64f43" label="Obstacle/no-spray" />
+          <LegendSwatch color={palette.survey} label="Survey/object point" />
+          <LegendSwatch color={palette.utility} label="Utility map feature" />
+          <LegendSwatch color={palette.advisory} label="Advisory preview" />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -949,6 +989,46 @@ function AdvisoryPivotSymbol({ color, point }: { color: string; point: XY }): Re
       <Circle cx={point.x} cy={y} r={7} fill={color} />
       <SvgText x={point.x + 30} y={y - 10} fill={color} fontSize={23} fontWeight="900">
         Candidate
+      </SvgText>
+    </>
+  );
+}
+
+function CatalogHomeOverlay({
+  minX,
+  maxX,
+  minY,
+  maxY,
+  palette,
+}: {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  palette: MapPalette;
+}): React.JSX.Element {
+  const labelX = minX + (maxX - minX) * 0.08;
+  const labelY = minY + (maxY - minY) * 0.14;
+  return (
+    <>
+      <Path
+        d="M -166 -66 L -150 -70 L -136 -63 L -124 -50 L -118 -34 L -106 -24 L -96 -18 L -82 -25 L -77 -39 L -66 -47 L -55 -54 L -69 -60 L -88 -57 L -104 -60 L -123 -64 L -144 -61 Z"
+        fill={palette.allowed}
+        opacity={0.16}
+        stroke={palette.fieldStroke}
+        strokeOpacity={0.42}
+        strokeWidth={1.8}
+      />
+      <Path
+        d="M -142 -30 L -128 -29 L -114 -23 L -103 -18 L -92 -17 L -88 -22 L -97 -28 L -112 -32 L -129 -34 Z"
+        fill={palette.endGun}
+        opacity={0.16}
+        stroke={palette.fieldStroke}
+        strokeOpacity={0.28}
+        strokeWidth={1.4}
+      />
+      <SvgText x={labelX} y={labelY} fill={palette.fieldStroke} fontSize={5.6} fontWeight="700">
+        North America project catalog
       </SvgText>
     </>
   );
@@ -1413,6 +1493,20 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 12,
     top: 12,
+    zIndex: 2,
+  },
+  referenceOverlayBadge: {
+    backgroundColor: "rgba(255, 250, 235, 0.95)",
+    borderColor: "#dfc77f",
+    borderRadius: 8,
+    borderWidth: 1,
+    left: 12,
+    maxWidth: 560,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    position: "absolute",
+    right: 12,
+    top: 74,
     zIndex: 2,
   },
   imageryBadgeText: {

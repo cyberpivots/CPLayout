@@ -11,6 +11,7 @@ export interface MapSurfaceProps {
   homeView?: boolean;
   selectedMapFeatureId?: string | null;
   advisoryRecommendationPreview?: ModelRecommendation | null;
+  onSettingsChange?: (settings: AppSettings) => void;
   onMappingWorkflowModeChange?: (mode: MappingWorkflowMode) => void;
   onCommitBoundaryDraft?: (vertices: XY[]) => void;
   onCommitObstacleDraft?: (vertices: XY[], kind: ObstacleZone["kind"], confidence?: SourceConfidence) => void;

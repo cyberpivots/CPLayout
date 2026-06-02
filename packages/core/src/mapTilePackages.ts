@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { REFERENCE_OVERLAY_SCHEMAS } from "./settings";
 import type { MapPackageManifest, TileContentType } from "./types";
 
 export const TILE_CONTENT_TYPES = ["raster", "vector"] as const;
@@ -11,6 +12,16 @@ const BoundsWgs84Schema = z.object({
   minLatitude: z.number().min(-90).max(90),
   maxLongitude: z.number().min(-180).max(180),
   maxLatitude: z.number().min(-90).max(90),
+});
+
+const VectorOverlayMetadataSchema = z.object({
+  schema: z.enum(REFERENCE_OVERLAY_SCHEMAS),
+  sourceLayers: z.object({
+    roads: z.string().trim().min(1),
+    roadLabels: z.string().trim().min(1),
+    borders: z.string().trim().min(1),
+    places: z.string().trim().min(1),
+  }),
 });
 
 export const MapPackageManifestSchema = z.object({
@@ -25,6 +36,7 @@ export const MapPackageManifestSchema = z.object({
   boundsWgs84: BoundsWgs84Schema,
   tileJsonUrl: z.string().min(1).optional(),
   tileUrlTemplates: z.array(z.string().min(1)).default([]),
+  vectorOverlay: VectorOverlayMetadataSchema.optional(),
   checksumSha256: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
   installStatus: z.enum(TILE_PACKAGE_INSTALL_STATUSES).default("metadata_only"),
   attribution: z.string().min(1),

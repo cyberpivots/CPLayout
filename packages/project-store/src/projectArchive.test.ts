@@ -31,7 +31,7 @@ assert.ok(bundle.files[PROJECT_JSON_FILENAME].includes("pivot-project-v1"));
 assert.ok(bundle.files[PROJECT_GEOJSON_FILENAME].includes("FeatureCollection"));
 assert.ok(bundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME].includes("field_boundary"));
 assert.ok(bundle.files[MAP_PACKAGES_CSV_FILENAME].startsWith("id,name,packageType"));
-assert.doesNotMatch(bundle.files[PROJECT_JSON_FILENAME], /onlineImagery|tileUrlTemplate|walkthroughProgress|packageDirectory/);
+assert.doesNotMatch(bundle.files[PROJECT_JSON_FILENAME], /onlineImagery|referenceOverlay|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 
 const localOnlyDraftProject = {
   ...sampleProject,
@@ -50,6 +50,14 @@ const localOnlyDraftProject = {
       ...sampleProject.settings?.offlineMaps,
       packageDirectory: "/operator/local/tiles",
     },
+    referenceOverlay: {
+      enabled: true,
+      roads: true,
+      borders: true,
+      labels: true,
+      sourcePackageId: "local-reference",
+      schema: "cplayout_reference_v1",
+    },
     walkthroughProgress: { imagery: true, boundary: true },
   },
 } as unknown as typeof sampleProject;
@@ -59,7 +67,7 @@ const localOnlyBundle = buildProjectArchiveBundle(
   exportScenarioGeoJson(localOnlyDraftProject, result),
   "2026-05-19T12:00:00.000Z",
 );
-assert.doesNotMatch(localOnlyBundle.files[PROJECT_JSON_FILENAME], /onlineImagery|tileUrlTemplate|walkthroughProgress|packageDirectory/);
+assert.doesNotMatch(localOnlyBundle.files[PROJECT_JSON_FILENAME], /onlineImagery|referenceOverlay|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 
 const surveyCsv = surveyPointsToCsv(sampleProject.surveyPoints);
 assert.match(surveyCsv, /^id,label,role,x,y,longitude,latitude,observedAt,source,confidence,notes/);
@@ -87,6 +95,15 @@ const mapPackageCsv = mapPackagesToCsv({
     },
     tileJsonUrl: "http://127.0.0.1:8765/field/tilejson.json",
     tileUrlTemplates: ["http://127.0.0.1:8765/field/{z}/{x}/{y}.png"],
+    vectorOverlay: {
+      schema: "cplayout_reference_v1",
+      sourceLayers: {
+        roads: "roads",
+        roadLabels: "road_labels",
+        borders: "borders",
+        places: "places",
+      },
+    },
     installStatus: "available",
     attribution: "Local imagery",
     licenseText: "Offline permitted",
@@ -94,6 +111,7 @@ const mapPackageCsv = mapPackagesToCsv({
   }],
 });
 assert.match(mapPackageCsv, /tileContentType/);
+assert.match(mapPackageCsv, /vectorOverlay/);
 assert.match(mapPackageCsv, /field-imagery/);
 
 const projectWithMapFeatures = {

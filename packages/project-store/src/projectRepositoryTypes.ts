@@ -4,6 +4,16 @@ export interface CustomerRecord {
   id: string;
   displayName: string;
   sortName: string;
+  companyName: string;
+  contactName: string;
+  primaryContactFirstName: string;
+  primaryContactMiddleInitial: string;
+  primaryContactLastName: string;
+  primaryContactSuffix: string;
+  email: string;
+  phone: string;
+  location: string;
+  notes: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +61,69 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
+export interface CustomerProfileInput {
+  companyName?: string;
+  primaryContactFirstName: string;
+  primaryContactLastName: string;
+  primaryContactMiddleInitial?: string;
+  primaryContactSuffix?: string;
+  displayName?: string;
+  sortName?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  notes?: string;
+}
+
+export interface CustomerProfileUpdateInput {
+  id: string;
+  companyName?: string;
+  primaryContactFirstName?: string;
+  primaryContactLastName?: string;
+  primaryContactMiddleInitial?: string;
+  primaryContactSuffix?: string;
+  displayName?: string;
+  sortName?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  notes?: string;
+}
+
+export interface CreateProjectWithInitialDesignInput {
+  customerId: string;
+  project: PivotProject;
+  result?: LayoutResult;
+  fieldMapId?: string;
+  fieldMapName?: string;
+  designId?: string;
+  designName?: string;
+}
+
+export interface CreateProjectWithInitialFieldMapInput {
+  customerId: string;
+  projectId?: string;
+  projectName: string;
+  projectCrs: string;
+  unitSystem: string;
+  fieldMapId?: string;
+  fieldMapName?: string;
+}
+
+export interface CreatedProjectWorkspace {
+  project: PivotProject;
+  projectRecord: CatalogProjectRecord;
+  fieldMap: FieldMapRecord;
+  design: DesignRecord;
+}
+
+export interface CreatedProjectFieldMapWorkspace {
+  projectRecord: CatalogProjectRecord;
+  fieldMap: FieldMapRecord;
+}
+
 export interface ProjectRepositoryBackendInfo {
   backendLabel: string;
   runtime: "native" | "web";
@@ -72,8 +145,14 @@ export interface ProjectRepository {
   loadProjectAsync(projectId: string): Promise<PivotProject | null>;
   loadDesignProjectAsync(designId: string): Promise<PivotProject | null>;
   deleteProjectAsync(projectId: string): Promise<void>;
-  createCustomerAsync(input: { displayName: string; sortName?: string }): Promise<CustomerRecord>;
+  createCustomerAsync(input: CustomerProfileInput): Promise<CustomerRecord>;
+  updateCustomerAsync(input: CustomerProfileUpdateInput): Promise<CustomerRecord>;
+  deleteCustomerAsync(customerId: string): Promise<void>;
+  createProjectWithInitialDesignAsync(input: CreateProjectWithInitialDesignInput): Promise<CreatedProjectWorkspace>;
+  createProjectWithInitialFieldMapAsync(input: CreateProjectWithInitialFieldMapInput): Promise<CreatedProjectFieldMapWorkspace>;
   createProjectRecordAsync(input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord>;
+  renameProjectAsync(projectId: string, name: string): Promise<CatalogProjectRecord>;
+  moveProjectToCustomerAsync(projectId: string, customerId: string): Promise<CatalogProjectRecord>;
   createFieldMapRecordAsync(input: { id?: string; projectId: string; name: string }): Promise<FieldMapRecord>;
   createDesignRecordAsync(input: { id?: string; fieldMapId: string; name: string; pivotProjectId: string; isActive?: boolean }): Promise<DesignRecord>;
   getBackendInfoAsync(): Promise<ProjectRepositoryBackendInfo>;

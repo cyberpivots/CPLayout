@@ -17,8 +17,8 @@ import {
   Save,
   Satellite,
   SlidersHorizontal,
-  Settings2,
   Upload,
+  UserRound,
   WifiOff,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useReducer, useState } from "react";
@@ -39,9 +39,18 @@ import { BrowserRtkReceiverPanel } from "./src/components/BrowserRtkReceiverPane
 import { ExpertReviewPanel } from "./src/components/ExpertReviewPanel";
 import { MapSurface } from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
+import {
+  ConfirmActionDialog,
+  CustomerProfileDialog,
+  MoveProjectDialog,
+  ProjectCatalogDialog,
+  type CustomerProfileDialogValue,
+  type ProjectCatalogDialogMode,
+} from "./src/components/ProjectCatalogDialog";
 import { ProjectFilesPanel } from "./src/components/ProjectFilesPanel";
 import { SettingsPanel } from "./src/components/SettingsPanel";
 import { useProjectRepository, type ProjectWorkspaceStatus } from "./src/hooks/useProjectRepository";
+import type { CustomerRecord } from "@cplayout/project-store";
 import {
   COORDINATE_FORMAT_LABELS,
   createProjectEditorState,
@@ -90,6 +99,16 @@ export default function App(): React.JSX.Element {
     fieldMapId: string | null;
     designId: string | null;
   }>({ customerId: null, projectId: null, fieldMapId: null, designId: null });
+  const [catalogDialogMode, setCatalogDialogMode] = useState<ProjectCatalogDialogMode | null>(null);
+  const [catalogDialogDefaultName, setCatalogDialogDefaultName] = useState("");
+  const [customerProfileDialogMode, setCustomerProfileDialogMode] = useState<"create" | "edit" | null>(null);
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [movingProjectId, setMovingProjectId] = useState<string | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [deletingCustomerId, setDeletingCustomerId] = useState<string | null>(null);
+  const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
+  const [catalogDialogSubmitting, setCatalogDialogSubmitting] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
   const compactLayout = windowWidth < 760;
   const repository = useProjectRepository();
@@ -99,6 +118,24 @@ export default function App(): React.JSX.Element {
     () => (project.mapFeatures ?? []).find((feature) => feature.id === selectedMapFeatureId) ?? null,
     [project.mapFeatures, selectedMapFeatureId],
   );
+  const selectedCustomer = activeCatalogContext.customerId
+    ? repository.catalog.customers.find((customer) => customer.id === activeCatalogContext.customerId) ?? null
+    : null;
+  const editingCustomer = editingCustomerId
+    ? repository.catalog.customers.find((customer) => customer.id === editingCustomerId) ?? null
+    : null;
+  const renamingProject = renamingProjectId
+    ? repository.catalog.projects.find((record) => record.id === renamingProjectId) ?? null
+    : null;
+  const movingProject = movingProjectId
+    ? repository.catalog.projects.find((record) => record.id === movingProjectId) ?? null
+    : null;
+  const deletingProject = deletingProjectId
+    ? repository.catalog.projects.find((record) => record.id === deletingProjectId) ?? null
+    : null;
+  const deletingCustomer = deletingCustomerId
+    ? repository.catalog.customers.find((customer) => customer.id === deletingCustomerId) ?? null
+    : null;
 
   useEffect(() => {
     if (selectedMapFeatureId && !(project.mapFeatures ?? []).some((feature) => feature.id === selectedMapFeatureId)) {
@@ -175,7 +212,9 @@ export default function App(): React.JSX.Element {
     if (!loaded) return;
     const design = repository.catalog.designs.find((record) => record.pivotProjectId === projectId) ?? null;
     const fieldMap = design ? repository.catalog.fieldMaps.find((record) => record.id === design.fieldMapId) ?? null : null;
+    const projectRecord = repository.catalog.projects.find((record) => record.id === (fieldMap?.projectId ?? projectId)) ?? null;
     loadProject(loaded, {
+      customerId: projectRecord?.customerId ?? activeCatalogContext.customerId,
       projectId: fieldMap?.projectId ?? projectId,
       fieldMapId: fieldMap?.id ?? null,
       designId: design?.id ?? null,
@@ -236,89 +275,188 @@ export default function App(): React.JSX.Element {
     setSelectedMapFeatureId(null);
   }
 
-  function createNewProject(): void {
-    const createdAt = new Date().toISOString();
-    loadProject({
-      ...sampleProject,
-      id: `field-layout-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`,
-      name: "Untitled Field Layout",
-      surveyPoints: sampleProject.surveyPoints.map((point) => ({ ...point, observedAt: createdAt })),
-    });
+  function routeToCustomerSelection(): void {
+    showCatalogMap(
+      { customerId: activeCatalogContext.customerId, projectId: null, fieldMapId: null, designId: null },
+      "Select or create a customer folder, then use New Project inside that customer.",
+    );
   }
 
-  async function createCustomerFolder(): Promise<void> {
-    const name = promptText("Customer folder name", `Customer ${repository.catalog.customers.length + 1}`);
-    const customer = await repository.createCustomer({ displayName: name, sortName: name });
-    if (customer) setActiveCatalogContext({ customerId: customer.id, projectId: null, fieldMapId: null, designId: null });
+  function openCatalogDialog(mode: ProjectCatalogDialogMode): void {
+    if (mode === "customer") {
+      openCustomerCreateDialog();
+      return;
+    }
+    if (mode === "project" && !selectedCustomer) {
+      routeToCustomerSelection();
+      return;
+    }
+    setCatalogDialogDefaultName(defaultCatalogDialogName(mode));
+    setCatalogDialogMode(mode);
   }
 
-  async function createProjectFolder(): Promise<void> {
-    const customer = await selectedOrDefaultCustomer();
-    if (!customer) return;
+  function openCustomerCreateDialog(): void {
+    setCatalogNotice(null);
+    setEditingCustomerId(null);
+    setCustomerProfileDialogMode("create");
+  }
+
+  function openCustomerEditDialog(customerId: string): void {
+    setCatalogNotice(null);
+    setEditingCustomerId(customerId);
+    setCustomerProfileDialogMode("edit");
+  }
+
+  async function submitCatalogDialog(name: string): Promise<void> {
+    if (!catalogDialogMode || catalogDialogSubmitting) return;
+    setCatalogDialogSubmitting(true);
+    try {
+      if (catalogDialogMode === "project") await createProjectFolder(name);
+      if (catalogDialogMode === "fieldMap") await createFieldMapForProject(name);
+      if (catalogDialogMode === "design") await createDesignForFieldMap(name);
+      setCatalogDialogMode(null);
+    } finally {
+      setCatalogDialogSubmitting(false);
+    }
+  }
+
+  function closeCatalogDialog(): void {
+    if (catalogDialogSubmitting) return;
+    setCatalogDialogMode(null);
+  }
+
+  function defaultCatalogDialogName(mode: ProjectCatalogDialogMode): string {
+    if (mode === "customer") return `Customer ${repository.catalog.customers.length + 1}`;
+    if (mode === "project") return `Untitled Project ${repository.catalog.projects.length + 1}`;
+    if (mode === "fieldMap") {
+      const projectId = activeCatalogContext.projectId;
+      const siblingCount = repository.catalog.fieldMaps.filter((record) => record.projectId === projectId).length;
+      return `Field Map ${siblingCount + 1}`;
+    }
+    const fieldMapId = activeCatalogContext.fieldMapId;
+    const siblingCount = repository.catalog.designs.filter((record) => record.fieldMapId === fieldMapId).length;
+    return `Design ${siblingCount + 1}`;
+  }
+
+  function catalogDialogContextPreview(mode: ProjectCatalogDialogMode): string {
+    if (mode === "customer") return "Saved under: Project Catalog";
+    if (mode === "project") {
+      return selectedCustomer ? `Saved under: ${selectedCustomer.displayName}` : "Select a customer folder before creating a project.";
+    }
+    if (mode === "fieldMap") {
+      const projectRecord = activeCatalogContext.projectId
+        ? repository.catalog.projects.find((record) => record.id === activeCatalogContext.projectId) ?? null
+        : null;
+      return formatCatalogPath(projectRecord ? catalogPathForProject(projectRecord.id) : []);
+    }
+    const fieldMap = activeCatalogContext.fieldMapId
+      ? repository.catalog.fieldMaps.find((record) => record.id === activeCatalogContext.fieldMapId) ?? null
+      : null;
+    return formatCatalogPath(fieldMap ? [...catalogPathForProject(fieldMap.projectId), fieldMap.name] : []);
+  }
+
+  function catalogPathForProject(projectId: string): string[] {
+    const projectRecord = repository.catalog.projects.find((record) => record.id === projectId) ?? null;
+    const customer = projectRecord
+      ? repository.catalog.customers.find((record) => record.id === projectRecord.customerId) ?? null
+      : null;
+    return [customer?.displayName, projectRecord?.name].filter((part): part is string => Boolean(part));
+  }
+
+  function formatCatalogPath(parts: string[]): string {
+    return `Saved under: ${parts.length > 0 ? parts.join(" > ") : "Project Catalog"}`;
+  }
+
+  async function submitCustomerProfile(value: CustomerProfileDialogValue): Promise<void> {
+    if (!customerProfileDialogMode || catalogDialogSubmitting) return;
+    setCatalogDialogSubmitting(true);
+    try {
+      if (customerProfileDialogMode === "create") {
+        const customer = await repository.createCustomer(value);
+        if (customer) {
+          showCatalogMap({ customerId: customer.id, projectId: null, fieldMapId: null, designId: null });
+        }
+      } else if (editingCustomerId) {
+        const customer = await repository.updateCustomer({ id: editingCustomerId, ...value });
+        if (customer) setCatalogNotice(null);
+      }
+      setCustomerProfileDialogMode(null);
+      setEditingCustomerId(null);
+    } finally {
+      setCatalogDialogSubmitting(false);
+    }
+  }
+
+  function closeCustomerProfileDialog(): void {
+    if (catalogDialogSubmitting) return;
+    setCustomerProfileDialogMode(null);
+    setEditingCustomerId(null);
+  }
+
+  async function createProjectFolder(name: string): Promise<void> {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    const customer = selectedCustomer;
+    if (!customer) {
+      routeToCustomerSelection();
+      return;
+    }
     const createdAt = new Date().toISOString();
-    const name = promptText("Project name", `Untitled Project ${repository.catalog.projects.length + 1}`);
     const projectId = `project-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
     const fieldMapId = `${projectId}:field-map:primary`;
-    const designId = `${projectId}:design:primary`;
-    const nextProject: PivotProject = {
-      ...sampleProject,
-      id: projectId,
-      name,
-      surveyPoints: sampleProject.surveyPoints.map((point) => ({ ...point, observedAt: createdAt })),
-    };
-    await repository.saveProject(nextProject, evaluateLayout(nextProject));
-    await repository.createProjectRecord({ id: projectId, customerId: customer.id, name, projectCrs: nextProject.projectCrs, unitSystem: nextProject.unitSystem });
-    await repository.createFieldMapRecord({ id: fieldMapId, projectId, name: "Primary Field Map" });
-    await repository.createDesignRecord({ id: designId, fieldMapId, name: "Base Design", pivotProjectId: projectId, isActive: true });
-    await repository.refreshProjects();
-    loadProject(nextProject, { customerId: customer.id, projectId, fieldMapId, designId });
+    const created = await repository.createProjectWithInitialFieldMap({
+      customerId: customer.id,
+      projectId,
+      projectName: trimmedName,
+      projectCrs: project.projectCrs,
+      unitSystem: settings.unitSystem,
+      fieldMapId,
+      fieldMapName: "Primary Field Map",
+    });
+    if (created) {
+      showCatalogMap({
+        customerId: customer.id,
+        projectId: created.projectRecord.id,
+        fieldMapId: created.fieldMap.id,
+        designId: null,
+      });
+    }
   }
 
-  async function createFieldMapForProject(projectId = activeCatalogContext.projectId): Promise<void> {
+  async function createFieldMapForProject(name: string, projectId = activeCatalogContext.projectId): Promise<void> {
+    const fieldName = name.trim();
+    if (!fieldName) return;
     const projectRecord = projectId ? repository.catalog.projects.find((record) => record.id === projectId) ?? null : null;
     if (!projectRecord) return;
     const createdAt = new Date().toISOString();
     const fieldMapId = `${projectRecord.id}:field-map:${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
-    const pivotProjectId = `${fieldMapId}:design-project`;
-    const designId = `${fieldMapId}:design:base`;
-    const fieldName = promptText("Field map name", `Field Map ${repository.catalog.fieldMaps.filter((record) => record.projectId === projectRecord.id).length + 1}`);
-    const nextProject: PivotProject = {
-      ...sampleProject,
-      id: pivotProjectId,
-      name: `${projectRecord.name} - ${fieldName}`,
-      projectCrs: projectRecord.projectCrs,
-      unitSystem: projectRecord.unitSystem as PivotProject["unitSystem"],
-      surveyPoints: sampleProject.surveyPoints.map((point) => ({ ...point, observedAt: createdAt })),
-    };
-    await repository.saveProject(nextProject, evaluateLayout(nextProject));
     const fieldMap = await repository.createFieldMapRecord({ id: fieldMapId, projectId: projectRecord.id, name: fieldName });
-    const design = fieldMap
-      ? await repository.createDesignRecord({ id: designId, fieldMapId: fieldMap.id, name: "Base Design", pivotProjectId, isActive: true })
-      : null;
-    await repository.refreshProjects();
-    if (design) loadProject(nextProject, { customerId: projectRecord.customerId, projectId: projectRecord.id, fieldMapId, designId: design.id });
+    if (fieldMap) {
+      showCatalogMap({
+        customerId: projectRecord.customerId,
+        projectId: projectRecord.id,
+        fieldMapId: fieldMap.id,
+        designId: null,
+      });
+    }
   }
 
-  async function createDesignForFieldMap(fieldMapId = activeCatalogContext.fieldMapId): Promise<void> {
+  async function createDesignForFieldMap(name: string, fieldMapId = activeCatalogContext.fieldMapId): Promise<void> {
+    const designName = name.trim();
+    if (!designName) return;
     const fieldMap = fieldMapId ? repository.catalog.fieldMaps.find((record) => record.id === fieldMapId) ?? null : null;
     if (!fieldMap) return;
     const projectRecord = repository.catalog.projects.find((record) => record.id === fieldMap.projectId) ?? null;
     if (!projectRecord) return;
-    const createdAt = new Date().toISOString();
-    const designName = promptText("Design name", `Design ${repository.catalog.designs.filter((record) => record.fieldMapId === fieldMap.id).length + 1}`);
-    const pivotProjectId = `${fieldMap.id}:design:${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
-    const nextProject: PivotProject = {
-      ...sampleProject,
-      id: pivotProjectId,
-      name: `${projectRecord.name} - ${fieldMap.name} - ${designName}`,
-      projectCrs: projectRecord.projectCrs,
-      unitSystem: projectRecord.unitSystem as PivotProject["unitSystem"],
-      surveyPoints: sampleProject.surveyPoints.map((point) => ({ ...point, observedAt: createdAt })),
-    };
-    await repository.saveProject(nextProject, evaluateLayout(nextProject));
-    const design = await repository.createDesignRecord({ fieldMapId: fieldMap.id, name: designName, pivotProjectId, isActive: false });
-    await repository.refreshProjects();
-    if (design) loadProject(nextProject, { customerId: projectRecord.customerId, projectId: projectRecord.id, fieldMapId: fieldMap.id, designId: design.id });
+    showCatalogMap(
+      {
+        customerId: projectRecord.customerId,
+        projectId: projectRecord.id,
+        fieldMapId: fieldMap.id,
+        designId: null,
+      },
+      `Design creation for ${designName} starts after a map is imported or the real design initialization workflow is implemented.`,
+    );
   }
 
   async function openFieldMap(fieldMapId: string): Promise<void> {
@@ -326,18 +464,113 @@ export default function App(): React.JSX.Element {
       ?? repository.catalog.designs.find((record) => record.fieldMapId === fieldMapId)
       ?? null;
     if (design) await openDesignProject(design.id);
-    else setActiveCatalogContext((current) => ({ ...current, fieldMapId, designId: null }));
+    else selectFieldMapCatalogOnly(fieldMapId);
   }
 
-  async function selectedOrDefaultCustomer(): Promise<{ id: string; displayName: string } | null> {
-    const selected = activeCatalogContext.customerId
-      ? repository.catalog.customers.find((customer) => customer.id === activeCatalogContext.customerId) ?? null
+  async function renameProjectFolder(projectId: string, name: string): Promise<void> {
+    if (catalogDialogSubmitting) return;
+    setCatalogDialogSubmitting(true);
+    try {
+      const updatedProjectRecord = await repository.renameProject(projectId, name);
+      if (!updatedProjectRecord) return;
+      if (project.id === projectId) {
+        dispatchProject({ type: "load_project", project: { ...project, name: updatedProjectRecord.name } });
+        setSavedRevision(0);
+      }
+      setRenamingProjectId(null);
+    } finally {
+      setCatalogDialogSubmitting(false);
+    }
+  }
+
+  async function moveProjectFolder(projectId: string, customerId: string): Promise<void> {
+    if (catalogDialogSubmitting) return;
+    setCatalogDialogSubmitting(true);
+    try {
+      const moved = await repository.moveProjectToCustomer(projectId, customerId);
+      if (!moved) return;
+      if (activeCatalogContext.projectId === projectId) {
+        setActiveCatalogContext((current) => ({ ...current, customerId }));
+      }
+      setMovingProjectId(null);
+    } finally {
+      setCatalogDialogSubmitting(false);
+    }
+  }
+
+  async function confirmDeleteProject(): Promise<void> {
+    if (!deletingProjectId || catalogDialogSubmitting) return;
+    const projectId = deletingProjectId;
+    setCatalogDialogSubmitting(true);
+    try {
+      const deleted = await repository.deleteProject(projectId);
+      if (deleted) {
+        if (activeCatalogContext.projectId === projectId || project.id === projectId) {
+          showCatalogMap({ customerId: activeCatalogContext.customerId, projectId: null, fieldMapId: null, designId: null });
+        }
+        setDeletingProjectId(null);
+      }
+    } finally {
+      setCatalogDialogSubmitting(false);
+    }
+  }
+
+  async function confirmDeleteCustomer(): Promise<void> {
+    if (!deletingCustomerId || catalogDialogSubmitting) return;
+    const customerId = deletingCustomerId;
+    setCatalogDialogSubmitting(true);
+    try {
+      const deleted = await repository.deleteCustomer(customerId);
+      if (deleted) {
+        if (activeCatalogContext.customerId === customerId) {
+          setActiveCatalogContext({ customerId: null, projectId: null, fieldMapId: null, designId: null });
+        }
+        setDeletingCustomerId(null);
+      }
+    } finally {
+      setCatalogDialogSubmitting(false);
+    }
+  }
+
+  function selectCustomerFolder(customerId: string): void {
+    showCatalogMap({ customerId, projectId: null, fieldMapId: null, designId: null });
+  }
+
+  function selectProjectCatalogOnly(projectId: string): void {
+    const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
+    showCatalogMap({
+      customerId: record?.customerId ?? activeCatalogContext.customerId,
+      projectId,
+      fieldMapId: null,
+      designId: null,
+    });
+  }
+
+  function selectFieldMapCatalogOnly(fieldMapId: string): void {
+    const fieldMap = repository.catalog.fieldMaps.find((record) => record.id === fieldMapId) ?? null;
+    const projectRecord = fieldMap
+      ? repository.catalog.projects.find((record) => record.id === fieldMap.projectId) ?? null
       : null;
-    if (selected) return selected;
-    const first = repository.catalog.customers[0] ?? null;
-    if (first) return first;
-    const created = await repository.createCustomer({ displayName: "Example Customer", sortName: "Example Customer" });
-    return created ? { id: created.id, displayName: created.displayName } : null;
+    showCatalogMap(
+      {
+        customerId: projectRecord?.customerId ?? activeCatalogContext.customerId,
+        projectId: fieldMap?.projectId ?? activeCatalogContext.projectId,
+        fieldMapId,
+        designId: null,
+      },
+      fieldMap ? `${fieldMap.name} has ${repository.catalog.designs.filter((record) => record.fieldMapId === fieldMap.id).length} designs.` : null,
+    );
+  }
+
+  function showCatalogMap(context: Partial<typeof activeCatalogContext>, notice: string | null = null): void {
+    setScreen("workspace");
+    setActiveView("map");
+    setHomeMapView(true);
+    setWorkflowMode("layout");
+    setCatalogNotice(notice);
+    setSelectedMapFeatureId(null);
+    setAdvisoryRecommendationPreview(null);
+    setActiveCatalogContext((current) => ({ ...current, ...context }));
   }
 
   function updateWalkthrough(moduleId: WalkthroughModuleId, complete: boolean): void {
@@ -375,7 +608,7 @@ export default function App(): React.JSX.Element {
               compact={compactLayout}
               dirty={isDirty}
               mode="launcher"
-              onCreate={createNewProject}
+              onCreate={routeToCustomerSelection}
               onOpenFiles={() => {
                 setScreen("workspace");
                 setActiveView("files");
@@ -438,7 +671,7 @@ export default function App(): React.JSX.Element {
             <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
           </View>
           <View style={[styles.projectActionRow, compactLayout && styles.statusRowCompact]}>
-            <SmallActionButton label={isDirty ? "Save *" : "Save"} onPress={saveCurrentProject} />
+            <SmallActionButton disabled={homeMapView} label={isDirty ? "Save *" : "Save"} onPress={saveCurrentProject} />
             <SmallActionButton label="Catalog" onPress={() => {
               setScreen("workspace");
               setActiveView("map");
@@ -456,36 +689,20 @@ export default function App(): React.JSX.Element {
             activeView={activeView}
             catalog={repository.catalog}
             compact={compactLayout}
-            onCreateCustomer={createCustomerFolder}
-            onCreateDesign={() => void createDesignForFieldMap()}
-            onCreateFieldMap={() => void createFieldMapForProject()}
-            onCreateProject={createProjectFolder}
+            onCreateCustomer={openCustomerCreateDialog}
+            onCreateDesign={() => openCatalogDialog("design")}
+            onCreateFieldMap={() => openCatalogDialog("fieldMap")}
+            onCreateProject={() => openCatalogDialog("project")}
             onNavigate={setActiveView}
             onOpenDesign={openDesignProject}
             onOpenFieldMap={openFieldMap}
             onOpenProject={(projectId) => {
-              const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
-              setActiveCatalogContext({
-                customerId: record?.customerId ?? activeCatalogContext.customerId,
-                projectId,
-                fieldMapId: null,
-                designId: null,
-              });
-              setActiveView("map");
-              setHomeMapView(true);
+              selectProjectCatalogOnly(projectId);
             }}
             onOpenSample={() => loadProjectDashboard(sampleProject, { customerId: null, projectId: null, fieldMapId: null, designId: null })}
-            onSelectCustomer={(customerId) => setActiveCatalogContext({ customerId, projectId: null, fieldMapId: null, designId: null })}
-            onSelectProject={(projectId) => {
-              const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
-              setActiveCatalogContext({
-                customerId: record?.customerId ?? activeCatalogContext.customerId,
-                projectId,
-                fieldMapId: null,
-                designId: null,
-              });
-            }}
-            onSelectFieldMap={(fieldMapId) => setActiveCatalogContext((current) => ({ ...current, fieldMapId, designId: null }))}
+            onSelectCustomer={selectCustomerFolder}
+            onSelectProject={selectProjectCatalogOnly}
+            onSelectFieldMap={selectFieldMapCatalogOnly}
           />
 
           <ScrollView style={styles.workspaceScroll} contentContainerStyle={[styles.content, compactLayout && styles.contentCompact]}>
@@ -494,7 +711,7 @@ export default function App(): React.JSX.Element {
               compact={compactLayout}
               dirty={isDirty}
               mode="workspace"
-              onCreate={createNewProject}
+              onCreate={routeToCustomerSelection}
               onOpenFiles={() => setActiveView("files")}
               onOpenImprovedProof={() => loadProjectDashboard(improvedCenterPivotReviewProject)}
               onInspectMap={() => {
@@ -525,6 +742,7 @@ export default function App(): React.JSX.Element {
                 settings={settings}
                 selectedMapFeatureId={selectedMapFeatureId}
                 advisoryRecommendationPreview={advisoryRecommendationPreview}
+                onSettingsChange={commitSettings}
                 onMappingWorkflowModeChange={setWorkflowMode}
                 onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
                 onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
@@ -540,11 +758,38 @@ export default function App(): React.JSX.Element {
               />
               <View style={[styles.sidePanel, compactLayout && styles.sidePanelCompact]}>
                 {homeMapView ? (
-                  <CatalogHomePanel
-                    catalog={repository.catalog}
-                    repository={repository}
-                    settings={settings}
-                  />
+                  selectedCustomer ? (
+                    <CustomerDetailPanel
+                      activeProjectId={activeCatalogContext.projectId}
+                      catalog={repository.catalog}
+                      customer={selectedCustomer}
+                      notice={catalogNotice}
+                      onCreateProject={() => openCatalogDialog("project")}
+                      onDeleteCustomer={(customerId) => setDeletingCustomerId(customerId)}
+                      onDeleteProject={(projectId) => setDeletingProjectId(projectId)}
+                      onEditCustomer={openCustomerEditDialog}
+                      onMoveProject={(projectId) => setMovingProjectId(projectId)}
+                      onOpenProject={selectProjectCatalogOnly}
+                      onRenameProject={(projectId) => setRenamingProjectId(projectId)}
+                      onSelectProject={(projectId) => {
+                        const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
+                        setActiveCatalogContext({
+                          customerId: record?.customerId ?? selectedCustomer.id,
+                          projectId,
+                          fieldMapId: null,
+                          designId: null,
+                        });
+                      }}
+                    />
+                  ) : (
+                    <CatalogHomePanel
+                      catalog={repository.catalog}
+                      notice={catalogNotice}
+                      onCreateCustomer={openCustomerCreateDialog}
+                      repository={repository}
+                      settings={settings}
+                    />
+                  )
                 ) : (
                   <>
                     <Text style={styles.sectionTitle}>Map Inspector</Text>
@@ -660,7 +905,7 @@ export default function App(): React.JSX.Element {
           )}
 
           {activeView === "settings" && (
-            <SettingsPanel settings={settings} onChange={commitSettings} />
+            <SettingsPanel mapPackages={project.mapPackages ?? []} settings={settings} onChange={commitSettings} />
           )}
 
           {activeView === "review" && (
@@ -679,7 +924,10 @@ export default function App(): React.JSX.Element {
               <ProjectFilesPanel
                 dirty={isDirty}
                 onApplyGoogleEarthKmlImport={applyGoogleEarthKmlImport}
-                onDeleteProject={repository.deleteProject}
+                onDeleteProject={(projectId) => {
+                  setDeletingProjectId(projectId);
+                  return Promise.resolve(false);
+                }}
                 onImportProjectedGeoJson={importProjectedGeoJson}
                 onImportSurveyCsv={importSurveyCsv}
                 onOpenProject={openSavedProject}
@@ -707,6 +955,85 @@ export default function App(): React.JSX.Element {
           </ScrollView>
         </View>
       </View>
+      {catalogDialogMode ? (
+        <ProjectCatalogDialog
+          contextPreview={catalogDialogContextPreview(catalogDialogMode)}
+          defaultName={catalogDialogDefaultName}
+          mode={catalogDialogMode}
+          onCancel={closeCatalogDialog}
+          onCreate={submitCatalogDialog}
+          submitting={catalogDialogSubmitting}
+          visible
+        />
+      ) : null}
+      {customerProfileDialogMode ? (
+        <CustomerProfileDialog
+          defaultDisplayName={`Customer ${repository.catalog.customers.length + 1}`}
+          initialCustomer={customerProfileDialogMode === "edit" ? editingCustomer : null}
+          mode={customerProfileDialogMode}
+          onCancel={closeCustomerProfileDialog}
+          onSave={submitCustomerProfile}
+          submitting={catalogDialogSubmitting}
+          visible
+        />
+      ) : null}
+      {renamingProject ? (
+        <ProjectCatalogDialog
+          contextPreview={formatCatalogPath(catalogPathForProject(renamingProject.id))}
+          createButtonLabel="Rename"
+          defaultName={renamingProject.name}
+          helper="Rename updates the local project document and catalog row without changing projected XY geometry."
+          mode="project"
+          onCancel={() => {
+            if (!catalogDialogSubmitting) setRenamingProjectId(null);
+          }}
+          onCreate={(name) => renameProjectFolder(renamingProject.id, name)}
+          submitting={catalogDialogSubmitting}
+          title="Rename Project"
+          visible
+        />
+      ) : null}
+      {movingProject ? (
+        <MoveProjectDialog
+          currentCustomerId={movingProject.customerId}
+          customers={repository.catalog.customers}
+          onCancel={() => {
+            if (!catalogDialogSubmitting) setMovingProjectId(null);
+          }}
+          onMove={(customerId) => moveProjectFolder(movingProject.id, customerId)}
+          projectName={movingProject.name}
+          submitting={catalogDialogSubmitting}
+          visible
+        />
+      ) : null}
+      {deletingProject ? (
+        <ConfirmActionDialog
+          confirmLabel="Delete Project"
+          message={`Delete ${deletingProject.name} and its contained field maps/designs from the local catalog. Project ZIP archives are not changed.`}
+          onCancel={() => {
+            if (!catalogDialogSubmitting) setDeletingProjectId(null);
+          }}
+          onConfirm={confirmDeleteProject}
+          submitting={catalogDialogSubmitting}
+          testID="delete-project-dialog"
+          title="Delete Project"
+          visible
+        />
+      ) : null}
+      {deletingCustomer ? (
+        <ConfirmActionDialog
+          confirmLabel="Delete Customer"
+          message={`Delete the empty customer folder ${deletingCustomer.displayName}. This is blocked automatically if any projects remain inside it.`}
+          onCancel={() => {
+            if (!catalogDialogSubmitting) setDeletingCustomerId(null);
+          }}
+          onConfirm={confirmDeleteCustomer}
+          submitting={catalogDialogSubmitting}
+          testID="delete-customer-dialog"
+          title="Delete Customer"
+          visible
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -729,10 +1056,14 @@ const WALKTHROUGH_MODULES: Array<{
 
 function CatalogHomePanel({
   catalog,
+  notice,
+  onCreateCustomer,
   repository,
   settings,
 }: {
   catalog: ProjectWorkspaceStatus["catalog"];
+  notice: string | null;
+  onCreateCustomer: () => void;
   repository: ProjectWorkspaceStatus;
   settings: AppSettings;
 }): React.JSX.Element {
@@ -751,9 +1082,127 @@ function CatalogHomePanel({
           {repository.statusMessage} · {settings.onlineImagery.enabled ? "USGS live reference is enabled with attribution on the map." : "No external imagery is requested."}
         </Text>
       </View>
+      {notice ? (
+        <View style={styles.warningItem} testID="catalog-notice">
+          <AlertTriangle size={17} color="#9a4c1c" />
+          <Text style={styles.warningText}>{notice}</Text>
+        </View>
+      ) : null}
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Add Customer" onPress={onCreateCustomer} />
+      </View>
       <View style={styles.warningItem}>
         <MapPinned size={17} color="#9a4c1c" />
-        <Text style={styles.warningText}>Open or create a field map/design from the tree to enable Design drawing. Layout mode remains RTK-only for geometry mutation.</Text>
+        <Text style={styles.warningText}>Open a saved design from the tree to enable Design drawing. New projects and field maps stay catalog-only until a real design is imported or started.</Text>
+      </View>
+    </>
+  );
+}
+
+function CustomerDetailPanel({
+  activeProjectId,
+  catalog,
+  customer,
+  notice,
+  onCreateProject,
+  onDeleteCustomer,
+  onDeleteProject,
+  onEditCustomer,
+  onMoveProject,
+  onOpenProject,
+  onRenameProject,
+  onSelectProject,
+}: {
+  activeProjectId: string | null;
+  catalog: ProjectWorkspaceStatus["catalog"];
+  customer: CustomerRecord;
+  notice: string | null;
+  onCreateProject: () => void;
+  onDeleteCustomer: (customerId: string) => void;
+  onDeleteProject: (projectId: string) => void;
+  onEditCustomer: (customerId: string) => void;
+  onMoveProject: (projectId: string) => void;
+  onOpenProject: (projectId: string) => void | Promise<void>;
+  onRenameProject: (projectId: string) => void;
+  onSelectProject: (projectId: string) => void;
+}): React.JSX.Element {
+  const projects = catalog.projects.filter((projectRecord) => projectRecord.customerId === customer.id);
+  const profileRows = [
+    ["Company", customer.companyName],
+    ["Primary Contact", customer.contactName],
+    ["Email", customer.email],
+    ["Phone", customer.phone],
+    ["Location", customer.location],
+  ].filter(([, value]) => value);
+  const canDeleteCustomer = projects.length === 0;
+
+  return (
+    <>
+      <View style={styles.customerDetailHeader} testID="customer-detail-panel">
+        <View style={styles.customerIconBadge}>
+          <UserRound size={22} color="#eef7f1" />
+        </View>
+        <View style={styles.customerDetailTitleBlock}>
+          <Text style={styles.sectionTitle}>{customer.displayName}</Text>
+          <Text style={styles.mapFeatureMeta}>{projects.length} project{projects.length === 1 ? "" : "s"} in this customer folder</Text>
+        </View>
+      </View>
+
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Edit Customer" onPress={() => onEditCustomer(customer.id)} />
+        <SmallActionButton disabled={!canDeleteCustomer} label="Delete Customer" onPress={() => onDeleteCustomer(customer.id)} />
+        <SmallActionButton label="New Project" onPress={onCreateProject} />
+      </View>
+
+      {notice ? (
+        <View style={styles.warningItem} testID="catalog-notice">
+          <AlertTriangle size={17} color="#9a4c1c" />
+          <Text style={styles.warningText}>{notice}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.mapFeatureEditor}>
+        <Text style={styles.mapFeatureTitle}>Profile</Text>
+        {profileRows.length === 0 && !customer.notes ? (
+          <Text style={styles.mapFeatureMeta}>No contact details saved yet.</Text>
+        ) : profileRows.map(([label, value]) => (
+          <View key={label} style={styles.profileRow}>
+            <Text style={styles.profileLabel}>{label}</Text>
+            <Text style={styles.profileValue}>{value}</Text>
+          </View>
+        ))}
+        {customer.notes ? <Text style={styles.profileNotes}>{customer.notes}</Text> : null}
+        {!canDeleteCustomer ? <Text style={styles.mapFeatureMeta}>Delete is available after moving or deleting contained projects.</Text> : null}
+      </View>
+
+      <View style={styles.projectList} testID="customer-detail-projects">
+        {projects.length === 0 ? (
+          <Text style={styles.dashboardMuted}>No projects in this customer folder.</Text>
+        ) : projects.map((projectRecord) => {
+          const fieldMaps = catalog.fieldMaps.filter((fieldMap) => fieldMap.projectId === projectRecord.id);
+          const active = activeProjectId === projectRecord.id;
+          return (
+            <Pressable
+              accessibilityLabel={`Select project ${projectRecord.name}`}
+              accessibilityRole="button"
+              key={projectRecord.id}
+              onPress={() => onSelectProject(projectRecord.id)}
+              style={[styles.customerProjectRow, active && styles.customerProjectRowActive]}
+              testID={`customer-project-row-${projectRecord.id}`}
+            >
+              <View style={styles.customerProjectText}>
+                <Text style={styles.rowTitle}>{projectRecord.name}</Text>
+                <Text style={styles.rowMeta}>{fieldMaps.length} field map{fieldMaps.length === 1 ? "" : "s"} · {projectRecord.projectCrs} · {projectRecord.unitSystem.replaceAll("_", " ")}</Text>
+              </View>
+              <View style={styles.inlineActions}>
+                <SmallActionButton label="Open" onPress={() => onOpenProject(projectRecord.id)} />
+                <SmallActionButton label="Rename" onPress={() => onRenameProject(projectRecord.id)} />
+                <SmallActionButton label="Move" onPress={() => onMoveProject(projectRecord.id)} />
+                <SmallActionButton label="Delete" onPress={() => onDeleteProject(projectRecord.id)} />
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
     </>
   );
@@ -1030,6 +1479,7 @@ function browserLocalSettings(settings?: PivotProject["settings"], current?: App
     return {
       ...merged,
       onlineImagery: current.onlineImagery,
+      referenceOverlay: current.referenceOverlay,
     };
   }
   if (Platform.OS !== "web") return merged;
@@ -1171,8 +1621,7 @@ function ProjectTreeRail({
         </View>
         <View style={styles.projectTreeActions} testID="project-tree-actions">
           <SmallActionButton label="Customer" onPress={onCreateCustomer} />
-          <SmallActionButton label="Create New" onPress={onCreateProject} />
-          <SmallActionButton label="Project" onPress={onCreateProject} />
+          <SmallActionButton disabled={!activeContext.customerId} label="Project" onPress={onCreateProject} />
           <SmallActionButton disabled={!activeContext.projectId} label="Field Map" onPress={onCreateFieldMap} />
           <SmallActionButton disabled={!activeContext.fieldMapId} label="Design" onPress={onCreateDesign} />
           <SmallActionButton label="Open Sample" onPress={onOpenSample} />
@@ -1509,14 +1958,6 @@ function requiredFiniteNumber(value: string, label: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) throw new Error(`${label} must be a finite number.`);
   return parsed;
-}
-
-function promptText(message: string, fallback: string): string {
-  if (Platform.OS === "web" && typeof globalThis.prompt === "function") {
-    const prompted = globalThis.prompt(message, fallback)?.trim();
-    if (prompted) return prompted;
-  }
-  return fallback;
 }
 
 const styles = StyleSheet.create({
@@ -1991,6 +2432,67 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
     padding: 12,
+  },
+  customerDetailHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  },
+  customerIconBadge: {
+    alignItems: "center",
+    backgroundColor: "#254234",
+    borderRadius: 8,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  customerDetailTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileRow: {
+    alignItems: "center",
+    borderBottomColor: "#e1e8df",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "space-between",
+    paddingVertical: 7,
+  },
+  profileLabel: {
+    color: "#526257",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  profileValue: {
+    color: "#1d2c22",
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+  profileNotes: {
+    color: "#44564b",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  customerProjectRow: {
+    backgroundColor: "#f7faf5",
+    borderColor: "#dce3da",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  customerProjectRowActive: {
+    backgroundColor: "#edf7f0",
+    borderColor: "#77aa8b",
+  },
+  customerProjectText: {
+    gap: 3,
+    minWidth: 0,
   },
   mapFeatureTitle: {
     color: "#17241c",

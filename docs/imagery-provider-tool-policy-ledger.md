@@ -6,7 +6,7 @@ Date: 2026-05-28
 
 CPLayout uses open-source client software and free/no-cost, attribution-visible imagery paths. Live imagery is an interactive planning reference only. It must not become canonical geometry, a bulk downloader, a hidden-key integration, or a cloud telemetry path.
 
-The v1 built-in live provider remains USGS The National Map Imagery Only. Custom open XYZ/WMTS templates are allowed only when the operator supplies a fixed tile URL template, attribution, license text, and no credentials. OpenLayers stays deferred until browser-side raster reprojection into arbitrary projected views is needed.
+The v1 built-in live provider remains USGS The National Map Imagery Only. Custom open XYZ/WMTS templates are allowed only when the operator supplies a fixed tile URL template, attribution, license text, and no credentials. Reference overlays prefer local vector packages; when none are available and browser live reference sources are enabled, public no-key USGS TNM Imagery Topo may be used for roads, administrative boundaries, and labels. OpenLayers stays deferred until browser-side raster reprojection into arbitrary projected views is needed.
 
 ## Local Facts
 
@@ -22,6 +22,7 @@ The v1 built-in live provider remains USGS The National Map Imagery Only. Custom
 | --- | --- | --- |
 | USGS TNM Imagery Only | Built-in live U.S. imagery provider for v1, disabled by default and capped per viewport. | USGS lists `USGS Imagery Only` as a National Map base map and describes resolution variation; TNM tiled services use Web Mercator. https://www.usgs.gov/faqs/what-are-base-map-services-or-urls-used-national-map |
 | USGS TNM imagery service endpoint | Current built-in URL-template source. Keep attribution visible. | Service metadata: https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer?f=pjson |
+| USGS TNM Imagery Topo | Public no-key browser reference overlay for roads, administrative boundaries, and labels when no local vector reference package is available. | Service metadata describes a cached basemap of orthoimagery and US Topo vector data visible to the 1:9,028 scale. https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer?f=pjson |
 | NAIP | Offline/preprocessed source and component of USGS imagery, not a separate CPLayout live default yet. | Data.gov/USDA NAIP record: https://catalog.data.gov/dataset/national-agriculture-imagery-program-naip-imagery |
 | NASA GIBS | Candidate custom fixed-template science layer if license, attribution, layer, and time are explicit. | GIBS documents standards-based WMTS/WMS/TWMS/XYZ access. https://nasa-gibs.github.io/gibs-api-docs/access-basics/ |
 | Landsat and NASA Earthdata | Offline/preprocessed source lane. | NASA Earthdata open data guidance: https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-information-guidance |

@@ -1,0 +1,4 @@
+d0ac24de488ab5d54f3513d075143a8b8f728bd3dc08a3252857796b3c6670a0  reports/ml-cv-pivot-locating/20260601T-run/pivot-locator-loop.json
+8292905fd63ba8031b9f2b5faa9d5c27af41a5ef4dbb9e98f3efb54171ef0a6a  reports/ml-cv-pivot-locating/20260601T-run/pivot-locator-iterations.jsonl
+8204d95502f58e77929d1ed7584b9ea541b925642fce9dec9408cfed9c1528f7  reports/ml-cv-pivot-locating/20260601T-run/pivot-locator-annotated.png
+0fddff2b66b8081f76b4d72265318184c4c0f0b1684c1957981008b522890f56  reports/ml-cv-pivot-locating/20260601T-run/pivot-locator-synthetic-fixture.png

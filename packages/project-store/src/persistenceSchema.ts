@@ -4,7 +4,7 @@ export interface SqlMigration {
   statements: string[];
 }
 
-export const SQLITE_SCHEMA_VERSION = 5;
+export const SQLITE_SCHEMA_VERSION = 8;
 
 export const SQLITE_MIGRATIONS: SqlMigration[] = [
   {
@@ -275,6 +275,35 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
       `CREATE INDEX IF NOT EXISTS idx_field_maps_project ON field_maps(project_record_id, name)`,
       `CREATE INDEX IF NOT EXISTS idx_designs_field_map ON designs(field_map_id, is_active, name)`,
       `CREATE INDEX IF NOT EXISTS idx_designs_pivot_project ON designs(pivot_project_id)`,
+    ],
+  },
+  {
+    id: 6,
+    name: "add_customer_profile_fields",
+    statements: [
+      `ALTER TABLE customers ADD COLUMN contact_name TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE customers ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE customers ADD COLUMN phone TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE customers ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE customers ADD COLUMN notes TEXT NOT NULL DEFAULT ''`,
+    ],
+  },
+  {
+    id: 7,
+    name: "add_customer_structured_contact_fields",
+    statements: [
+      `ALTER TABLE customers ADD COLUMN company_name TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE customers ADD COLUMN primary_contact_first_name TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE customers ADD COLUMN primary_contact_middle_initial TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE customers ADD COLUMN primary_contact_last_name TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE customers ADD COLUMN primary_contact_suffix TEXT NOT NULL DEFAULT ''`,
+    ],
+  },
+  {
+    id: 8,
+    name: "add_map_package_vector_overlay_metadata",
+    statements: [
+      `ALTER TABLE map_packages ADD COLUMN vector_overlay_json TEXT`,
     ],
   },
 ];

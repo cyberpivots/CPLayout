@@ -50,6 +50,13 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
 
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await page.getByTestId("browser-reference-layers-button").click();
+  await expect(page.getByTestId("browser-reference-layers-panel")).toContainText("USGS The National Map Imagery Topo");
+  await expect(page.getByTestId("browser-reference-layers-panel")).toContainText("public no-key raster");
+  await expect(page.getByTestId("reference-layer-roads")).toBeEnabled();
+  await expect(page.getByTestId("reference-layer-borders")).toBeEnabled();
+  await expect(page.getByTestId("reference-layer-labels")).toBeEnabled();
+  await page.getByTestId("browser-reference-layers-button").click();
   await expect(page.getByText("Saved")).toBeVisible();
   await expect(page.getByTestId("browser-workflow-design")).toBeVisible();
   await page.getByTestId("browser-tool-boundary").click();
@@ -74,30 +81,166 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   expect(disallowed).toEqual([]);
 });
 
-test("map-first catalog tree creates customer project field maps and designs", async ({ page }, testInfo) => {
-  const promptAnswers = ["Adams Farms", "Adams North Unit", "North Quarter", "RTK Layout Pass"];
+test("map-first catalog tree creates customer projects and field maps without hidden sample designs", async ({ page }, testInfo) => {
+  const nativeDialogs: string[] = [];
   page.on("dialog", async (dialog) => {
-    await dialog.accept(promptAnswers.shift() ?? "Catalog Item");
+    nativeDialogs.push(dialog.message());
+    await dialog.dismiss();
   });
 
   await page.goto("/");
   await expect(page.getByText("North America project catalog")).toBeVisible();
   await expect(page.getByTestId("catalog-home-status")).toContainText(/Browser local storage/);
+  const railProjectButton = page.getByTestId("project-tree-actions").getByRole("button", { name: "Project", exact: true });
+  await expect(railProjectButton).toBeVisible();
+  await expect(railProjectButton).toBeDisabled();
+  await expect(page.getByTestId("catalog-dialog")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Adams North Unit" })).toBeHidden();
 
-  await page.getByRole("button", { name: "Customer" }).click();
+  await createCustomerFolder(page, "Adams Farms");
   await expect(page.getByRole("button", { name: "Adams Farms" })).toBeVisible();
-  await page.getByRole("button", { name: "Project" }).click();
-  await expect(page.getByRole("button", { name: "Adams North Unit" })).toBeVisible();
-  await expect(page.getByTestId("browser-workflow-design")).toHaveAttribute("aria-pressed", "true");
+  await expect(railProjectButton).toBeEnabled();
+  await createProjectFromRail(page, "Adams North Unit", "Saved under: Adams Farms");
+  const railProject = page.getByTestId("project-tree-rail").getByRole("button", { name: "Adams North Unit" });
+  await expect(railProject).toBeVisible();
+  await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByText("North America Map")).toBeVisible();
+  await expect(page.getByTestId("browser-workflow-layout")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("browser-tool-boundary")).toBeHidden();
+  await expect(page.getByText("North Quarter Concept Layout")).toBeHidden();
+  await expect(page.getByText("Base Design")).toBeHidden();
+  await expect(page.getByTestId("project-tree-rail")).toContainText("0 designs");
+  await expectNoSavedProjectDocuments(page);
 
-  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Field Map" }).click();
+  await createCatalogItem(page, "Field Map", "North Quarter", "Saved under: Adams Farms > Adams North Unit");
   await expect(page.getByRole("button", { name: "North Quarter" })).toBeVisible();
-  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Design" }).click();
-  await expect(page.getByRole("button", { name: "RTK Layout Pass" })).toBeVisible();
-  await page.getByRole("button", { name: "Adams North Unit" }).dispatchEvent("dblclick");
+  await expect(page.getByTestId("project-tree-rail")).toContainText("North Quarter");
+  await expect(page.getByTestId("project-tree-rail")).toContainText("0 designs");
+  await expect(page.getByText("North America Map")).toBeVisible();
+  await expectNoSavedProjectDocuments(page);
+  await createCatalogItem(page, "Design", "RTK Layout Pass", "Saved under: Adams Farms > Adams North Unit > North Quarter");
+  await expect(page.getByRole("button", { name: "RTK Layout Pass" })).toBeHidden();
+  await expect(page.getByTestId("catalog-notice")).toContainText("Design creation for RTK Layout Pass starts after a map is imported");
+  await expectNoSavedProjectDocuments(page);
+  await railProject.dispatchEvent("dblclick");
   await expect(page.getByTestId("project-tree-rail")).toContainText("North Quarter");
   await expect(page.getByText("Saved")).toBeVisible();
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByText("North Quarter Concept Layout", { exact: true }).first()).toBeVisible();
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-tool-boundary")).toBeVisible();
+  expect(nativeDialogs).toEqual([]);
   await saveScreen(page, testInfo, "map-first-catalog-tree-create");
+});
+
+test("catalog creation modal cancel leaves the tree unchanged", async ({ page }, testInfo) => {
+  const nativeDialogs: string[] = [];
+  page.on("dialog", async (dialog) => {
+    nativeDialogs.push(dialog.message());
+    await dialog.dismiss();
+  });
+
+  await page.goto("/");
+  await expect(page.getByText("No customer folders yet.")).toBeVisible();
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Customer" }).click();
+  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
+  await page.getByTestId("customer-profile-cancel").click();
+  await expect(page.getByTestId("customer-profile-dialog")).toBeHidden();
+  await expect(page.getByText("No customer folders yet.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customer 1" })).toBeHidden();
+  expect(nativeDialogs).toEqual([]);
+  await saveScreen(page, testInfo, "catalog-modal-cancel-unchanged");
+});
+
+test("catalog creation modal validates blank names without creating records", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await expect(page.getByText("No customer folders yet.")).toBeVisible();
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Customer" }).click();
+  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
+  await page.getByLabel("Company name").fill("   ");
+  await page.getByTestId("customer-profile-save").click();
+  await expect(page.getByTestId("customer-profile-error")).toHaveText("Enter primary contact first and last name before saving.");
+  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
+  await expect(page.getByText("No customer folders yet.")).toBeVisible();
+  await page.getByTestId("customer-profile-cancel").click();
+  await saveScreen(page, testInfo, "catalog-modal-blank-validation");
+});
+
+test("project creation modal stays reachable on a 390px mobile viewport", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await createCustomerFolder(page, "Mobile Farms");
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Project", exact: true }).click();
+  await expect(page.getByTestId("catalog-dialog")).toBeVisible();
+  await expect(page.getByTestId("catalog-dialog-context")).toContainText("Saved under: Mobile Farms");
+  await expect(page.getByTestId("catalog-dialog-create")).toBeVisible();
+  await expect(page.getByTestId("catalog-dialog-cancel")).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectInsideViewport(page, "catalog-dialog");
+  await saveScreen(page, testInfo, "catalog-modal-mobile-390");
+});
+
+test("customer detail manages profile and contained project lifecycle", async ({ page }, testInfo) => {
+  const nativeDialogs: string[] = [];
+  page.on("dialog", async (dialog) => {
+    nativeDialogs.push(dialog.message());
+    await dialog.dismiss();
+  });
+
+  await page.goto("/");
+  await createCustomerFolder(page, "Adams Farms", {
+    firstName: "Ana",
+    middleInitial: "J",
+    lastName: "Operator",
+    suffix: "Jr.",
+    email: "ana@example.test",
+    phone: "555-0100",
+    location: "Adams County",
+  });
+  await expect(page.getByTestId("customer-detail-panel")).toContainText("Adams Farms");
+  await expect(page.getByText("Operator, Ana J. Jr.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit Customer" }).click();
+  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
+  await page.getByLabel("Location").fill("North Adams County");
+  await page.getByTestId("customer-profile-save").click();
+  await expect(page.getByTestId("customer-profile-dialog")).toBeHidden();
+  await expect(page.getByText("North Adams County")).toBeVisible();
+
+  await createProjectForSelectedCustomer(page, "North Unit", "Saved under: Adams Farms");
+  await page.getByRole("button", { name: "Catalog" }).click();
+  await expect(page.getByTestId("customer-detail-projects")).toContainText("North Unit");
+  await expect(page.getByRole("button", { name: "Delete Customer" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Rename" }).click();
+  await expect(page.getByTestId("catalog-dialog")).toBeVisible();
+  await page.getByLabel("Catalog item name").fill("North Unit Renamed");
+  await page.getByTestId("catalog-dialog-create").click();
+  await expect(page.getByTestId("catalog-dialog")).toBeHidden();
+  await expect(page.getByTestId("customer-detail-projects")).toContainText("North Unit Renamed");
+
+  await createCustomerFolder(page, "Beta Farms");
+  await page.getByRole("button", { name: "Adams Farms" }).click();
+  await page.getByRole("button", { name: "Move" }).click();
+  await expect(page.getByTestId("move-project-dialog")).toBeVisible();
+  await page.getByRole("radio", { name: "Move to Beta Farms" }).click();
+  await page.getByTestId("move-project-confirm").click();
+  await expect(page.getByTestId("move-project-dialog")).toBeHidden();
+  await page.getByRole("button", { name: "Beta Farms" }).click();
+  await expect(page.getByTestId("customer-detail-projects")).toContainText("North Unit Renamed");
+
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByTestId("delete-project-dialog")).toBeVisible();
+  await page.getByTestId("delete-project-dialog-confirm").click();
+  await expect(page.getByTestId("delete-project-dialog")).toBeHidden();
+  await expect(page.getByTestId("customer-detail-projects")).not.toContainText("North Unit Renamed");
+
+  await page.getByRole("button", { name: "Delete Customer" }).click();
+  await expect(page.getByTestId("delete-customer-dialog")).toBeVisible();
+  await page.getByTestId("delete-customer-dialog-confirm").click();
+  await expect(page.getByRole("button", { name: "Beta Farms" })).toBeHidden();
+  expect(nativeDialogs).toEqual([]);
+  await saveScreen(page, testInfo, "customer-detail-project-lifecycle");
 });
 
 test("public proof map features can select the side-panel editor without geometry mutation", async ({ page }, testInfo) => {
@@ -462,8 +605,11 @@ test("settings rejected credentialed imagery never reaches map requests", async 
 test("network allowlist blocks credential query strings on allowed imagery hosts", async ({ page }, testInfo) => {
   await page.goto("/");
   expect(isAllowedNetworkRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/0/0/0")).toBe(true);
+  expect(isAllowedNetworkRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/0/0/0")).toBe(true);
   expect(isAllowedNetworkRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/0/0/0?token=secret")).toBe(false);
+  expect(isAllowedNetworkRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/0/0/0?token=secret")).toBe(false);
   expect(isAllowedExternalProofRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/0/0/0?api_key=secret")).toBe(false);
+  expect(isAllowedExternalProofRequest("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/0/0/0?api_key=secret")).toBe(false);
   await saveScreen(page, testInfo, "network-credential-query-blocked");
 });
 
@@ -625,6 +771,7 @@ test("settings browser-local imagery settings stay out of project zip", async ({
   if (!projectJsonBytes) return;
   const projectJson = strFromU8(projectJsonBytes);
   expect(projectJson).not.toContain("onlineImagery");
+  expect(projectJson).not.toContain("referenceOverlay");
   expect(projectJson).not.toContain("tileUrlTemplate");
   expect(projectJson).not.toContain("Local Open Tiles");
   expect(projectJson).not.toContain("offline-map-packages");
@@ -1055,10 +1202,7 @@ test("survey point delete removes imported evidence from canonical export", asyn
 
 test("survey rtk float import counts as draft input", async ({ page }, testInfo) => {
   await page.goto("/");
-  page.once("dialog", async (dialog) => {
-    await dialog.accept("RTK Float Import Test");
-  });
-  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Create New" }).click();
+  await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nfloat-only,Float Only,control,501010,4506010,imported,rtk_float\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1320,7 +1464,8 @@ test("dashboard recent-project row can reopen a saved browser project", async ({
   const sampleRow = recentProjects.getByRole("button", { name: "Open recent project North Quarter Concept Layout" });
   await expect(sampleRow).toBeVisible();
   await recentProjects.getByRole("button", { name: "Create New" }).click();
-  await expect(page.getByText("Untitled Field Layout", { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("catalog-notice")).toContainText("Select or create a customer folder");
+  await expect(page.getByText("Untitled Field Layout", { exact: true })).toBeHidden();
   await page.getByTestId("workspace-nav-dashboard").click();
   await sampleRow.click();
   await expect(page.getByText("North Quarter Concept Layout", { exact: true }).first()).toBeVisible();
@@ -1343,6 +1488,75 @@ async function captureConsoleFailures(page: Page): Promise<void> {
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(2);
+}
+
+async function expectNoSavedProjectDocuments(page: Page): Promise<void> {
+  const storageShape = await page.evaluate(() => {
+    const projects = JSON.parse(localStorage.getItem("center-pivot-layout-projects-v1") ?? "{}") as Record<string, unknown>;
+    const catalog = JSON.parse(localStorage.getItem("center-pivot-layout-project-catalog-v1") ?? "{\"designs\":[]}") as { designs?: unknown[] };
+    return {
+      designCount: Array.isArray(catalog.designs) ? catalog.designs.length : 0,
+      projectDocumentIds: Object.keys(projects),
+    };
+  });
+  expect(storageShape.designCount).toBe(0);
+  expect(storageShape.projectDocumentIds).toEqual([]);
+}
+
+async function createCustomerFolder(
+  page: Page,
+  name: string,
+  profile: Partial<{
+    firstName: string;
+    middleInitial: string;
+    lastName: string;
+    suffix: string;
+    email: string;
+    phone: string;
+    location: string;
+    notes: string;
+  }> = {},
+): Promise<void> {
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Customer", exact: true }).click();
+  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
+  await page.getByLabel("Company name").fill(name);
+  await page.getByLabel("Last name").fill(profile.lastName ?? "Contact");
+  await page.getByLabel("First name").fill(profile.firstName ?? "Primary");
+  if (profile.middleInitial !== undefined) await page.getByLabel("M.I.").fill(profile.middleInitial);
+  if (profile.suffix !== undefined) await page.getByLabel("Suffix").fill(profile.suffix);
+  if (profile.email !== undefined) await page.getByLabel("Email").fill(profile.email);
+  if (profile.phone !== undefined) await page.getByLabel("Phone").fill(profile.phone);
+  if (profile.location !== undefined) await page.getByLabel("Location").fill(profile.location);
+  if (profile.notes !== undefined) await page.getByLabel("Notes").fill(profile.notes);
+  await page.getByTestId("customer-profile-save").click();
+  await expect(page.getByTestId("customer-profile-dialog")).toBeHidden();
+}
+
+async function createProjectForSelectedCustomer(page: Page, itemName: string, contextText?: string | RegExp): Promise<void> {
+  await page.getByRole("button", { name: "New Project", exact: true }).click();
+  await expect(page.getByTestId("catalog-dialog")).toBeVisible();
+  if (contextText) await expect(page.getByTestId("catalog-dialog-context")).toContainText(contextText);
+  await page.getByLabel("Catalog item name").fill(itemName);
+  await page.getByTestId("catalog-dialog-create").click();
+  await expect(page.getByTestId("catalog-dialog")).toBeHidden();
+}
+
+async function createProjectFromRail(page: Page, itemName: string, contextText?: string | RegExp): Promise<void> {
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Project", exact: true }).click();
+  await expect(page.getByTestId("catalog-dialog")).toBeVisible();
+  if (contextText) await expect(page.getByTestId("catalog-dialog-context")).toContainText(contextText);
+  await page.getByLabel("Catalog item name").fill(itemName);
+  await page.getByTestId("catalog-dialog-create").click();
+  await expect(page.getByTestId("catalog-dialog")).toBeHidden();
+}
+
+async function createCatalogItem(page: Page, actionName: string, itemName: string, contextText?: string | RegExp): Promise<void> {
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: actionName, exact: true }).click();
+  await expect(page.getByTestId("catalog-dialog")).toBeVisible();
+  if (contextText) await expect(page.getByTestId("catalog-dialog-context")).toContainText(contextText);
+  await page.getByLabel("Catalog item name").fill(itemName);
+  await page.getByTestId("catalog-dialog-create").click();
+  await expect(page.getByTestId("catalog-dialog")).toBeHidden();
 }
 
 async function saveScreen(page: Page, testInfo: TestInfo, label: string): Promise<void> {
@@ -1377,17 +1591,31 @@ async function expectInsideContainer(page: Page, childTestId: string, containerT
   expect(child.y + child.height, `${childTestId} bottom edge`).toBeLessThanOrEqual(container.y + container.height + 2);
 }
 
+async function expectInsideViewport(page: Page, testId: string): Promise<void> {
+  const viewport = page.viewportSize();
+  const box = await page.getByTestId(testId).boundingBox();
+  expect(viewport, "viewport").not.toBeNull();
+  expect(box, `${testId} bounding box`).not.toBeNull();
+  if (!viewport || !box) return;
+  expect(box.x, `${testId} left edge`).toBeGreaterThanOrEqual(0);
+  expect(box.y, `${testId} top edge`).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width, `${testId} right edge`).toBeLessThanOrEqual(viewport.width + 2);
+  expect(box.y + box.height, `${testId} bottom edge`).toBeLessThanOrEqual(viewport.height + 2);
+}
+
 function isAllowedNetworkRequest(url: string, strictOffline = false): boolean {
   if (hasCredentialQueryParameter(url)) return false;
   if (url.startsWith("http://127.0.0.1:")) return true;
   if (strictOffline) return url.startsWith("data:") || url.startsWith("blob:");
   if (url.startsWith("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/")) return true;
+  if (url.startsWith("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/")) return true;
   return url.startsWith("data:") || url.startsWith("blob:");
 }
 
 function isAllowedExternalProofRequest(url: string): boolean {
   if (hasCredentialQueryParameter(url)) return false;
   if (url.startsWith("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/")) return true;
+  if (url.startsWith("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/")) return true;
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
   return false;
 }

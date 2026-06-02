@@ -16,10 +16,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import {
+  resolveReferenceOverlaySource,
   resolveOnlineImageryProvider,
   type OnlineImageryProvider,
   type ObstacleZone,
   type ProjectMapFeatureKind,
+  type ReferenceOverlayLayerKey,
   type XY,
 } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
@@ -31,6 +33,8 @@ import {
   type UtilityFeatureGeometry,
 } from "./browserMapInteraction";
 import { projectLayoutToWgs84FeatureCollection, projectWgs84Bounds, projectWgs84Center } from "./mapOverlayGeoJson";
+import { registerPmtilesProtocolOnce } from "./pmtilesProtocol.web";
+import { buildReferenceOverlayStyleParts } from "./referenceOverlayStyle";
 import { SvgMapSurface } from "./SvgMapSurface";
 import type { MapSurfaceProps } from "./types";
 
@@ -69,6 +73,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onMoveInfrastructurePoint,
     onPlacePivot,
     onSelectMapFeature,
+    onSettingsChange,
   } = props;
   const homeView = props.homeView === true;
   const { width } = useWindowDimensions();
@@ -89,6 +94,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const [mode, setMode] = useState<DrawingMode>("pan");
   const [activeLayer, setActiveLayer] = useState<DrawingLayerType>("field_boundary");
   const [draftVertices, setDraftVertices] = useState<XY[]>([]);
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [mapFeatureKind, setMapFeatureKind] = useState<ProjectMapFeatureKind>("underground_pipeline");
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [status, setStatus] = useState("Imagery is a live reference. Project edits remain projected XY.");
@@ -148,6 +154,29 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const providerKey = activeProvider
     ? `${activeProvider.id}:${activeProvider.tileUrlTemplate}:${activeProvider.tileScheme}:${activeProvider.minZoom}:${activeProvider.maxZoom}`
     : "no-live-imagery";
+  const referenceOverlay = useMemo(
+    () => resolveReferenceOverlaySource({
+      allowPublicNetwork: Boolean(activeProvider),
+      preferences: settings.referenceOverlay,
+      mapPackages: project.mapPackages ?? [],
+      target: "web_maplibre_gl_js",
+    }),
+    [activeProvider, project.mapPackages, settings.referenceOverlay],
+  );
+  const referenceOverlayKey = [
+    referenceOverlay.status,
+    referenceOverlay.sourceKind,
+    referenceOverlay.packageId ?? "",
+    referenceOverlay.source?.url ?? "",
+    referenceOverlay.source?.tiles?.join("|") ?? "",
+    referenceOverlay.rasterSources?.flatMap((source) => source.tiles).join("|") ?? "",
+    settings.referenceOverlay.mode,
+    settings.referenceOverlay.roads,
+    settings.referenceOverlay.borders,
+    settings.referenceOverlay.labels,
+    settings.referenceOverlay.schema,
+  ].join(":");
+  const referenceOverlayPanelStatus = referenceOverlay;
   const interactionRef = useRef<InteractionState>({
     activeLayer,
     featureGeometry: mapFeatureOption.geometry,
@@ -199,13 +228,14 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   useEffect(() => {
     if (!containerRef.current || projectionError) return undefined;
     setRuntimeError(null);
+    registerPmtilesProtocolOnce();
     const map = new maplibregl.Map({
       attributionControl: false,
       center: projectionFrame.center,
       container: containerRef.current,
       dragRotate: false,
       pitchWithRotate: false,
-      style: buildWorkbenchStyle(activeProvider, overlayState.featureCollection),
+      style: buildWorkbenchStyle(activeProvider, overlayState.featureCollection, referenceOverlay, settings.referenceOverlay),
       zoom: activeProvider ? Math.min(15, activeProvider.maxZoom) : 14,
     });
     mapRef.current = map;
@@ -243,7 +273,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       mapRef.current = null;
       map.remove();
     };
-  }, [activeProvider, homeView, providerKey, project.id, projectionError, projectionFrame.bounds, projectionFrame.center]);
+  }, [activeProvider, homeView, providerKey, project.id, projectionError, projectionFrame.bounds, projectionFrame.center, referenceOverlayKey, settings.referenceOverlay]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -330,8 +360,18 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     setStatus(nextStatus);
   }
 
+  function toggleReferenceLayer(layer: ReferenceOverlayLayerKey): void {
+    if (!onSettingsChange || !referenceOverlay.canRender) return;
+    const nextReferenceOverlay = {
+      ...settings.referenceOverlay,
+      [layer]: !settings.referenceOverlay[layer],
+    };
+    onSettingsChange({ ...settings, referenceOverlay: nextReferenceOverlay });
+  }
+
   const canCommitDraft = canEditOnMap && draftVertices.length >= 3 && (mode === "draw_boundary" || mode === "mark_obstacle");
   const canSaveFeature = canEditOnMap && mode === "measure" && mapFeatureOption.geometry === "LineString" && draftVertices.length >= 2;
+  const canToggleReferenceOverlay = Boolean(onSettingsChange && referenceOverlay.canRender);
 
   return (
     <View style={styles.shell} testID="browser-map-workbench">
@@ -364,6 +404,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         })}
         <View style={[styles.toolHud, compactLayout && styles.toolHudCompact]}>
           <ToolButton active={mode === "pan"} icon={<Hand size={17} color={mode === "pan" ? "#ffffff" : "#173428"} />} label="Pan" onPress={() => setTool("pan")} testID="browser-tool-pan" />
+          <ToolButton active={layersPanelOpen} icon={<Layers size={17} color={layersPanelOpen ? "#ffffff" : "#173428"} />} label="Layers" onPress={() => setLayersPanelOpen((open) => !open)} testID="browser-reference-layers-button" />
           {canEditOnMap ? (
             <>
               <ToolButton active={mode === "draw_boundary"} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} testID="browser-tool-boundary" />
@@ -380,6 +421,45 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
             {(["obstacle", "road", "ditch", "fence", "tree", "building", "canal", "exclusion"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
             ))}
+          </View>
+        ) : null}
+
+        {layersPanelOpen ? (
+          <View style={[styles.referenceLayerHud, compactLayout && styles.referenceLayerHudCompact]} testID="browser-reference-layers-panel">
+            <Text style={styles.referenceLayerTitle}>Reference Layers</Text>
+            <Text style={styles.referenceLayerMeta}>
+              {referenceOverlay.canRender
+                ? formatReferenceOverlayStatus(referenceOverlay)
+                : referenceOverlayPanelStatus.reason}
+            </Text>
+            <View style={styles.referenceLayerActions}>
+              <LayerToggle
+                active={referenceOverlay.canRender && settings.referenceOverlay.roads}
+                disabled={!canToggleReferenceOverlay}
+                label="Roads"
+                onPress={() => toggleReferenceLayer("roads")}
+                testID="reference-layer-roads"
+              />
+              <LayerToggle
+                active={referenceOverlay.canRender && settings.referenceOverlay.borders}
+                disabled={!canToggleReferenceOverlay}
+                label="Borders"
+                onPress={() => toggleReferenceLayer("borders")}
+                testID="reference-layer-borders"
+              />
+              <LayerToggle
+                active={referenceOverlay.canRender && settings.referenceOverlay.labels}
+                disabled={!canToggleReferenceOverlay}
+                label="Labels"
+                onPress={() => toggleReferenceLayer("labels")}
+                testID="reference-layer-labels"
+              />
+            </View>
+            <Text style={styles.referenceLayerAttribution}>
+              {referenceOverlayPanelStatus.attribution
+                ? `${referenceOverlayPanelStatus.attribution} · ${referenceOverlayPanelStatus.licenseText ?? "License metadata required"}`
+                : "Local vector overlays only; no public OSM raster tiles or hosted basemap APIs are requested."}
+            </Text>
           </View>
         ) : null}
 
@@ -448,8 +528,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
 function buildWorkbenchStyle(
   provider: OnlineImageryProvider | null,
   featureCollection: ReturnType<typeof projectLayoutToWgs84FeatureCollection>,
+  referenceOverlay: ReturnType<typeof resolveReferenceOverlaySource>,
+  referenceOverlayPreferences: MapSurfaceProps["settings"]["referenceOverlay"],
 ): StyleSpecification {
+  const referenceOverlayParts = buildReferenceOverlayStyleParts(referenceOverlay, referenceOverlayPreferences);
   const sources: StyleSpecification["sources"] = {
+    ...referenceOverlayParts.sources,
     layout: {
       type: "geojson",
       data: featureCollection,
@@ -482,6 +566,7 @@ function buildWorkbenchStyle(
   }
 
   layers.push(
+    ...referenceOverlayParts.layers,
     fillLayer("field-fill", "field_boundary", "#f4f1df", 0.18),
     fillLayer("allowed-fill", "allowed_coverage", "#2f8fc1", 0.34),
     fillLayer("end-gun-fill", "end_gun_coverage", "#33a79b", 0.28),
@@ -500,11 +585,20 @@ function buildWorkbenchStyle(
     circleLayer("draft-point", "draft_vertices", "#0f766e", 7),
   );
 
-  return {
+  const style: StyleSpecification = {
     version: 8,
     sources,
     layers,
   };
+  if (referenceOverlayParts.glyphs) style.glyphs = referenceOverlayParts.glyphs;
+  return style;
+}
+
+function formatReferenceOverlayStatus(referenceOverlay: ReturnType<typeof resolveReferenceOverlaySource>): string {
+  if (referenceOverlay.sourceKind === "public_raster") {
+    return `${referenceOverlay.autoApplied ? "Auto-applied" : "Manual"}: ${referenceOverlay.packageName ?? "USGS public reference"} · public no-key raster`;
+  }
+  return `${referenceOverlay.autoApplied ? "Auto-applied" : "Manual"}: ${referenceOverlay.packageName ?? referenceOverlay.packageId} · ${referenceOverlay.schema.replaceAll("_", " ")}`;
 }
 
 function fillLayer(id: string, layerType: string, color: string, opacity: number): StyleSpecification["layers"][number] {
@@ -635,6 +729,23 @@ function ToolButton({ active, icon, label, onPress, testID }: { active: boolean;
     <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} aria-pressed={active} onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive]} testID={testID}>
       {icon}
       <Text style={[styles.toolButtonText, active && styles.toolButtonTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function LayerToggle({ active, disabled, label, onPress, testID }: { active: boolean; disabled: boolean; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ checked: active, disabled }}
+      aria-disabled={disabled}
+      aria-pressed={active}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.layerToggle, active && styles.layerToggleActive, disabled && styles.layerToggleDisabled]}
+      testID={testID}
+    >
+      <Text style={[styles.layerToggleText, active && styles.layerToggleTextActive, disabled && styles.layerToggleTextDisabled]}>{label}</Text>
     </Pressable>
   );
 }
@@ -795,6 +906,73 @@ const styles = StyleSheet.create({
     left: 8,
     maxWidth: "94%",
     top: 104,
+  },
+  referenceLayerHud: {
+    backgroundColor: "rgba(251,253,249,0.97)",
+    borderColor: "#c9d6cb",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    left: 12,
+    maxWidth: 340,
+    padding: 10,
+    position: "absolute",
+    top: 70,
+  },
+  referenceLayerHudCompact: {
+    left: 8,
+    maxWidth: "94%",
+    right: 8,
+    top: 104,
+  },
+  referenceLayerTitle: {
+    color: "#173428",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  referenceLayerMeta: {
+    color: "#47584d",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 15,
+  },
+  referenceLayerActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  referenceLayerAttribution: {
+    color: "#57675e",
+    fontSize: 10,
+    fontWeight: "800",
+    lineHeight: 14,
+  },
+  layerToggle: {
+    backgroundColor: "#f5f8f2",
+    borderColor: "#d2ded4",
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 32,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  layerToggleActive: {
+    backgroundColor: "#173428",
+    borderColor: "#173428",
+  },
+  layerToggleDisabled: {
+    opacity: 0.56,
+  },
+  layerToggleText: {
+    color: "#173428",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  layerToggleTextActive: {
+    color: "#ffffff",
+  },
+  layerToggleTextDisabled: {
+    color: "#66776d",
   },
   chip: {
     backgroundColor: "#f5f8f2",

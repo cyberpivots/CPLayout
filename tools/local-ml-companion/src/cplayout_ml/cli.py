@@ -114,6 +114,16 @@ def main(argv: list[str] | None = None) -> int:
     improve_boundary.add_argument("--min-iterations", type=int, default=5, help="Minimum detector iterations. Values below 5 are raised to 5.")
     improve_boundary.add_argument("--created-at", default=DEFAULT_CREATED_AT)
 
+    pivot_loop = subcommands.add_parser("run-pivot-locator-loop", help="Run a strict 100-iteration local pivot-center locator loop.")
+    pivot_loop.add_argument("--map-canvas", type=Path, help="Optional local map-canvas screenshot to evaluate.")
+    pivot_loop.add_argument("--output-dir", required=True, type=Path, help="Directory for pivot-locator loop artifacts.")
+    pivot_loop.add_argument("--iterations", type=int, default=100, help="Detector iterations to run. Values below 1 are rejected.")
+    pivot_loop.add_argument("--synthetic-fixture", action="store_true", help="Generate a deterministic local synthetic pivot fixture with known image-space truth.")
+    pivot_loop.add_argument("--truth-center-x", type=float, help="Optional image-space truth center X for --map-canvas.")
+    pivot_loop.add_argument("--truth-center-y", type=float, help="Optional image-space truth center Y for --map-canvas.")
+    pivot_loop.add_argument("--truth-radius", type=float, help="Optional image-space truth radius for --map-canvas.")
+    pivot_loop.add_argument("--created-at", default=DEFAULT_CREATED_AT)
+
     prepare_dataset = subcommands.add_parser("prepare-vision-dataset", help="Validate a local fixture manifest and write deterministic dataset metadata.")
     prepare_dataset.add_argument("--manifest", required=True, type=Path, help="Fixture manifest JSON with local artifact paths.")
     prepare_dataset.add_argument("--output-dir", required=True, type=Path, help="Directory for vision-dataset-metadata.json.")
@@ -172,6 +182,17 @@ def main(argv: list[str] | None = None) -> int:
             args.operator_boundary_name,
             args.output_dir,
             args.min_iterations,
+            args.created_at,
+        )
+    if args.command == "run-pivot-locator-loop":
+        return run_pivot_locator_loop(
+            args.map_canvas,
+            args.output_dir,
+            args.iterations,
+            args.synthetic_fixture,
+            args.truth_center_x,
+            args.truth_center_y,
+            args.truth_radius,
             args.created_at,
         )
     if args.command == "prepare-vision-dataset":
@@ -521,6 +542,406 @@ def run_boundary_improvement_iterations(
             "learningAction": learning_action_for_iteration(index, best, comparisons),
         })
     return iterations
+
+
+def run_pivot_locator_loop(
+    map_canvas_path: Path | None,
+    output_dir: Path,
+    iteration_count: int,
+    synthetic_fixture: bool,
+    truth_center_x: float | None,
+    truth_center_y: float | None,
+    truth_radius: float | None,
+    created_at: str,
+) -> int:
+    if iteration_count < 1:
+        raise SystemExit("--iterations must be a positive integer.")
+    if not synthetic_fixture and map_canvas_path is None:
+        raise SystemExit("run-pivot-locator-loop requires --map-canvas or --synthetic-fixture.")
+
+    cv = import_cv2()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    input_artifact = None
+    fixture_kind = "local_map_canvas"
+    if synthetic_fixture:
+        image, truth = synthetic_pivot_fixture(cv)
+        fixture_kind = "synthetic_generated"
+        synthetic_path = output_dir / "pivot-locator-synthetic-fixture.png"
+        if not cv.imwrite(str(synthetic_path), image):
+            raise SystemExit(f"OpenCV could not write synthetic pivot fixture: {synthetic_path}")
+        input_artifact = artifact_inventory(synthetic_path, require_doc_kml=False)
+    else:
+        image = cv.imread(str(map_canvas_path))
+        if image is None:
+            raise SystemExit(f"OpenCV could not read map-canvas screenshot: {map_canvas_path}")
+        input_artifact = artifact_inventory(map_canvas_path, require_doc_kml=False)
+        truth = None
+        if truth_center_x is not None or truth_center_y is not None or truth_radius is not None:
+            if truth_center_x is None or truth_center_y is None or truth_radius is None:
+                raise SystemExit("--truth-center-x, --truth-center-y, and --truth-radius must be supplied together.")
+            truth = {
+                "center": {"x": float(truth_center_x), "y": float(truth_center_y)},
+                "radius": float(truth_radius),
+                "source": "operator_supplied_image_space_cli_args",
+            }
+
+    iterations = run_pivot_locator_iterations(cv, image, truth, iteration_count)
+    best = best_pivot_locator_iteration(iterations)
+    annotated_path = output_dir / "pivot-locator-annotated.png"
+    write_pivot_locator_annotated_image(cv, image, annotated_path, best, truth)
+    iterations_path = output_dir / "pivot-locator-iterations.jsonl"
+    report_path = output_dir / "pivot-locator-loop.json"
+    iterations_path.write_text("".join(json.dumps(item, sort_keys=True) + "\n" for item in iterations), encoding="utf-8")
+
+    synthetic_passes = sum(1 for item in iterations if item["decision"] == "pass_synthetic")
+    detected_iterations = sum(1 for item in iterations if item["bestCandidate"] is not None)
+    report = {
+        "schemaVersion": "cplayout-pivot-locator-loop-v1",
+        "createdAt": created_at,
+        "iterationCount": len(iterations),
+        "fixtureKind": fixture_kind,
+        "advisoryOnly": True,
+        "surveyGrade": False,
+        "canonicalGeometryMutation": False,
+        "networkRequired": False,
+        "hiddenKeysAllowed": False,
+        "inputArtifact": input_artifact,
+        "artifacts": {
+            "iterationsJsonl": artifact_inventory(iterations_path, require_doc_kml=False),
+            "annotatedPng": artifact_inventory(annotated_path, require_doc_kml=False),
+        },
+        "truth": truth,
+        "bestIteration": best,
+        "metrics": {
+            "detectedIterations": detected_iterations,
+            "syntheticPasses": synthetic_passes,
+            "syntheticPassRate": round(safe_ratio(synthetic_passes, len(iterations)), 4),
+            "bestCenterErrorPx": None if best is None else best["metrics"].get("centerErrorPx"),
+            "bestRadiusMismatchRatio": None if best is None else best["metrics"].get("radiusMismatchRatio"),
+            "bestWeightedVoteScore": None if best is None else best["weightedVote"]["score"],
+        },
+        "realWorldAcceptance": {
+            "accepted": False,
+            "blockers": [
+                "No operator-approved real-world pivot fixture manifest was supplied for this command.",
+                "No project-CRS calibration was supplied, so the run cannot claim projected-XY automatic pivot locating.",
+                "Output remains local companion evidence and must not mutate canonical project geometry.",
+            ],
+        },
+        "nonGoals": [
+            "Does not use paid APIs, hidden keys, cloud training, hosted imagery, or telemetry.",
+            "Does not prove survey-grade center-pivot location.",
+            "Does not prove React Native, Android, iOS, native ONNX, native MapLibre, or mobile runtime behavior.",
+            "Does not apply detected candidates to PivotProject geometry.",
+        ],
+    }
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps({
+        "schemaVersion": report["schemaVersion"],
+        "json": str(report_path),
+        "iterations": str(iterations_path),
+        "annotatedPng": str(annotated_path),
+        "iterationCount": len(iterations),
+        "detectedIterations": detected_iterations,
+        "syntheticPasses": synthetic_passes,
+        "bestCenterErrorPx": report["metrics"]["bestCenterErrorPx"],
+        "canonicalGeometryMutation": False,
+        "networkRequired": False,
+        "realWorldAccepted": False,
+    }, indent=2))
+    return 0
+
+
+def synthetic_pivot_fixture(cv: Any) -> tuple[Any, dict[str, Any]]:
+    import numpy as np  # type: ignore
+
+    width = 640
+    height = 640
+    center = (328, 312)
+    radius = 172
+    image = np.full((height, width, 3), (74, 114, 72), dtype=np.uint8)
+    cv.rectangle(image, (54, 68), (586, 574), (63, 96, 56), -1)
+    cv.rectangle(image, (54, 68), (586, 574), (38, 52, 38), 3)
+    for offset, color, thickness in [
+        (0, (190, 220, 170), 4),
+        (-42, (102, 150, 92), 2),
+        (38, (96, 138, 84), 2),
+    ]:
+        cv.circle(image, center, radius + offset, color, thickness, cv.LINE_AA)
+    for angle in range(0, 360, 45):
+        radians = math.radians(angle)
+        end = (int(center[0] + math.cos(radians) * radius), int(center[1] + math.sin(radians) * radius))
+        cv.line(image, center, end, (88, 132, 82), 1, cv.LINE_AA)
+    cv.circle(image, center, 7, (230, 240, 210), -1, cv.LINE_AA)
+    cv.circle(image, (150, 128), 46, (120, 120, 120), 2, cv.LINE_AA)
+    cv.line(image, (0, 568), (640, 616), (46, 46, 46), 5, cv.LINE_AA)
+    return image, {
+        "center": {"x": float(center[0]), "y": float(center[1])},
+        "radius": float(radius),
+        "source": "deterministic_synthetic_fixture",
+    }
+
+
+def run_pivot_locator_iterations(
+    cv: Any,
+    image: Any,
+    truth: dict[str, Any] | None,
+    iteration_count: int,
+) -> list[dict[str, Any]]:
+    iterations = []
+    best_error = None
+    for index, config in enumerate(pivot_locator_iteration_configs(iteration_count), start=1):
+        candidates = detect_pivot_candidates_for_config(cv, image, config)
+        scored = [score_pivot_candidate(candidate, truth, image.shape[1], image.shape[0]) for candidate in candidates]
+        scored = sorted(scored, key=lambda item: item["score"], reverse=True)
+        best_candidate = scored[0] if scored else None
+        metrics = pivot_iteration_metrics(best_candidate, truth)
+        previous_best_error = best_error
+        if isinstance(metrics.get("centerErrorPx"), (int, float)):
+            best_error = metrics["centerErrorPx"] if best_error is None else min(best_error, metrics["centerErrorPx"])
+        decision = pivot_iteration_decision(metrics, truth)
+        weighted_vote = pivot_weighted_vote(decision, metrics, truth)
+        iterations.append({
+            "iteration": index,
+            "analysis": "Evaluate one deterministic local OpenCV Hough-circle parameter set against the pivot-center fixture.",
+            "research": "OpenCV Hough Circle Transform baseline; no paid API, hosted imagery, cloud training, or hidden key.",
+            "improvement": pivot_learning_action(index, previous_best_error, metrics),
+            "test": "Compare detected center/radius to known image-space truth when available; keep projected XY blocked without calibration.",
+            "config": config,
+            "candidateCount": len(scored),
+            "bestCandidate": best_candidate,
+            "topCandidates": scored[:5],
+            "metrics": metrics,
+            "weightedVote": weighted_vote,
+            "decision": decision,
+            "canonicalGeometryMutation": False,
+            "networkRequired": False,
+            "hiddenKeysAllowed": False,
+        })
+    return iterations
+
+
+def pivot_locator_iteration_configs(iteration_count: int) -> list[dict[str, Any]]:
+    blur_kernels = [5, 7, 9]
+    dp_values = [1.1, 1.2, 1.3, 1.4]
+    param1_values = [55, 70, 85, 100]
+    param2_values = [14, 18, 22, 26, 30]
+    min_radius_scales = [0.12, 0.16, 0.2]
+    max_radius_scales = [0.42, 0.5, 0.58, 0.66]
+    configs = []
+    for blur in blur_kernels:
+        for dp in dp_values:
+            for param1 in param1_values:
+                for param2 in param2_values:
+                    for min_scale in min_radius_scales:
+                        for max_scale in max_radius_scales:
+                            if min_scale >= max_scale:
+                                continue
+                            configs.append({
+                                "name": f"hough_b{blur}_dp{dp}_p1{param1}_p2{param2}_r{min_scale}-{max_scale}",
+                                "blurKernel": blur,
+                                "dp": dp,
+                                "param1": param1,
+                                "param2": param2,
+                                "minRadiusScale": min_scale,
+                                "maxRadiusScale": max_scale,
+                            })
+    if not configs:
+        raise SystemExit("No pivot locator iteration configs were generated.")
+    return [configs[index % len(configs)] for index in range(iteration_count)]
+
+
+def detect_pivot_candidates_for_config(cv: Any, image: Any, config: dict[str, Any]) -> list[dict[str, Any]]:
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    blur_kernel = int(config["blurKernel"])
+    if blur_kernel % 2 == 0:
+        blur_kernel += 1
+    blurred = cv.medianBlur(gray, blur_kernel)
+    height, width = gray.shape[:2]
+    min_dimension = min(width, height)
+    circles = cv.HoughCircles(
+        blurred,
+        cv.HOUGH_GRADIENT,
+        dp=float(config["dp"]),
+        minDist=max(60, min_dimension // 4),
+        param1=float(config["param1"]),
+        param2=float(config["param2"]),
+        minRadius=max(12, int(min_dimension * float(config["minRadiusScale"]))),
+        maxRadius=max(18, int(min_dimension * float(config["maxRadiusScale"]))),
+    )
+    if circles is None:
+        return []
+    candidates = []
+    for rank, raw_circle in enumerate(circles[0, :12], start=1):
+        x, y, radius = [float(value) for value in raw_circle]
+        if radius <= 0:
+            continue
+        centeredness = 1 - min(1.0, math.hypot(x - width / 2, y - height / 2) / max(width, height))
+        radius_prior = 1 - min(1.0, abs(radius - min_dimension * 0.27) / max(min_dimension * 0.27, 1))
+        confidence = max(0.05, min(0.95, 0.45 + centeredness * 0.25 + radius_prior * 0.2 - (rank - 1) * 0.03))
+        payload = circle_payload(x, y, radius, confidence)
+        payload["rank"] = rank
+        payload["detector"] = "opencv_hough_circle"
+        candidates.append(payload)
+    return candidates
+
+
+def score_pivot_candidate(candidate: dict[str, Any], truth: dict[str, Any] | None, width: int, height: int) -> dict[str, Any]:
+    metrics = pivot_candidate_truth_metrics(candidate, truth)
+    centeredness = 1 - min(1.0, math.hypot(candidate["center"]["x"] - width / 2, candidate["center"]["y"] - height / 2) / max(width, height))
+    score = float(candidate["confidence"]) * 35 + centeredness * 15
+    if truth is not None and metrics["centerErrorPx"] is not None and metrics["radiusMismatchRatio"] is not None:
+        center_score = max(0.0, 1 - float(metrics["centerErrorPx"]) / max(float(truth["radius"]), 1.0))
+        radius_score = max(0.0, 1 - float(metrics["radiusMismatchRatio"]))
+        score += center_score * 32 + radius_score * 18
+    scored = dict(candidate)
+    scored["metrics"] = metrics
+    scored["score"] = round(max(0.0, min(100.0, score)), 3)
+    return scored
+
+
+def pivot_candidate_truth_metrics(candidate: dict[str, Any] | None, truth: dict[str, Any] | None) -> dict[str, Any]:
+    if candidate is None or truth is None:
+        return {
+            "centerErrorPx": None,
+            "centerOffsetRatio": None,
+            "radiusErrorPx": None,
+            "radiusMismatchRatio": None,
+        }
+    center = candidate["center"]
+    truth_center = truth["center"]
+    center_error = math.hypot(float(center["x"]) - float(truth_center["x"]), float(center["y"]) - float(truth_center["y"]))
+    radius_error = abs(float(candidate["radius"]) - float(truth["radius"]))
+    return {
+        "centerErrorPx": round(center_error, 3),
+        "centerOffsetRatio": round(center_error / max(float(truth["radius"]), 1.0), 4),
+        "radiusErrorPx": round(radius_error, 3),
+        "radiusMismatchRatio": round(radius_error / max(float(truth["radius"]), 1.0), 4),
+    }
+
+
+def pivot_iteration_metrics(best_candidate: dict[str, Any] | None, truth: dict[str, Any] | None) -> dict[str, Any]:
+    metrics = pivot_candidate_truth_metrics(best_candidate, truth)
+    metrics["detected"] = best_candidate is not None
+    metrics["confidence"] = None if best_candidate is None else best_candidate["confidence"]
+    metrics["projectedXyCalibration"] = "blocked_missing_project_crs_calibration"
+    metrics["realWorldFixture"] = "blocked_missing_operator_approved_fixture"
+    return metrics
+
+
+def pivot_iteration_decision(metrics: dict[str, Any], truth: dict[str, Any] | None) -> str:
+    if not metrics["detected"]:
+        return "fail_no_detection"
+    if truth is None:
+        return "blocked_missing_truth"
+    center_error = metrics.get("centerErrorPx")
+    if isinstance(center_error, (int, float)) and center_error <= DEFAULT_VISION_THRESHOLDS["maxCenterTruthOffsetPx"]:
+        return "pass_synthetic"
+    return "fail_synthetic"
+
+
+def pivot_weighted_vote(decision: str, metrics: dict[str, Any], truth: dict[str, Any] | None) -> dict[str, Any]:
+    ml_cv = 1.0 if decision == "pass_synthetic" else (0.45 if metrics["detected"] else 0.0)
+    calibration = 0.0
+    pivot_design = 0.65 if decision == "pass_synthetic" else 0.25
+    qa_records = 1.0 if truth is not None else 0.35
+    security = 1.0
+    weights = {
+        "mlCvEvidence": 0.35,
+        "gisCalibrationXy": 0.25,
+        "pivotDesign": 0.2,
+        "qaRecords": 0.15,
+        "offlineSecurity": 0.05,
+    }
+    components = {
+        "mlCvEvidence": ml_cv,
+        "gisCalibrationXy": calibration,
+        "pivotDesign": pivot_design,
+        "qaRecords": qa_records,
+        "offlineSecurity": security,
+    }
+    score = sum(weights[key] * components[key] for key in weights)
+    blockers = [
+        "projected XY calibration absent",
+        "operator-approved real-world pivot fixture absent",
+    ]
+    return {
+        "status": "weighted_vote_passed_for_synthetic_fixture" if decision == "pass_synthetic" else "weighted_vote_not_passed",
+        "score": round(score, 4),
+        "weights": weights,
+        "components": components,
+        "vetoes": [],
+        "blockers": blockers,
+        "realWorldAccepted": False,
+    }
+
+
+def best_pivot_locator_iteration(iterations: list[dict[str, Any]]) -> dict[str, Any] | None:
+    detected = [item for item in iterations if item["bestCandidate"] is not None]
+    if not detected:
+        return None
+    return sorted(
+        detected,
+        key=lambda item: (
+            item["decision"] == "pass_synthetic",
+            -float(item["metrics"]["centerErrorPx"]) if isinstance(item["metrics"].get("centerErrorPx"), (int, float)) else -999999.0,
+            item["weightedVote"]["score"],
+            item["bestCandidate"]["score"],
+        ),
+        reverse=True,
+    )[0]
+
+
+def pivot_learning_action(index: int, previous_best_error: float | None, metrics: dict[str, Any]) -> str:
+    if not metrics["detected"]:
+        return "No circle candidate detected; continue threshold sweep."
+    center_error = metrics.get("centerErrorPx")
+    if not isinstance(center_error, (int, float)):
+        return "Candidate detected without truth scoring; keep as unreviewed image-space evidence."
+    if previous_best_error is None or center_error < previous_best_error:
+        return f"Improved best center error to {center_error:.3f} px."
+    return f"No best-error improvement on iteration {index}; preserve metrics for rejection audit."
+
+
+def write_pivot_locator_annotated_image(
+    cv: Any,
+    image: Any,
+    output_path: Path,
+    best_iteration: dict[str, Any] | None,
+    truth: dict[str, Any] | None,
+) -> None:
+    annotated = image.copy()
+    if truth is not None:
+        truth_circle = {
+            "center": truth["center"],
+            "radius": truth["radius"],
+            "confidence": 1.0,
+        }
+        draw_circle(cv, annotated, truth_circle, (255, 255, 255), "truth pivot ring")
+    if best_iteration is not None and best_iteration["bestCandidate"] is not None:
+        draw_circle(cv, annotated, best_iteration["bestCandidate"], (0, 255, 255), "best detected pivot candidate")
+    cv.putText(
+        annotated,
+        "PIVOT LOCATOR LOOP - ADVISORY, NO PROJECTED XY MUTATION",
+        (24, 42),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.82,
+        (0, 0, 0),
+        5,
+        cv.LINE_AA,
+    )
+    cv.putText(
+        annotated,
+        "PIVOT LOCATOR LOOP - ADVISORY, NO PROJECTED XY MUTATION",
+        (24, 42),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.82,
+        (255, 255, 255),
+        2,
+        cv.LINE_AA,
+    )
+    if not cv.imwrite(str(output_path), annotated):
+        raise SystemExit(f"OpenCV could not write pivot locator annotated image: {output_path}")
 
 
 def torch_gpu_image_preflight(image: Any) -> dict[str, Any] | None:

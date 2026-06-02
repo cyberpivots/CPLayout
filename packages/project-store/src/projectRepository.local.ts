@@ -2,15 +2,25 @@ import { parseProjectDocument, serializeProjectDocument } from "@cplayout/core";
 import type { LayoutResult, PivotProject } from "@cplayout/core";
 import {
   createCatalogId,
+  defaultDesignId,
+  defaultFieldMapId,
   emptyProjectCatalog,
   ensureCatalogEntryForProject,
   ensureLegacyCatalogForSummaries,
+  assertCustomerPrimaryContact,
+  normalizeCustomerRecord,
+  normalizeProjectCatalog,
   normalizeCatalogSortName,
-  sortProjectCatalog,
 } from "./projectCatalog";
 import type {
   CatalogProjectRecord,
+  CreatedProjectFieldMapWorkspace,
+  CreatedProjectWorkspace,
+  CreateProjectWithInitialFieldMapInput,
+  CreateProjectWithInitialDesignInput,
   CustomerRecord,
+  CustomerProfileInput,
+  CustomerProfileUpdateInput,
   DesignRecord,
   FieldMapRecord,
   ProjectCatalog,
@@ -48,12 +58,10 @@ function readCatalogStore(): ProjectCatalog {
   if (!raw) return emptyProjectCatalog();
   try {
     const parsed = JSON.parse(raw) as Partial<ProjectCatalog>;
-    return sortProjectCatalog({
-      customers: Array.isArray(parsed.customers) ? parsed.customers : [],
-      projects: Array.isArray(parsed.projects) ? parsed.projects : [],
-      fieldMaps: Array.isArray(parsed.fieldMaps) ? parsed.fieldMaps : [],
-      designs: Array.isArray(parsed.designs) ? parsed.designs : [],
-    });
+    const catalog = normalizeProjectCatalog(parsed);
+    const serialized = JSON.stringify(catalog);
+    if (serialized !== raw) localStorage.setItem(CATALOG_STORAGE_KEY, serialized);
+    return catalog;
   } catch {
     return emptyProjectCatalog();
   }
@@ -61,7 +69,7 @@ function readCatalogStore(): ProjectCatalog {
 
 function writeCatalogStore(catalog: ProjectCatalog): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(sortProjectCatalog(catalog)));
+  localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(normalizeProjectCatalog(catalog)));
 }
 
 async function ensureCatalogAsync(): Promise<ProjectCatalog> {
@@ -151,11 +159,17 @@ export const localStorageProjectRepository: ProjectRepository = {
 
   async deleteProjectAsync(projectId: string): Promise<void> {
     const store = readStore();
-    delete store[projectId];
-    writeStore(store);
     const catalog = await ensureCatalogAsync();
     const projectIds = new Set([projectId]);
     const fieldMapIds = new Set(catalog.fieldMaps.filter((fieldMap) => projectIds.has(fieldMap.projectId)).map((fieldMap) => fieldMap.id));
+    const pivotProjectIds = new Set(
+      catalog.designs
+        .filter((record) => fieldMapIds.has(record.fieldMapId) || record.pivotProjectId === projectId)
+        .map((record) => record.pivotProjectId),
+    );
+    pivotProjectIds.add(projectId);
+    for (const pivotProjectId of pivotProjectIds) delete store[pivotProjectId];
+    writeStore(store);
     writeCatalogStore({
       customers: catalog.customers,
       projects: catalog.projects.filter((record) => !projectIds.has(record.id)),
@@ -164,19 +178,136 @@ export const localStorageProjectRepository: ProjectRepository = {
     });
   },
 
-  async createCustomerAsync(input: { displayName: string; sortName?: string }): Promise<CustomerRecord> {
+  async createCustomerAsync(input: CustomerProfileInput): Promise<CustomerRecord> {
     const catalog = await ensureCatalogAsync();
     const now = new Date().toISOString();
-    const displayName = normalizeCatalogSortName(input.displayName);
-    const customer: CustomerRecord = {
+    const customer = normalizeCustomerRecord({
       id: createCatalogId("customer", now),
-      displayName,
-      sortName: normalizeCatalogSortName(input.sortName ?? displayName),
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (!customer) throw new Error("Customer folder could not be created.");
+    assertCustomerPrimaryContact(customer);
+    writeCatalogStore({ ...catalog, customers: [...catalog.customers, customer] });
+    return customer;
+  },
+
+  async updateCustomerAsync(input: CustomerProfileUpdateInput): Promise<CustomerRecord> {
+    const catalog = await ensureCatalogAsync();
+    const existing = catalog.customers.find((record) => record.id === input.id);
+    if (!existing) throw new Error("Customer folder was not found in the local catalog.");
+    const now = new Date().toISOString();
+    const { id: _inputId, ...profileInput } = input;
+    const updated = normalizeCustomerRecord({
+      ...existing,
+      ...profileInput,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: now,
+    });
+    if (!updated) throw new Error("Customer folder could not be updated.");
+    assertCustomerPrimaryContact(updated);
+    writeCatalogStore({
+      ...catalog,
+      customers: catalog.customers.map((record) => record.id === updated.id ? updated : record),
+    });
+    return updated;
+  },
+
+  async deleteCustomerAsync(customerId: string): Promise<void> {
+    const catalog = await ensureCatalogAsync();
+    const projectCount = catalog.projects.filter((record) => record.customerId === customerId).length;
+    if (projectCount > 0) {
+      throw new Error("Customer folder still contains projects. Move or delete those projects before deleting the customer.");
+    }
+    writeCatalogStore({
+      ...catalog,
+      customers: catalog.customers.filter((record) => record.id !== customerId),
+    });
+  },
+
+  async createProjectWithInitialDesignAsync(input: CreateProjectWithInitialDesignInput): Promise<CreatedProjectWorkspace> {
+    const catalog = await ensureCatalogAsync();
+    const customer = catalog.customers.find((record) => record.id === input.customerId);
+    if (!customer) throw new Error("Select or create a customer folder before creating a project.");
+    const now = new Date().toISOString();
+    const project = input.project;
+    const projectRecord: CatalogProjectRecord = {
+      id: project.id,
+      customerId: customer.id,
+      name: normalizeCatalogSortName(project.name),
+      projectCrs: project.projectCrs,
+      unitSystem: project.unitSystem,
       createdAt: now,
       updatedAt: now,
     };
-    writeCatalogStore({ ...catalog, customers: [...catalog.customers, customer] });
-    return customer;
+    const fieldMap: FieldMapRecord = {
+      id: input.fieldMapId ?? defaultFieldMapId(project.id),
+      projectId: project.id,
+      name: normalizeCatalogSortName(input.fieldMapName ?? "Primary Field Map"),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const design: DesignRecord = {
+      id: input.designId ?? defaultDesignId(project.id),
+      fieldMapId: fieldMap.id,
+      name: normalizeCatalogSortName(input.designName ?? "Base Design"),
+      pivotProjectId: project.id,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const store = readStore();
+    store[project.id] = {
+      summary: {
+        id: project.id,
+        name: project.name,
+        projectCrs: project.projectCrs,
+        unitSystem: project.unitSystem,
+        updatedAt: now,
+      },
+      document: serializeProjectDocument(project),
+    };
+    writeStore(store);
+    writeCatalogStore({
+      customers: catalog.customers,
+      projects: upsertById(catalog.projects, projectRecord),
+      fieldMaps: upsertById(catalog.fieldMaps, fieldMap),
+      designs: upsertById(catalog.designs, design),
+    });
+    return { project, projectRecord, fieldMap, design };
+  },
+
+  async createProjectWithInitialFieldMapAsync(input: CreateProjectWithInitialFieldMapInput): Promise<CreatedProjectFieldMapWorkspace> {
+    const catalog = await ensureCatalogAsync();
+    const customer = catalog.customers.find((record) => record.id === input.customerId);
+    if (!customer) throw new Error("Select or create a customer folder before creating a project.");
+    const now = new Date().toISOString();
+    const projectId = input.projectId ?? createCatalogId("project", now);
+    const projectRecord: CatalogProjectRecord = {
+      id: projectId,
+      customerId: customer.id,
+      name: normalizeCatalogSortName(input.projectName),
+      projectCrs: normalizeCatalogSortName(input.projectCrs),
+      unitSystem: normalizeCatalogSortName(input.unitSystem),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const fieldMap: FieldMapRecord = {
+      id: input.fieldMapId ?? defaultFieldMapId(projectId),
+      projectId,
+      name: normalizeCatalogSortName(input.fieldMapName ?? "Primary Field Map"),
+      createdAt: now,
+      updatedAt: now,
+    };
+    writeCatalogStore({
+      customers: catalog.customers,
+      projects: upsertById(catalog.projects, projectRecord),
+      fieldMaps: upsertById(catalog.fieldMaps, fieldMap),
+      designs: catalog.designs,
+    });
+    return { projectRecord, fieldMap };
   },
 
   async createProjectRecordAsync(input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord> {
@@ -195,6 +326,51 @@ export const localStorageProjectRepository: ProjectRepository = {
     return record;
   },
 
+  async renameProjectAsync(projectId: string, name: string): Promise<CatalogProjectRecord> {
+    const trimmedName = normalizeCatalogSortName(name);
+    const store = readStore();
+    const entry = store[projectId];
+    const now = new Date().toISOString();
+    if (entry) {
+      const project = parseProjectDocument(entry.document);
+      const updatedProject = { ...project, name: trimmedName };
+      store[projectId] = {
+        summary: {
+          ...entry.summary,
+          name: trimmedName,
+          updatedAt: now,
+        },
+        document: serializeProjectDocument(updatedProject),
+      };
+      writeStore(store);
+    }
+    const catalog = await ensureCatalogAsync();
+    const existingRecord = catalog.projects.find((record) => record.id === projectId);
+    if (!existingRecord) throw new Error("Project folder was not found in the local catalog.");
+    const updatedRecord = { ...existingRecord, name: trimmedName, updatedAt: now };
+    writeCatalogStore({
+      ...catalog,
+      projects: catalog.projects.map((record) => record.id === projectId ? updatedRecord : record),
+    });
+    return updatedRecord;
+  },
+
+  async moveProjectToCustomerAsync(projectId: string, customerId: string): Promise<CatalogProjectRecord> {
+    const catalog = await ensureCatalogAsync();
+    if (!catalog.customers.some((record) => record.id === customerId)) {
+      throw new Error("Target customer folder was not found in the local catalog.");
+    }
+    const projectRecord = catalog.projects.find((record) => record.id === projectId);
+    if (!projectRecord) throw new Error("Project folder was not found in the local catalog.");
+    const now = new Date().toISOString();
+    const moved = { ...projectRecord, customerId, updatedAt: now };
+    writeCatalogStore({
+      ...catalog,
+      projects: catalog.projects.map((record) => record.id === projectId ? moved : record),
+    });
+    return moved;
+  },
+
   async createFieldMapRecordAsync(input: { id?: string; projectId: string; name: string }): Promise<FieldMapRecord> {
     const catalog = await ensureCatalogAsync();
     const now = new Date().toISOString();
@@ -211,6 +387,14 @@ export const localStorageProjectRepository: ProjectRepository = {
 
   async createDesignRecordAsync(input: { id?: string; fieldMapId: string; name: string; pivotProjectId: string; isActive?: boolean }): Promise<DesignRecord> {
     const catalog = await ensureCatalogAsync();
+    if (!catalog.fieldMaps.some((record) => record.id === input.fieldMapId)) {
+      throw new Error("Field map was not found in the local catalog.");
+    }
+    const storedProject = readStore()[input.pivotProjectId];
+    if (!storedProject) {
+      throw new Error("Create or import a saved design project before adding a design row.");
+    }
+    parseProjectDocument(storedProject.document);
     const now = new Date().toISOString();
     const record: DesignRecord = {
       id: input.id ?? createCatalogId("design", now),

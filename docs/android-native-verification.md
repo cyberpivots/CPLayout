@@ -37,9 +37,9 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 
 ## Migration Evidence
 
-- `schema_migrations` contains ids `1`, `2`, `3`, and `4`.
-- `PRAGMA user_version` returns `4`.
-- `map_packages` has the tile metadata columns from migration `3`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `checksum_sha256`, and `install_status`.
+- `schema_migrations` contains ids `1` through `8`.
+- `PRAGMA user_version` returns `8`.
+- `map_packages` has the tile metadata columns from migrations `3` and `8`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `vector_overlay_json`, `checksum_sha256`, and `install_status`.
 - The v4 project-adjacent evidence tables exist: `layout_evidence`, `model_recommendations`, and `layout_decisions`.
 - Geometry rows and vertices are populated after save.
 

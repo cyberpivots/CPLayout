@@ -8,10 +8,13 @@ Use open-source client software already present in the workspace for live imager
 
 Live imagery is disabled by default. It is an interactive visual reference only, not an offline cache, bulk downloader, surveyed geometry source, or project-export setting.
 
+Reference overlays prefer local vector map packages. When browser live reference sources are enabled and no local package is available, CPLayout may auto-apply the public no-key USGS The National Map `USGSImageryTopo` cached reference layer. It combines orthoimagery with US Topo vector data for roads, administrative boundaries, and labels, and remains an interactive-only display aid.
+
 ## Implementation Defaults
 
 - Built-in provider id: `usgs_imagery_only`
 - Built-in tile URL template: `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`
+- Built-in public reference overlay URL template: `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}`
 - Projection: `EPSG:3857`
 - Tile scheme: `xyz`
 - Tile size: `256`
@@ -25,8 +28,10 @@ Live imagery is disabled by default. It is an interactive visual reference only,
 | Source | Current decision | Primary-source note |
 | --- | --- | --- |
 | USGS The National Map Imagery Only | Built-in v1 live provider. | The service metadata identifies `USGSImageryOnly` as a cached orthoimagery tile basemap, mostly NAIP in CONUS, with Web Mercator spatial reference and copyright text `USDA, USGS The National Map: Orthoimagery`: https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer?f=pjson |
+| USGS The National Map Imagery Topo | Public no-key automatic reference overlay when local vector overlay packages are absent and live sources are enabled. | The service metadata identifies `USGSImageryTopo` as a cached basemap of orthoimagery and US Topo vector data visible to the 1:9,028 scale, with Web Mercator spatial reference and copyright text `USGS The National Map: Orthoimagery and US Topo`: https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer?f=pjson |
 | USGS TNM projections | Required metadata for the built-in provider. | USGS says TNM tiled base map services use WGS 84 Web Mercator Auxiliary Sphere: https://www.usgs.gov/faqs/what-map-projections-are-used-national-map-tiled-base-map-services-and-dynamic-overlay |
 | ArcGIS cached tiles | Supported URL-template shape for USGS. | ArcGIS REST cached map tiles use `/tile/{level}/{row}/{column}`: https://developers.arcgis.com/rest/services-reference/enterprise/map-tile/ |
+| MapLibre raster source templates | Renderer mechanism for public reference overlays. | MapLibre raster sources support tile URL templates, `tileSize`, zoom bounds, and attribution: https://maplibre.org/maplibre-style-spec/sources/ |
 | NAIP | Offline/preprocessed source and USGS imagery component, not a separate live built-in provider in v1. | USGS EROS describes NAIP as USDA aerial imagery, public-domain media, available through EarthExplorer as GeoTIFF/JPEG2000, with projection details varying by product/year: https://www.usgs.gov/centers/eros/science/usgs-eros-archive-aerial-photography-national-agriculture-imagery-program-naip |
 | NASA GIBS | Candidate custom/source-backed science imagery provider when the user supplies a fixed open WMTS/XYZ template. | GIBS provides public standards-compliant WMTS/WMS/TWMS/XYZ-style services and Web Mercator endpoints; time/layer fields must be fixed before CPLayout can use a tile template: https://nasa-gibs.github.io/gibs-api-docs/access-basics/ |
 | NASA Earthdata and Landsat | Offline/preprocessed source lane; not a CPLayout live default. | NASA Earthdata states NASA promotes full and open Earth science data sharing. NASA's Landsat page says Landsat data and science products are publicly accessible and free of charge: https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-information-guidance and https://science.nasa.gov/mission/landsat/data-overview/ |
@@ -43,6 +48,7 @@ Live imagery is disabled by default. It is an interactive visual reference only,
 - Keep canonical project geometry as projected/local `XY`. WGS84 is a display/overlay transform for MapLibre preview only.
 - Keep SVG editing as the source of geometry mutation. The web MapLibre preview is read-only.
 - Do not use Google Maps, Bing imagery, paid Mapbox, paid Esri/ArcGIS services, hidden API keys, tokenized templates, paid imagery, or trial-only providers.
+- Do not use public OSM raster tiles for roads, borders, or labels; use local packages first or public no-key USGS reference services when live sources are enabled.
 - Do not bulk cache, prefetch, scrape, or offline-package public live tile endpoints through this feature.
 - Treat imagery-digitized geometry as planning-grade until field-survey verified.
 - Native MapLibre runtime behavior remains unverified until Android/iOS development-build testing completes.

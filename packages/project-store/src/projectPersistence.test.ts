@@ -83,6 +83,15 @@ const projectWithTiles = {
       maxLatitude: 40.11,
     },
     tileUrlTemplates: ["http://127.0.0.1:8765/field/{z}/{x}/{y}.png"],
+    vectorOverlay: {
+      schema: "cplayout_reference_v1" as const,
+      sourceLayers: {
+        roads: "roads",
+        roadLabels: "road_labels",
+        borders: "borders",
+        places: "places",
+      },
+    },
     checksumSha256: "b".repeat(64),
     installStatus: "available" as const,
     attribution: "Local imagery",
@@ -96,9 +105,11 @@ const mapPackageStatement = tilePlan.find((statement) => statement.sql.includes(
 assert.ok(mapPackageStatement);
 assert.match(mapPackageStatement.sql, /tile_content_type/);
 assert.match(mapPackageStatement.sql, /tile_url_templates_json/);
+assert.match(mapPackageStatement.sql, /vector_overlay_json/);
 assert.equal(mapPackageStatement.params[4], "raster");
 assert.equal(mapPackageStatement.params[8], "xyz");
-assert.equal(mapPackageStatement.params[16], "available");
+assert.match(String(mapPackageStatement.params[15]), /cplayout_reference_v1/);
+assert.equal(mapPackageStatement.params[17], "available");
 
 const bboxQuery = buildGeometryBboxQueryPlan({
   projectId: sampleProject.id,

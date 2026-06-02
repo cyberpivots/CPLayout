@@ -30,6 +30,9 @@ from cplayout_ml.cli import (
     read_kml_or_kmz_text,
     read_operator_kml_source,
     run_boundary_improvement_iterations,
+    run_pivot_locator_iterations,
+    run_pivot_locator_loop,
+    synthetic_pivot_fixture,
     truth_labels_from_operator_boundary,
     vision_recommendation_geometry,
 )
@@ -785,6 +788,56 @@ class BoundaryDetectorTests(unittest.TestCase):
             self.assertTrue(report["gpu"]["usedForTorchTensorPreflight"])
             self.assertEqual(report["gpu"]["tensorPreflight"]["device"], "NVIDIA GeForce RTX 4070 Laptop GPU")
             self.assertEqual(report["acceptance"]["gpuBacked"], True)
+
+    def test_pivot_locator_iteration_runner_records_requested_100_iterations(self) -> None:
+        image, truth = synthetic_pivot_fixture(cv2)
+
+        iterations = run_pivot_locator_iterations(cv2, image, truth, 100)
+
+        self.assertEqual(len(iterations), 100)
+        self.assertEqual(iterations[-1]["iteration"], 100)
+        self.assertTrue(any(iteration["decision"] == "pass_synthetic" for iteration in iterations))
+        best = sorted(
+            [iteration for iteration in iterations if iteration["bestCandidate"] is not None],
+            key=lambda iteration: iteration["metrics"]["centerErrorPx"],
+        )[0]
+        self.assertLessEqual(best["metrics"]["centerErrorPx"], DEFAULT_VISION_THRESHOLDS["maxCenterTruthOffsetPx"])
+        self.assertFalse(best["canonicalGeometryMutation"])
+        self.assertFalse(best["networkRequired"])
+        self.assertFalse(best["hiddenKeysAllowed"])
+        self.assertFalse(best["weightedVote"]["realWorldAccepted"])
+
+    def test_pivot_locator_loop_writes_100_iteration_artifacts(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "pivot-loop"
+
+            self.assertEqual(
+                run_pivot_locator_loop(
+                    None,
+                    output_dir,
+                    100,
+                    True,
+                    None,
+                    None,
+                    None,
+                    "2026-06-01T00:00:00.000Z",
+                ),
+                0,
+            )
+
+            report = json.loads((output_dir / "pivot-locator-loop.json").read_text(encoding="utf-8"))
+            iterations = (output_dir / "pivot-locator-iterations.jsonl").read_text(encoding="utf-8").strip().splitlines()
+            self.assertEqual(report["schemaVersion"], "cplayout-pivot-locator-loop-v1")
+            self.assertEqual(report["iterationCount"], 100)
+            self.assertEqual(len(iterations), 100)
+            self.assertEqual(report["fixtureKind"], "synthetic_generated")
+            self.assertGreater(report["metrics"]["syntheticPasses"], 0)
+            self.assertFalse(report["canonicalGeometryMutation"])
+            self.assertFalse(report["networkRequired"])
+            self.assertFalse(report["hiddenKeysAllowed"])
+            self.assertFalse(report["realWorldAcceptance"]["accepted"])
+            self.assertTrue((output_dir / "pivot-locator-annotated.png").exists())
+            self.assertTrue((output_dir / "pivot-locator-synthetic-fixture.png").exists())
 
 
 if __name__ == "__main__":

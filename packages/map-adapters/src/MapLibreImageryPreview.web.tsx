@@ -2,9 +2,11 @@ import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { resolveOnlineImageryProvider, type OnlineImageryProvider } from "@cplayout/core";
+import { resolveOnlineImageryProvider, resolveReferenceOverlaySource, type OnlineImageryProvider } from "@cplayout/core";
 import { projectLayoutToWgs84FeatureCollection, projectWgs84Bounds, projectWgs84Center } from "./mapOverlayGeoJson";
 import type { MapLibreImageryPreviewProps } from "./MapLibreImageryPreview";
+import { registerPmtilesProtocolOnce } from "./pmtilesProtocol.web";
+import { buildReferenceOverlayStyleParts } from "./referenceOverlayStyle";
 
 export function MapLibreImageryPreview({
   project,
@@ -25,16 +27,26 @@ export function MapLibreImageryPreview({
   const featureCollection = useMemo(() => projectLayoutToWgs84FeatureCollection(project, result), [project, result]);
   const bounds = useMemo(() => projectWgs84Bounds(project), [project]);
   const center = useMemo(() => projectWgs84Center(project), [project]);
+  const referenceOverlay = useMemo(
+    () => resolveReferenceOverlaySource({
+      allowPublicNetwork: Boolean(provider && !(provider instanceof Error)),
+      preferences: settings.referenceOverlay,
+      mapPackages: project.mapPackages ?? [],
+      target: "web_maplibre_gl_js",
+    }),
+    [project.mapPackages, provider, settings.referenceOverlay],
+  );
 
   useEffect(() => {
     if (!visible || !containerRef.current || provider === null || provider instanceof Error) return undefined;
     setRuntimeError(null);
+    registerPmtilesProtocolOnce();
     const map = new maplibregl.Map({
       attributionControl: false,
       center,
       container: containerRef.current,
       interactive: false,
-      style: buildPreviewStyle(provider, featureCollection),
+      style: buildPreviewStyle(provider, featureCollection, referenceOverlay, settings.referenceOverlay),
       zoom: Math.min(15, provider.maxZoom),
     });
 
@@ -57,7 +69,7 @@ export function MapLibreImageryPreview({
     return () => {
       map.remove();
     };
-  }, [bounds, center, featureCollection, provider, visible]);
+  }, [bounds, center, featureCollection, provider, referenceOverlay, settings.referenceOverlay, visible]);
 
   if (!visible) return null;
 
@@ -90,8 +102,14 @@ export function MapLibreImageryPreview({
   );
 }
 
-function buildPreviewStyle(provider: OnlineImageryProvider, featureCollection: ReturnType<typeof projectLayoutToWgs84FeatureCollection>): StyleSpecification {
-  return {
+function buildPreviewStyle(
+  provider: OnlineImageryProvider,
+  featureCollection: ReturnType<typeof projectLayoutToWgs84FeatureCollection>,
+  referenceOverlay: ReturnType<typeof resolveReferenceOverlaySource>,
+  referenceOverlayPreferences: MapLibreImageryPreviewProps["settings"]["referenceOverlay"],
+): StyleSpecification {
+  const referenceOverlayParts = buildReferenceOverlayStyleParts(referenceOverlay, referenceOverlayPreferences);
+  const style: StyleSpecification = {
     version: 8,
     sources: {
       imagery: {
@@ -107,6 +125,7 @@ function buildPreviewStyle(provider: OnlineImageryProvider, featureCollection: R
         type: "geojson",
         data: featureCollection,
       },
+      ...referenceOverlayParts.sources,
     },
     layers: [
       {
@@ -115,6 +134,7 @@ function buildPreviewStyle(provider: OnlineImageryProvider, featureCollection: R
         source: "imagery",
         paint: { "raster-opacity": 0.72 },
       },
+      ...referenceOverlayParts.layers,
       fillLayer("allowed-fill", "allowed_coverage", "#6cb6df", 0.36),
       fillLayer("end-gun-fill", "end_gun_coverage", "#63c7cf", 0.28),
       fillLayer("outside-fill", "outside_field_coverage", "#e68b58", 0.22),
@@ -127,6 +147,8 @@ function buildPreviewStyle(provider: OnlineImageryProvider, featureCollection: R
       circleLayer("tower-point", "tower_location", "#54645a", 3),
     ],
   };
+  if (referenceOverlayParts.glyphs) style.glyphs = referenceOverlayParts.glyphs;
+  return style;
 }
 
 function fillLayer(id: string, layerType: string, color: string, opacity: number): StyleSpecification["layers"][number] {

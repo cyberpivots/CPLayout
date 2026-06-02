@@ -11,12 +11,41 @@ import type {
 export const LEGACY_CUSTOMER_ID = "example-customer";
 export const LEGACY_CUSTOMER_NAME = "Example Customer";
 
+type CustomerProfileFields = Pick<
+  CustomerRecord,
+  | "companyName"
+  | "contactName"
+  | "primaryContactFirstName"
+  | "primaryContactMiddleInitial"
+  | "primaryContactLastName"
+  | "primaryContactSuffix"
+  | "email"
+  | "phone"
+  | "location"
+  | "notes"
+>;
+
 export function emptyProjectCatalog(): ProjectCatalog {
   return {
     customers: [],
     projects: [],
     fieldMaps: [],
     designs: [],
+  };
+}
+
+export function emptyCustomerProfileFields(): CustomerProfileFields {
+  return {
+    companyName: "",
+    contactName: "",
+    primaryContactFirstName: "",
+    primaryContactMiddleInitial: "",
+    primaryContactLastName: "",
+    primaryContactSuffix: "",
+    email: "",
+    phone: "",
+    location: "",
+    notes: "",
   };
 }
 
@@ -31,12 +60,112 @@ export function createCatalogId(prefix: string, seed = new Date().toISOString())
   return `${prefix}-${cleanedSeed.slice(0, 14)}-${randomSuffix}`;
 }
 
+export function formatPrimaryContactName(source: Partial<CustomerProfileFields>): string {
+  const firstName = profileLineText(source.primaryContactFirstName);
+  const middleInitial = normalizeMiddleInitial(source.primaryContactMiddleInitial);
+  const lastName = profileLineText(source.primaryContactLastName);
+  const suffix = profileLineText(source.primaryContactSuffix);
+  const givenName = [firstName, middleInitial ? `${middleInitial}.` : "", suffix].filter(Boolean).join(" ");
+  if (lastName && givenName) return `${lastName}, ${givenName}`;
+  return lastName || givenName;
+}
+
+export function resolveCustomerDisplayName(source: Partial<CustomerRecord>): string {
+  const companyName = profileLineText(source.companyName);
+  if (companyName) return companyName;
+  const primaryContact = formatPrimaryContactName(source);
+  if (primaryContact) return primaryContact;
+  return profileLineText(source.displayName) || profileLineText(source.contactName) || LEGACY_CUSTOMER_NAME;
+}
+
+export function resolveCustomerSortName(source: Partial<CustomerRecord>): string {
+  return resolveCustomerDisplayName(source);
+}
+
+export function assertCustomerPrimaryContact(source: Partial<CustomerRecord>): void {
+  if (!profileLineText(source.primaryContactFirstName) || !profileLineText(source.primaryContactLastName)) {
+    throw new Error("Primary contact first and last name are required.");
+  }
+}
+
 export function sortProjectCatalog(catalog: ProjectCatalog): ProjectCatalog {
   return {
     customers: [...catalog.customers].sort((a, b) => compareByName(a.sortName, b.sortName)),
     projects: [...catalog.projects].sort((a, b) => compareByName(a.name, b.name)),
     fieldMaps: [...catalog.fieldMaps].sort((a, b) => compareByName(a.name, b.name)),
     designs: [...catalog.designs].sort((a, b) => compareByName(a.name, b.name)),
+  };
+}
+
+export function normalizeProjectCatalog(catalog: Partial<ProjectCatalog>): ProjectCatalog {
+  return sortProjectCatalog({
+    customers: Array.isArray(catalog.customers)
+      ? catalog.customers.map(normalizeCustomerRecord).filter((record): record is CustomerRecord => Boolean(record))
+      : [],
+    projects: Array.isArray(catalog.projects) ? catalog.projects.filter((record): record is CatalogProjectRecord => typeof record?.id === "string") : [],
+    fieldMaps: Array.isArray(catalog.fieldMaps) ? catalog.fieldMaps.filter((record): record is FieldMapRecord => typeof record?.id === "string") : [],
+    designs: Array.isArray(catalog.designs) ? catalog.designs.filter((record): record is DesignRecord => typeof record?.id === "string") : [],
+  });
+}
+
+export function normalizeCustomerRecord(record: CustomerRecord): CustomerRecord;
+export function normalizeCustomerRecord(record: Partial<CustomerRecord>): CustomerRecord | null;
+export function normalizeCustomerRecord(record: Partial<CustomerRecord>): CustomerRecord | null {
+  if (typeof record.id !== "string" || record.id.length === 0) return null;
+  const now = new Date().toISOString();
+  const primaryContactFirstName = profileLineText(record.primaryContactFirstName);
+  const primaryContactMiddleInitial = normalizeMiddleInitial(record.primaryContactMiddleInitial);
+  const primaryContactLastName = profileLineText(record.primaryContactLastName);
+  const primaryContactSuffix = profileLineText(record.primaryContactSuffix);
+  const hasStructuredContact = Boolean(
+    primaryContactFirstName
+    || primaryContactMiddleInitial
+    || primaryContactLastName
+    || primaryContactSuffix,
+  );
+  const legacyDisplayName = profileLineText(record.displayName);
+  const companyName = profileLineText(record.companyName) || (!hasStructuredContact ? legacyDisplayName : "");
+  const contactName = formatPrimaryContactName({
+    ...record,
+    primaryContactFirstName,
+    primaryContactMiddleInitial,
+    primaryContactLastName,
+    primaryContactSuffix,
+  }) || profileLineText(record.contactName);
+  const displayName = normalizeCatalogSortName(resolveCustomerDisplayName({
+    ...record,
+    companyName,
+    contactName,
+    primaryContactFirstName,
+    primaryContactMiddleInitial,
+    primaryContactLastName,
+    primaryContactSuffix,
+  }));
+  return {
+    id: record.id,
+    displayName,
+    sortName: normalizeCatalogSortName(resolveCustomerSortName({
+      ...record,
+      companyName,
+      contactName,
+      displayName,
+      primaryContactFirstName,
+      primaryContactMiddleInitial,
+      primaryContactLastName,
+      primaryContactSuffix,
+    })),
+    companyName,
+    contactName,
+    primaryContactFirstName,
+    primaryContactMiddleInitial,
+    primaryContactLastName,
+    primaryContactSuffix,
+    email: profileLineText(record.email),
+    phone: profileLineText(record.phone),
+    location: profileLineText(record.location),
+    notes: profileText(record.notes),
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : now,
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : now,
   };
 }
 
@@ -47,6 +176,7 @@ export function ensureLegacyCatalogForSummaries(catalog: ProjectCatalog, summari
     id: LEGACY_CUSTOMER_ID,
     displayName: LEGACY_CUSTOMER_NAME,
     sortName: LEGACY_CUSTOMER_NAME,
+    ...emptyCustomerProfileFields(),
     createdAt: now,
     updatedAt: now,
   }];
@@ -91,6 +221,7 @@ export function ensureCatalogEntryForProject(catalog: ProjectCatalog, project: P
       id: LEGACY_CUSTOMER_ID,
       displayName: LEGACY_CUSTOMER_NAME,
       sortName: LEGACY_CUSTOMER_NAME,
+      ...emptyCustomerProfileFields(),
       createdAt: now,
       updatedAt: now,
     });
@@ -140,4 +271,17 @@ export function defaultDesignId(projectId: string): string {
 
 function compareByName(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+}
+
+function profileText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function profileLineText(value: unknown): string {
+  return profileText(value).replace(/\s+/g, " ");
+}
+
+function normalizeMiddleInitial(value: unknown): string {
+  const normalized = profileLineText(value).replace(/\./g, "");
+  return normalized ? normalized.slice(0, 1).toUpperCase() : "";
 }

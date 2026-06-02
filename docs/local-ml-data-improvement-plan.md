@@ -58,6 +58,41 @@ SQLite support:
 - Fixture entries reference local full-window screenshot, map-canvas crop, optional KML/KMZ, visual-fidelity manifest, project reference, and expected labels such as boundary/overlay/black-canvas presence.
 - Metrics are precision/recall/IoU-style evidence for advisory boundary and overlay detections. They are local experiment evidence only and do not create survey-grade geometry or mutate canonical project data.
 
+## Pivot Center Locator Extension
+
+Automatic center-pivot locating must start as local companion evidence, not native runtime behavior and not automatic project mutation.
+
+Required labels and fixtures:
+
+- `TRUE_PIVOT_CENTER`: operator-approved truth point for evaluation. If it cannot be calibrated into project `XY`, the case is blocked rather than inferred.
+- `TARGET_FIELD_BOUNDARY`: operator-approved field boundary when projected center scoring depends on containment, coverage, outside-field area, or obstacle conflict.
+- Optional exclusion labels for roads, buildings, trees, ponds, and other likely false positives.
+- Fixture provenance: local image path, full-window attribution proof when applicable, image hash, source/license notes, project id, project CRS, and calibration method.
+
+Required candidate metrics:
+
+- Image-space center and radius.
+- Projected `XY` center only when calibration is valid.
+- Pixel and projected-meter center error when truth labels exist.
+- Radius mismatch against machine radius or known ring radius when available.
+- Hough/Canny support, radial alignment score, tower cue score, detector thresholds, confidence breakdown, and false-positive class.
+- Layout impact from deterministic geometry scoring: coverage, outside-field acres, obstacle conflicts, distance from current pivot, hard failures, and warnings.
+
+Output contract:
+
+- Emit a `LayoutEvidenceRecord` for every detector run, including artifact hashes, thresholds, calibration status, rejection audit, `keyedService: false`, and `reviewStatus: "unreviewed"`.
+- Emit a `ModelRecommendation` only when project id and project CRS are known and projected `XY` validation passes. Put `proposedGeometry.pivotCenter` in project CRS, keep `canonicalGeometryMutation: false`, and leave the recommendation unreviewed.
+- Store weighted-vote details in recommendation metadata or `scoreBreakdown`. The vote must preserve detector quality, calibration quality, layout impact, UI/review readiness, records quality, and offline/security vetoes.
+- Accept, Reject, and Defer decisions record `LayoutDecisionRecord` entries. Apply XY is the only geometry-changing operation and must keep the existing reducer confirmation and validation path.
+
+Initial implementation targets:
+
+1. Add `detect-pivot-candidates` and `evaluate-pivot-fixtures` commands to the local companion.
+2. Add synthetic and proof-packet pivot fixtures with no hidden network calls.
+3. Add strict import validation for `canonicalGeometryMutation: false`, projected CRS, artifact hashes, and hard-failure warnings.
+4. Add Review UI grouping for CV pivot candidates and visible map preview layers before claiming operator workflow support.
+5. Keep ONNX/mobile inference deferred until development-build device evidence exists.
+
 ## Analogous Repositories To Study
 
 - Fields2Cover: coverage path planning methods for agricultural vehicles. https://fields2cover.github.io/

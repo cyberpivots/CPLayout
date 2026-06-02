@@ -14,6 +14,11 @@ export type OnlineImageryProviderId = typeof ONLINE_IMAGERY_PROVIDERS[number];
 export type OnlineImageryProjection = "EPSG:3857";
 export type OnlineImageryCachePolicy = "interactive_only";
 
+export const REFERENCE_OVERLAY_SCHEMAS = ["cplayout_reference_v1", "openmaptiles"] as const;
+export type ReferenceOverlaySchema = typeof REFERENCE_OVERLAY_SCHEMAS[number];
+export const REFERENCE_OVERLAY_MODES = ["auto", "manual", "off"] as const;
+export type ReferenceOverlayMode = typeof REFERENCE_OVERLAY_MODES[number];
+
 export const MAPPING_WORKFLOW_MODES = ["design", "layout"] as const;
 export type MappingWorkflowMode = typeof MAPPING_WORKFLOW_MODES[number];
 
@@ -50,6 +55,15 @@ export interface OnlineImageryPreferences {
   customSource?: OnlineImageryCustomSource;
 }
 
+export interface ReferenceOverlayPreferences {
+  mode: ReferenceOverlayMode;
+  roads: boolean;
+  borders: boolean;
+  labels: boolean;
+  sourcePackageId?: string;
+  schema: ReferenceOverlaySchema;
+}
+
 export interface OnlineImageryProvider {
   id: OnlineImageryProviderId;
   name: string;
@@ -79,9 +93,10 @@ export interface AppSettings {
   gpsQuality: GpsQualityThresholds;
   offlineMaps: OfflineMapPreferences;
   onlineImagery: OnlineImageryPreferences;
+  referenceOverlay: ReferenceOverlayPreferences;
 }
 
-export type ProjectSettings = Omit<AppSettings, "offlineMaps" | "onlineImagery"> & {
+export type ProjectSettings = Omit<AppSettings, "offlineMaps" | "onlineImagery" | "referenceOverlay"> & {
   offlineMaps: Omit<OfflineMapPreferences, "packageDirectory">;
 };
 
@@ -95,6 +110,8 @@ const MappingWorkflowModeSchema = z.enum(MAPPING_WORKFLOW_MODES).default("design
 const MapStyleSchema = z.enum(MAP_STYLES);
 const OfflinePackageTypeSchema = z.enum(OFFLINE_PACKAGE_TYPES);
 const OnlineImageryProviderIdSchema = z.enum(ONLINE_IMAGERY_PROVIDERS);
+const ReferenceOverlaySchemaIdSchema = z.enum(REFERENCE_OVERLAY_SCHEMAS);
+const ReferenceOverlayModeSchema = z.enum(REFERENCE_OVERLAY_MODES);
 const TileSchemeSchema = z.enum(["xyz", "tms"]);
 const MinimumGpsFixTypeSchema = z.enum(GPS_FIX_ORDER);
 const OptionalUrlSchema = z.preprocess(
@@ -167,6 +184,26 @@ export const OnlineImageryPreferencesSchema = z.object({
   }
 });
 
+export const ReferenceOverlayPreferencesSchema = z.preprocess(
+  (value) => {
+    if (!isRecord(value)) return value;
+    const record = { ...value } as Record<string, unknown>;
+    if (record.mode === undefined && typeof record.enabled === "boolean") {
+      record.mode = record.enabled ? "manual" : "off";
+    }
+    delete record.enabled;
+    return record;
+  },
+  z.object({
+    mode: ReferenceOverlayModeSchema.default("auto"),
+    roads: z.boolean().default(true),
+    borders: z.boolean().default(true),
+    labels: z.boolean().default(true),
+    sourcePackageId: z.string().trim().min(1).optional(),
+    schema: ReferenceOverlaySchemaIdSchema.default("cplayout_reference_v1"),
+  }),
+);
+
 export const AppSettingsSchema = z.object({
   unitSystem: UnitSystemSchema,
   coordinateDisplayFormat: CoordinateDisplayFormatSchema,
@@ -177,9 +214,10 @@ export const AppSettingsSchema = z.object({
   gpsQuality: GpsQualityThresholdsSchema,
   offlineMaps: OfflineMapPreferencesSchema,
   onlineImagery: OnlineImageryPreferencesSchema,
+  referenceOverlay: ReferenceOverlayPreferencesSchema,
 });
 
-export const ProjectSettingsSchema = AppSettingsSchema.omit({ offlineMaps: true, onlineImagery: true }).extend({
+export const ProjectSettingsSchema = AppSettingsSchema.omit({ offlineMaps: true, onlineImagery: true, referenceOverlay: true }).extend({
   offlineMaps: OfflineMapPreferencesSchema.omit({ packageDirectory: true }),
 });
 
@@ -214,6 +252,13 @@ export function defaultAppSettings(): AppSettings {
       enabled: false,
       providerId: "usgs_imagery_only",
       maxTilesPerView: 64,
+    },
+    referenceOverlay: {
+      mode: "auto",
+      roads: true,
+      borders: true,
+      labels: true,
+      schema: "cplayout_reference_v1",
     },
   };
 }

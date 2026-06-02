@@ -4,7 +4,13 @@ import type { LayoutResult, PivotProject } from "@cplayout/core";
 import {
   projectRepository,
   type CatalogProjectRecord,
+  type CreatedProjectFieldMapWorkspace,
+  type CreatedProjectWorkspace,
+  type CreateProjectWithInitialFieldMapInput,
+  type CreateProjectWithInitialDesignInput,
   type CustomerRecord,
+  type CustomerProfileInput,
+  type CustomerProfileUpdateInput,
   type DesignRecord,
   type FieldMapRecord,
   type ProjectCatalog,
@@ -18,8 +24,14 @@ export interface ProjectWorkspaceStatus {
   catalog: ProjectCatalog;
   projects: ProjectSummary[];
   statusMessage: string;
-  createCustomer: (input: { displayName: string; sortName?: string }) => Promise<CustomerRecord | null>;
+  createCustomer: (input: CustomerProfileInput) => Promise<CustomerRecord | null>;
+  updateCustomer: (input: CustomerProfileUpdateInput) => Promise<CustomerRecord | null>;
+  deleteCustomer: (customerId: string) => Promise<boolean>;
+  createProjectWithInitialDesign: (input: CreateProjectWithInitialDesignInput) => Promise<CreatedProjectWorkspace | null>;
+  createProjectWithInitialFieldMap: (input: CreateProjectWithInitialFieldMapInput) => Promise<CreatedProjectFieldMapWorkspace | null>;
   createProjectRecord: (input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }) => Promise<CatalogProjectRecord | null>;
+  renameProject: (projectId: string, name: string) => Promise<CatalogProjectRecord | null>;
+  moveProjectToCustomer: (projectId: string, customerId: string) => Promise<CatalogProjectRecord | null>;
   createFieldMapRecord: (input: { id?: string; projectId: string; name: string }) => Promise<FieldMapRecord | null>;
   createDesignRecord: (input: { id?: string; fieldMapId: string; name: string; pivotProjectId: string; isActive?: boolean }) => Promise<DesignRecord | null>;
   refreshProjects: () => Promise<void>;
@@ -127,7 +139,7 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     }
   }, [refreshProjects]);
 
-  const createCustomer = useCallback(async (input: { displayName: string; sortName?: string }): Promise<CustomerRecord | null> => {
+  const createCustomer = useCallback(async (input: CustomerProfileInput): Promise<CustomerRecord | null> => {
     try {
       const record = await projectRepository.createCustomerAsync(input);
       await refreshProjects();
@@ -139,11 +151,83 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     }
   }, [refreshProjects]);
 
+  const updateCustomer = useCallback(async (input: CustomerProfileUpdateInput): Promise<CustomerRecord | null> => {
+    try {
+      const record = await projectRepository.updateCustomerAsync(input);
+      await refreshProjects();
+      setStatusMessage(`Updated customer folder ${record.displayName}.`);
+      return record;
+    } catch (error) {
+      setStatusMessage(errorMessage(error));
+      return null;
+    }
+  }, [refreshProjects]);
+
+  const deleteCustomer = useCallback(async (customerId: string): Promise<boolean> => {
+    try {
+      await projectRepository.deleteCustomerAsync(customerId);
+      await refreshProjects();
+      setStatusMessage("Deleted empty customer folder.");
+      return true;
+    } catch (error) {
+      setStatusMessage(errorMessage(error));
+      return false;
+    }
+  }, [refreshProjects]);
+
+  const createProjectWithInitialDesign = useCallback(async (input: CreateProjectWithInitialDesignInput): Promise<CreatedProjectWorkspace | null> => {
+    try {
+      const created = await projectRepository.createProjectWithInitialDesignAsync(input);
+      await refreshProjects();
+      setStatusMessage(`Created project ${created.project.name}.`);
+      return created;
+    } catch (error) {
+      setStatusMessage(errorMessage(error));
+      return null;
+    }
+  }, [refreshProjects]);
+
+  const createProjectWithInitialFieldMap = useCallback(async (input: CreateProjectWithInitialFieldMapInput): Promise<CreatedProjectFieldMapWorkspace | null> => {
+    try {
+      const created = await projectRepository.createProjectWithInitialFieldMapAsync(input);
+      await refreshProjects();
+      setStatusMessage(`Created project ${created.projectRecord.name}.`);
+      return created;
+    } catch (error) {
+      setStatusMessage(errorMessage(error));
+      return null;
+    }
+  }, [refreshProjects]);
+
   const createProjectRecord = useCallback(async (input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord | null> => {
     try {
       const record = await projectRepository.createProjectRecordAsync(input);
       await refreshProjects();
       setStatusMessage(`Created project ${record.name}.`);
+      return record;
+    } catch (error) {
+      setStatusMessage(errorMessage(error));
+      return null;
+    }
+  }, [refreshProjects]);
+
+  const renameProject = useCallback(async (projectId: string, name: string): Promise<CatalogProjectRecord | null> => {
+    try {
+      const record = await projectRepository.renameProjectAsync(projectId, name);
+      await refreshProjects();
+      setStatusMessage(`Renamed project ${record.name}.`);
+      return record;
+    } catch (error) {
+      setStatusMessage(errorMessage(error));
+      return null;
+    }
+  }, [refreshProjects]);
+
+  const moveProjectToCustomer = useCallback(async (projectId: string, customerId: string): Promise<CatalogProjectRecord | null> => {
+    try {
+      const record = await projectRepository.moveProjectToCustomerAsync(projectId, customerId);
+      await refreshProjects();
+      setStatusMessage(`Moved project ${record.name}.`);
       return record;
     } catch (error) {
       setStatusMessage(errorMessage(error));
@@ -180,7 +264,13 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     backendInfo,
     catalog,
     createCustomer,
+    updateCustomer,
+    deleteCustomer,
+    createProjectWithInitialDesign,
+    createProjectWithInitialFieldMap,
     createProjectRecord,
+    renameProject,
+    moveProjectToCustomer,
     createFieldMapRecord,
     createDesignRecord,
     projects,

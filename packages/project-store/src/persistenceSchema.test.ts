@@ -7,8 +7,8 @@ import {
   migrationSql,
 } from "./persistenceSchema";
 
-assert.equal(SQLITE_SCHEMA_VERSION, 5);
-assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4, 5]);
+assert.equal(SQLITE_SCHEMA_VERSION, 8);
+assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4, 5, 6, 7, 8]);
 
 const sql = migrationSql();
 assert.match(sql, /CREATE TABLE IF NOT EXISTS projects/);
@@ -22,11 +22,22 @@ assert.match(sql, /attribution TEXT NOT NULL/);
 assert.match(sql, /license_text TEXT NOT NULL/);
 assert.match(sql, /tile_scheme TEXT NOT NULL DEFAULT 'xyz'/);
 assert.match(sql, /tile_url_templates_json TEXT NOT NULL DEFAULT '\[\]'/);
+assert.match(sql, /ALTER TABLE map_packages ADD COLUMN vector_overlay_json TEXT/);
 assert.match(sql, /install_status TEXT NOT NULL DEFAULT 'metadata_only'/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_evidence/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS model_recommendations/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_decisions/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS customers/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN contact_name TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN email TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN phone TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN location TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN notes TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN company_name TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN primary_contact_first_name TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN primary_contact_middle_initial TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN primary_contact_last_name TEXT NOT NULL DEFAULT ''/);
+assert.match(sql, /ALTER TABLE customers ADD COLUMN primary_contact_suffix TEXT NOT NULL DEFAULT ''/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS project_records/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS field_maps/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS designs/);

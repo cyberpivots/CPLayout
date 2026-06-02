@@ -13,7 +13,8 @@ assert.deepEqual(parsed.pivotCenter, sampleProject.pivotCenter);
 assert.equal(parsed.settings?.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in (parsed.settings?.offlineMaps ?? {}), false);
 assert.equal("onlineImagery" in (parsed.settings ?? {}), false);
-assert.doesNotMatch(serialized, /onlineImagery|tileUrlTemplate|walkthroughProgress|packageDirectory/);
+assert.equal("referenceOverlay" in (parsed.settings ?? {}), false);
+assert.doesNotMatch(serialized, /onlineImagery|referenceOverlay|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 assert.equal(parsed.settings?.mappingWorkflowMode, "design");
 assert.deepEqual(parsed.mapFeatures, []);
 
@@ -38,9 +39,18 @@ const parsedWithLocalOnlyDrafts = parseProjectDocument({
       imagery: true,
       boundary: true,
     },
+    referenceOverlay: {
+      enabled: true,
+      roads: true,
+      borders: true,
+      labels: true,
+      sourcePackageId: "local-reference",
+      schema: "openmaptiles",
+    },
   },
 });
 assert.equal("onlineImagery" in (parsedWithLocalOnlyDrafts.settings ?? {}), false);
+assert.equal("referenceOverlay" in (parsedWithLocalOnlyDrafts.settings ?? {}), false);
 assert.equal("walkthroughProgress" in (parsedWithLocalOnlyDrafts.settings ?? {}), false);
 assert.equal("packageDirectory" in (parsedWithLocalOnlyDrafts.settings?.offlineMaps ?? {}), false);
 

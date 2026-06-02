@@ -33,6 +33,10 @@ The route data uses weighted positive and negative keywords. A route score is th
 
 Broad terms such as `agent`, `hook`, `layout`, and `web` are intentionally low weight. They should not route by themselves; they only help rank a route when stronger task-specific terms are also present.
 
+ML/CV pivot-locating prompts route through the imagery mapper, center pivot designer, and KB curator when they include terms such as `pivot center detection`, `automatic pivot locating`, `TRUE_PIVOT_CENTER`, `Hough circle`, `radial alignment`, `machine learning`, `100 iteration`, or `weighted vote`. This keeps automatic center-pivot locating work tied to imagery evidence, design plausibility, source records, and the no-automatic-geometry-mutation boundary.
+
+Whole-codebase 100-iteration improvement prompts use route id `whole-codebase-100-loop`: expected artifact is `docs/whole-codebase-improvement-loop-2026-06-01.md` plus milestone evidence summaries under `docs/evidence/continuous-improvement/`. This route is `Xhigh` risk because it can span UI, storage, geometry, ML/CV, docs, validation, commits, and remote branch checkpoints.
+
 Detailed routing guidance lives in `.agents/skills/cplayout-expert-agent-panels/references/prompt-triage.md`; executable route data lives in `.codex/hooks/cplayout_route_data.json`.
 
 ## Tool And Subagent Hooks

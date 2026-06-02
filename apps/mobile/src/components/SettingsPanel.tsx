@@ -1,30 +1,37 @@
-import { Database, Map, Ruler, Satellite, SlidersHorizontal } from "lucide-react-native";
+import { Database, Layers, Map, Ruler, Satellite, SlidersHorizontal } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { COORDINATE_FORMAT_LABELS, COORDINATE_FORMATS, type CoordinateDisplayFormat } from "@cplayout/core";
 import {
   AppSettings,
+  describeTilePackageReadiness,
   GPS_FIX_ORDER,
   MAP_STYLES,
   OFFLINE_PACKAGE_TYPES,
   ONLINE_IMAGERY_PROVIDER_CATALOG,
   ONLINE_IMAGERY_PROVIDER_LIST,
+  REFERENCE_OVERLAY_SCHEMAS,
+  resolveReferenceOverlaySource,
   validateCustomOpenImagerySource,
   resolveOnlineImageryProvider,
   type OnlineImageryCustomSource,
   type MapStyle,
+  type MapPackageManifest,
   type MinimumGpsFixType,
   type OfflinePackageType,
+  type ReferenceOverlayMode,
+  type ReferenceOverlaySchema,
 } from "@cplayout/core";
 import type { UnitSystem } from "@cplayout/core";
 
 interface SettingsPanelProps {
+  mapPackages?: MapPackageManifest[];
   settings: AppSettings;
   onChange: (settings: AppSettings) => void;
 }
 
-export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React.JSX.Element {
+export function SettingsPanel({ mapPackages = [], settings, onChange }: SettingsPanelProps): React.JSX.Element {
   const [customFormVisible, setCustomFormVisible] = useState(settings.onlineImagery.providerId === "custom_open_xyz");
   const [customDraft, setCustomDraft] = useState<CustomImageryDraft>(() => customDraftFromSettings(settings));
   const customValidation = useMemo(() => validateCustomOpenImagerySource(customDraft), [customDraft]);
@@ -41,6 +48,26 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
   const imageryGuardrailSummary = settings.onlineImagery.enabled
     ? `${activeProvider.attribution} · ${activeProvider.licenseText} · imagery is reference-only and never canonical geometry`
     : "Imagery settings are browser-local aids; project exports keep projected/local XY geometry and exclude live tile requests.";
+  const referenceOverlayCandidates = useMemo(
+    () => mapPackages.filter((mapPackage) => {
+      if (mapPackage.tileContentType !== "vector") return false;
+      if (mapPackage.installStatus !== "available" && mapPackage.installStatus !== "indexed") return false;
+      return describeTilePackageReadiness(mapPackage, "web_maplibre_gl_js").canRender;
+    }),
+    [mapPackages],
+  );
+  const referenceOverlayStatus = useMemo(
+    () => resolveReferenceOverlaySource({
+      allowPublicNetwork: settings.onlineImagery.enabled,
+      preferences: settings.referenceOverlay,
+      mapPackages,
+      target: "web_maplibre_gl_js",
+    }),
+    [mapPackages, settings.onlineImagery.enabled, settings.referenceOverlay],
+  );
+  const referenceOverlaySummary = referenceOverlayStatus.canRender
+    ? `${referenceOverlayStatus.autoApplied ? "Auto-applied" : "Manual"}: ${referenceOverlayStatus.packageName ?? referenceOverlayStatus.packageId} · ${referenceOverlayStatus.sourceKind === "public_raster" ? "public no-key raster" : referenceOverlayStatus.schema.replaceAll("_", " ")} · ${referenceOverlayStatus.reason}`
+    : referenceOverlayStatus.reason;
 
   useEffect(() => {
     setCustomDraft(customDraftFromSettings(settings));
@@ -49,6 +76,15 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
 
   function update(next: Partial<AppSettings>): void {
     onChange({ ...settings, ...next });
+  }
+
+  function updateReferenceOverlay(next: Partial<AppSettings["referenceOverlay"]>): void {
+    update({
+      referenceOverlay: {
+        ...settings.referenceOverlay,
+        ...next,
+      },
+    });
   }
 
   function applyCustomSource(): void {
@@ -154,6 +190,56 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps): React
         </View>
         <Text style={styles.lockedText} testID="settings-offline-package-summary">
           Network tiles: disabled · Attribution: required · Local directory: {settings.offlineMaps.packageDirectory}
+        </Text>
+      </SettingsGroup>
+
+      <SettingsGroup icon={<Layers size={20} color="#254234" />} title="Reference Overlays">
+        <View style={styles.buttonRow}>
+          <Choice
+            active={settings.referenceOverlay.mode === "auto"}
+            label="Auto"
+            onPress={() => updateReferenceOverlay({ mode: "auto" as ReferenceOverlayMode })}
+          />
+          <Choice
+            active={settings.referenceOverlay.mode === "manual"}
+            label="Manual"
+            onPress={() => updateReferenceOverlay({ mode: "manual" as ReferenceOverlayMode })}
+          />
+          <Choice
+            active={settings.referenceOverlay.mode === "off"}
+            label="Hide overlays"
+            onPress={() => updateReferenceOverlay({ mode: "off" as ReferenceOverlayMode })}
+          />
+        </View>
+        {settings.referenceOverlay.mode === "manual" ? (
+          <View style={styles.buttonRow}>
+          {referenceOverlayCandidates.map((mapPackage) => (
+            <Choice
+              key={mapPackage.id}
+              active={settings.referenceOverlay.sourcePackageId === mapPackage.id}
+              label={mapPackage.name}
+              onPress={() => updateReferenceOverlay({ mode: "manual" as ReferenceOverlayMode, sourcePackageId: mapPackage.id })}
+            />
+          ))}
+          </View>
+        ) : null}
+        {settings.referenceOverlay.mode === "manual" ? (
+          <View style={styles.buttonRow}>
+            {REFERENCE_OVERLAY_SCHEMAS.map((schema) => (
+              <Choice
+                key={schema}
+                active={settings.referenceOverlay.schema === schema}
+                label={referenceOverlaySchemaLabel(schema)}
+                onPress={() => updateReferenceOverlay({ schema: schema as ReferenceOverlaySchema })}
+              />
+            ))}
+          </View>
+        ) : null}
+        <Text style={styles.lockedText} testID="settings-reference-overlay-summary">
+          {referenceOverlaySummary}
+        </Text>
+        <Text style={styles.lockedText} testID="settings-reference-overlay-guardrail">
+          Display-only overlays; local vector packages are preferred, then public no-key USGS Imagery Topo may be used when live reference sources are enabled. Project ZIPs keep projected/local XY geometry and no public OSM tiles, keys, accounts, or bulk network tile caches are used.
         </Text>
       </SettingsGroup>
 
@@ -400,6 +486,10 @@ function mapStyleLabel(style: MapStyle): string {
     case "topographic":
       return "Topo";
   }
+}
+
+function referenceOverlaySchemaLabel(schema: ReferenceOverlaySchema): string {
+  return schema === "openmaptiles" ? "OpenMapTiles" : "CPLayout v1";
 }
 
 function clamp(value: number, min: number, max: number): number {

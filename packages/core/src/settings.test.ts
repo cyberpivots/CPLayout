@@ -17,6 +17,8 @@ assert.equal(defaults.offlineMaps.allowNetworkTiles, false);
 assert.equal(defaults.offlineMaps.requireAttribution, true);
 assert.equal(defaults.onlineImagery.enabled, false);
 assert.equal(defaults.onlineImagery.providerId, "usgs_imagery_only");
+assert.equal(defaults.referenceOverlay.mode, "auto");
+assert.equal(defaults.referenceOverlay.schema, "cplayout_reference_v1");
 assert.match(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileUrlTemplate, /basemap\.nationalmap\.gov/);
 assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileScheme, "xyz");
 assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileSize, 256);
@@ -25,6 +27,8 @@ assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.cachePolicy, "int
 assert.equal(defaults.coordinateDisplayFormat, "decimal_degrees");
 assert.equal(defaults.mappingWorkflowMode, "design");
 assert.equal(defaults.gpsQuality.minimumFixType, "rtk_fixed");
+assert.equal(parseAppSettings({ ...defaults, referenceOverlay: { ...defaults.referenceOverlay, enabled: false, mode: undefined } }).referenceOverlay.mode, "off");
+assert.equal(parseAppSettings({ ...defaults, referenceOverlay: { ...defaults.referenceOverlay, enabled: true, mode: undefined } }).referenceOverlay.mode, "manual");
 
 const merged = mergeAppSettings({
   coordinateDisplayFormat: "degrees_minutes_seconds",
@@ -40,6 +44,7 @@ assert.equal(projectSettings.mappingWorkflowMode, "design");
 assert.equal(projectSettings.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in projectSettings.offlineMaps, false);
 assert.equal("onlineImagery" in projectSettings, false);
+assert.equal("referenceOverlay" in projectSettings, false);
 assert.deepEqual(parseAppSettings(merged), merged);
 
 assert.equal(gpsFixMeetsThreshold("rtk_fixed", "rtk_float"), true);

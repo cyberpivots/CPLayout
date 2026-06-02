@@ -109,7 +109,7 @@ function validatePassedRow(row: WholeCodebaseLoopRow, failures: string[]): void 
 function parseLoopRows(markdownText: string): WholeCodebaseLoopRow[] {
   const parsed: WholeCodebaseLoopRow[] = [];
   for (const line of markdownText.split(/\r?\n/)) {
-    const match = line.match(/^\|\s*(\d{3})\s*\|/);
+    const match = line.match(/^\s*\|\s*(\d{3})\s*\|/);
     if (!match) continue;
     const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
     if (cells.length < 10) {

@@ -37,6 +37,10 @@ This ledger records sources used to define the agent, hook, and skill surfaces. 
 | `SRC-BATCH1-CHECKPOINT-0e8173f` | Dirty work from the prior checkpoint was validated, committed as `0e8173f136fe5ea50a6fafd8066a43e527a8fc3f`, and tracked by `origin/codex/cplayout-agent-specialists`. | Commit/push proof is version-control evidence, not runtime production proof. |
 | `SRC-BATCH1-EVIDENCE-TAXONOMY` | Batch 1 keeps proof classes separate: browser, storage, synthetic ML/CV, real-world fixture, native/device, Google Earth, and documentation. | Passing one proof class does not imply another class passed. |
 
+| `SRC-WHOLE-LOOP-ROWS-011-100-AUTOMATION` | Rows 011-100 were executed by the local automation pass and classified as `Pass` or `Blocked` based on available evidence. | Blocked rows are evidence outcomes, not success claims. |
+
+| `SRC-WHOLE-LOOP-BLOCKED-ROW-INVENTORY` | Remaining blockers include native/device proof, real-world ML/CV fixtures, project-CRS calibration, raw PMTiles/MBTiles native rendering, Google Earth render proof, ZIP safety hardening, and large-scale stress. | These blockers require future implementation or external evidence before they can become pass claims. |
+
 ## Update Rules
 
 - Add sources when a specialist makes a package, platform, database, imagery, or engineering claim.

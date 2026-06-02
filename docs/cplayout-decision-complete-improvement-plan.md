@@ -11,7 +11,7 @@ CPLayout should keep canonical layout geometry in projected/local `XY` coordinat
 - Imagery: use `MapPackageManifest` metadata for package type, content type, TileJSON URL, tile URL templates, bounds, attribution, license, checksum, and install status. Do not add paid imagery services or hidden-key providers.
 - Native maps: treat `@maplibre/maplibre-react-native` as a native/development-build lane only. TileJSON URLs and tile URL templates can map to MapLibre sources; raw PMTiles/MBTiles still need a local protocol, generated TileJSON/templates, extracted tile directories, or a local tile server before native rendering.
 - Expert panel: expose a GUI Review tab backed by pure TypeScript findings for Product/UX, GIS/Mapping, Architecture/Storage, ML Feasibility, and QA/Safety.
-- Agent process: keep the main agent on the implementation path. Use subagents only for bounded source checks, test triage, or final review when those tasks can run without duplicating the main exploration.
+- Agent process: keep the main agent on the implementation path. Under the CPLayout owner's standing authorization, use bounded subagents for non-trivial matched source checks, test triage, implementation slices, or final review when those tasks can run without duplicating the main exploration; otherwise record `Accepted fallback:`.
 - Model/reasoning policy: use low reasoning for file lookup, formatting, and narrow docs checks; medium for ordinary TypeScript/UI planning; high for architecture, map/provider, storage, data migration, and multi-package changes; xhigh only for high-risk cross-platform/native/ML decisions or final expert-panel arbitration. Track task class, tool count, test failures, and reviewer disagreement before escalating.
 
 ## Public Interfaces / Data Flow
@@ -64,8 +64,8 @@ The practical native candidate to research first is ONNX Runtime for React Nativ
 
 ## Primary Sources Checked
 
-- OpenAI GPT-5.5 guidance: https://developers.openai.com/api/docs/guides/latest-model
-- OpenAI Agents SDK tracing: https://developers.openai.com/api/docs/guides/agents/integrations-observability#tracing
+Status note, 2026-06-02: use `docs/agent-source-ledger.md` for current Codex process sources. Refresh package and platform sources again before changing architecture or dependency claims.
+
 - Expo SQLite: https://docs.expo.dev/versions/latest/sdk/sqlite/
 - Expo SDK 55 / React Native target table: https://docs.expo.dev/versions/latest/
 - Expo web export: https://docs.expo.dev/workflow/web/

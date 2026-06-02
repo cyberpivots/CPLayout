@@ -44,8 +44,8 @@ Complexity bands:
 
 Subagent decision rules:
 
-- `required`: the user explicitly asks for multi-agent, subagent, panel, parallel-agent, delegation, or specialist-team work.
-- `optional`: specialists matched and can help with bounded read-only exploration or validation triage.
+- `required`: the user explicitly asks for multi-agent, subagent, panel, parallel-agent, delegation, or specialist-team work, or the prompt is non-trivial CPLayout work with matched specialist routes under the owner's standing authorization.
+- `optional`: a trivial or narrow prompt matched a specialist but the coordinator can show that spawning would not add useful independent evidence.
 - `not useful`: no specialist route matched and coordinator-only preflight is enough.
 
 ## Validation

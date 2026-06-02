@@ -31,6 +31,8 @@ Install these scripts into an administrator-owned absolute directory on each mac
 | `cplayout_pre_tool_use.py` | `.codex/hooks/cplayout_pre_tool_use.py` | `PreToolUse` |
 | `cplayout_stop_multi_agent.py` | `.codex/hooks/cplayout_stop_multi_agent.py` | `Stop` |
 
+Also install or expose `.codex/hooks/cplayout_route_data.json`. `cplayout_prompt_triage.py` first searches upward from the current working directory for `.codex/hooks/cplayout_route_data.json`, then falls back to a route-data file next to the script. A managed endpoint should either run Codex from the CPLayout checkout or copy the route-data JSON beside the managed script.
+
 Use an absolute managed directory such as:
 
 - Linux/macOS: `/opt/cplayout-codex/hooks`
@@ -76,6 +78,7 @@ Expected advisory behavior:
 - `SubagentStart` injects AGENTS markers plus the matching custom agent read-only scope.
 - `PreToolUse` advises or denies only within its documented command checks.
 - `Stop` emits a follow-up advisory when an explicit multi-agent prompt lacks either a `Subagent decision:` summary or an `Accepted fallback:` explanation.
+- A matched CPLayout specialist prompt emits `Subagent decision: required` under the owner's standing authorization.
 
 ## Non-Claims
 

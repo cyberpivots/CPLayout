@@ -77,7 +77,7 @@ class PromptTriageTests(unittest.TestCase):
         self.assertEqual(curator.agent, "cplayout_kb_curator")
         self.assertEqual(curator.complexity_band, "xhigh")
         self.assertEqual(curator.reasoning_effort, "xhigh")
-        self.assertEqual(curator.spawn_policy, "optional")
+        self.assertEqual(curator.spawn_policy, "required")
         self.assertTrue(curator.routing_reason)
         self.assertTrue(curator.validation_expectations)
 
@@ -95,6 +95,12 @@ class PromptTriageTests(unittest.TestCase):
         self.assertIn("Subagent decision: required.", reprompt)
         self.assertIn("projected/local XY", reprompt)
         self.assertIn("managed requirements", reprompt)
+
+    def test_matched_specialist_prompt_requires_subagent_under_standing_policy(self) -> None:
+        context = self.hook_context("Review Expo SQLite project archive persistence and ZIP schema migration.")
+        self.assertIn("Subagents: required.", context)
+        self.assertIn("Standing CPLayout owner preference", context)
+        self.assertIn("cplayout_database_specialist", context)
 
     def test_malformed_payload_still_returns_shape_warning(self) -> None:
         result = subprocess.run(

@@ -1,5 +1,7 @@
 # Blocker Removal Roadmap
 
+Current status note, 2026-06-02: this is a historical completed-pass snapshot. Use `docs/cplayout-focused-development-plan.md`, `docs/android-native-verification.md`, `docs/web-sqlite-feasibility.md`, and current loop ledgers for active blocker ordering.
+
 ## Completed In This Pass
 
 - Local Git is initialized with generated artifacts ignored, so future work can use `git status` and `git diff`.

@@ -311,7 +311,10 @@ def subagent_decision(prompt: str, matches: list[RouteMatch]) -> tuple[str, str]
     if has_explicit_multi_agent_request(prompt):
         return "required", "Prompt explicitly asks for multi-agent, subagent, panel, parallel-agent, or delegation work."
     if matches:
-        return "optional", "Matched specialists are useful for bounded read-only exploration or validation triage."
+        return (
+            "required",
+            "Standing CPLayout owner preference authorizes bounded subagents for non-trivial matched specialist work.",
+        )
     return "not useful", "No specialist route matched; use coordinator preflight and narrow source-backed judgment."
 
 

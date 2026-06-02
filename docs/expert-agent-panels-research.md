@@ -2,6 +2,8 @@
 
 Date: 2026-05-19
 
+Current status note, 2026-06-02: this is a historical v1 research note. Current repo state includes `.codex/agents/*.toml`, prompt-triage hooks, managed-hook deployment docs, and standing CPLayout owner authorization for bounded subagent use on non-trivial matched work. Use `docs/agent-prompt-registry.md` and `docs/cplayout-focused-development-plan.md` for current execution guidance.
+
 ## Scope
 
 Create a CPLayout-local expert-agent panel skill that coordinates source-backed review, bounded subagent delegation, validation gates, and durable knowledge-record updates without changing product runtime code.

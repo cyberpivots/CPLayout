@@ -4,8 +4,9 @@ This ledger records sources used to define the agent, hook, and skill surfaces. 
 
 | Source | Verified use | Boundary |
 | --- | --- | --- |
-| OpenAI Codex subagents docs: `https://developers.openai.com/codex/subagents` | Project-scoped custom agents live under `.codex/agents/`; standalone custom agents require `name`, `description`, and `developer_instructions`; `sandbox_mode` and `model_reasoning_effort` are supported config keys. | Custom agent format may evolve; parse locally and keep agents narrow. |
-| OpenAI Codex hooks docs: `https://developers.openai.com/codex/hooks#userpromptsubmit` | `UserPromptSubmit` hooks receive a prompt and can add `hookSpecificOutput.additionalContext`. | The CPLayout hook is advisory and non-blocking. |
+| OpenAI Codex AGENTS.md docs, checked 2026-06-02: `https://developers.openai.com/codex/guides/agents-md` | Repository instructions are durable guidance, can be scoped by directory, and should be re-read for non-trivial CPLayout work. | `AGENTS.md` guidance does not itself prove product runtime behavior. |
+| OpenAI Codex subagents docs, checked 2026-06-02: `https://developers.openai.com/codex/subagents` | Project-scoped custom agents live under `.codex/agents/`; standalone custom agents require `name`, `description`, and `developer_instructions`; subagents are useful for independent exploration, tests, and review but consume additional model/tool work. | Custom agent format may evolve; parse locally, keep agents narrow, and avoid overlapping write scopes. |
+| OpenAI Codex hooks docs, checked 2026-06-02: `https://developers.openai.com/codex/hooks#userpromptsubmit` | `UserPromptSubmit` hooks receive a prompt and can add `hookSpecificOutput.additionalContext`; Stop hooks can emit advisory context at turn end. | The CPLayout local hook set is advisory and non-blocking unless managed deployment is verified. |
 | OpenAI Codex managed hooks docs, checked 2026-06-02: `https://developers.openai.com/codex/hooks#managed-hooks-from-requirementstoml` | `requirements.toml` can define managed hooks, pin `[features].hooks = true`, and set `allow_managed_hooks_only = true` to skip user, project, session, and plugin hooks while loading managed hooks. | Codex does not distribute scripts from `managed_dir`; endpoint management and restart verification remain required. |
 | OpenAI Codex hook trust docs, checked 2026-06-02: `https://developers.openai.com/codex/hooks#review-and-trust-hooks` | Non-managed command hooks require review/trust by hash; managed hooks are trusted by policy and cannot be disabled from the user hook browser. | This does not prove the CPLayout hooks loaded in a live managed session. |
 | OpenAI Codex requirements reference, checked 2026-06-02: `https://developers.openai.com/codex/config-reference#requirementstoml` | `requirements.toml` supports `allow_managed_hooks_only`, `[features]`, and managed `[hooks]` with absolute managed directories and event tables. | Requirements behavior must still be verified on the deployed Codex surface and endpoint. |
@@ -39,12 +40,15 @@ This ledger records sources used to define the agent, hook, and skill surfaces. 
 | `SRC-BATCH1-SOURCE-REFRESH-2026-06-02` | Rechecked Codex subagents, Expo SQLite, MapLibre React Native RasterSource/VectorSource, Protomaps PMTiles MapLibre, and OpenCV Hough/Canny sources for whole-codebase loop rows 002-010. | This is a source snapshot for batch 1 only; future architecture edits must refresh sources again when claims are time-sensitive. |
 | `SRC-BATCH1-CHECKPOINT-0e8173f` | Dirty work from the prior checkpoint was validated, committed as `0e8173f136fe5ea50a6fafd8066a43e527a8fc3f`, and tracked by `origin/codex/cplayout-agent-specialists`. | Commit/push proof is version-control evidence, not runtime production proof. |
 | `SRC-BATCH1-EVIDENCE-TAXONOMY` | Batch 1 keeps proof classes separate: browser, storage, synthetic ML/CV, real-world fixture, native/device, Google Earth, and documentation. | Passing one proof class does not imply another class passed. |
-
-| `SRC-WHOLE-LOOP-BLOCKED-ROW-INVENTORY` | Remaining blockers include native/device proof, real-world ML/CV fixtures, project-CRS calibration, raw PMTiles/MBTiles native rendering, Google Earth render proof, ZIP safety hardening, and large-scale stress. | These blockers require future implementation or external evidence before they can become pass claims. |
-
+| `SRC-WHOLE-LOOP-BLOCKED-ROW-INVENTORY` | Remaining blockers include native/device proof, real-world ML/CV fixtures, project-CRS calibration, raw PMTiles/MBTiles native rendering, per-artifact Google Earth render proof for new exports, ZIP safety hardening, and large-scale stress. | These blockers require future implementation or external evidence before they can become pass claims. |
 | `SRC-WHOLE-LOOP-ROWS-011-100-AUTOMATION` | Rows 011-100 were batch-classified by the local automation pass as `Pass` or `Blocked` based on available evidence. | This is risk inventory, not proof of 100 individual material codebase improvement iterations. |
-
 | `SRC-PIVOT-CANDIDATES-COMMAND` | `tools/local-ml-companion` now exposes `detect-pivot-candidates`, which runs local OpenCV Hough-circle pivot-center sweeps and emits `cplayout-pivot-candidates-v1` review evidence plus metadata-only recommendations. | The command does not emit `proposedGeometry.pivotCenter` without project-CRS calibration and does not prove native/mobile ML behavior. |
+
+## Development Plan Records
+
+| Record | Verified use | Boundary |
+| --- | --- | --- |
+| `SRC-FOCUSED-PLAN-2026-06-02`: `docs/cplayout-focused-development-plan.md` | Consolidates verified active plans, completed browser evidence, current local companion status, Google Earth proof status, and unresolved native/ML/archive blockers after a subagent-assisted workspace review. | This is a plan-of-record and status synthesis; it does not add product features or prove blocked runtime claims. |
 
 ## Update Rules
 

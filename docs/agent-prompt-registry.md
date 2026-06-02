@@ -35,11 +35,15 @@ Every route declares `agent`, `complexityBand`, `reasoningEffort`, `spawnPolicy`
 
 Broad terms such as `agent`, `hook`, `layout`, and `web` are intentionally low weight. They should not route by themselves; they only help rank a route when stronger task-specific terms are also present.
 
+## Persistent Subagent Authorization
+
+The CPLayout owner has persistently requested and authorized bounded subagent use for non-trivial CPLayout planning, review, implementation, validation, and knowledge-curation work. Future coordinators should state `Subagent decision: required/optional/not useful` in their summary, spawn bounded read-only or worker subagents when runtime tools are available and scopes are independent, and record `Accepted fallback:` when subagent tools are unavailable or would not add independent evidence. This authorization does not remove the coordinator's duty to keep the main agent on the critical path, avoid overlapping write scopes, and verify all facts directly.
+
 ML/CV pivot-locating prompts route through the imagery mapper, center pivot designer, and KB curator when they include terms such as `pivot center detection`, `automatic pivot locating`, `TRUE_PIVOT_CENTER`, `Hough circle`, `radial alignment`, `machine learning`, `100 iteration`, or `weighted vote`. This keeps automatic center-pivot locating work tied to imagery evidence, design plausibility, source records, and the no-automatic-geometry-mutation boundary.
 
 Managed-hook and process-enforcement prompts route through `cplayout_kb_curator` when they include terms such as `requirements.toml`, `managed hook`, `hook enforcement`, `process enforcement`, `prompt triage`, `route classification`, `coordinator contract`, or `reasoning band`. These prompts are `xhigh` because they affect Codex policy surfaces and multi-agent coordination.
 
-Whole-codebase 100-iteration improvement prompts use route id `whole-codebase-100-loop`: expected artifact is `docs/whole-codebase-improvement-loop-2026-06-01.md` plus milestone evidence summaries under `docs/evidence/continuous-improvement/`. This route is `Xhigh` risk because it can span UI, storage, geometry, ML/CV, docs, validation, commits, and remote branch checkpoints.
+Whole-codebase 100-iteration improvement prompts currently route through `cplayout_kb_curator` keywords such as `100 iteration`, `weighted vote`, and `research improvement loop`; there is no separate executable route id named `whole-codebase-100-loop` in `.codex/hooks/cplayout_route_data.json`. Expected artifacts remain `docs/whole-codebase-improvement-loop-2026-06-01.md` plus milestone evidence summaries under `docs/evidence/continuous-improvement/`.
 
 Detailed routing guidance lives in `.agents/skills/cplayout-expert-agent-panels/references/prompt-triage.md`; executable route data lives in `.codex/hooks/cplayout_route_data.json`.
 
@@ -51,6 +55,8 @@ Detailed routing guidance lives in `.agents/skills/cplayout-expert-agent-panels/
 - `PreToolUse` through `.codex/hooks/cplayout_pre_tool_use.py`, which narrowly denies clearly destructive commands such as `git reset --hard`, `git clean -fd`, force push, and `npm audit fix --force`. Other CPLayout-sensitive patterns receive advisory context rather than a block.
 
 The local hook set now also includes `Stop` through `.codex/hooks/cplayout_stop_multi_agent.py`. It emits advisory context when an explicit multi-agent or subagent prompt ends without a subagent decision summary or accepted fallback explanation.
+
+These hooks make missing decisions visible. They are not proof that subagents spawned, that policy was enforced, or that a managed endpoint loaded the scripts.
 
 ## Managed Hook Deployment
 

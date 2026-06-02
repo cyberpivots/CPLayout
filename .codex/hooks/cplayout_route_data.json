@@ -15,7 +15,7 @@
       "agent": "cplayout_imagery_mapper",
       "complexityBand": "xhigh",
       "reasoningEffort": "xhigh",
-      "spawnPolicy": "optional",
+      "spawnPolicy": "required",
       "note": "Keep KML/KMZ styling visual-only and require evidence before any imagery/CV or Google Earth render claim.",
       "routingReason": "Imagery, KML/KMZ, Google Earth, ML/CV, or field-boundary evidence needs the imagery mapper lens.",
       "validationExpectations": [
@@ -59,7 +59,7 @@
       "agent": "cplayout_interface_developer",
       "complexityBand": "high",
       "reasoningEffort": "xhigh",
-      "spawnPolicy": "optional",
+      "spawnPolicy": "required",
       "note": "Preserve offline-first Expo boundaries and run visible UI proof when screens change.",
       "routingReason": "Expo, React Native, web, screen, component, or visible workflow work needs interface verification.",
       "validationExpectations": [
@@ -94,7 +94,7 @@
       "agent": "cplayout_center_pivot_designer",
       "complexityBand": "xhigh",
       "reasoningEffort": "xhigh",
-      "spawnPolicy": "optional",
+      "spawnPolicy": "required",
       "note": "Separate source-backed design evidence from advisory software scoring.",
       "routingReason": "Center pivot, corner-arm, lateral, linear, irrigation, or scoring prompts need design evidence review.",
       "validationExpectations": [
@@ -132,7 +132,7 @@
       "agent": "cplayout_database_specialist",
       "complexityBand": "xhigh",
       "reasoningEffort": "xhigh",
-      "spawnPolicy": "optional",
+      "spawnPolicy": "required",
       "note": "Keep native SQLite, web storage, and project archive contracts explicit.",
       "routingReason": "SQLite, project-store, archive, schema, migration, or persistence prompts need storage contract review.",
       "validationExpectations": [
@@ -167,7 +167,7 @@
       "agent": "cplayout_kb_curator",
       "complexityBand": "xhigh",
       "reasoningEffort": "xhigh",
-      "spawnPolicy": "optional",
+      "spawnPolicy": "required",
       "note": "Record verified facts, sources, validation, and unresolved gaps separately.",
       "routingReason": "Skills, hooks, agents, managed policy, source ledgers, known gaps, prompt registry, or process enforcement need curator review.",
       "validationExpectations": [

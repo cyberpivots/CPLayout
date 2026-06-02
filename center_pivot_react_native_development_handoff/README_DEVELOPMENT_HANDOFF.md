@@ -1,5 +1,7 @@
 # Free React Native Center Pivot Survey Mapping Layout App
 
+Current status note, 2026-06-02: this directory is an archived development handoff and source/reference package. The current CPLayout plan of record is `../docs/cplayout-focused-development-plan.md`; current runtime proof boundaries live in `../AGENTS.md` and the active docs under `../docs/`.
+
 This package converts the prior Python/GIS center pivot handoff into a React Native development handoff for iOS, Android, and Windows.
 
 The app goal is a local-first field and office tool for center pivot irrigation layout: capture or import field boundaries, mark pivot centers and infrastructure, model full-circle and part-circle pivots, compute irrigated and dry acres, flag conflicts, and export open project files without a paid backend or paid map API.

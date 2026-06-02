@@ -24,7 +24,7 @@
 - Start every non-trivial pass with a current-worktree preflight: re-read this file, check `git status --short`, identify pre-existing changes, and avoid reverting work you did not make.
 - Prefer pure TypeScript domain logic with tests before UI wiring.
 - Keep repo-local Codex defaults in `.codex/config.toml`; use `AGENTS.md` for durable engineering rules and verify loaded instructions before long-running passes.
-- Use subagents only for bounded exploration, tests, or triage while the main agent continues the critical-path implementation.
+- The CPLayout owner has persistently requested and authorized subagent use for non-trivial CPLayout planning, review, implementation, validation, and knowledge-curation work. The coordinator must state `Subagent decision: required/optional/not useful`; spawn bounded read-only or worker subagents when runtime tools are available and scopes are independent; otherwise record `Accepted fallback:` with the reason. Keep the main agent on the critical path and avoid overlapping write scopes.
 - Keep native dependencies minimal and installed through Expo when an Expo SDK package is available.
 - SQLite is the preferred scalable local store for projects, survey logs, vertices, map package metadata, scenarios, and exports.
 - Use the platform repository split: native persistence goes through `packages/project-store/src/projectRepository.native.ts` and Expo SQLite; web MVP persistence goes through `packages/project-store/src/projectRepository.ts` until Expo SQLite web WASM/COOP/COEP deployment is configured.

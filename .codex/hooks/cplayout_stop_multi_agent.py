@@ -109,7 +109,7 @@ def _context() -> str:
     return "\n".join(
         [
             "CPLayout Stop hook advisory:",
-            "- Explicit multi-agent or subagent request detected without an auditable subagent decision.",
+            "- Explicit multi-agent or subagent request detected without an auditable subagent decision. Standing CPLayout preference also expects this summary for matched non-trivial specialist work.",
             "- Continue the turn with either `Subagent decision: required/optional/not useful` plus specialist summary, or `Accepted fallback:` plus why local coordinator-only handling is acceptable.",
             "- Keep the explanation source-backed; hooks remain advisory unless installed through managed requirements.toml.",
         ]

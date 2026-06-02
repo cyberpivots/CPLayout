@@ -57,7 +57,7 @@ A panel pass should return:
 - validation gates,
 - knowledge-record updates or explicitly skipped record updates for read-only work.
 
-Use subagents only when the user explicitly authorized expert panels, delegation, parallel agent work, specialist teams, or multi-agent work and the runtime exposes the tools.
+Use subagents for non-trivial matched CPLayout work under the owner's standing authorization when the runtime exposes the tools and the delegated scope is bounded. If tools are unavailable or spawning would not add independent evidence, record `Accepted fallback:` and continue locally.
 
 ## 6. Action Selection
 

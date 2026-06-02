@@ -22,14 +22,14 @@ Direct user no-mutation instructions win over this workflow. For read-only tasks
 5. Close local knowledge gaps first, then research current external facts from official or primary sources.
    - For CPLayout Google Earth/KML loops, re-check the Google KML Reference, Google shared-style tutorial, OGC KML page, and the repo source ledger before changing import/export behavior.
 6. Use `references/prompt-triage.md` when the prompt needs specialist routing, new agent surfaces, hooks, skills, source ledgers, or knowledge-record updates.
-7. Use bounded subagents only when the user explicitly asks for expert panels, delegation, parallel agents, specialist teams, or multi-agent work and the current runtime exposes subagent tools.
+7. Use bounded subagents for non-trivial matched CPLayout panel work under the owner's standing authorization when the current runtime exposes subagent tools. If tools are unavailable or parallel work is not useful, record `Accepted fallback:` with the reason.
 8. Synthesize the panel result into the next concrete action, implement only when mutation is allowed, validate, and record durable findings when appropriate.
 
 For the detailed sequence, read `references/panel-lifecycle.md`.
 
 ## Specialist Roles
 
-Use these roles as prompted subagents when useful, or as local review lenses when subagents are unavailable or not authorized:
+Use these roles as prompted subagents when useful, or as local review lenses when subagents are unavailable or a bounded parallel task would not help:
 
 | Role | Agent type | Reasoning | Purpose |
 | --- | --- | --- | --- |
@@ -45,7 +45,7 @@ For role prompts and delegation rules, read `references/agent-prompts.md`.
 
 ## Subagent Boundary
 
-Treat "Implement expert agent panels" as explicit authorization to spawn bounded subagents when the runtime permits it and parallel work is useful. Do not spawn agents for broad, vague work.
+Treat non-trivial matched CPLayout panel, review, implementation, validation, and knowledge-curation work as standing authorization to spawn bounded subagents when the runtime permits it and parallel work is useful. Do not spawn agents for broad, vague work.
 
 Use built-in agents for generic exploration and implementation:
 
@@ -53,7 +53,7 @@ Use built-in agents for generic exploration and implementation:
 - `default` for source-backed external research or synthesis.
 - `worker` only for disjoint implementation slices after mutation is allowed.
 
-Project-scoped `.codex/agents/*.toml` specialists are allowed when the user explicitly requests durable specialist agents or a repeated workflow justifies the maintenance cost. Keep those agents narrow, source-backed, and read-only by default; use `worker` only for explicit bounded mutation scopes.
+Project-scoped `.codex/agents/*.toml` specialists are allowed under the standing CPLayout authorization when a repeated workflow justifies the maintenance cost. Keep those agents narrow, source-backed, and read-only by default; use `worker` only for explicit bounded mutation scopes.
 
 Keep immediate blocking work local. Wait for subagents only when their result is needed for the next critical-path decision.
 

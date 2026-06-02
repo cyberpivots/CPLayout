@@ -16,6 +16,7 @@ from cplayout_ml.cli import (
     build_obstruction_masks,
     circle_obstruction_conflicts,
     detect_imagery_field_boundary,
+    detect_pivot_candidates,
     design_hard_failures,
     evaluate_vision_fixtures,
     extract_named_polygon_from_kml,
@@ -838,6 +839,70 @@ class BoundaryDetectorTests(unittest.TestCase):
             self.assertFalse(report["realWorldAcceptance"]["accepted"])
             self.assertTrue((output_dir / "pivot-locator-annotated.png").exists())
             self.assertTrue((output_dir / "pivot-locator-synthetic-fixture.png").exists())
+
+    def test_detect_pivot_candidates_writes_importable_metadata_only_review_output(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "pivot-candidates"
+
+            self.assertEqual(
+                detect_pivot_candidates(
+                    None,
+                    True,
+                    output_dir,
+                    "project-a",
+                    "LOCAL:IMAGE",
+                    100,
+                    None,
+                    None,
+                    None,
+                    "2026-06-01T00:00:00.000Z",
+                ),
+                0,
+            )
+
+            report = json.loads((output_dir / "pivot-candidates-review.json").read_text(encoding="utf-8"))
+            geojson = json.loads((output_dir / "pivot-candidates-recommendations.geojson").read_text(encoding="utf-8"))
+            iterations = (output_dir / "pivot-candidates-iterations.jsonl").read_text(encoding="utf-8").strip().splitlines()
+            recommendation = report["modelRecommendations"][0]
+            evidence = report["layoutEvidenceRecords"][0]
+
+            self.assertEqual(report["schemaVersion"], "cplayout-pivot-candidates-v1")
+            self.assertEqual(len(iterations), 100)
+            self.assertEqual(report["projectCrs"], "LOCAL:IMAGE")
+            self.assertFalse(report["canonicalGeometryMutation"])
+            self.assertFalse(report["networkRequired"])
+            self.assertFalse(report["hiddenKeysAllowed"])
+            self.assertFalse(report["acceptance"]["accepted"])
+            self.assertFalse(report["acceptance"]["autoApplyEligible"])
+            self.assertIn("projected XY calibration absent", report["acceptance"]["hardFailures"])
+            self.assertEqual(evidence["sourceKind"], "model_output")
+            self.assertEqual(evidence["metrics"]["iterationCount"], 100)
+            self.assertIn("bestCandidate", evidence["metrics"])
+            self.assertNotIn("pivotCenter", recommendation["proposedGeometry"])
+            self.assertEqual(recommendation["proposedGeometry"]["projectCrs"], "LOCAL:IMAGE")
+            self.assertEqual(recommendation["metadata"]["schemaVersion"], "cplayout-pivot-candidates-v1")
+            self.assertFalse(recommendation["metadata"]["feasible"])
+            self.assertIn("projected XY calibration absent", recommendation["metadata"]["hardFailures"])
+            self.assertEqual(geojson["features"][0]["properties"]["geometryRole"], "metadata_only")
+            self.assertIsNone(geojson["features"][0]["geometry"])
+            self.assertTrue((output_dir / "pivot-candidates-annotated.png").exists())
+            self.assertTrue((output_dir / "pivot-candidates-synthetic-fixture.png").exists())
+
+    def test_detect_pivot_candidates_rejects_wgs84_project_crs(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            with self.assertRaises(SystemExit):
+                detect_pivot_candidates(
+                    None,
+                    True,
+                    Path(temp_dir) / "pivot-candidates",
+                    "project-a",
+                    "EPSG:4326",
+                    1,
+                    None,
+                    None,
+                    None,
+                    "2026-06-01T00:00:00.000Z",
+                )
 
 
 if __name__ == "__main__":

@@ -31,7 +31,11 @@ Scope: Proof-packet, truth-label, CRS, evidence-hash, review-copy, and blocker-r
 
 ## Validation
 
-Final validation for the automated 100-row execution passed with the commands listed in `docs/whole-codebase-improvement-loop-2026-06-01.md` row 100.
+Final validation for the automated 100-row batch classification passed with the commands listed in `docs/whole-codebase-improvement-loop-2026-06-01.md` row 100.
+
+## Evidence Correction
+
+This batch evidence is not proof of 100 individual material codebase improvement iterations. It is a classification artifact and blocked-row inventory.
 
 ## Hash Policy
 

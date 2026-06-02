@@ -94,8 +94,8 @@ for (const row of rows) {
     validation: validationCell(batch),
     artifactHashes: `\`${shaPath}\`.`,
     vote: decision.decision === "Pass"
-      ? "weighted vote executed; no hard vetoes."
-      : "weighted vote executed; blocker recorded.",
+      ? "weighted vote batch-classified; no hard vetoes."
+      : "weighted vote batch-classified; blocker recorded.",
     decision: `${decision.decision}: ${decision.reason}`,
   });
 }
@@ -106,7 +106,7 @@ updateSourceLedger();
 updateKnownGaps();
 writeShaFiles();
 
-console.log(`Whole-codebase loop rows 011-100 automated in ${VALIDATED ? "validated" : "pre-validation"} mode.`);
+console.log(`Whole-codebase loop rows 011-100 batch-classified in ${VALIDATED ? "validated" : "pre-validation"} mode.`);
 
 function decisionFor(iteration: number): Decision {
   const reason = blocked[iteration];
@@ -128,8 +128,8 @@ function passReason(iteration: number): string {
 
 function validationCell(batch: number): string {
   const base = VALIDATED
-    ? "Automated loop execution plus final validation passed"
-    : "Automated loop execution; validation pending final gate";
+    ? "Automated batch classification plus final validation passed"
+    : "Automated batch classification; validation pending final gate";
   if (batch === 4 || batch === 10) {
     return `${base}: ${finalValidation.join("; ")}.`;
   }
@@ -163,7 +163,11 @@ function writeLedger(markdown: string, nextRows: Map<number, Row>): void {
   const updated = lines.join("\n")
     .replace(
       /Iterations 001-010 are complete\. Later rows remain planned until their evidence exists\./,
-      "Iterations 001-100 are executed. Rows marked `Blocked` are deliberate blocker outcomes, not unexecuted roadmap entries.",
+      "Iterations 011-100 are batch-classified as risk inventory. Rows marked `Blocked` are deliberate blocker outcomes, not pass claims.",
+    )
+    .replace(
+      /Iterations 001-100 are executed\. Rows marked `Blocked` are deliberate blocker outcomes, not unexecuted roadmap entries\./,
+      "Iterations 011-100 are batch-classified as risk inventory. Rows marked `Blocked` are deliberate blocker outcomes, not pass claims.",
     );
   writeFileSync(absolute(LEDGER_PATH), updated, "utf8");
 }
@@ -205,8 +209,12 @@ function writeEvidence(originalRows: Row[]): void {
       "## Validation",
       "",
       VALIDATED
-        ? "Final validation for the automated 100-row execution passed with the commands listed in `docs/whole-codebase-improvement-loop-2026-06-01.md` row 100."
+        ? "Final validation for the automated 100-row batch classification passed with the commands listed in `docs/whole-codebase-improvement-loop-2026-06-01.md` row 100."
         : "Validation is pending. Re-run this tool with `--validated` only after the final validation gate passes.",
+      "",
+      "## Evidence Correction",
+      "",
+      "This batch evidence is not proof of 100 individual material codebase improvement iterations. It is a classification artifact and blocked-row inventory.",
       "",
       "## Hash Policy",
       "",
@@ -221,7 +229,7 @@ function updateSourceLedger(): void {
   const path = absolute(SOURCE_LEDGER_PATH);
   let text = readFileSync(path, "utf8");
   const additions = [
-    "| `SRC-WHOLE-LOOP-ROWS-011-100-AUTOMATION` | Rows 011-100 were executed by the local automation pass and classified as `Pass` or `Blocked` based on available evidence. | Blocked rows are evidence outcomes, not success claims. |",
+    "| `SRC-WHOLE-LOOP-ROWS-011-100-AUTOMATION` | Rows 011-100 were batch-classified by the local automation pass as `Pass` or `Blocked` based on available evidence. | This is risk inventory, not proof of 100 individual material codebase improvement iterations. |",
     "| `SRC-WHOLE-LOOP-BLOCKED-ROW-INVENTORY` | Remaining blockers include native/device proof, real-world ML/CV fixtures, project-CRS calibration, raw PMTiles/MBTiles native rendering, Google Earth render proof, ZIP safety hardening, and large-scale stress. | These blockers require future implementation or external evidence before they can become pass claims. |",
   ];
   for (const addition of additions) {
@@ -235,7 +243,7 @@ function updateSourceLedger(): void {
 function updateKnownGaps(): void {
   const path = absolute(KNOWN_GAPS_PATH);
   let text = readFileSync(path, "utf8");
-  const row = "| Whole-codebase loop rows 011-100 include deliberate blocked outcomes. | The loop is executed through row 100, but blocked rows preserve missing proof instead of pretending success. | Use the blocked-row inventory in the row evidence files to drive the next implementation slice. |";
+  const row = "| Whole-codebase loop rows 011-100 include deliberate blocked outcomes. | The loop is batch-classified through row 100, but blocked rows preserve missing proof instead of pretending success. | Use the blocked-row inventory in the row evidence files to drive the next implementation slice. |";
   if (!text.includes(row)) {
     text = `${text.trimEnd()}\n${row}\n`;
   }

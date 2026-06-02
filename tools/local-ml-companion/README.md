@@ -76,6 +76,23 @@ When an operator label can be pixel-aligned through the proof KML, project refer
 
 Projected boundary output remains advisory local companion evidence. Operator acceptance still has to go through the CPLayout projected-XY import/editor/validation workflows before any canonical geometry changes.
 
+## Pivot Candidate Detection
+
+Use `detect-pivot-candidates` to run the local OpenCV pivot-center detector and emit Review-tab import records. This command is the first-class pivot candidate bridge; it writes evidence and a metadata-only `ModelRecommendation` unless a future calibrated path can prove projected `XY` output.
+
+```sh
+uv run cplayout-ml detect-pivot-candidates \
+  --synthetic-fixture \
+  --project-id synthetic-pivot-review \
+  --project-crs LOCAL:IMAGE \
+  --output-dir ../../reports/ml-cv-pivot-candidates/20260601T-run \
+  --iterations 100
+```
+
+For a real local screenshot, replace `--synthetic-fixture` with `--map-canvas <local-png>`. Optional `--truth-center-x`, `--truth-center-y`, and `--truth-radius` values score image-space truth only; they do not create project-CRS geometry.
+
+Outputs are `pivot-candidates-review.json`, `pivot-candidates-recommendations.geojson`, `pivot-candidates-iterations.jsonl`, and `pivot-candidates-annotated.png`. The recommendation intentionally omits `proposedGeometry.pivotCenter` while `projected XY calibration absent` remains in `metadata.hardFailures`. Importing it records advisory evidence for review, but it cannot auto-apply geometry.
+
 ## Boundary Improvement Loop
 
 Use `improve-boundary-detector` when a proof packet has imagery plus an optional operator-drawn boundary label and weak detector output must not be accepted. The command always runs at least five detector iterations, including baseline Canny/Hough, low-threshold fenceline search, high-contrast road/structure search, surface color variation, and operator-ranked surface-edge feedback.

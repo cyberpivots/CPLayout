@@ -104,7 +104,7 @@ The required values for this loop are `canonicalGeometryMutation: false` and `ne
 
 The first production slice is a local companion pivot candidate exporter, not an in-app native ML runtime:
 
-1. Extend `tools/local-ml-companion` with first-class pivot-center commands such as `detect-pivot-candidates` and `evaluate-pivot-fixtures`.
+1. Extend `tools/local-ml-companion` with first-class pivot-center commands. `detect-pivot-candidates` now emits advisory evidence and metadata-only review recommendations; `evaluate-pivot-fixtures` remains a future real-fixture evaluation command.
 2. Emit `LayoutEvidenceRecord` entries for source provenance, screenshot/crop hashes, thresholds, calibration status, rejection reasons, and non-black visual evidence when Google Earth proof packets are used.
 3. Emit `ModelRecommendation` entries only when projected calibration is valid. The recommendation may include `proposedGeometry.pivotCenter` in the project CRS, but it must remain `reviewStatus: "unreviewed"` and carry `canonicalGeometryMutation: false`.
 4. Keep radius, image-space center, detector confidence, and Hough/Canny/radial/tower cues in metrics and metadata until an explicit project-CRS reducer path is reviewed and tested.
@@ -114,7 +114,7 @@ The first production slice is a local companion pivot candidate exporter, not an
 ## Current Blockers
 
 - No operator-approved fixture manifest for pivot center truth labels has been selected in this prompt.
-- No first-class local `locate-pivot-center` or `detect-pivot-candidates` companion command exists yet.
+- `detect-pivot-candidates` exists for local image-space evidence, but it intentionally omits `proposedGeometry.pivotCenter` until project-CRS calibration is supplied and validated.
 - Existing CV can detect image-space pivot crop rings and overlay circles, but that is not enough to claim automatic projected-XY pivot locating.
 - MapLibre web advisory preview needs a visible candidate overlay before center-locating review can rely on that surface.
 - A strict pivot-locating path must not reuse any boundary-assist import shortcut that auto-applies accepted recommendations.

@@ -18,8 +18,11 @@ MODEL_NAME = "baseline-local-layout-ranker"
 MODEL_VERSION = "0.1.0"
 VISION_MODEL_NAME = "design-only-google-earth-vision-review"
 VISION_MODEL_VERSION = "0.1.0"
+PIVOT_CANDIDATE_MODEL_NAME = "local-opencv-pivot-candidate-detector"
+PIVOT_CANDIDATE_MODEL_VERSION = "0.1.0"
 SCHEMA_VERSION = "cplayout-model-recommendations-v1"
 VISION_SCHEMA_VERSION = "cplayout-design-vision-review-v1"
+PIVOT_CANDIDATE_SCHEMA_VERSION = "cplayout-pivot-candidates-v1"
 DEFAULT_CREATED_AT = "1970-01-01T00:00:00.000Z"
 DEFAULT_VISION_THRESHOLDS = {
     "maxCenterOffsetRatio": 0.05,
@@ -124,6 +127,18 @@ def main(argv: list[str] | None = None) -> int:
     pivot_loop.add_argument("--truth-radius", type=float, help="Optional image-space truth radius for --map-canvas.")
     pivot_loop.add_argument("--created-at", default=DEFAULT_CREATED_AT)
 
+    pivot_candidates = subcommands.add_parser("detect-pivot-candidates", help="Write advisory local OpenCV pivot-center candidate evidence for browser review import.")
+    pivot_candidates.add_argument("--map-canvas", type=Path, help="Optional local map-canvas screenshot to evaluate.")
+    pivot_candidates.add_argument("--synthetic-fixture", action="store_true", help="Generate a deterministic local synthetic pivot fixture with known image-space truth.")
+    pivot_candidates.add_argument("--output-dir", required=True, type=Path, help="Directory for pivot candidate review artifacts.")
+    pivot_candidates.add_argument("--project-id", required=True, help="CPLayout project id for review evidence linkage.")
+    pivot_candidates.add_argument("--project-crs", required=True, help="Projected CPLayout CRS; EPSG:4326 is rejected.")
+    pivot_candidates.add_argument("--iterations", type=int, default=100, help="Detector iterations to run. Values below 1 are rejected.")
+    pivot_candidates.add_argument("--truth-center-x", type=float, help="Optional image-space truth center X for --map-canvas.")
+    pivot_candidates.add_argument("--truth-center-y", type=float, help="Optional image-space truth center Y for --map-canvas.")
+    pivot_candidates.add_argument("--truth-radius", type=float, help="Optional image-space truth radius for --map-canvas.")
+    pivot_candidates.add_argument("--created-at", default=DEFAULT_CREATED_AT)
+
     prepare_dataset = subcommands.add_parser("prepare-vision-dataset", help="Validate a local fixture manifest and write deterministic dataset metadata.")
     prepare_dataset.add_argument("--manifest", required=True, type=Path, help="Fixture manifest JSON with local artifact paths.")
     prepare_dataset.add_argument("--output-dir", required=True, type=Path, help="Directory for vision-dataset-metadata.json.")
@@ -190,6 +205,19 @@ def main(argv: list[str] | None = None) -> int:
             args.output_dir,
             args.iterations,
             args.synthetic_fixture,
+            args.truth_center_x,
+            args.truth_center_y,
+            args.truth_radius,
+            args.created_at,
+        )
+    if args.command == "detect-pivot-candidates":
+        return detect_pivot_candidates(
+            args.map_canvas,
+            args.synthetic_fixture,
+            args.output_dir,
+            args.project_id,
+            args.project_crs,
+            args.iterations,
             args.truth_center_x,
             args.truth_center_y,
             args.truth_radius,
@@ -650,6 +678,224 @@ def run_pivot_locator_loop(
         "realWorldAccepted": False,
     }, indent=2))
     return 0
+
+
+def detect_pivot_candidates(
+    map_canvas_path: Path | None,
+    synthetic_fixture: bool,
+    output_dir: Path,
+    project_id: str,
+    project_crs: str,
+    iteration_count: int,
+    truth_center_x: float | None,
+    truth_center_y: float | None,
+    truth_radius: float | None,
+    created_at: str,
+) -> int:
+    require_projected_crs(project_crs, "detect-pivot-candidates")
+    if iteration_count < 1:
+        raise SystemExit("--iterations must be a positive integer.")
+    if not synthetic_fixture and map_canvas_path is None:
+        raise SystemExit("detect-pivot-candidates requires --map-canvas or --synthetic-fixture.")
+
+    cv = import_cv2()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    image, truth, input_artifact, fixture_kind = pivot_locator_input(
+        cv,
+        output_dir,
+        map_canvas_path,
+        synthetic_fixture,
+        truth_center_x,
+        truth_center_y,
+        truth_radius,
+        "pivot-candidates-synthetic-fixture.png",
+    )
+    iterations = run_pivot_locator_iterations(cv, image, truth, iteration_count)
+    best = best_pivot_locator_iteration(iterations)
+    annotated_path = output_dir / "pivot-candidates-annotated.png"
+    write_pivot_locator_annotated_image(cv, image, annotated_path, best, truth)
+    iterations_path = output_dir / "pivot-candidates-iterations.jsonl"
+    iterations_path.write_text("".join(json.dumps(item, sort_keys=True) + "\n" for item in iterations), encoding="utf-8")
+
+    best_candidate = best.get("bestCandidate") if best is not None else None
+    evidence_id = f"{project_id}:pivot-candidate-evidence"
+    recommendation_id = f"{project_id}:pivot-candidate-review"
+    confidence = round(float(best_candidate["confidence"]), 3) if best_candidate is not None else 0.0
+    weighted_score = best.get("weightedVote", {}).get("score") if best is not None else None
+    candidate_score = best_candidate.get("score") if best_candidate is not None else None
+    artifacts = {
+        "mapCanvas": input_artifact,
+        "iterationsJsonl": artifact_inventory(iterations_path, require_doc_kml=False),
+        "annotatedPng": artifact_inventory(annotated_path, require_doc_kml=False),
+    }
+    hard_failures = [
+        "projected XY calibration absent",
+        "operator-approved real-world pivot fixture absent",
+    ]
+    if best_candidate is None:
+        hard_failures.append("no pivot-center candidate was detected")
+    evidence_record = {
+        "id": evidence_id,
+        "projectId": project_id,
+        "sourceKind": "model_output",
+        "createdAt": created_at,
+        "projectCrs": project_crs,
+        "summary": "Local OpenCV pivot-center candidate detector evidence.",
+        "confidence": confidence,
+        "reviewStatus": "unreviewed",
+        "notes": "Image-space candidate evidence only. Projected XY pivot-center output is blocked until an operator-approved fixture and project calibration exist.",
+        "artifacts": artifacts,
+        "metrics": {
+            "fixtureKind": fixture_kind,
+            "iterationCount": len(iterations),
+            "detectedIterations": sum(1 for item in iterations if item["bestCandidate"] is not None),
+            "bestIteration": best.get("iteration") if best is not None else None,
+            "bestCandidate": best_candidate,
+            "truth": truth,
+            "centerErrorPx": best.get("metrics", {}).get("centerErrorPx") if best is not None else None,
+            "radiusMismatchRatio": best.get("metrics", {}).get("radiusMismatchRatio") if best is not None else None,
+            "weightedVote": best.get("weightedVote") if best is not None else None,
+            "canonicalGeometryMutation": False,
+            "networkRequired": False,
+        },
+    }
+    recommendation = {
+        "id": recommendation_id,
+        "projectId": project_id,
+        "modelName": PIVOT_CANDIDATE_MODEL_NAME,
+        "modelVersion": PIVOT_CANDIDATE_MODEL_VERSION,
+        "createdAt": created_at,
+        "projectCrs": project_crs,
+        "summary": "Review local image-space pivot-center candidate evidence; projected XY output is blocked until calibration.",
+        "proposedGeometry": {
+            "projectCrs": project_crs,
+        },
+        "confidence": confidence,
+        "evidenceIds": [evidence_id],
+        "reviewStatus": "unreviewed",
+        "score": round(float(candidate_score), 3) if isinstance(candidate_score, (int, float)) else 0.0,
+        "scoreBreakdown": {
+            "candidateScore": round(float(candidate_score), 3) if isinstance(candidate_score, (int, float)) else 0.0,
+            "weightedVoteScore": round(float(weighted_score), 4) if isinstance(weighted_score, (int, float)) else 0.0,
+        },
+        "metadata": {
+            "schemaVersion": PIVOT_CANDIDATE_SCHEMA_VERSION,
+            "imageSpaceCandidate": best_candidate,
+            "bestIteration": best.get("iteration") if best is not None else None,
+            "truth": truth,
+            "fixtureKind": fixture_kind,
+            "iterationCount": len(iterations),
+            "detector": "opencv_hough_circle",
+            "feasible": False,
+            "hardFailures": hard_failures,
+            "canonicalGeometryMutation": False,
+            "networkRequired": False,
+            "hiddenKeysAllowed": False,
+        },
+        "warnings": [
+            "Image-space pivot candidate only; no projected-XY pivot center is emitted without calibration.",
+            "Operator review is required before any CPLayout geometry workflow action.",
+            "This local companion output is not survey grade and does not prove native/mobile ML runtime behavior.",
+            *hard_failures,
+        ],
+    }
+    report = {
+        "schemaVersion": PIVOT_CANDIDATE_SCHEMA_VERSION,
+        "createdAt": created_at,
+        "projectId": project_id,
+        "projectCrs": project_crs,
+        "fixtureKind": fixture_kind,
+        "advisoryOnly": True,
+        "surveyGrade": False,
+        "canonicalGeometryMutation": False,
+        "networkRequired": False,
+        "hiddenKeysAllowed": False,
+        "artifacts": artifacts,
+        "detections": {
+            "bestCandidate": best_candidate,
+            "bestIteration": best,
+            "topCandidates": [] if best is None else best.get("topCandidates", []),
+        },
+        "layoutEvidenceRecords": [evidence_record],
+        "modelRecommendations": [recommendation],
+        "layoutDecisionRecords": [],
+        "acceptance": {
+            "accepted": False,
+            "status": "blocked_missing_projected_xy_calibration",
+            "hardFailures": hard_failures,
+            "autoApplyEligible": False,
+        },
+        "nonGoals": [
+            "Does not mutate PivotProject geometry, schemas, persistence, archives, or projected XY state.",
+            "Does not emit proposedGeometry.pivotCenter without project-CRS calibration.",
+            "Does not use paid APIs, hidden keys, cloud training, hosted imagery, or telemetry.",
+        ],
+    }
+    json_path = output_dir / "pivot-candidates-review.json"
+    geojson_path = output_dir / "pivot-candidates-recommendations.geojson"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    geojson_path.write_text(json.dumps(recommendations_to_geojson([recommendation]), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps({
+        "schemaVersion": PIVOT_CANDIDATE_SCHEMA_VERSION,
+        "json": str(json_path),
+        "geojson": str(geojson_path),
+        "iterations": str(iterations_path),
+        "annotatedPng": str(annotated_path),
+        "iterationCount": len(iterations),
+        "bestCandidateDetected": best_candidate is not None,
+        "projectedPivotCenterEmitted": False,
+        "canonicalGeometryMutation": False,
+        "networkRequired": False,
+    }, indent=2, sort_keys=True))
+    return 0
+
+
+def pivot_locator_input(
+    cv: Any,
+    output_dir: Path,
+    map_canvas_path: Path | None,
+    synthetic_fixture: bool,
+    truth_center_x: float | None,
+    truth_center_y: float | None,
+    truth_radius: float | None,
+    synthetic_filename: str,
+) -> tuple[Any, dict[str, Any] | None, dict[str, Any], str]:
+    if synthetic_fixture:
+        image, truth = synthetic_pivot_fixture(cv)
+        synthetic_path = output_dir / synthetic_filename
+        if not cv.imwrite(str(synthetic_path), image):
+            raise SystemExit(f"OpenCV could not write synthetic pivot fixture: {synthetic_path}")
+        return image, truth, artifact_inventory(synthetic_path, require_doc_kml=False), "synthetic_generated"
+
+    if map_canvas_path is None:
+        raise SystemExit("A map-canvas path is required when --synthetic-fixture is not used.")
+    image = cv.imread(str(map_canvas_path))
+    if image is None:
+        raise SystemExit(f"OpenCV could not read map-canvas screenshot: {map_canvas_path}")
+    truth = None
+    if truth_center_x is not None or truth_center_y is not None or truth_radius is not None:
+        if truth_center_x is None or truth_center_y is None or truth_radius is None:
+            raise SystemExit("--truth-center-x, --truth-center-y, and --truth-radius must be supplied together.")
+        truth = {
+            "center": {"x": float(truth_center_x), "y": float(truth_center_y)},
+            "radius": float(truth_radius),
+            "source": "operator_supplied_image_space_cli_args",
+        }
+    return image, truth, artifact_inventory(map_canvas_path, require_doc_kml=False), "local_map_canvas"
+
+
+def require_projected_crs(project_crs: str, command_name: str) -> None:
+    normalized = project_crs.strip().upper().replace(" ", "")
+    if (
+        normalized == "EPSG:4326"
+        or normalized == "CRS:84"
+        or normalized == "OGC:CRS84"
+        or "WGS84" in normalized
+        or "LONGITUDE" in normalized
+        or "LATITUDE" in normalized
+        or "GEOGRAPHIC" in normalized
+    ):
+        raise SystemExit(f"{command_name} requires CPLayout projected/local XY CRS, not {project_crs}.")
 
 
 def synthetic_pivot_fixture(cv: Any) -> tuple[Any, dict[str, Any]]:

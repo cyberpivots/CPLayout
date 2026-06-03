@@ -25,6 +25,10 @@ Existing `MapPackageManifest` metadata maps to MapLibre React Native source prop
 
 Raw `pmtiles` and `mbtiles` archives are not native-renderable from metadata alone. They need one of the accepted adapters below before `describeTilePackageReadiness(..., "native_maplibre_rn")` may report `canRender: true`.
 
+Current chosen adapter path: generate TileJSON plus app-readable tile URL templates. `packages/core/src/mapTilePackages.ts` already treats those local sources as the lowest-risk native MapLibre descriptor shape. This is adapter readiness only; native rendering remains unverified until the Android/iOS device checklist captures MapLibre evidence.
+
+Use `docs/native-maplibre-render-report-template.json` for a completed native MapLibre render report. The roadmap runner validates that report only when it includes device/build identity, a local TileJSON or tile URL template source, screenshot hash and pixel metrics, and the explicit boundary that raw PMTiles/MBTiles native rendering was not proved.
+
 ## Accepted Future Adapter Options
 
 - Local HTTP tile server that exposes app-readable TileJSON and tile URL templates.

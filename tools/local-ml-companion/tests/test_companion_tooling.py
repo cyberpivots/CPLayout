@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -172,6 +173,140 @@ class CompanionToolingTests(unittest.TestCase):
             self.assertEqual(recommendations[1]["proposedGeometry"]["pivotCenter"], {"x": 500000.0, "y": 4410000.0})
             self.assertEqual(projected["features"][0]["geometry"]["type"], "Point")
             self.assertEqual(recommendation_geojson["features"][0]["properties"]["geometryRole"], "metadata_only")
+
+    def test_build_evidence_packet_accepts_calibrated_real_pivot_fixture_manifest(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "real-map.png"
+            source.write_bytes(b"real pivot fixture")
+            manifest = root / "real-pivot-fixtures.json"
+            manifest.write_text(json.dumps({
+                "schemaVersion": "cplayout-real-pivot-fixtures-v1",
+                "projectId": "project-a",
+                "projectCrs": "EPSG:32613",
+                "canonicalGeometryMutation": False,
+                "fixtures": [{
+                    "id": "fixture-a",
+                    "operatorApproved": True,
+                    "projectId": "project-a",
+                    "projectCrs": "EPSG:32613",
+                    "mapCanvasCrop": "real-map.png",
+                    "provenance": {"source": "operator_owned_local_copy", "keyedService": False},
+                    "calibration": {"status": "valid_projected_xy", "method": "operator_truth_label"},
+                    "truthLabels": {
+                        "TRUE_PIVOT_CENTER": {
+                            "imagePoint": {"x": 120.0, "y": 140.0},
+                            "projectedPoint": {"x": 500000.0, "y": 4410000.0},
+                            "calibrationStatus": "valid_projected_xy",
+                        },
+                    },
+                    "rejectionClasses": ["road_circle", "ui_overlay_ring"],
+                    "confidence": 0.91,
+                }],
+            }), encoding="utf-8")
+
+            self.assertEqual(
+                build_evidence_packet(
+                    "project-a",
+                    "EPSG:32613",
+                    root / "packet",
+                    real_pivot_fixtures_path=manifest,
+                    created_at="2026-06-02T00:00:00.000Z",
+                ),
+                0,
+            )
+
+            packet = json.loads((root / "packet" / "companion-evidence-packet.json").read_text(encoding="utf-8"))
+            recommendation = packet["modelRecommendations"][0]
+            artifact_hash = hashlib.sha256(b"real pivot fixture").hexdigest()
+
+            self.assertEqual(recommendation["proposedGeometry"]["pivotCenter"], {"x": 500000.0, "y": 4410000.0})
+            self.assertTrue(recommendation["metadata"]["operatorApproved"])
+            self.assertEqual(recommendation["metadata"]["artifactHashes"]["mapCanvasCrop"]["sha256"], artifact_hash)
+            self.assertEqual(recommendation["metadata"]["rejectionClasses"], ["road_circle", "ui_overlay_ring"])
+            self.assertEqual(recommendation["metadata"]["hardFailures"], [])
+            self.assertFalse(packet["canonicalGeometryMutation"])
+
+    def test_build_evidence_packet_blocks_uncalibrated_real_pivot_fixture_geometry(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "real-map.png"
+            source.write_bytes(b"uncalibrated fixture")
+            manifest = root / "real-pivot-fixtures.json"
+            manifest.write_text(json.dumps({
+                "schemaVersion": "cplayout-real-pivot-fixtures-v1",
+                "projectId": "project-a",
+                "projectCrs": "EPSG:32613",
+                "fixtures": [{
+                    "id": "fixture-a",
+                    "operatorApproved": True,
+                    "mapCanvasCrop": "real-map.png",
+                    "provenance": {"source": "operator_owned_local_copy", "keyedService": False},
+                    "calibrationStatus": "image_space_only",
+                    "truthLabels": {
+                        "TRUE_PIVOT_CENTER": {
+                            "imagePoint": {"x": 120.0, "y": 140.0},
+                            "calibrationStatus": "image_space_only",
+                        },
+                    },
+                }],
+            }), encoding="utf-8")
+
+            self.assertEqual(
+                build_evidence_packet(
+                    "project-a",
+                    "EPSG:32613",
+                    root / "packet",
+                    real_pivot_fixtures_path=manifest,
+                    created_at="2026-06-02T00:00:00.000Z",
+                ),
+                0,
+            )
+
+            packet = json.loads((root / "packet" / "companion-evidence-packet.json").read_text(encoding="utf-8"))
+            recommendation = packet["modelRecommendations"][0]
+            recommendation_geojson = json.loads((root / "packet" / "companion-evidence-packet-recommendations.geojson").read_text(encoding="utf-8"))
+
+            self.assertNotIn("pivotCenter", recommendation["proposedGeometry"])
+            self.assertIn("real-world pivot fixture calibration is not valid_projected_xy", recommendation["metadata"]["hardFailures"])
+            self.assertIn("operator-approved real-world pivot fixture lacks calibrated TRUE_PIVOT_CENTER.projectedPoint", recommendation["metadata"]["hardFailures"])
+            self.assertEqual(recommendation_geojson["features"][0]["properties"]["geometryRole"], "metadata_only")
+            self.assertFalse(packet["canonicalGeometryMutation"])
+
+    def test_build_evidence_packet_rejects_real_pivot_fixture_hash_mismatch(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "real-map.png"
+            source.write_bytes(b"real pivot fixture")
+            manifest = root / "real-pivot-fixtures.json"
+            manifest.write_text(json.dumps({
+                "schemaVersion": "cplayout-real-pivot-fixtures-v1",
+                "projectId": "project-a",
+                "projectCrs": "EPSG:32613",
+                "fixtures": [{
+                    "id": "fixture-a",
+                    "operatorApproved": True,
+                    "mapCanvasCrop": "real-map.png",
+                    "artifactHashes": {"mapCanvasCrop": "0" * 64},
+                    "provenance": {"source": "operator_owned_local_copy", "keyedService": False},
+                    "calibrationStatus": "valid_projected_xy",
+                    "truthLabels": {
+                        "TRUE_PIVOT_CENTER": {
+                            "projectedPoint": {"x": 500000.0, "y": 4410000.0},
+                            "calibrationStatus": "valid_projected_xy",
+                        },
+                    },
+                }],
+            }), encoding="utf-8")
+
+            with self.assertRaises(SystemExit):
+                build_evidence_packet(
+                    "project-a",
+                    "EPSG:32613",
+                    root / "packet",
+                    real_pivot_fixtures_path=manifest,
+                    created_at="2026-06-02T00:00:00.000Z",
+                )
 
     def test_local_service_launch_plans_reject_non_local_binds(self) -> None:
         with TemporaryDirectory() as temp:

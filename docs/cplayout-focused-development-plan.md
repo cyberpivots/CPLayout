@@ -56,7 +56,7 @@ The consolidation pass used this evidence before changing records:
 | Core projected-XY geometry | Locally verified through current validation and browser proof ledgers. | Keep every new geometry write behind reducer validation and project CRS checks. |
 | Browser mapping/UI | Browser-proven through the completed 100-row ledger and final proof checklist. | Re-run `npm run proof:web` for visible browser changes. |
 | Review Apply XY | Browser/local proof exists for explicit operator-gated projected-XY application. | Do not add automatic apply paths from imagery, CV, ML, KML, or operator labels. |
-| Project archive and web persistence | Browser/local paths are proven; local storage remains web MVP. | Adjacent evidence/recommendation ZIP round-trip and ZIP scale guardrails remain blockers. |
+| Project archive and web persistence | Browser/local paths are proven; local storage remains web MVP. Adjacent evidence, recommendation, and decision ZIP round-trip plus archive safety limits are implemented and covered by project-store tests and focused browser proof. | Native ZIP sharing and native adjacent review-data persistence remain device-gated; large performance stress remains a separate scale gate. |
 | Native SQLite and ZIP sharing | Compile/config surface exists, but runtime proof is blocked. | Run `docs/android-native-verification.md` with a device/emulator or equivalent iOS proof. |
 | Browser MapLibre/PMTiles | Browser protocol/source evidence exists. | Native raw PMTiles/MBTiles rendering needs an adapter and device proof. |
 | Google Earth/KML/KMZ | KML/KMZ export and at least one local Google Earth visual-fidelity proof passed. | This does not prove app/native/mobile runtime behavior or change canonical XY. |
@@ -69,11 +69,17 @@ The consolidation pass used this evidence before changing records:
 The panel weighting favors source-backed blockers that reduce false product claims and unlock later work. The next development order is:
 
 1. Documentation and source consolidation: keep this plan, prompt registry, source ledger, and known gaps aligned after every major pass.
-2. Archive adjacent review data and ZIP safety: implement and prove round-trip for evidence, decisions, recommendations, entry-count limits, byte limits, and consistency checks.
-3. Native runtime verification: run Android/iOS device or emulator proof for native SQLite, ZIP sharing, native MapLibre gates, network isolation, and report completion.
-4. Real-world ML/CV fixture manifest: curate operator-approved pivot truth labels, source/provenance, calibration, hard-failure reasons, and companion output hashes.
-5. Native raw tile adapter proof: decide local protocol, extracted tiles, local server, or conversion path; then prove on device before claiming native raw PMTiles/MBTiles.
-6. Browser/UI polish: continue accessibility and review workflow refinements only after the data/archive/native/fixture blockers above stay visible.
+2. Native runtime verification: run Android/iOS device or emulator proof for native SQLite, ZIP sharing, native MapLibre gates, network isolation, and report completion.
+3. Real-world ML/CV fixture execution: supply operator-approved pivot truth labels, source/provenance, calibration, hard-failure reasons, and companion output hashes through the local fixture manifest path.
+4. Native raw tile adapter proof: decide local protocol, extracted tiles, local server, or conversion path; then prove on device before claiming native raw PMTiles/MBTiles.
+5. Browser/UI polish: continue accessibility and review workflow refinements only after the data/archive/native/fixture blockers above stay visible.
+
+Completed 2026-06-02 follow-up:
+
+- Archive adjacent review data and ZIP safety: `importProjectArchiveZipWithAdjacentData` now returns project, adjacent review data, and manifest while `importProjectArchiveZip` remains the compatibility wrapper. Project-store tests cover adjacent-data round-trip, project id/CRS mismatches, unsupported/missing entries, compressed size, file-count, entry-size, total uncompressed-size, and `canonicalGeometryMutation: false` gates. Focused Playwright proof verifies browser ZIP export/import restores adjacent review records without applying geometry.
+- Real-world ML/CV fixture manifest path: `build-evidence-packet --real-pivot-fixtures` accepts local operator-approved fixture manifests, hashes local artifacts, rejects hash mismatches and hidden-key provenance, emits projected-XY pivot recommendations only for calibrated truth, and keeps uncalibrated fixtures metadata-only with hard failures.
+- Native verification blocker: `npm run check:android-tools` found local adb/emulator/EAS/Expo tooling but no connected adb device or running emulator, so `npm run verify:android-native` was not eligible for a production runtime claim.
+- Roadmap completion automation: `npm run verify:roadmap` now runs the local proof suite, browser proof, native/device detection, Google Earth visual-fidelity manifest validation, real-pivot fixture detection, typed native MapLibre report validation, and native adjacent-review-data persistence classification in one coordinator pass. The runner writes ignored reports under `reports/roadmap-completion/` and records unavailable external evidence as `blocked` instead of requiring step-by-step operator decisions.
 
 Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry mutation, model output without fixture metrics, projected-XY output without CRS calibration, native/mobile claims without device proof, and Google Earth visual-fidelity claims without visible rendered evidence plus cleanup status.
 
@@ -95,11 +101,12 @@ Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry 
 | ML/CV loop edits | `npm run verify:ml-cv-loop`; companion tests when companion code changes |
 | Local companion changes | `npm run test:ml-companion`; companion CLI dry-runs relevant to the changed command |
 | Native runtime claims | `npm run check:android-tools`; `npm run verify:android-native`; device/emulator report evidence |
+| Full roadmap completion pass | `npm run verify:roadmap`; provide resource reports through `CPLAYOUT_ANDROID_NATIVE_REPORT`, `CPLAYOUT_GOOGLE_EARTH_MANIFEST`, `CPLAYOUT_REAL_PIVOT_FIXTURES`, or `CPLAYOUT_NATIVE_MAPLIBRE_REPORT` when those external proofs exist |
 
 ## Current Non-Claims
 
 - No native Android/iOS runtime behavior was proven in this consolidation pass.
 - No web SQLite deployment proof exists.
 - No native raw PMTiles/MBTiles archive rendering proof exists.
-- No real-world projected-XY automatic pivot locating proof exists.
+- No operator-supplied real-world projected-XY automatic pivot locating proof exists; the manifest path and calibrated/uncalibrated gates exist, but no real fixture has been supplied and proved.
 - No managed Codex endpoint enforcement proof exists; repo-local hooks remain advisory unless managed deployment is verified.

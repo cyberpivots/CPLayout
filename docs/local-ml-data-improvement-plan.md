@@ -85,6 +85,15 @@ Output contract:
 - Store weighted-vote details in recommendation metadata or `scoreBreakdown`. The vote must preserve detector quality, calibration quality, layout impact, UI/review readiness, records quality, and offline/security vetoes.
 - Accept, Reject, and Defer decisions record `LayoutDecisionRecord` entries. Apply XY is the only geometry-changing operation and must keep the existing reducer confirmation and validation path.
 
+Current local fixture path:
+
+- `cplayout-ml build-evidence-packet --real-pivot-fixtures <manifest.json> --project-id <id> --project-crs <projected-crs> --output-dir <dir>` accepts an operator-approved real pivot fixture manifest as companion evidence.
+- Manifest schema version: `cplayout-real-pivot-fixtures-v1`.
+- Fixture records must include local artifact paths, provenance with `keyedService: false`, project id, project CRS, operator approval, calibration status, truth labels, and optional rejection classes.
+- Artifact hashes are computed from local files; supplied `artifactHashes` must match or the packet build is rejected.
+- Calibrated `TRUE_PIVOT_CENTER.projectedPoint` may emit `ModelRecommendation.proposedGeometry.pivotCenter` only when the fixture is operator-approved, the calibration status is valid/project-CRS, and the fixture CRS matches the packet CRS.
+- Uncalibrated or metadata-only fixtures remain review records with hard failures such as missing projected truth or invalid calibration. They do not emit projected pivot geometry and remain advisory until Review Apply XY.
+
 Initial implementation targets:
 
 1. Add `detect-pivot-candidates` and `evaluate-pivot-fixtures` commands to the local companion.

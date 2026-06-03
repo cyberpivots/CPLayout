@@ -110,11 +110,13 @@ The first production slice is a local companion pivot candidate exporter, not an
 4. Keep radius, image-space center, detector confidence, and Hough/Canny/radial/tower cues in metrics and metadata until an explicit project-CRS reducer path is reviewed and tested.
 5. In the Review UI, group these as CV pivot candidates. Preview is advisory. Accept, Reject, and Defer record decisions only. Apply XY remains the only geometry-changing action and must keep reducer validation and confirmation.
 6. Add archive/review export checks for `exports/layout-evidence.jsonl`, `exports/layout-decisions.jsonl`, and `exports/model-recommendations.geojson` when adjacent review data is exported.
+7. Add the operator-approved real fixture manifest path through `build-evidence-packet --real-pivot-fixtures`; calibrated truth may emit projected-XY pivot recommendations, while uncalibrated or metadata-only fixtures stay hard-blocked.
 
 ## Current Blockers
 
-- No operator-approved fixture manifest for pivot center truth labels has been selected in this prompt.
+- No operator-approved real-world fixture artifact set has been supplied in this prompt. The companion now has a `cplayout-real-pivot-fixtures-v1` manifest path, but that path is not itself real-world projected-XY proof.
 - `detect-pivot-candidates` exists for local image-space evidence, but it intentionally omits `proposedGeometry.pivotCenter` until project-CRS calibration is supplied and validated.
+- `build-evidence-packet --real-pivot-fixtures` emits `proposedGeometry.pivotCenter` only for operator-approved fixtures with valid projected-XY `TRUE_PIVOT_CENTER.projectedPoint`, matching project id/CRS, and verified local artifact hashes.
 - Existing CV can detect image-space pivot crop rings and overlay circles, but that is not enough to claim automatic projected-XY pivot locating.
 - MapLibre web advisory preview needs a visible candidate overlay before center-locating review can rely on that surface.
 - A strict pivot-locating path must not reuse any boundary-assist import shortcut that auto-applies accepted recommendations.
@@ -234,6 +236,13 @@ The first executable 100-iteration run has been completed for a deterministic sy
 - Raw artifacts: `reports/ml-cv-pivot-locating/20260601T-run/`
 - Result: 100/100 local OpenCV Hough iterations detected the synthetic pivot center within the center-location gate; best center error was `0.381 px`.
 - Boundaries: real-world/projected-XY automatic pivot locating remains blocked because no operator-approved real-world pivot fixture manifest or project-CRS calibration was supplied. The run did not mutate canonical geometry and did not use network access, hidden keys, paid APIs, cloud training, or hosted imagery.
+
+2026-06-02 follow-up:
+
+- `build-evidence-packet --real-pivot-fixtures` now accepts `cplayout-real-pivot-fixtures-v1` manifests, hashes local artifacts, rejects hash mismatches, requires no-key provenance, and preserves `canonicalGeometryMutation: false`.
+- Companion tests now cover calibrated fixture output with `proposedGeometry.pivotCenter`, uncalibrated fixture output that remains metadata-only with hard failures, and artifact hash mismatch rejection.
+- Browser archive proof now verifies adjacent review evidence, decisions, and recommendation GeoJSON round-trip through Project ZIP without applying projected geometry.
+- No operator-supplied real-world fixture was added in this follow-up; real-world/projected-XY automatic pivot locating remains unproved until a fixture set is supplied and validated.
 
 The ledger rows remain the implementation roadmap for replacing synthetic proof with real proof packets, projected-XY calibration, review import, UI proof, archive proof, and device-gated native ML validation. A row can move from `Planned` to `Pass`, `Blocked`, or `Fail` only after its research gate, improvement, test gate, and weighted vote record exist.
 

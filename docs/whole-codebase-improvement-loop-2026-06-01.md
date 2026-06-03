@@ -155,6 +155,8 @@ Iterations 011-100 are batch-classified as risk inventory. Rows marked `Blocked`
 
 Current branch observed during preflight: `codex/cplayout-agent-specialists`, tracking `origin/codex/cplayout-agent-specialists`.
 
+2026-06-02 follow-up on `codex/complete-roadmap-next`: rows 023 and 024 remain historical blocked outcomes for the original batch, but the current branch now implements and locally proves the targeted archive slice. `importProjectArchiveZipWithAdjacentData` restores adjacent evidence, decisions, and recommendations while `importProjectArchiveZip` remains project-only for compatibility. Project-store tests and focused browser proof cover adjacent ZIP round-trip, manifest/file consistency, supported filenames, compressed size, file count, entry size, total uncompressed size, project id/CRS gates, and `canonicalGeometryMutation: false`. Native ZIP sharing and native review-data persistence remain device-gated.
+
 ## Validation Commands
 
 Required after changing this loop:

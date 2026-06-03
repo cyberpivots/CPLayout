@@ -1,0 +1,40 @@
+{
+  "reportSchemaVersion": 1,
+  "proofTarget": "native-maplibre-render",
+  "generatedAt": "",
+  "status": "incomplete",
+  "target": "native_maplibre_rn",
+  "device": {
+    "adbSerial": "",
+    "model": "",
+    "osVersion": "",
+    "apiLevel": ""
+  },
+  "app": {
+    "packageName": "local.centerpivot.layout",
+    "versionName": "",
+    "versionCode": "",
+    "buildType": "",
+    "commit": ""
+  },
+  "tileSource": {
+    "tileSourceKind": "tilejson_or_template",
+    "tileJsonUrl": "",
+    "tileUrlTemplates": [],
+    "attribution": ""
+  },
+  "screenshot": {
+    "path": "",
+    "sha256": "",
+    "width": 0,
+    "height": 0,
+    "nonBlankPixelRatio": 0,
+    "grayVariance": 0
+  },
+  "boundaries": {
+    "noRawPmtilesMbtilesNativeProof": true,
+    "canonicalGeometryMutation": false,
+    "networkRequired": false
+  },
+  "notes": "Set status to pass only after a built native app renders a local TileJSON or tile URL template source on device/emulator and the screenshot hash plus pixel metrics are recorded. This template does not prove raw PMTiles/MBTiles native archive rendering."
+}

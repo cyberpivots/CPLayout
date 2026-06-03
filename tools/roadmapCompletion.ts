@@ -1,0 +1,937 @@
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { parseCompleteAndroidNativeVerificationReport } from "@cplayout/project-store";
+import {
+  collectAndroidToolSnapshot,
+  readExpoAndroidPackageName,
+  reportFromSnapshot,
+  timestampForFilename,
+  writeJsonFile,
+} from "./androidNativeProof";
+
+export type RoadmapGateStatus = "pass" | "fail" | "blocked" | "not_run";
+
+export interface RoadmapCompletionOptions {
+  full: boolean;
+  dryRun: boolean;
+  outputDirectory: string;
+  androidReportPath?: string;
+  googleEarthManifestPath?: string;
+  nativeMapLibreReportPath?: string;
+  realPivotFixturesPath?: string;
+  realPivotProjectId?: string;
+  realPivotProjectCrs?: string;
+}
+
+export interface RoadmapGateResult {
+  id: string;
+  label: string;
+  status: RoadmapGateStatus;
+  reason: string;
+  command?: string;
+  exitCode?: number | null;
+  durationMs?: number;
+  evidence?: string[];
+  details?: unknown;
+}
+
+export interface RoadmapCompletionReport {
+  schemaVersion: "cplayout-roadmap-completion-v1";
+  generatedAt: string;
+  commit: string;
+  mode: "full" | "fast";
+  status: "pass" | "fail" | "blocked";
+  gates: RoadmapGateResult[];
+  ownerInputContract: {
+    decisionRequired: false;
+    resourceInputs: string[];
+  };
+}
+
+const DEFAULT_OUTPUT_DIRECTORY = "reports/roadmap-completion";
+const DEFAULT_GOOGLE_EARTH_MANIFEST_PATH = "reports/google-earth-visual-fidelity/visual-fidelity-manifest.json";
+const DEFAULT_NATIVE_MAPLIBRE_REPORT_PATH = "reports/native-maplibre/latest.json";
+const DEFAULT_REAL_PIVOT_FIXTURE_PATH = "fixtures/real-pivot/manifest.json";
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const options = parseRoadmapArgs(process.argv.slice(2), process.env);
+  const report = runRoadmapCompletion(options);
+  process.exit(report.status === "pass" ? 0 : report.status === "blocked" ? 2 : 1);
+}
+
+export function parseRoadmapArgs(
+  rawArgs: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): RoadmapCompletionOptions {
+  const fast = hasFlag(rawArgs, "--fast");
+  return {
+    full: hasFlag(rawArgs, "--full") || !fast,
+    dryRun: hasFlag(rawArgs, "--dry-run"),
+    outputDirectory: valueFor(rawArgs, "--output-dir") ?? env.CPLAYOUT_ROADMAP_REPORT_DIR ?? DEFAULT_OUTPUT_DIRECTORY,
+    androidReportPath: valueFor(rawArgs, "--android-report") ?? env.CPLAYOUT_ANDROID_NATIVE_REPORT,
+    googleEarthManifestPath: valueFor(rawArgs, "--google-earth-manifest") ?? env.CPLAYOUT_GOOGLE_EARTH_MANIFEST,
+    nativeMapLibreReportPath: valueFor(rawArgs, "--native-maplibre-report")
+      ?? env.CPLAYOUT_NATIVE_MAPLIBRE_REPORT
+      ?? (existsSync(DEFAULT_NATIVE_MAPLIBRE_REPORT_PATH) ? DEFAULT_NATIVE_MAPLIBRE_REPORT_PATH : undefined),
+    realPivotFixturesPath: valueFor(rawArgs, "--real-pivot-fixtures") ?? env.CPLAYOUT_REAL_PIVOT_FIXTURES,
+    realPivotProjectId: valueFor(rawArgs, "--real-pivot-project-id") ?? env.CPLAYOUT_REAL_PIVOT_PROJECT_ID,
+    realPivotProjectCrs: valueFor(rawArgs, "--real-pivot-project-crs") ?? env.CPLAYOUT_REAL_PIVOT_PROJECT_CRS,
+  };
+}
+
+export function runRoadmapCompletion(options: RoadmapCompletionOptions): RoadmapCompletionReport {
+  const generatedAt = new Date().toISOString();
+  const gates: RoadmapGateResult[] = [];
+
+  console.log(`CPLayout roadmap completion run: ${options.full ? "full" : "fast"} mode`);
+  console.log("Automation policy: run eligible gates, report external proof blockers, do not ask for step-by-step decisions.");
+
+  gates.push(worktreeGate(options));
+  gates.push(commandGate("validate", "TypeScript and workspace tests", ["npm", "run", "validate"], options));
+  gates.push(commandGate("validate-skills", "Skills, agents, hooks, and records", ["npm", "run", "validate:skills"], options));
+  gates.push(commandGate("ml-companion-tests", "Local ML companion tests", ["npm", "run", "test:ml-companion"], options));
+  gates.push(commandGate("ml-cv-loop", "ML/CV loop ledger verification", ["npm", "run", "verify:ml-cv-loop"], options));
+  gates.push(commandGate("whole-loop", "Whole-codebase loop ledger verification", ["npm", "run", "verify:whole-loop"], options));
+  gates.push(commandGate("diff-check", "Whitespace diff check", ["git", "diff", "--check"], options));
+  gates.push(commandGate("audit", "npm audit", ["npm", "audit"], options));
+  gates.push(options.full
+    ? commandGate("web-proof", "Static web export and Playwright proof", ["npm", "run", "proof:web"], options)
+    : notRunGate("web-proof", "Static web export and Playwright proof", "Fast mode skipped browser proof; run with --full to include it."));
+
+  gates.push(androidNativeGate(options, generatedAt));
+  gates.push(nativeAdjacentReviewDataGate(options));
+  gates.push(googleEarthVisualFidelityGate(options));
+  gates.push(realPivotFixtureGate(options, generatedAt));
+  gates.push(nativeMapLibreGate(options));
+
+  const report: RoadmapCompletionReport = {
+    schemaVersion: "cplayout-roadmap-completion-v1",
+    generatedAt,
+    commit: currentGitCommit(),
+    mode: options.full ? "full" : "fast",
+    status: summarizeStatus(gates),
+    gates,
+    ownerInputContract: {
+      decisionRequired: false,
+      resourceInputs: [
+        `Android native proof: connect an adb device/emulator with local.centerpivot.layout installed, or provide --android-report / CPLAYOUT_ANDROID_NATIVE_REPORT.`,
+        `Google Earth proof: provide --google-earth-manifest / CPLAYOUT_GOOGLE_EARTH_MANIFEST when the default ${DEFAULT_GOOGLE_EARTH_MANIFEST_PATH} is not the target proof.`,
+        `Real pivot proof: place a calibrated operator-approved fixture at ${DEFAULT_REAL_PIVOT_FIXTURE_PATH}, or provide --real-pivot-fixtures / CPLAYOUT_REAL_PIVOT_FIXTURES.`,
+        "Native MapLibre proof: provide a completed native render report with --native-maplibre-report / CPLAYOUT_NATIVE_MAPLIBRE_REPORT after a device run.",
+      ],
+    },
+  };
+
+  const reportPath = join(options.outputDirectory, `roadmap-completion-${timestampForFilename(generatedAt)}.json`);
+  const latestPath = join(options.outputDirectory, "latest.json");
+  writeJsonFile(reportPath, report);
+  writeJsonFile(latestPath, report);
+  writeMarkdownSummary(join(options.outputDirectory, "latest.md"), report);
+
+  console.log(`Roadmap completion report written: ${reportPath}`);
+  console.log(`Roadmap completion latest report: ${latestPath}`);
+  console.log(`Roadmap completion status: ${report.status}`);
+  for (const gate of gates) {
+    console.log(`- ${gate.status.toUpperCase()} ${gate.id}: ${gate.reason}`);
+  }
+
+  return report;
+}
+
+function commandGate(
+  id: string,
+  label: string,
+  command: string[],
+  options: RoadmapCompletionOptions,
+): RoadmapGateResult {
+  const startedAt = Date.now();
+  const commandText = command.map((part) => part.includes(" ") ? JSON.stringify(part) : part).join(" ");
+  if (options.dryRun) {
+    return {
+      id,
+      label,
+      status: "not_run",
+      reason: `Dry run: would run ${commandText}.`,
+      command: commandText,
+      durationMs: 0,
+    };
+  }
+
+  const [binary, ...args] = command;
+  if (!binary) {
+    return {
+      id,
+      label,
+      status: "fail",
+      reason: "Command gate has no executable.",
+      command: commandText,
+      exitCode: null,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+  const result = spawnSync(binary, args, {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+  const durationMs = Date.now() - startedAt;
+  if (result.status === 0) {
+    return {
+      id,
+      label,
+      status: "pass",
+      reason: "Command completed successfully.",
+      command: commandText,
+      exitCode: result.status,
+      durationMs,
+    };
+  }
+  return {
+    id,
+    label,
+    status: "fail",
+    reason: `Command failed with exit code ${result.status ?? "unknown"}.`,
+    command: commandText,
+    exitCode: result.status,
+    durationMs,
+  };
+}
+
+function worktreeGate(options: RoadmapCompletionOptions): RoadmapGateResult {
+  const command = "git status --short --branch";
+  if (options.dryRun) {
+    return {
+      id: "git-worktree",
+      label: "Worktree snapshot",
+      status: "not_run",
+      reason: `Dry run: would run ${command}.`,
+      command,
+      durationMs: 0,
+    };
+  }
+
+  const startedAt = Date.now();
+  const result = spawnSync("git", ["status", "--short", "--branch"], {
+    encoding: "utf8",
+  });
+  const durationMs = Date.now() - startedAt;
+  if (result.status !== 0) {
+    return {
+      id: "git-worktree",
+      label: "Worktree snapshot",
+      status: "fail",
+      reason: `git status failed with exit code ${result.status ?? "unknown"}.`,
+      command,
+      exitCode: result.status,
+      durationMs,
+    };
+  }
+
+  const lines = result.stdout.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const files = lines.slice(1);
+  const trackedDirtyFiles = files.filter((line) => !line.startsWith("?? "));
+  const untrackedFiles = files.filter((line) => line.startsWith("?? "));
+  const clean = trackedDirtyFiles.length === 0 && untrackedFiles.length === 0;
+  return {
+    id: "git-worktree",
+    label: "Worktree snapshot",
+    status: "pass",
+    reason: clean
+      ? "Worktree is clean."
+      : `Worktree has ${trackedDirtyFiles.length} tracked dirty files and ${untrackedFiles.length} untracked files; preserving as operator/prior-agent work.`,
+    command,
+    exitCode: result.status,
+    durationMs,
+    details: {
+      clean,
+      branch: lines[0] ?? "",
+      trackedDirtyFiles,
+      untrackedFiles,
+    },
+  };
+}
+
+function androidNativeGate(options: RoadmapCompletionOptions, generatedAt: string): RoadmapGateResult {
+  if (options.dryRun) {
+    return notRunGate(
+      "android-native-runtime",
+      "Android SQLite, ZIP sharing, picker, and migration runtime proof",
+      "Dry run: would detect adb/device state or validate --android-report.",
+    );
+  }
+
+  if (options.androidReportPath) {
+    try {
+      parseCompleteAndroidNativeVerificationReport(JSON.parse(readFileSync(options.androidReportPath, "utf8")));
+      return {
+        id: "android-native-runtime",
+        label: "Android SQLite, ZIP sharing, picker, and migration runtime proof",
+        status: "pass",
+        reason: "Completed Android native verification report validated.",
+        evidence: [options.androidReportPath],
+      };
+    } catch (error) {
+      return {
+        id: "android-native-runtime",
+        label: "Android SQLite, ZIP sharing, picker, and migration runtime proof",
+        status: "fail",
+        reason: `Android report did not validate: ${error instanceof Error ? error.message : String(error)}`,
+        evidence: [options.androidReportPath],
+      };
+    }
+  }
+
+  const packageName = readExpoAndroidPackageName();
+  const snapshot = collectAndroidToolSnapshot({
+    packageName,
+    outputDirectory: "reports/android-native-verification",
+  });
+  const templatePath = join(
+    "reports/android-native-verification",
+    `android-native-verification-${timestampForFilename(generatedAt)}.json`,
+  );
+  writeJsonFile(templatePath, reportFromSnapshot(snapshot));
+  if (snapshot.blocker) {
+    return {
+      id: "android-native-runtime",
+      label: "Android SQLite, ZIP sharing, picker, and migration runtime proof",
+      status: "blocked",
+      reason: snapshot.blocker,
+      evidence: [templatePath],
+    };
+  }
+  return {
+    id: "android-native-runtime",
+    label: "Android SQLite, ZIP sharing, picker, and migration runtime proof",
+    status: "blocked",
+    reason: "Device and native build detected, but the runtime checklist report is not complete yet.",
+    evidence: [templatePath],
+  };
+}
+
+function nativeAdjacentReviewDataGate(options: RoadmapCompletionOptions): RoadmapGateResult {
+  if (options.dryRun) {
+    return notRunGate(
+      "native-adjacent-review-data-persistence",
+      "Native adjacent review-data persistence",
+      "Dry run: would inspect native adjacent review-data API/proof availability.",
+    );
+  }
+
+  return {
+    id: "native-adjacent-review-data-persistence",
+    label: "Native adjacent review-data persistence",
+    status: "blocked",
+    reason: "SQLite table plans exist, but ProjectRepository does not expose native adjacent review-data save/load and no device proof exists. Browser/local archive round-trip is covered separately.",
+  };
+}
+
+function googleEarthVisualFidelityGate(options: RoadmapCompletionOptions): RoadmapGateResult {
+  if (options.dryRun) {
+    return notRunGate(
+      "google-earth-visual-fidelity",
+      "Google Earth rendered KML/KMZ visual-fidelity proof",
+      "Dry run: would validate an existing visual-fidelity manifest.",
+    );
+  }
+
+  if (options.googleEarthManifestPath) {
+    if (!existsSync(options.googleEarthManifestPath)) {
+      return {
+        id: "google-earth-visual-fidelity",
+        label: "Google Earth rendered KML/KMZ visual-fidelity proof",
+        status: "blocked",
+        reason: `Google Earth visual-fidelity manifest does not exist: ${options.googleEarthManifestPath}`,
+        evidence: [options.googleEarthManifestPath],
+      };
+    }
+    const validation = validateGoogleEarthManifest(options.googleEarthManifestPath);
+    return {
+      id: "google-earth-visual-fidelity",
+      label: "Google Earth rendered KML/KMZ visual-fidelity proof",
+      status: validation.ok ? "pass" : "fail",
+      reason: validation.ok
+        ? "Google Earth manifest proves rendered non-black/non-uniform map canvas, overlay confirmation, KML integrity, and uncontaminated cleanup."
+        : `Google Earth visual-fidelity manifest is not a strict proof: ${validation.errors.join("; ")}`,
+      evidence: validation.evidence,
+      details: validation.details,
+    };
+  }
+
+  const candidates = findGoogleEarthManifestCandidates();
+  if (candidates.length === 0) {
+    return {
+      id: "google-earth-visual-fidelity",
+      label: "Google Earth rendered KML/KMZ visual-fidelity proof",
+      status: "blocked",
+      reason: `No Google Earth visual-fidelity manifest found. Expected ${DEFAULT_GOOGLE_EARTH_MANIFEST_PATH} or --google-earth-manifest.`,
+    };
+  }
+  const validations = candidates.map((manifestPath) => validateGoogleEarthManifest(manifestPath));
+  const validation = validations.find((candidate) => candidate.ok) ?? validations[0];
+  if (!validation) {
+    return {
+      id: "google-earth-visual-fidelity",
+      label: "Google Earth rendered KML/KMZ visual-fidelity proof",
+      status: "blocked",
+      reason: "No readable Google Earth visual-fidelity manifest was found.",
+    };
+  }
+  return {
+    id: "google-earth-visual-fidelity",
+    label: "Google Earth rendered KML/KMZ visual-fidelity proof",
+    status: validation.ok ? "pass" : "fail",
+    reason: validation.ok
+      ? "Google Earth manifest proves rendered non-black/non-uniform map canvas, overlay confirmation, KML integrity, and uncontaminated cleanup."
+      : `Google Earth visual-fidelity manifest is not a strict proof: ${validation.errors.join("; ")}`,
+    evidence: validation.evidence,
+    details: validation.details,
+  };
+}
+
+function realPivotFixtureGate(options: RoadmapCompletionOptions, generatedAt: string): RoadmapGateResult {
+  if (options.dryRun) {
+    return notRunGate(
+      "real-pivot-fixture-proof",
+      "Operator-approved calibrated real pivot fixture proof",
+      "Dry run: would detect/build the real pivot fixture evidence packet.",
+    );
+  }
+
+  const fixturePath = options.realPivotFixturesPath
+    ?? (existsSync(DEFAULT_REAL_PIVOT_FIXTURE_PATH) ? DEFAULT_REAL_PIVOT_FIXTURE_PATH : undefined);
+  if (!fixturePath) {
+    return {
+      id: "real-pivot-fixture-proof",
+      label: "Operator-approved calibrated real pivot fixture proof",
+      status: "blocked",
+      reason: `No real pivot fixture manifest found. Expected ${DEFAULT_REAL_PIVOT_FIXTURE_PATH} or --real-pivot-fixtures.`,
+    };
+  }
+  if (!existsSync(fixturePath)) {
+    return {
+      id: "real-pivot-fixture-proof",
+      label: "Operator-approved calibrated real pivot fixture proof",
+      status: "blocked",
+      reason: `Real pivot fixture manifest does not exist: ${fixturePath}`,
+    };
+  }
+
+  const context = inferRealPivotContext(fixturePath, options);
+  if (context.error) {
+    return {
+      id: "real-pivot-fixture-proof",
+      label: "Operator-approved calibrated real pivot fixture proof",
+      status: "fail",
+      reason: context.error,
+      evidence: [fixturePath],
+    };
+  }
+  if (!context.projectId || !context.projectCrs) {
+    return {
+      id: "real-pivot-fixture-proof",
+      label: "Operator-approved calibrated real pivot fixture proof",
+      status: "blocked",
+      reason: "Real pivot fixture manifest must provide projectId and projectCrs, or pass --real-pivot-project-id and --real-pivot-project-crs.",
+      evidence: [fixturePath],
+    };
+  }
+
+  const outputDirectory = join("reports/real-pivot-fixtures", timestampForFilename(generatedAt));
+  const command = [
+    "python3",
+    "-m",
+    "cplayout_ml.cli",
+    "build-evidence-packet",
+    "--project-id",
+    context.projectId,
+    "--project-crs",
+    context.projectCrs,
+    "--real-pivot-fixtures",
+    fixturePath,
+    "--output-dir",
+    outputDirectory,
+  ];
+  const result = spawnSync(command[0], command.slice(1), {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+    env: {
+      ...process.env,
+      PYTHONDONTWRITEBYTECODE: "1",
+      PYTHONPATH: "tools/local-ml-companion/src",
+    },
+  });
+  if (result.status !== 0) {
+    return {
+      id: "real-pivot-fixture-proof",
+      label: "Operator-approved calibrated real pivot fixture proof",
+      status: "fail",
+      reason: `Fixture evidence packet build failed with exit code ${result.status ?? "unknown"}.`,
+      command: command.join(" "),
+      exitCode: result.status,
+      evidence: [fixturePath, outputDirectory],
+    };
+  }
+
+  const packetPath = join(outputDirectory, "companion-evidence-packet.json");
+  const projectedGeoJsonPath = join(outputDirectory, "companion-evidence-packet-projected-xy.geojson");
+  const recommendation = firstProjectedPivotRecommendation(packetPath);
+  if (!recommendation.ok) {
+    return {
+      id: "real-pivot-fixture-proof",
+      label: "Operator-approved calibrated real pivot fixture proof",
+      status: "blocked",
+      reason: recommendation.reason,
+      command: command.join(" "),
+      exitCode: result.status,
+      evidence: [fixturePath, packetPath, projectedGeoJsonPath],
+    };
+  }
+  return {
+    id: "real-pivot-fixture-proof",
+    label: "Operator-approved calibrated real pivot fixture proof",
+    status: "pass",
+    reason: "Calibrated operator-approved real pivot fixture produced a projected-XY pivot-center recommendation.",
+    command: command.join(" "),
+    exitCode: result.status,
+    evidence: [fixturePath, packetPath, projectedGeoJsonPath],
+  };
+}
+
+function nativeMapLibreGate(options: RoadmapCompletionOptions): RoadmapGateResult {
+  if (options.dryRun) {
+    return notRunGate(
+      "native-maplibre-render-proof",
+      "Native MapLibre TileJSON/template render proof",
+      "Dry run: would validate --native-maplibre-report when provided.",
+    );
+  }
+
+  if (!options.nativeMapLibreReportPath) {
+    return {
+      id: "native-maplibre-render-proof",
+      label: "Native MapLibre TileJSON/template render proof",
+      status: "blocked",
+      reason: "No native MapLibre render report provided. TileJSON/template adapter readiness is local-code proven, but native render evidence requires device output.",
+    };
+  }
+  try {
+    const validation = validateNativeMapLibreReport(options.nativeMapLibreReportPath);
+    if (validation.ok) {
+      return {
+        id: "native-maplibre-render-proof",
+        label: "Native MapLibre TileJSON/template render proof",
+        status: "pass",
+        reason: "Native MapLibre render report validated.",
+        evidence: validation.evidence,
+        details: validation.details,
+      };
+    }
+    return {
+      id: "native-maplibre-render-proof",
+      label: "Native MapLibre TileJSON/template render proof",
+      status: "fail",
+      reason: `Native MapLibre report is incomplete: ${validation.errors.join("; ")}`,
+      evidence: validation.evidence,
+      details: validation.details,
+    };
+  } catch (error) {
+    return {
+      id: "native-maplibre-render-proof",
+      label: "Native MapLibre TileJSON/template render proof",
+      status: "fail",
+      reason: `Native MapLibre report could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      evidence: [options.nativeMapLibreReportPath],
+    };
+  }
+}
+
+export function validateGoogleEarthManifest(manifestPath: string): {
+  ok: boolean;
+  errors: string[];
+  evidence: string[];
+  details: unknown;
+} {
+  const errors: string[] = [];
+  const manifest = readJsonWithBom(manifestPath) as {
+    schemaVersion?: unknown;
+    status?: unknown;
+    proofPassed?: unknown;
+    outputDir?: unknown;
+    googleEarth?: {
+      cleanup?: {
+        status?: unknown;
+        contaminated?: unknown;
+        postflightProcessRemaining?: unknown;
+      };
+    };
+    thresholds?: {
+      minimumNonBlackRatio?: unknown;
+      minimumGrayVariance?: unknown;
+    };
+    artifacts?: {
+      kml?: unknown;
+      kmz?: unknown;
+      kmlIntegrity?: { passed?: unknown };
+    };
+    captures?: Array<{
+      filename?: unknown;
+      label?: unknown;
+      width?: unknown;
+      height?: unknown;
+      sha256?: unknown;
+      analysis?: {
+        nonBlackRatio?: unknown;
+        grayVariance?: unknown;
+        mostlyBlack?: unknown;
+        nearUniform?: unknown;
+      } | null;
+    }>;
+    manualReview?: {
+      overlayVisibleConfirmed?: unknown;
+    };
+  };
+
+  if (manifest.schemaVersion !== "cplayout-google-earth-visual-fidelity-proof-v1") errors.push("schemaVersion mismatch");
+  if (manifest.status !== "passed") errors.push("status must be passed");
+  if (manifest.proofPassed !== true) errors.push("proofPassed must be true");
+  if (manifest.artifacts?.kmlIntegrity?.passed !== true) errors.push("KML integrity must pass");
+  if (manifest.manualReview?.overlayVisibleConfirmed !== true) errors.push("overlayVisibleConfirmed must be true");
+
+  const minimumNonBlackRatio = typeof manifest.thresholds?.minimumNonBlackRatio === "number"
+    ? manifest.thresholds.minimumNonBlackRatio
+    : 0.08;
+  const minimumGrayVariance = typeof manifest.thresholds?.minimumGrayVariance === "number"
+    ? manifest.thresholds.minimumGrayVariance
+    : 80;
+  const mapCanvas = (manifest.captures ?? []).find((capture) => {
+    const filename = typeof capture.filename === "string" ? capture.filename.toLowerCase() : "";
+    const label = typeof capture.label === "string" ? capture.label.toLowerCase() : "";
+    return filename.includes("map-canvas") || label.includes("map-canvas");
+  });
+  if (!mapCanvas) {
+    errors.push("map-canvas capture is required");
+  } else {
+    const analysis = mapCanvas.analysis;
+    if (typeof mapCanvas.width !== "number" || mapCanvas.width <= 0) errors.push("map-canvas width must be positive");
+    if (typeof mapCanvas.height !== "number" || mapCanvas.height <= 0) errors.push("map-canvas height must be positive");
+    if (typeof mapCanvas.sha256 !== "string" || !/^[a-fA-F0-9]{64}$/.test(mapCanvas.sha256)) {
+      errors.push("map-canvas SHA-256 is required");
+    }
+    if (!analysis) {
+      errors.push("map-canvas pixel analysis is required");
+    } else {
+      if (typeof analysis.nonBlackRatio !== "number" || analysis.nonBlackRatio < minimumNonBlackRatio) {
+        errors.push(`map-canvas nonBlackRatio must be at least ${minimumNonBlackRatio}`);
+      }
+      if (typeof analysis.grayVariance !== "number" || analysis.grayVariance < minimumGrayVariance) {
+        errors.push(`map-canvas grayVariance must be at least ${minimumGrayVariance}`);
+      }
+      if (analysis.mostlyBlack !== false) errors.push("map-canvas must not be mostly black");
+      if (analysis.nearUniform !== false) errors.push("map-canvas must not be near-uniform");
+    }
+  }
+
+  const cleanup = manifest.googleEarth?.cleanup;
+  if (!cleanup) {
+    errors.push("Google Earth cleanup evidence is required");
+  } else {
+    if (cleanup.contaminated === true) errors.push("cleanup must not be contaminated");
+    if (cleanup.postflightProcessRemaining === true) errors.push("targeted Google Earth process must not remain after cleanup");
+    if (typeof cleanup.status === "string" && /blocked|contaminated/i.test(cleanup.status)) {
+      errors.push(`cleanup status is not acceptable: ${cleanup.status}`);
+    }
+  }
+
+  const outputDir = typeof manifest.outputDir === "string" ? normalizeReportPath(manifest.outputDir) : dirname(manifestPath);
+  const evidence = [
+    manifestPath,
+    stringEvidencePath(outputDir, manifest.artifacts?.kml),
+    stringEvidencePath(outputDir, manifest.artifacts?.kmz),
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    evidence,
+    details: {
+      status: manifest.status,
+      proofPassed: manifest.proofPassed,
+      mapCanvas,
+      cleanup,
+    },
+  };
+}
+
+export function validateNativeMapLibreReport(reportPath: string): {
+  ok: boolean;
+  errors: string[];
+  evidence: string[];
+  details: unknown;
+} {
+  const errors: string[] = [];
+  const report = readJsonWithBom(reportPath) as {
+    reportSchemaVersion?: unknown;
+    proofTarget?: unknown;
+    status?: unknown;
+    target?: unknown;
+    generatedAt?: unknown;
+    device?: { adbSerial?: unknown; model?: unknown; osVersion?: unknown; apiLevel?: unknown };
+    app?: { packageName?: unknown; versionName?: unknown; versionCode?: unknown; buildType?: unknown; commit?: unknown };
+    tileSource?: {
+      tileSourceKind?: unknown;
+      tileJsonUrl?: unknown;
+      tileUrlTemplates?: unknown;
+      attribution?: unknown;
+    };
+    screenshot?: {
+      path?: unknown;
+      sha256?: unknown;
+      width?: unknown;
+      height?: unknown;
+      nonBlankPixelRatio?: unknown;
+      grayVariance?: unknown;
+    };
+    boundaries?: {
+      noRawPmtilesMbtilesNativeProof?: unknown;
+      canonicalGeometryMutation?: unknown;
+      networkRequired?: unknown;
+    };
+  };
+  if (report.reportSchemaVersion !== 1) errors.push("reportSchemaVersion must be 1");
+  if (report.proofTarget !== "native-maplibre-render") errors.push("proofTarget must be native-maplibre-render");
+  if (report.status !== "pass") errors.push("status must be pass");
+  if (report.target !== "native_maplibre_rn") errors.push("target must be native_maplibre_rn");
+  for (const [label, value] of Object.entries({
+    generatedAt: report.generatedAt,
+    adbSerial: report.device?.adbSerial,
+    model: report.device?.model,
+    osVersion: report.device?.osVersion,
+    packageName: report.app?.packageName,
+    buildType: report.app?.buildType,
+    commit: report.app?.commit,
+    attribution: report.tileSource?.attribution,
+  })) {
+    if (typeof value !== "string" || value.trim().length === 0) errors.push(`${label} is required`);
+  }
+  if (report.tileSource?.tileSourceKind !== "tilejson_or_template") {
+    errors.push("tileSource.tileSourceKind must be tilejson_or_template");
+  }
+  const tileUrls = [
+    typeof report.tileSource?.tileJsonUrl === "string" ? report.tileSource.tileJsonUrl : undefined,
+    ...(Array.isArray(report.tileSource?.tileUrlTemplates) ? report.tileSource.tileUrlTemplates : []),
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  if (tileUrls.length === 0) errors.push("at least one TileJSON URL or tile URL template is required");
+  if (!tileUrls.every(isLocalTileSourceUrl)) errors.push("tile URLs must be local app-readable or localhost sources");
+
+  const screenshotPath = typeof report.screenshot?.path === "string" && report.screenshot.path.trim().length > 0
+    ? resolve(dirname(reportPath), report.screenshot.path)
+    : "";
+  if (!screenshotPath) {
+    errors.push("screenshot.path is required");
+  } else if (!existsSync(screenshotPath)) {
+    errors.push(`screenshot does not exist: ${screenshotPath}`);
+  }
+  if (typeof report.screenshot?.sha256 !== "string" || !/^[a-fA-F0-9]{64}$/.test(report.screenshot.sha256)) {
+    errors.push("screenshot.sha256 must be a SHA-256 hex digest");
+  } else if (screenshotPath && existsSync(screenshotPath)) {
+    const actualSha256 = sha256File(screenshotPath);
+    if (actualSha256.toLowerCase() !== report.screenshot.sha256.toLowerCase()) {
+      errors.push("screenshot.sha256 does not match the screenshot file");
+    }
+  }
+  if (typeof report.screenshot?.width !== "number" || report.screenshot.width <= 0) errors.push("screenshot.width must be positive");
+  if (typeof report.screenshot?.height !== "number" || report.screenshot.height <= 0) errors.push("screenshot.height must be positive");
+  if (typeof report.screenshot?.nonBlankPixelRatio !== "number" || report.screenshot.nonBlankPixelRatio <= 0) {
+    errors.push("screenshot.nonBlankPixelRatio must be greater than zero");
+  }
+  if (typeof report.screenshot?.grayVariance !== "number" || report.screenshot.grayVariance <= 0) {
+    errors.push("screenshot.grayVariance must be greater than zero");
+  }
+  if (report.boundaries?.noRawPmtilesMbtilesNativeProof !== true) {
+    errors.push("boundaries.noRawPmtilesMbtilesNativeProof must be true");
+  }
+  if (report.boundaries?.canonicalGeometryMutation !== false) {
+    errors.push("boundaries.canonicalGeometryMutation must be false");
+  }
+  if (report.boundaries?.networkRequired !== false) {
+    errors.push("boundaries.networkRequired must be false");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    evidence: [reportPath, screenshotPath].filter((value) => value.length > 0),
+    details: {
+      target: report.target,
+      tileSource: report.tileSource,
+      screenshot: report.screenshot,
+      boundaries: report.boundaries,
+    },
+  };
+}
+
+function inferRealPivotContext(
+  fixturePath: string,
+  options: RoadmapCompletionOptions,
+): { projectId?: string; projectCrs?: string; error?: string } {
+  try {
+    const manifest = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+      projectId?: unknown;
+      projectCrs?: unknown;
+      fixtures?: Array<{ projectId?: unknown; projectCrs?: unknown }>;
+    };
+    const fixture = Array.isArray(manifest.fixtures) ? manifest.fixtures[0] : undefined;
+    return {
+      projectId: options.realPivotProjectId ?? stringOrUndefined(manifest.projectId) ?? stringOrUndefined(fixture?.projectId),
+      projectCrs: options.realPivotProjectCrs ?? stringOrUndefined(manifest.projectCrs) ?? stringOrUndefined(fixture?.projectCrs),
+    };
+  } catch (error) {
+    return { error: `Real pivot fixture manifest could not be read: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+function firstProjectedPivotRecommendation(packetPath: string): { ok: true } | { ok: false; reason: string } {
+  const packet = JSON.parse(readFileSync(packetPath, "utf8")) as {
+    modelRecommendations?: Array<{
+      proposedGeometry?: { pivotCenter?: unknown };
+      metadata?: { hardFailures?: unknown };
+    }>;
+  };
+  const recommendations = packet.modelRecommendations ?? [];
+  const projectedPivotRecommendation = recommendations.find((recommendation) => {
+    const hardFailures = recommendation.metadata?.hardFailures;
+    return Boolean(recommendation.proposedGeometry?.pivotCenter)
+      && (!Array.isArray(hardFailures) || hardFailures.length === 0);
+  });
+  if (projectedPivotRecommendation) return { ok: true };
+  return {
+    ok: false,
+    reason: "Fixture packet built, but no recommendation contains projectedGeometry.pivotCenter without hard failures. Treat as evidence-only until calibrated truth is supplied.",
+  };
+}
+
+function notRunGate(id: string, label: string, reason: string): RoadmapGateResult {
+  return { id, label, status: "not_run", reason };
+}
+
+function summarizeStatus(gates: RoadmapGateResult[]): RoadmapCompletionReport["status"] {
+  if (gates.some((gate) => gate.status === "fail")) return "fail";
+  if (gates.some((gate) => gate.status === "blocked")) return "blocked";
+  return "pass";
+}
+
+function writeMarkdownSummary(path: string, report: RoadmapCompletionReport): void {
+  if (!existsSync(dirname(path))) mkdirSync(dirname(path), { recursive: true });
+  const lines = [
+    "# CPLayout Roadmap Completion Report",
+    "",
+    `Generated: ${report.generatedAt}`,
+    `Commit: ${report.commit}`,
+    `Mode: ${report.mode}`,
+    `Status: ${report.status}`,
+    "",
+    "| Gate | Status | Reason |",
+    "| --- | --- | --- |",
+    ...report.gates.map((gate) => `| ${gate.id} | ${gate.status} | ${gate.reason.replaceAll("|", "\\|")} |`),
+    "",
+    "## Resource Inputs",
+    "",
+    ...report.ownerInputContract.resourceInputs.map((input) => `- ${input}`),
+    "",
+  ];
+  writeFileSync(path, lines.join("\n"), "utf8");
+}
+
+function findGoogleEarthManifestCandidates(root = "reports/google-earth-visual-fidelity"): string[] {
+  if (!existsSync(root)) return [];
+  const manifests = findFiles(root, "visual-fidelity-manifest.json");
+  const candidates = [
+    existsSync(DEFAULT_GOOGLE_EARTH_MANIFEST_PATH) ? DEFAULT_GOOGLE_EARTH_MANIFEST_PATH : undefined,
+    ...manifests
+      .map((path) => ({ path, mtimeMs: statSync(path).mtimeMs }))
+      .sort((left, right) => right.mtimeMs - left.mtimeMs)
+      .map((entry) => entry.path),
+  ].filter((value): value is string => Boolean(value));
+  return [...new Set(candidates)];
+}
+
+function findFiles(root: string, filename: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...findFiles(path, filename));
+    } else if (entry.isFile() && entry.name === filename) {
+      found.push(path);
+    }
+  }
+  return found;
+}
+
+function readJsonWithBom(path: string): unknown {
+  return JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
+}
+
+function normalizeReportPath(value: string): string {
+  return value.replaceAll("\\", "/");
+}
+
+function stringEvidencePath(baseDir: string, value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  const normalized = normalizeReportPath(value);
+  if (existsSync(normalized)) return normalized;
+  const relativeToBase = join(normalizeReportPath(baseDir), normalized.split("/").pop() ?? normalized);
+  return existsSync(relativeToBase) ? relativeToBase : normalized;
+}
+
+function isLocalTileSourceUrl(value: string): boolean {
+  const trimmed = value.trim();
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith("file://")
+    || lower.startsWith("asset://")
+    || lower.startsWith("content://")
+    || lower.startsWith("app://")
+    || lower.startsWith("blob:")
+    || lower.startsWith("data:")
+    || lower.startsWith("/")
+    || lower.startsWith("./")
+    || lower.startsWith("../")
+  ) {
+    return true;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return (parsed.protocol === "http:" || parsed.protocol === "https:")
+      && (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1");
+  } catch {
+    return false;
+  }
+}
+
+function sha256File(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+function hasFlag(rawArgs: string[], name: string): boolean {
+  return rawArgs.includes(name);
+}
+
+function valueFor(rawArgs: string[], name: string): string | undefined {
+  const index = rawArgs.indexOf(name);
+  if (index >= 0) return rawArgs[index + 1];
+  return rawArgs.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1);
+}
+
+function currentGitCommit(): string {
+  const result = spawnSync("git", ["rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : "unknown";
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}

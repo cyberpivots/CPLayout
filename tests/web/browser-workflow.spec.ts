@@ -1012,6 +1012,63 @@ test("files export zip downloads the canonical project package", async ({ page }
   await saveScreen(page, testInfo, "files-export-zip-download");
 });
 
+test("files zip round trips adjacent review records without applying geometry", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-review").click();
+  await page.getByPlaceholder(/Paste boundary-improvement-loop JSON/).fill(JSON.stringify(reviewArchiveImportPayload()));
+  await page.getByRole("button", { name: "Import" }).click();
+  await expect(page.getByText(/Imported 1 model recommendation with 1 evidence record.*No projected XY geometry was applied/)).toBeVisible();
+  await page.getByRole("button", { name: /Accept recommendation Archive review pivot candidate/ }).click();
+  await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("workspace-nav-files").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export ZIP" }).click();
+  const download = await downloadPromise;
+  const archivePath = await download.path();
+  expect(archivePath, "download path").not.toBeNull();
+  if (!archivePath) return;
+  await expect(page.getByTestId("files-status")).toContainText("1 evidence, 1 recommendation, 1 decision exported as adjacent review records");
+
+  const archive = unzipSync(new Uint8Array(await readFile(archivePath)));
+  const evidenceJsonl = archive["exports/layout-evidence.jsonl"];
+  const decisionsJsonl = archive["exports/layout-decisions.jsonl"];
+  const recommendationsGeoJson = archive["exports/model-recommendations.geojson"];
+  expect(evidenceJsonl, "layout evidence adjacent file").toBeDefined();
+  expect(decisionsJsonl, "layout decisions adjacent file").toBeDefined();
+  expect(recommendationsGeoJson, "model recommendations adjacent file").toBeDefined();
+  if (!evidenceJsonl || !decisionsJsonl || !recommendationsGeoJson) return;
+  expect(strFromU8(evidenceJsonl)).toContain("archive-evidence-001");
+  expect(strFromU8(decisionsJsonl)).toContain("accepted");
+  const recommendations = JSON.parse(strFromU8(recommendationsGeoJson)) as {
+    canonicalGeometryMutation?: boolean;
+    coordinateReferenceSystem?: string;
+    features?: Array<{ properties?: { geometryRole?: string; projectId?: string } }>;
+  };
+  expect(recommendations.canonicalGeometryMutation).toBe(false);
+  expect(recommendations.coordinateReferenceSystem).toBe("project_crs_xy");
+  expect(recommendations.features?.[0]?.properties?.geometryRole).toBe("pivot_center");
+  expect(recommendations.features?.[0]?.properties?.projectId).toBe("sample-burgundy-quarter-section");
+
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import ZIP" }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles(archivePath);
+  await expect(page.getByTestId("map-view")).toBeVisible();
+  await page.getByTestId("workspace-nav-review").click();
+  await expect(page.getByText("Archive review pivot candidate")).toBeVisible();
+  await expect(page.getByText("1 imported · 1 decisions saved")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
+  await saveScreen(page, testInfo, "files-review-archive-round-trip");
+});
+
 test("files export kml downloads visual interchange data without runtime claims", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();
@@ -1729,6 +1786,51 @@ async function expectInsideViewport(page: Page, testId: string): Promise<void> {
   expect(box.y, `${testId} top edge`).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width, `${testId} right edge`).toBeLessThanOrEqual(viewport.width + 2);
   expect(box.y + box.height, `${testId} bottom edge`).toBeLessThanOrEqual(viewport.height + 2);
+}
+
+function reviewArchiveImportPayload(): object {
+  return {
+    schemaVersion: "cplayout-project-review-data-v1",
+    projectId: "sample-burgundy-quarter-section",
+    evidenceRecords: [{
+      id: "archive-evidence-001",
+      projectId: "sample-burgundy-quarter-section",
+      sourceKind: "model_output",
+      createdAt: "2026-06-02T12:00:00.000Z",
+      projectCrs: "EPSG:32613",
+      summary: "Archive review evidence stays adjacent to canonical project geometry.",
+      confidence: 0.82,
+      reviewStatus: "unreviewed",
+      metrics: {
+        calibrationStatus: "valid_projected_xy",
+        canonicalGeometryMutation: false,
+      },
+    }],
+    modelRecommendations: [{
+      id: "archive-review-recommendation-001",
+      projectId: "sample-burgundy-quarter-section",
+      modelName: "browser-archive-review-fixture",
+      modelVersion: "0.1.0",
+      createdAt: "2026-06-02T12:01:00.000Z",
+      projectCrs: "EPSG:32613",
+      summary: "Archive review pivot candidate",
+      proposedGeometry: {
+        projectCrs: "EPSG:32613",
+        pivotCenter: { x: 501420, y: 4506560 },
+      },
+      confidence: 0.76,
+      evidenceIds: ["archive-evidence-001"],
+      reviewStatus: "unreviewed",
+      score: 91.5,
+      metadata: {
+        canonicalGeometryMutation: false,
+        calibrationStatus: "valid_projected_xy",
+        feasible: true,
+      },
+      warnings: ["Operator review and Apply XY confirmation are required before geometry changes."],
+    }],
+    layoutDecisions: [],
+  };
 }
 
 function isAllowedNetworkRequest(url: string, strictOffline = false): boolean {

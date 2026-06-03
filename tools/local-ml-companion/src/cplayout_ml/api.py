@@ -90,6 +90,7 @@ def create_app(workspace: Path, experiment_db: Path | None = None) -> Any:
             vector_labels = optional_workspace_file(root, payload.get("vectorLabels"), "Vector labels")
             cv_candidates = optional_workspace_file(root, payload.get("cvCandidates"), "CV candidates")
             score_report = optional_workspace_file(root, payload.get("scoreReport"), "Score report")
+            real_pivot_fixtures = optional_workspace_file(root, payload.get("realPivotFixtures"), "Real pivot fixtures")
             source_artifact_values = payload.get("sourceArtifacts", [])
             if not isinstance(source_artifact_values, list):
                 raise SystemExit("sourceArtifacts must be an array of workspace-bounded paths.")
@@ -107,6 +108,7 @@ def create_app(workspace: Path, experiment_db: Path | None = None) -> Any:
                 score_report,
                 source_artifacts,
                 str(payload.get("createdAt") or "1970-01-01T00:00:00.000Z"),
+                real_pivot_fixtures,
             )
             packet_path = output_dir / "companion-evidence-packet.json"
             result = {

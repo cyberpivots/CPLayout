@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .companion_common import (
-    COMPANION_PACKET_VERSION,
+COMPANION_PACKET_VERSION,
     DEFAULT_CREATED_AT,
     MODEL_RECOMMENDATIONS_SCHEMA_VERSION,
     PROJECT_REVIEW_DATA_SCHEMA_VERSION,
@@ -20,6 +20,9 @@ from .companion_common import (
     write_json,
 )
 
+REAL_PIVOT_FIXTURE_SCHEMA_VERSION = "cplayout-real-pivot-fixtures-v1"
+VALID_PROJECTED_CALIBRATION_STATUSES = {"valid", "valid_projected_xy", "project_crs_xy", "calibrated"}
+
 
 def build_evidence_packet(
     project_id: str,
@@ -31,6 +34,7 @@ def build_evidence_packet(
     score_report_path: Path | None = None,
     source_artifact_paths: list[Path] | None = None,
     created_at: str = DEFAULT_CREATED_AT,
+    real_pivot_fixtures_path: Path | None = None,
 ) -> int:
     require_projected_crs(project_crs, "Companion evidence packet project CRS")
     input_payloads = load_input_payloads(
@@ -39,8 +43,17 @@ def build_evidence_packet(
         cv_candidates_path,
         score_report_path,
         source_artifact_paths or [],
+        real_pivot_fixtures_path,
     )
-    candidates = candidate_entries(input_payloads.get("cvCandidates", {}))
+    candidates = [
+        *candidate_entries(input_payloads.get("cvCandidates", {})),
+        *real_pivot_fixture_candidates(
+            input_payloads.get("realPivotFixtures", {}),
+            input_payloads.get("realPivotFixturesManifestDir"),
+            project_id,
+            project_crs,
+        ),
+    ]
     evidence_id = f"{project_id}:companion-evidence-packet:{timestamp_id(created_at)}"
     calibration_status = "valid_projected_xy" if any(candidate_has_valid_projected_xy(candidate, project_crs) for candidate in candidates) else "evidence_only"
     evidence_record = {
@@ -123,6 +136,7 @@ def load_input_payloads(
     cv_candidates_path: Path | None,
     score_report_path: Path | None,
     source_artifact_paths: list[Path],
+    real_pivot_fixtures_path: Path | None = None,
 ) -> dict[str, Any]:
     payloads: dict[str, Any] = {"sourceArtifactHashes": {}}
     for key, path in [
@@ -130,12 +144,15 @@ def load_input_payloads(
         ("vectorLabels", vector_labels_path),
         ("cvCandidates", cv_candidates_path),
         ("scoreReport", score_report_path),
+        ("realPivotFixtures", real_pivot_fixtures_path),
     ]:
         if path is None:
             continue
         payload = load_json(path)
         reject_hidden_keys(payload)
         payloads[key] = payload
+        if key == "realPivotFixtures":
+            payloads["realPivotFixturesManifestDir"] = str(path.parent)
         payloads["sourceArtifactHashes"][key] = file_artifact(path)
     for index, path in enumerate(source_artifact_paths):
         payloads["sourceArtifactHashes"][f"sourceArtifact{index + 1}"] = file_artifact(path)
@@ -153,6 +170,145 @@ def candidate_entries(payload: Any) -> list[dict[str, Any]]:
     for candidate in candidates:
         reject_hidden_keys(candidate)
     return [candidate for candidate in candidates if isinstance(candidate, dict)]
+
+
+def real_pivot_fixture_candidates(
+    payload: Any,
+    manifest_dir_value: Any,
+    project_id: str,
+    project_crs: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    if payload.get("schemaVersion") not in {None, REAL_PIVOT_FIXTURE_SCHEMA_VERSION}:
+        raise SystemExit(f"Unsupported real pivot fixture manifest schemaVersion: {payload.get('schemaVersion')}")
+    if payload.get("canonicalGeometryMutation") not in {None, False}:
+        raise SystemExit("Real pivot fixture manifest must declare canonicalGeometryMutation: false when present.")
+    if str(payload.get("projectId", project_id)) != project_id:
+        raise SystemExit(f"Real pivot fixture manifest belongs to {payload.get('projectId')}, not {project_id}.")
+    if str(payload.get("projectCrs", project_crs)) != project_crs:
+        raise SystemExit(f"Real pivot fixture manifest uses {payload.get('projectCrs')}, not {project_crs}.")
+    manifest_dir = Path(str(manifest_dir_value or "."))
+    fixtures = payload.get("fixtures", [])
+    if not isinstance(fixtures, list):
+        raise SystemExit("Real pivot fixture manifest must contain a fixtures array.")
+    return [
+        real_pivot_fixture_candidate(fixture, manifest_dir, project_id, project_crs, index)
+        for index, fixture in enumerate(fixtures)
+    ]
+
+
+def real_pivot_fixture_candidate(
+    fixture: Any,
+    manifest_dir: Path,
+    project_id: str,
+    project_crs: str,
+    index: int,
+) -> dict[str, Any]:
+    if not isinstance(fixture, dict):
+        raise SystemExit("Each real pivot fixture must be an object.")
+    reject_hidden_keys(fixture)
+    fixture_id = safe_id(str(fixture.get("id") or fixture.get("name") or f"real-pivot-fixture-{index + 1}"))
+    if str(fixture.get("projectId", project_id)) != project_id:
+        raise SystemExit(f"Real pivot fixture {fixture_id} belongs to {fixture.get('projectId')}, not {project_id}.")
+    if str(fixture.get("projectCrs", project_crs)) != project_crs:
+        raise SystemExit(f"Real pivot fixture {fixture_id} uses {fixture.get('projectCrs')}, not {project_crs}.")
+    provenance = fixture.get("provenance")
+    if not isinstance(provenance, dict):
+        raise SystemExit(f"Real pivot fixture {fixture_id} must include provenance.")
+    if provenance.get("keyedService") is not False:
+        raise SystemExit(f"Real pivot fixture {fixture_id} provenance must declare keyedService: false.")
+
+    artifacts = real_pivot_fixture_artifacts(fixture, manifest_dir, fixture_id)
+    truth_labels = fixture.get("truthLabels") or fixture.get("truth_labels") or {}
+    if not isinstance(truth_labels, dict):
+        raise SystemExit(f"Real pivot fixture {fixture_id} truthLabels must be an object when present.")
+    true_center = truth_labels.get("TRUE_PIVOT_CENTER") or truth_labels.get("truePivotCenter") or fixture.get("truePivotCenter") or {}
+    if not isinstance(true_center, dict):
+        raise SystemExit(f"Real pivot fixture {fixture_id} TRUE_PIVOT_CENTER must be an object when present.")
+
+    calibration = fixture.get("calibration") or true_center.get("calibration") or {}
+    if calibration is not None and not isinstance(calibration, dict):
+        raise SystemExit(f"Real pivot fixture {fixture_id} calibration must be an object when present.")
+    calibration_status = str(
+        fixture.get("calibrationStatus")
+        or true_center.get("calibrationStatus")
+        or (calibration or {}).get("status")
+        or "evidence_only"
+    )
+    operator_approved = bool(fixture.get("operatorApproved", fixture.get("operator_approved", False)))
+    projected_point = xy_payload(true_center.get("projectedPoint") or true_center.get("projectedXY") or fixture.get("projectedPoint"))
+    image_point = xy_payload(true_center.get("imagePoint") or fixture.get("imagePoint"))
+    valid_projected = (
+        operator_approved
+        and calibration_status.lower() in VALID_PROJECTED_CALIBRATION_STATUSES
+        and projected_point is not None
+    )
+    hard_failures = string_list(fixture.get("hardFailures"))
+    if not operator_approved:
+        hard_failures.append("operator-approved real-world pivot fixture absent")
+    if calibration_status.lower() not in VALID_PROJECTED_CALIBRATION_STATUSES:
+        hard_failures.append("real-world pivot fixture calibration is not valid_projected_xy")
+    if projected_point is None:
+        hard_failures.append("operator-approved real-world pivot fixture lacks calibrated TRUE_PIVOT_CENTER.projectedPoint")
+
+    candidate: dict[str, Any] = {
+        "id": f"real-pivot-{fixture_id}",
+        "fixtureId": fixture_id,
+        "kind": "pivot_center",
+        "projectCrs": project_crs,
+        "modelName": str(fixture.get("modelName") or "operator-approved-real-pivot-fixture"),
+        "modelVersion": str(fixture.get("modelVersion") or REAL_PIVOT_FIXTURE_SCHEMA_VERSION),
+        "summary": str(fixture.get("summary") or f"Review operator-approved real pivot fixture {fixture_id}."),
+        "confidence": number_or_default(fixture.get("confidence"), 0.5),
+        "calibrationStatus": calibration_status,
+        "operatorApproved": operator_approved,
+        "imagePoint": image_point,
+        "artifactHashes": artifacts,
+        "provenance": provenance,
+        "truthLabels": {
+            "TRUE_PIVOT_CENTER": {
+                "imagePoint": image_point,
+                "projectedPoint": projected_point if valid_projected else None,
+                "calibrationStatus": calibration_status,
+            },
+        },
+        "rejectionClasses": string_list(fixture.get("rejectionClasses")),
+        "hardFailures": sorted(set(hard_failures)),
+        "warnings": [
+            *string_list(fixture.get("warnings")),
+            "Real-world pivot fixture output is advisory until Review Apply XY.",
+        ],
+    }
+    if valid_projected:
+        candidate["projectedPoint"] = projected_point
+    return candidate
+
+
+def real_pivot_fixture_artifacts(fixture: dict[str, Any], manifest_dir: Path, fixture_id: str) -> dict[str, Any]:
+    artifact_paths: dict[str, Any] = {}
+    for key in ["mapCanvasCrop", "fullWindowScreenshot", "truthLabelsKml", "projectReference", "kml", "kmz"]:
+        value = fixture.get(key)
+        if value is not None and value != "":
+            artifact_paths[key] = value
+    nested_artifacts = fixture.get("artifacts")
+    if isinstance(nested_artifacts, dict):
+        artifact_paths.update({key: value for key, value in nested_artifacts.items() if value is not None and value != ""})
+    if len(artifact_paths) == 0:
+        raise SystemExit(f"Real pivot fixture {fixture_id} must include at least one local artifact path.")
+    expected_hashes = fixture.get("artifactHashes", {})
+    if expected_hashes is not None and not isinstance(expected_hashes, dict):
+        raise SystemExit(f"Real pivot fixture {fixture_id} artifactHashes must be an object when present.")
+    artifacts: dict[str, Any] = {}
+    for key, path_value in artifact_paths.items():
+        if not isinstance(path_value, str) or not path_value:
+            raise SystemExit(f"Real pivot fixture {fixture_id} artifact {key} must be a non-empty path string.")
+        artifact = file_artifact(Path(path_value), manifest_dir)
+        expected = (expected_hashes or {}).get(key)
+        if expected is not None and str(expected) != artifact["sha256"]:
+            raise SystemExit(f"Real pivot fixture {fixture_id} artifact {key} SHA-256 mismatch.")
+        artifacts[key] = artifact
+    return artifacts
 
 
 def candidate_has_valid_projected_xy(candidate: dict[str, Any], project_crs: str) -> bool:
@@ -186,7 +342,7 @@ def candidate_recommendation(
         polygon = candidate_projected_polygon(candidate)
         if polygon is not None:
             proposed_geometry["obstaclePolygons"] = [polygon]
-    hard_failures = []
+    hard_failures = string_list(candidate.get("hardFailures"))
     if len(proposed_geometry) == 1:
         hard_failures.append("projected XY calibration absent")
     if str(candidate.get("projectCrs", project_crs)) != project_crs:
@@ -211,9 +367,15 @@ def candidate_recommendation(
             "sourceCandidateId": candidate_id,
             "candidateKind": kind,
             "calibrationStatus": candidate.get("calibrationStatus", "evidence_only"),
+            "fixtureId": candidate.get("fixtureId"),
+            "operatorApproved": candidate.get("operatorApproved"),
+            "artifactHashes": candidate.get("artifactHashes"),
+            "provenance": candidate.get("provenance"),
+            "truthLabels": candidate.get("truthLabels"),
+            "rejectionClasses": candidate.get("rejectionClasses"),
             "imageSpaceOnly": len(hard_failures) > 0,
             "feasible": len(hard_failures) == 0,
-            "hardFailures": hard_failures,
+            "hardFailures": sorted(set(hard_failures)),
             "networkRequired": False,
             "keyedService": False,
             "canonicalGeometryMutation": False,
@@ -224,6 +386,18 @@ def candidate_recommendation(
             "Operator review and projected-XY apply confirmation are required before geometry changes.",
         ],
     }
+
+
+def xy_payload(value: Any) -> dict[str, float] | None:
+    if isinstance(value, dict) and isinstance(value.get("x"), (int, float)) and isinstance(value.get("y"), (int, float)):
+        return {"x": float(value["x"]), "y": float(value["y"])}
+    return None
+
+
+def string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
 
 
 def packet_confidence(candidates: list[dict[str, Any]]) -> float:

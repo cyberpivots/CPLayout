@@ -9,6 +9,9 @@ reports/continuous-improvement/
 reports/google-earth-visual-fidelity/
 reports/ml-cv-pivot-locating/
 reports/ml-cv-pivot-candidates/
+reports/native-maplibre/
+reports/real-pivot-fixtures/
+reports/roadmap-completion/
 tools/local-ml-companion/.dvc/cache/
 tools/local-ml-companion/.dvc/tmp/
 tools/local-ml-companion/mlruns/

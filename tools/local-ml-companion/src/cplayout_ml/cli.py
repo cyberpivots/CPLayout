@@ -188,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     evidence_packet.add_argument("--vector-labels", type=Path, help="Optional vector-label-validation.json.")
     evidence_packet.add_argument("--cv-candidates", type=Path, help="Optional local CV candidate JSON.")
     evidence_packet.add_argument("--score-report", type=Path, help="Optional local scoring/evaluation report JSON.")
+    evidence_packet.add_argument("--real-pivot-fixtures", type=Path, help="Optional operator-approved real pivot-center fixture manifest.")
     evidence_packet.add_argument("--source-artifact", type=Path, action="append", default=[], help="Additional local artifact to hash into the packet.")
     evidence_packet.add_argument("--created-at", default=DEFAULT_CREATED_AT)
 
@@ -317,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
             args.score_report,
             args.source_artifact,
             args.created_at,
+            args.real_pivot_fixtures,
         )
     if args.command == "serve-review-dashboard":
         return serve_review_dashboard(args.packet, args.host, args.port, args.dry_run, args.engine, args.export_html)

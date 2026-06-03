@@ -9,10 +9,13 @@ import {
   exportFileAsync,
   exportProjectArchiveZip,
   exportZipFileAsync,
-  importProjectArchiveZip,
+  importProjectArchiveZipWithAdjacentData,
   importFileAsync,
   importZipFileAsync,
+  loadProjectReviewDataAsync,
   readGoogleEarthKmlFile,
+  saveProjectReviewDataAsync,
+  type ProjectArchiveAdjacentData,
 } from "@cplayout/project-store";
 import { exportProjectGoogleEarthKml, type GoogleEarthKmlImportResult, type LayoutResult, type PivotProject } from "@cplayout/core";
 import type { ProjectWorkspaceStatus } from "../hooks/useProjectRepository";
@@ -72,11 +75,15 @@ export function ProjectFilesPanel({
 
   async function exportZip(): Promise<void> {
     try {
-      const bundle = buildProjectArchiveBundle(project, result, exportScenarioGeoJson(project, result));
+      const reviewData = await loadProjectReviewDataAsync(project.id);
+      const bundle = buildProjectArchiveBundle(project, result, exportScenarioGeoJson(project, result), new Date().toISOString(), reviewData);
       const zip = exportProjectArchiveZip(bundle);
       const filename = `${project.id}.center-pivot.zip`;
       const outcome = await exportZipFileAsync(filename, zip);
-      setStatus({ tone: outcome.ok ? "success" : "error", text: outcome.message });
+      setStatus({
+        tone: outcome.ok ? "success" : "error",
+        text: `${outcome.message} ${reviewDataSummary(reviewData)} exported as adjacent review records.`,
+      });
     } catch (error) {
       setStatus({ tone: "error", text: errorMessage(error) });
     }
@@ -119,10 +126,19 @@ export function ProjectFilesPanel({
         setStatus({ tone: "info", text: "No project package selected." });
         return;
       }
-      const imported = importProjectArchiveZip(bytes);
+      const archive = importProjectArchiveZipWithAdjacentData(bytes);
+      const imported = archive.project;
       onProjectLoaded(imported);
       const saved = await repository.saveProject(imported);
-      setStatus({ tone: saved ? "success" : "warning", text: saved ? `Imported ${imported.name}.` : `Opened ${imported.name}, but it was not saved locally.` });
+      if (hasAdjacentReviewData(archive.adjacentData)) {
+        await saveProjectReviewDataAsync(imported.id, archive.adjacentData);
+      }
+      setStatus({
+        tone: saved ? "success" : "warning",
+        text: saved
+          ? `Imported ${imported.name}. ${reviewDataSummary(archive.adjacentData)} restored as adjacent review records; projected XY geometry was not applied from review data.`
+          : `Opened ${imported.name}, but it was not saved locally. ${reviewDataSummary(archive.adjacentData)} available in the project package.`,
+      });
     } catch (error) {
       setStatus({ tone: "error", text: errorMessage(error) });
     }
@@ -394,6 +410,19 @@ function kmlReviewItems(result: GoogleEarthKmlImportResult): { id: string; title
 function formatWarnings(warnings: string[]): string {
   const uniqueWarnings = [...new Set(warnings)];
   return uniqueWarnings.length > 0 ? ` Warnings: ${uniqueWarnings.join(" ")}` : "";
+}
+
+function hasAdjacentReviewData(data: ProjectArchiveAdjacentData): boolean {
+  return (data.evidenceRecords?.length ?? 0) > 0
+    || (data.modelRecommendations?.length ?? 0) > 0
+    || (data.layoutDecisions?.length ?? 0) > 0;
+}
+
+function reviewDataSummary(data: ProjectArchiveAdjacentData): string {
+  const evidenceCount = data.evidenceRecords?.length ?? 0;
+  const recommendationCount = data.modelRecommendations?.length ?? 0;
+  const decisionCount = data.layoutDecisions?.length ?? 0;
+  return `${evidenceCount} evidence, ${recommendationCount} recommendation${recommendationCount === 1 ? "" : "s"}, ${decisionCount} decision${decisionCount === 1 ? "" : "s"}`;
 }
 
 function statusToneColor(tone: StatusTone): string {

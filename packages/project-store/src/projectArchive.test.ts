@@ -11,10 +11,13 @@ import {
   MAP_PACKAGES_CSV_FILENAME,
   MODEL_RECOMMENDATIONS_GEOJSON_FILENAME,
   PROJECT_ARCHIVE_MAX_COMPRESSED_BYTES,
+  PROJECT_ARCHIVE_MAX_ENTRY_BYTES,
+  PROJECT_ARCHIVE_MAX_UNCOMPRESSED_BYTES,
   PROJECT_MANIFEST_FILENAME,
   buildProjectArchiveBundle,
   exportProjectArchiveZip,
   importProjectArchiveZip,
+  importProjectArchiveZipWithAdjacentData,
   layoutDecisionsToJsonl,
   layoutEvidenceToJsonl,
   mapPackagesToCsv,
@@ -243,6 +246,16 @@ assert.ok(bundleWithAdjacentData.manifest.files.includes(LAYOUT_DECISIONS_JSONL_
 assert.ok(bundleWithAdjacentData.manifest.files.includes(MODEL_RECOMMENDATIONS_GEOJSON_FILENAME));
 assert.match(bundleWithAdjacentData.files[LAYOUT_EVIDENCE_JSONL_FILENAME], /"keyedService":false/);
 assert.match(bundleWithAdjacentData.files[MODEL_RECOMMENDATIONS_GEOJSON_FILENAME], /"coordinateReferenceSystem": "project_crs_xy"/);
+const richImport = importProjectArchiveZipWithAdjacentData(exportProjectArchiveZip(bundleWithAdjacentData));
+assert.equal(richImport.project.id, sampleProject.id);
+assert.equal(richImport.manifest.projectId, sampleProject.id);
+assert.equal(richImport.adjacentData.evidenceRecords?.length, 1);
+assert.equal(richImport.adjacentData.evidenceRecords?.[0].id, evidenceRecord.id);
+assert.equal(richImport.adjacentData.layoutDecisions?.length, 1);
+assert.equal(richImport.adjacentData.layoutDecisions?.[0].id, layoutDecision.id);
+assert.equal(richImport.adjacentData.modelRecommendations?.length, 1);
+assert.equal(richImport.adjacentData.modelRecommendations?.[0].proposedGeometry.pivotCenter?.x, sampleProject.pivotCenter.x + 10);
+assert.equal(importProjectArchiveZip(exportProjectArchiveZip(bundleWithAdjacentData)).id, sampleProject.id);
 assert.throws(
   () => buildProjectArchiveBundle(sampleProject, result, exportScenarioGeoJson(sampleProject, result), "2026-05-19T12:00:00.000Z", {
     evidenceRecords: [{ ...evidenceRecord, projectId: "other-project" }],
@@ -366,6 +379,120 @@ assert.throws(
     },
   })),
   /manifest\.json does not list/,
+);
+
+const missingManifestEntryBundle = {
+  ...bundle,
+  files: {
+    ...bundle.files,
+    [PROJECT_MANIFEST_FILENAME]: JSON.stringify({
+      ...bundle.manifest,
+      files: [...bundle.manifest.files, LAYOUT_EVIDENCE_JSONL_FILENAME],
+    }),
+  },
+};
+assert.throws(
+  () => importProjectArchiveZip(exportProjectArchiveZip(missingManifestEntryBundle)),
+  /manifest lists exports\/layout-evidence\.jsonl, but the archive does not contain it/,
+);
+
+const wrongEvidenceCrsBundle = {
+  ...bundleWithAdjacentData,
+  files: {
+    ...bundleWithAdjacentData.files,
+    [LAYOUT_EVIDENCE_JSONL_FILENAME]: layoutEvidenceToJsonl([{ ...evidenceRecord, projectCrs: "EPSG:3857" }]),
+  },
+};
+assert.throws(
+  () => importProjectArchiveZipWithAdjacentData(exportProjectArchiveZip(wrongEvidenceCrsBundle)),
+  /uses EPSG:3857, not EPSG:32613/,
+);
+
+const wrongRecommendationProjectBundle = {
+  ...bundleWithAdjacentData,
+  files: {
+    ...bundleWithAdjacentData.files,
+    [MODEL_RECOMMENDATIONS_GEOJSON_FILENAME]: JSON.stringify(
+      modelRecommendationsToProjectedGeoJson([{ ...modelRecommendation, projectId: "other-project" }]),
+    ),
+  },
+};
+assert.throws(
+  () => importProjectArchiveZipWithAdjacentData(exportProjectArchiveZip(wrongRecommendationProjectBundle)),
+  /belongs to other-project/,
+);
+
+const wrongRecommendationCrsBundle = {
+  ...bundleWithAdjacentData,
+  files: {
+    ...bundleWithAdjacentData.files,
+    [MODEL_RECOMMENDATIONS_GEOJSON_FILENAME]: JSON.stringify({
+      ...modelRecommendationsToProjectedGeoJson([modelRecommendation]),
+      features: [{
+        ...(modelRecommendationsToProjectedGeoJson([modelRecommendation]) as { features: object[] }).features[0],
+        properties: {
+          ...((modelRecommendationsToProjectedGeoJson([modelRecommendation]) as { features: Array<{ properties: object }> }).features[0].properties),
+          projectCrs: "EPSG:3857",
+        },
+      }],
+    }),
+  },
+};
+assert.throws(
+  () => importProjectArchiveZipWithAdjacentData(exportProjectArchiveZip(wrongRecommendationCrsBundle)),
+  /uses EPSG:3857, not EPSG:32613|Recommendation projectCrs must match/,
+);
+
+const mutationRecommendationBundle = {
+  ...bundleWithAdjacentData,
+  files: {
+    ...bundleWithAdjacentData.files,
+    [MODEL_RECOMMENDATIONS_GEOJSON_FILENAME]: JSON.stringify({
+      ...modelRecommendationsToProjectedGeoJson([modelRecommendation]),
+      canonicalGeometryMutation: true,
+    }),
+  },
+};
+assert.throws(
+  () => importProjectArchiveZipWithAdjacentData(exportProjectArchiveZip(mutationRecommendationBundle)),
+  /canonicalGeometryMutation: false/,
+);
+
+const wrongRecommendationCoordinateSystemBundle = {
+  ...bundleWithAdjacentData,
+  files: {
+    ...bundleWithAdjacentData.files,
+    [MODEL_RECOMMENDATIONS_GEOJSON_FILENAME]: JSON.stringify({
+      ...modelRecommendationsToProjectedGeoJson([modelRecommendation]),
+      coordinateReferenceSystem: "EPSG:4326",
+    }),
+  },
+};
+assert.throws(
+  () => importProjectArchiveZipWithAdjacentData(exportProjectArchiveZip(wrongRecommendationCoordinateSystemBundle)),
+  /project_crs_xy/,
+);
+
+assert.throws(
+  () => importProjectArchiveZip(exportProjectArchiveZip({
+    ...bundle,
+    files: {
+      ...bundle.files,
+      [PROJECT_JSON_FILENAME]: " ".repeat(PROJECT_ARCHIVE_MAX_ENTRY_BYTES + 1),
+    },
+  })),
+  /entry project\.json exceeds/,
+);
+
+assert.throws(
+  () => importProjectArchiveZip(exportProjectArchiveZip({
+    ...bundle,
+    files: {
+      ...bundle.files,
+      [PROJECT_GEOJSON_FILENAME]: " ".repeat(PROJECT_ARCHIVE_MAX_UNCOMPRESSED_BYTES + 1),
+    },
+  })),
+  /entry exports\/scenario\.geojson exceeds|uncompressed size exceeds/,
 );
 
 console.log("project archive tests passed");

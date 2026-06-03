@@ -19,7 +19,7 @@
     "ml-cv-pivot-candidates:run": "PYTHONPATH=tools/local-ml-companion/src python3 -m cplayout_ml.cli detect-pivot-candidates --synthetic-fixture --project-id synthetic-pivot-review --project-crs LOCAL:IMAGE --output-dir reports/ml-cv-pivot-candidates/20260601T-run --iterations 100 --created-at 2026-06-01T00:00:00.000Z",
     "test:ml-companion": "PYTHONPATH=tools/local-ml-companion/src python3 -m unittest discover -s tools/local-ml-companion/tests",
     "typecheck": "tsc -p tsconfig.tools.json && npm run typecheck --workspaces --if-present",
-    "test": "tsx tools/referenceOverlayBuilder.test.ts && npm run test --workspaces --if-present",
+    "test": "tsx tools/referenceOverlayBuilder.test.ts && tsx tools/roadmapCompletion.test.ts && npm run test --workspaces --if-present",
     "validate:skills": "python3 tools/validate_cplayout_skills.py",
     "validate": "npm run typecheck && npm test",
     "audit:moderate": "npm audit --audit-level=moderate",
@@ -28,6 +28,8 @@
     "verify:loop-ledger": "tsx tools/verify_continuous_improvement_ledger.ts",
     "verify:ml-cv-loop": "tsx tools/verify_research_improvement_loop.ts --path docs/ml-cv-pivot-locating-improvement-loop.md --through 100",
     "verify:whole-loop": "tsx tools/verify_whole_codebase_improvement_loop.ts --path docs/whole-codebase-improvement-loop-2026-06-01.md --through 100",
+    "verify:roadmap": "tsx tools/roadmapCompletion.ts --full",
+    "verify:roadmap:fast": "tsx tools/roadmapCompletion.ts --fast",
     "verify:release": "npm run validate && git diff --check && npm run validate:skills && npm run check:android-tools && npm run verify:android-native"
   },
   "devDependencies": {

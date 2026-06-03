@@ -13,7 +13,7 @@ The v1 built-in live provider remains USGS The National Map Imagery Only. Custom
 - App/session online imagery settings live in `packages/core/src/settings.ts`.
 - SVG tile planning lives in `packages/geometry/src/onlineImagery.ts` and is Web Mercator gated.
 - SVG attribution rendering lives in `packages/map-adapters/src/SvgMapSurface.tsx`.
-- MapLibre preview files are present under `packages/map-adapters/src/`, but native MapLibre runtime behavior remains unverified.
+- MapLibre preview files are present under `packages/map-adapters/src/`; Android native runtime behavior is proven only for the generated TileJSON/tile-template proof path.
 - Project export settings intentionally exclude `onlineImagery`; canonical project geometry remains project-CRS `XY`.
 
 ## Provider Ledger
@@ -46,6 +46,6 @@ The v1 built-in live provider remains USGS The National Map Imagery Only. Custom
 ## Non-Goals
 
 - No Google, Bing, paid Mapbox, paid Esri/ArcGIS, hidden API keys, scraping, public OSM bulk tile use, or trial-only hosted imagery.
-- No claim that native MapLibre, raw PMTiles/MBTiles rendering, or native ZIP sharing is production-verified before device/emulator evidence.
+- No claim that raw PMTiles/MBTiles rendering, iOS MapLibre behavior, or iOS native ZIP sharing is production-verified before device/emulator evidence. Android generated-template MapLibre and Android canonical ZIP share/picker have separate completed reports.
 - No automatic geometry mutation from imagery. Imagery-derived vertices are planning evidence until field-verified and explicitly accepted.
 - No verified Google Earth headless screenshot API, no permission claim for bulk automated CV extraction from Earth imagery, and no product-facing Google Earth comparison dataset rights.

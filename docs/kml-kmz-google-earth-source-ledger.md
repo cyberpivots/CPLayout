@@ -41,5 +41,5 @@ Date verified: 2026-05-28
 - Exported KML includes field boundary, obstacles, infrastructure points, survey points, optional tower points, and CPLayout `ExtendedData`.
 - Exported KML may include deterministic shared styles for Google Earth visual clarity. These styles are not imported as authoritative project data and do not affect CPLayout validation, geometry, persistence, or archive schemas.
 - KML/KMZ is a GIS exchange format only. Project backup/restore remains the CPLayout ZIP package.
-- Native file picker/share behavior is compile-ready but not production-verified until the Android/iOS device checklist passes.
+- Android native file picker/share behavior is proven for the canonical project ZIP package by the completed Android report; iOS behavior and any KML/KMZ-specific native picker/share regression still need their own checklist evidence.
 - Browser import wizard screenshots and capture notes are recorded in `docs/google-earth-import-wizard-research.md`; the wizard is instructional UI and does not change KML/KMZ import semantics.

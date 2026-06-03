@@ -14,6 +14,7 @@ interface NativeMapLibreProofOptions {
   adbPath?: string;
   serial?: string;
   port: number;
+  devClientUrl?: string;
   launchApp: boolean;
   waitMs: number;
 }
@@ -60,6 +61,7 @@ export function parseArgs(rawArgs: string[], env: NodeJS.ProcessEnv = process.en
     adbPath: valueFor(rawArgs, "--adb") ?? env.CPLAYOUT_ADB,
     serial: valueFor(rawArgs, "--serial") ?? env.ANDROID_SERIAL,
     port: Number(valueFor(rawArgs, "--port") ?? env.CPLAYOUT_NATIVE_MAPLIBRE_PORT ?? "8765"),
+    devClientUrl: valueFor(rawArgs, "--dev-client-url") ?? env.CPLAYOUT_EXPO_DEV_CLIENT_URL,
     launchApp: !hasFlag(rawArgs, "--no-launch"),
     waitMs: Number(valueFor(rawArgs, "--wait-ms") ?? "9000"),
   };
@@ -92,8 +94,13 @@ export async function runNativeMapLibreProof(options: NativeMapLibreProofOptions
   const tileServer = await startTileServer(options.port);
   try {
     runAdb(selected.adb.path, ["-s", selected.device.serial, "reverse", `tcp:${options.port}`, `tcp:${options.port}`], "text");
+    for (const devServerPort of localhostPortsFromText(options.devClientUrl ?? "")) {
+      if (devServerPort !== options.port) {
+        runAdb(selected.adb.path, ["-s", selected.device.serial, "reverse", `tcp:${devServerPort}`, `tcp:${devServerPort}`], "text");
+      }
+    }
     if (options.launchApp) {
-      launchPackage(selected.adb.path, selected.device.serial, options.packageName);
+      launchPackage(selected.adb.path, selected.device.serial, options.packageName, options.devClientUrl);
       await wait(options.waitMs);
     }
     const screenshot = runAdb(selected.adb.path, ["-s", selected.device.serial, "exec-out", "screencap", "-p"], "buffer");
@@ -120,6 +127,8 @@ export async function runNativeMapLibreProof(options: NativeMapLibreProofOptions
         versionCode: version.versionCode,
         buildType: "development-native-maplibre-proof",
         commit: currentGitCommit(),
+        devClientUrl: options.devClientUrl ?? "",
+        reversedDevServerPorts: localhostPortsFromText(options.devClientUrl ?? ""),
       },
       tileSource: {
         tileSourceKind: "tilejson_or_template",
@@ -242,7 +251,11 @@ function installedPackageInfo(adbPath: string, serial: string, packageName: stri
   };
 }
 
-function launchPackage(adbPath: string, serial: string, packageName: string): void {
+function launchPackage(adbPath: string, serial: string, packageName: string, devClientUrl?: string): void {
+  if (devClientUrl) {
+    const urlLaunch = runAdb(adbPath, ["-s", serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", devClientUrl, packageName], "text", false);
+    if (typeof urlLaunch === "string" && !/Error|Exception|not exist|does not exist/i.test(urlLaunch)) return;
+  }
   const activity = runAdb(adbPath, ["-s", serial, "shell", "am", "start", "-n", `${packageName}/.MainActivity`], "text", false);
   if (typeof activity === "string" && /Error|Exception|not exist|does not exist/i.test(activity)) {
     runAdb(adbPath, ["-s", serial, "shell", "monkey", "-p", packageName, "1"], "text", false);
@@ -302,6 +315,26 @@ function windowsPathToWslPath(value: string): string {
   const rest = match[2].replaceAll("\\", "/");
   const path = `/mnt/${drive}/${rest}`;
   return existsSync(path) ? path : "";
+}
+
+function localhostPortsFromText(value: string): number[] {
+  const ports = new Set<number>();
+  for (const text of [value, decodeUrlComponent(value)]) {
+    const matches = text.matchAll(/(?:127\.0\.0\.1|localhost):(\d{2,5})/g);
+    for (const match of matches) {
+      const port = Number(match[1]);
+      if (Number.isInteger(port) && port > 0 && port <= 65535) ports.add(port);
+    }
+  }
+  return [...ports];
+}
+
+function decodeUrlComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function uniqueCandidates(candidates: AdbCandidate[]): AdbCandidate[] {

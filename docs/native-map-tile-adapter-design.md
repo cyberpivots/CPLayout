@@ -1,6 +1,6 @@
 # Native Map Tile Adapter Design
 
-MapLibre React Native is now installed/configured in the workspace, including the mobile Expo plugin and package dependencies. That does not make native map rendering production-verified: native MapLibre runtime behavior, Android/iOS persistence, and raw PMTiles/MBTiles archive rendering remain gated until a development build runs through the device/emulator checklist in `docs/android-native-verification.md`.
+MapLibre React Native is installed/configured in the workspace, including the mobile Expo plugin and package dependencies. The generated TileJSON/tile-template adapter path has Android runtime proof through `reports/native-maplibre/latest.json`; that does not prove raw PMTiles/MBTiles archive rendering or iOS behavior.
 
 Current installed state:
 
@@ -25,7 +25,7 @@ Existing `MapPackageManifest` metadata maps to MapLibre React Native source prop
 
 Raw `pmtiles` and `mbtiles` archives are not native-renderable from metadata alone. They need one of the accepted adapters below before `describeTilePackageReadiness(..., "native_maplibre_rn")` may report `canRender: true`.
 
-Current chosen adapter path: generate TileJSON plus app-readable tile URL templates. `packages/core/src/mapTilePackages.ts` already treats those local sources as the lowest-risk native MapLibre descriptor shape. This is adapter readiness only; native rendering remains unverified until the Android/iOS device checklist captures MapLibre evidence.
+Current chosen adapter path: generate TileJSON plus app-readable tile URL templates. `packages/core/src/mapTilePackages.ts` already treats those local sources as the lowest-risk native MapLibre descriptor shape. Android native rendering for this adapter path is proven by `reports/native-maplibre/latest.json`, which captures a device screenshot, pixel metrics, and tile requests. Raw PMTiles/MBTiles still need a local protocol, conversion, extraction, or tile-serving adapter before native rendering claims.
 
 Use `docs/native-maplibre-render-report-template.json` for a completed native MapLibre render report. The roadmap runner validates that report only when it includes device/build identity, a local TileJSON or tile URL template source, screenshot hash and pixel metrics, and the explicit boundary that raw PMTiles/MBTiles native rendering was not proved.
 
@@ -37,7 +37,7 @@ Use `docs/native-maplibre-render-report-template.json` for a completed native Ma
 
 ## Deferred Dependencies
 
-MapLibre React Native is not part of Expo Go and requires a native app build or development build. The dependency is already present, so the deferred work is no longer installation; it is native runtime verification, local tile-source adapter proof, and device evidence before any production claim.
+MapLibre React Native is not part of Expo Go and requires a native app build or development build. The dependency is already present, and the generated TileJSON/template Android proof exists; the deferred work is raw local archive rendering, iOS proof, and any broader production-map evidence beyond the local proof source.
 
 ## Primary Sources
 

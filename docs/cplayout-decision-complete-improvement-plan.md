@@ -2,7 +2,7 @@
 
 ## Summary
 
-CPLayout should keep canonical layout geometry in projected/local `XY` coordinates while making decimal degrees the default user-facing WGS84 entry/display mode. Offline imagery should remain free/no-cost and locally packaged, with MapLibre limited to TileJSON or tile URL templates until raw PMTiles/MBTiles adapters are device-proven. Expert review should be visible in the GUI as bounded role outputs, not as an unbounded agent swarm. ML belongs in offline preprocessing or companion tooling unless a native on-device inference path is proven on Android/iOS.
+CPLayout should keep canonical layout geometry in projected/local `XY` coordinates while making decimal degrees the default user-facing WGS84 entry/display mode. Offline imagery should remain free/no-cost and locally packaged, with Android MapLibre limited to the proven TileJSON/tile URL template path until raw PMTiles/MBTiles adapters are device-proven. Expert review should be visible in the GUI as bounded role outputs, not as an unbounded agent swarm. ML belongs in offline preprocessing or companion tooling unless a native on-device inference path is proven on Android/iOS.
 
 ## Key Implementation Changes
 
@@ -50,7 +50,7 @@ The practical native candidate to research first is ONNX Runtime for React Nativ
 - Run `npm run validate` after TypeScript or UI changes.
 - Run `npm audit` and report findings; do not run breaking `npm audit fix --force` without approval.
 - For visible UI changes, run `npm run export:web` or a web dev-server check and capture a Playwright screenshot when available.
-- Android/iOS persistence or native MapLibre claims require the checklist in `docs/android-native-verification.md`; do not call native behavior production-verified without an `adb` device/emulator run or equivalent iOS device proof.
+- Android native SQLite and ZIP share/picker claims require the completed report in `docs/android-native-verification.md`; iOS persistence/share/picker and any new native MapLibre claims still require their own device/emulator report. Do not call native behavior production-verified from compile/config checks alone.
 - Coordinate acceptance: new defaults are decimal degrees; WGS84 parsing/display round-trips through projected XY; existing project settings can still select another display format.
 - Imagery acceptance: offline package metadata validates attribution/license/checksum/bounds; native raw PMTiles/MBTiles rendering remains blocked until a real adapter is implemented and device-verified.
 
@@ -60,7 +60,7 @@ The practical native candidate to research first is ONNX Runtime for React Nativ
 - Assumption: the current web MVP remains browser-local persistence until Expo SQLite web WASM plus COOP/COEP headers are proven in deployment.
 - Non-goal: no Google Maps, paid Mapbox/Esri services, paid imagery, cloud backend, hidden key, or trial SDK.
 - Non-goal: no direct Python/GDAL/RTKLIB/ML execution inside React Native.
-- Non-goal: no production claim for native SQLite, ZIP sharing, native MapLibre, PMTiles/MBTiles raw archive rendering, or on-device ML until device verification passes.
+- Non-goal: no production claim for iOS SQLite/ZIP sharing, raw PMTiles/MBTiles native archive rendering, broad native MapLibre behavior outside the generated-template proof, or on-device ML until the relevant device verification passes.
 
 ## Primary Sources Checked
 

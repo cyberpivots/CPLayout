@@ -12,7 +12,7 @@
   Source: https://proj4js.org/
 - Offline map policy: OpenStreetMap's public raster tile service does not permit offline bulk downloading; use self-hosted tiles or providers/packages whose terms explicitly allow offline use.
   Source: https://operations.osmfoundation.org/policies/tiles/
-- Advanced map renderer lane: MapLibre React Native is installed/configured in this repo, but it is native, requires setup/rebuild, and still needs Android/iOS device verification before production claims. Production apps must provide their own style/tiles.
+- Advanced map renderer lane: MapLibre React Native is installed/configured in this repo. The generated TileJSON/tile-template path has Android device proof, but iOS and raw PMTiles/MBTiles still need their own adapters and verification before production claims. Production apps must provide their own style/tiles.
   Source: https://maplibre.org/maplibre-react-native/docs/setup/getting-started/
 - Tile package formats: PMTiles is a single-file tile archive; MBTiles stores tiled map data in SQLite and is limited to Spherical Mercator presentation.
   Sources: https://github.com/protomaps/PMTiles/blob/main/spec/v3/spec.md, https://github.com/mapbox/mbtiles-spec
@@ -35,11 +35,11 @@
 
 ## Deferred Work
 
-- Native MapLibre runtime verification and local PMTiles/MBTiles protocol adapters.
+- Raw native PMTiles/MBTiles protocol adapters and iOS MapLibre runtime verification.
 - Production web SQLite, because Expo SQLite web support is alpha and needs WASM plus COOP/COEP headers.
 - Native large-file import workflows beyond user-picked ZIP packages.
 - Advanced Google Earth constructs including NetworkLinks, overlays, 3D models, tours, embedded KMZ assets, style fidelity, and altitude/extrusion semantics as engineering data.
-- Android native SQLite/FileSystem/Sharing runtime acceptance until the checklist in `docs/android-native-verification.md` is run on device or emulator.
+- iOS native SQLite/FileSystem/Sharing runtime acceptance; Android SQLite plus ZIP share/picker is proven by the completed 2026-06-03 Android report.
 - Full geometry editor commit/undo flows from draft vertices into project field and obstacle entities.
 - R-tree/FTS/SQLCipher configuration gates after target platform builds are established.
 - Live GNSS receiver transports and RTK correction workflows.

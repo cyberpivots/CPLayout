@@ -15,11 +15,14 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 - `npm run verify:android-native` writes a timestamped JSON report under `reports/android-native-verification/` and fails until a built app plus completed checklist evidence are available.
 - `npm run verify:android-native -- --report <report.json>` validates a completed report. Incomplete reports fail and must not be used to claim native runtime verification.
 - `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run android` builds a development app with the native MapLibre tile-template proof panel enabled; after install, `npm run verify:native-maplibre` starts the local proof tile server, runs `adb reverse`, captures a device screenshot, computes pixel metrics, and writes `reports/native-maplibre/latest.json`.
+- For Expo development-client runs, start Metro with the same proof environment and pass the dev-client URL to the proof runner with `--dev-client-url` or `CPLAYOUT_EXPO_DEV_CLIENT_URL`. Redirect Metro logs during automation so ANSI progress output does not flood WSL sessions.
 - Use `docs/android-native-verification-report-template.json` as the checked-in report shape. Runtime reports are intentionally ignored by Git unless a specific report is promoted intentionally.
+
+Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) passed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` for Expo SQLite save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and schema migration evidence. This is Android proof only; iOS and raw PMTiles/MBTiles native rendering still require their own reports.
 
 ## SQLite Project Store
 
-1. Open the app and navigate to `Export`.
+1. Open the app and navigate to `Files`.
 2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v8`.
 3. Save the sample project.
 4. Close and relaunch the app.
@@ -48,9 +51,10 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 
 1. Build/install the native development app with `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run android`.
 2. Confirm `adb devices -l` shows the target device/emulator in `device` state.
-3. Run `npm run verify:native-maplibre`.
-4. Validate that `reports/native-maplibre/latest.json` has `status: "pass"`, `tileSource.tileSourceKind: "tilejson_or_template"`, a local `127.0.0.1` tile URL template, screenshot SHA-256, positive dimensions, nonblank pixel ratio, and gray variance.
-5. Do not treat this as raw PMTiles/MBTiles native rendering proof; it proves the generated TileJSON/template adapter path only.
+3. Start the Expo dev server with the proof environment, for example `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run start -w @cplayout/mobile -- --dev-client --port 8082 --clear`.
+4. Run `npm run verify:native-maplibre -- --dev-client-url "exp+center-pivot-layout://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082" --wait-ms 20000`.
+5. Validate that `reports/native-maplibre/latest.json` has `status: "pass"`, `tileSource.tileSourceKind: "tilejson_or_template"`, a local `127.0.0.1` tile URL template, screenshot SHA-256, positive dimensions, nonblank pixel ratio, and gray variance.
+6. Do not treat this as raw PMTiles/MBTiles native rendering proof; it proves the generated TileJSON/template adapter path only.
 
 ## Pass Criteria
 

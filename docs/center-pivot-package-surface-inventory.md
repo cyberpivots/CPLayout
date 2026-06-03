@@ -4,7 +4,7 @@ Date: 2026-05-28
 
 ## Decision
 
-Keep center-pivot layout work inside the current workspace split. Pure domain and geometry code stays in packages first; UI wires tested package behavior second; native and map-runtime claims stay gated until device proof exists.
+Keep center-pivot layout work inside the current workspace split. Pure domain and geometry code stays in packages first; UI wires tested package behavior second; native and map-runtime claims stay gated until the specific device proof exists.
 
 ## Package Surfaces
 
@@ -31,7 +31,7 @@ Keep center-pivot layout work inside the current workspace split. Pure domain an
 
 - Web MVP persistence uses browser local storage until Expo SQLite web WASM and COOP/COEP hosting are configured.
 - Native SQLite and ZIP sharing may typecheck and compile without proving device behavior.
-- Native MapLibre and raw PMTiles/MBTiles rendering remain advanced lanes until local adapter work and Android/iOS verification pass.
+- Android native MapLibre is proven only for the generated TileJSON/tile-template adapter path. Raw PMTiles/MBTiles rendering and iOS native rendering remain advanced lanes until local adapter work and platform verification pass.
 - Full saveable geometry editing is incomplete until draft vertices can be committed to project field/obstacle entities with undo and validation.
 
 ## Acceptance Checks

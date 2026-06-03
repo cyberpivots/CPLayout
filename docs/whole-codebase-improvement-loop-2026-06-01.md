@@ -159,6 +159,8 @@ Current branch observed during preflight: `codex/cplayout-agent-specialists`, tr
 
 2026-06-03 follow-up on `codex/complete-roadmap-next`: `npm run verify:roadmap:fast` now passes the native adjacent review-data API gate, Google Earth manifest gate, and curated real-pivot fixture gate. The real-pivot fixture is generated from existing public Adams County proof artifacts and emits a projected-XY pivot-center recommendation without hard failures. The native MapLibre proof harness and local tile-template adapter are implemented, but Android runtime proof remains blocked because Windows/WSL ADB, `usbipd`, PnP, mDNS, and TCP 5555 probes found no live Android device/emulator. Native SQLite, ZIP sharing, native MapLibre screenshot evidence, and raw PMTiles/MBTiles native rendering remain unclaimed until device proof exists.
 
+2026-06-03 continuation on `codex/complete-roadmap-next`: the no-device outcome above was superseded after the Samsung SM-P613 tablet reappeared over USBIPD/ADB with a new USB cable. `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` passed for Android Expo SQLite schema v8, migrations 1-8, save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and manifest/project id/CRS agreement. The Android native MapLibre generated TileJSON/template report also passed in `reports/native-maplibre/latest.json`. Native raw PMTiles/MBTiles rendering, iOS persistence/share/picker proof, on-device ML, and live GNSS remain unclaimed.
+
 ## Validation Commands
 
 Required after changing this loop:

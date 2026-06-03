@@ -5,10 +5,24 @@ import { SQLITE_MIGRATIONS, SQLITE_SCHEMA_VERSION } from "./persistenceSchema";
 
 export const DEFAULT_PROJECT_DATABASE_NAME = "center-pivot-projects.db";
 
+const databaseReadyPromises = new Map<string, Promise<SQLiteDatabase>>();
+
 export async function openProjectDatabaseAsync(databaseName = DEFAULT_PROJECT_DATABASE_NAME): Promise<SQLiteDatabase> {
-  const db = await SQLite.openDatabaseAsync(databaseName);
-  await applyProjectStoreMigrations(db);
-  return db;
+  const existing = databaseReadyPromises.get(databaseName);
+  if (existing) return existing;
+
+  const ready = (async () => {
+    const db = await SQLite.openDatabaseAsync(databaseName);
+    await applyProjectStoreMigrations(db);
+    return db;
+  })();
+  databaseReadyPromises.set(databaseName, ready);
+  try {
+    return await ready;
+  } catch (error) {
+    databaseReadyPromises.delete(databaseName);
+    throw error;
+  }
 }
 
 export async function applyProjectStoreMigrations(db: SQLiteDatabase): Promise<void> {

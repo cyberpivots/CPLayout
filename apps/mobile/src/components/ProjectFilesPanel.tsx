@@ -233,6 +233,9 @@ export function ProjectFilesPanel({
         <FileAction icon={<Upload size={18} color="#254234" />} label="Import ZIP" onPress={importZip} />
         <FileAction icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={onRefreshProjects} />
       </View>
+      <View style={styles.destructiveActionRow}>
+        <FileAction icon={<Trash2 size={18} color="#8b1e18" />} label="Delete Local Project" danger onPress={() => void onDeleteProject(project.id)} />
+      </View>
       <View style={[styles.statusBox, statusToneStyle(status.tone)]} testID="files-status" {...webStatusProps()}>
         <Database size={17} color={statusToneColor(status.tone)} />
         <Text style={[styles.statusText, statusTextToneStyle(status.tone)]}>{dirty ? "Unsaved edits. " : ""}{repository.statusMessage} · {status.text}</Text>
@@ -360,11 +363,23 @@ function BackendTile({ label, value }: { label: string; value: string }): React.
   );
 }
 
-function FileAction({ icon, label, onPress, primary = false }: { icon: React.ReactNode; label: string; onPress: () => void | Promise<void>; primary?: boolean }): React.JSX.Element {
+function FileAction({
+  icon,
+  label,
+  onPress,
+  primary = false,
+  danger = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void | Promise<void>;
+  primary?: boolean;
+  danger?: boolean;
+}): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.actionButton, primary && styles.actionButtonPrimary]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.actionButton, primary && styles.actionButtonPrimary, danger && styles.actionButtonDanger]}>
       {icon}
-      <Text style={[styles.actionText, primary && styles.actionTextPrimary]}>{label}</Text>
+      <Text style={[styles.actionText, primary && styles.actionTextPrimary, danger && styles.actionTextDanger]}>{label}</Text>
     </Pressable>
   );
 }
@@ -471,6 +486,9 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
+  destructiveActionRow: {
+    alignItems: "flex-start",
+  },
   actionButton: {
     alignItems: "center",
     backgroundColor: "#f1f5ee",
@@ -487,6 +505,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#254234",
     borderColor: "#254234",
   },
+  actionButtonDanger: {
+    backgroundColor: "#fff0ee",
+    borderColor: "#dfa59d",
+  },
   actionText: {
     color: "#254234",
     fontSize: 13,
@@ -494,6 +516,9 @@ const styles = StyleSheet.create({
   },
   actionTextPrimary: {
     color: "#ffffff",
+  },
+  actionTextDanger: {
+    color: "#8b1e18",
   },
   statusBox: {
     alignItems: "flex-start",

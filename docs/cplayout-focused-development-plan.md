@@ -12,7 +12,7 @@ The consolidation pass used this evidence before changing records:
 - Preflight: `AGENTS.md` was re-read and `git status --short` was clean.
 - Subagents: two `explorer` agents and the `cplayout_kb_curator` agent reviewed plan inventory, product status, and process records.
 - Local commands: `npm run verify:whole-loop` passed through row 100; `npm run verify:ml-cv-loop` passed through row 100; `npm run test:ml-companion` passed 53 tests with 2 skipped.
-- Native blocker proof: `npm run check:android-tools` found no connected adb device or running emulator, so native Android runtime proof remains blocked.
+- Native blocker proof: earlier passes found no connected adb device/emulator, but the 2026-06-03 continuation used the connected Samsung SM-P613 over WSL USBIPD/ADB and completed the Android runtime report for SQLite save/reload/delete plus ZIP share/picker export/import.
 - Google Earth proof: `reports/google-earth-visual-fidelity/20260530T134720Z/visual-fidelity-manifest.json` records `status: "passed"`, `proofPassed: true`, cleanup requested with force-close status, and a non-black map-canvas analysis. The matching map-canvas PNG was visually inspected in this pass.
 - Codex process research: current official Codex manual sections for `AGENTS.md`, subagents, hooks, managed configuration, and `requirements.toml` were reviewed on 2026-06-02.
 
@@ -23,7 +23,7 @@ The consolidation pass used this evidence before changing records:
 - Keep canonical geometry as projected/local `XY` in the project CRS. WGS84, KML/KMZ, screenshots, CV masks, and operator labels are input, display, or evidence until accepted through projected-XY validation.
 - Do not claim React Native directly runs Python, GDAL, RTKLIB, PyTorch, or companion ML/GIS packages.
 - Keep Google Earth Pro, KML/KMZ styling, imagery, and local CV/ML outputs advisory unless geometry is imported and applied through existing Review Apply XY gates.
-- Do not claim native SQLite, ZIP sharing, native MapLibre, raw PMTiles/MBTiles, live GNSS, or on-device ML production readiness until device/emulator proof passes.
+- Do not claim native SQLite, ZIP sharing, native MapLibre, raw PMTiles/MBTiles, live GNSS, or on-device ML production readiness until the matching device/emulator proof passes. Android native SQLite and ZIP sharing now have a completed Android report; iOS, raw PMTiles/MBTiles, live GNSS, and on-device ML remain proof-gated.
 
 ## Plan Inventory
 
@@ -56,8 +56,8 @@ The consolidation pass used this evidence before changing records:
 | Core projected-XY geometry | Locally verified through current validation and browser proof ledgers. | Keep every new geometry write behind reducer validation and project CRS checks. |
 | Browser mapping/UI | Browser-proven through the completed 100-row ledger and final proof checklist. | Re-run `npm run proof:web` for visible browser changes. |
 | Review Apply XY | Browser/local proof exists for explicit operator-gated projected-XY application. | Do not add automatic apply paths from imagery, CV, ML, KML, or operator labels. |
-| Project archive and web persistence | Browser/local paths are proven; local storage remains web MVP. Adjacent evidence, recommendation, and decision ZIP round-trip plus archive safety limits are implemented and covered by project-store tests and focused browser proof. | Native ZIP sharing and native adjacent review-data persistence remain device-gated; large performance stress remains a separate scale gate. |
-| Native SQLite and ZIP sharing | Compile/config surface exists, but runtime proof is blocked. | Run `docs/android-native-verification.md` with a device/emulator or equivalent iOS proof. |
+| Project archive and web persistence | Browser/local paths are proven; local storage remains web MVP. Adjacent evidence, recommendation, and decision ZIP round-trip plus archive safety limits are implemented and covered by project-store tests and focused browser proof. Android ZIP sharing/picker export-import has device proof through the completed native report. | iOS ZIP sharing remains device-gated; large performance stress remains a separate scale gate. |
+| Native SQLite and ZIP sharing | Android runtime proof passed on Samsung SM-P613 with Expo SQLite schema v8, save/relaunch/list/load/delete, native share-sheet ZIP export, Android picker ZIP import, and migration evidence. | Keep `docs/android-native-verification.md` as the regression gate; run equivalent iOS proof before iOS claims. |
 | Browser MapLibre/PMTiles | Browser protocol/source evidence exists. | Native raw PMTiles/MBTiles rendering needs an adapter and device proof. |
 | Google Earth/KML/KMZ | KML/KMZ export and at least one local Google Earth visual-fidelity proof passed. | This does not prove app/native/mobile runtime behavior or change canonical XY. |
 | Local ML companion | Advisory local services and tests pass. | Real-world projected-XY pivot locating needs operator truth labels, project CRS calibration, and rejection audits. |
@@ -69,7 +69,7 @@ The consolidation pass used this evidence before changing records:
 The panel weighting favors source-backed blockers that reduce false product claims and unlock later work. The next development order is:
 
 1. Documentation and source consolidation: keep this plan, prompt registry, source ledger, and known gaps aligned after every major pass.
-2. Native runtime verification: run Android/iOS device or emulator proof for native SQLite, ZIP sharing, native MapLibre gates, network isolation, and report completion.
+2. Native runtime verification: keep Android SQLite/ZIP proof current, run equivalent iOS proof when available, and keep native MapLibre/network-isolation gates tied to their own device reports.
 3. Real-world ML/CV fixture execution: broaden from the curated public Adams County proof fixture to additional operator-qualified field fixtures with provenance, calibration, rejection classes, and companion output hashes.
 4. Native raw tile adapter proof: decide local protocol, extracted tiles, local server, or conversion path; then prove on device before claiming native raw PMTiles/MBTiles.
 5. Browser/UI polish: continue accessibility and review workflow refinements only after the data/archive/native/fixture blockers above stay visible.
@@ -78,17 +78,18 @@ Completed 2026-06-02 follow-up:
 
 - Archive adjacent review data and ZIP safety: `importProjectArchiveZipWithAdjacentData` now returns project, adjacent review data, and manifest while `importProjectArchiveZip` remains the compatibility wrapper. Project-store tests cover adjacent-data round-trip, project id/CRS mismatches, unsupported/missing entries, compressed size, file-count, entry-size, total uncompressed-size, and `canonicalGeometryMutation: false` gates. Focused Playwright proof verifies browser ZIP export/import restores adjacent review records without applying geometry.
 - Real-world ML/CV fixture manifest path: `build-evidence-packet --real-pivot-fixtures` accepts local operator-approved fixture manifests, hashes local artifacts, rejects hash mismatches and hidden-key provenance, emits projected-XY pivot recommendations only for calibrated truth, and keeps uncalibrated fixtures metadata-only with hard failures.
-- Native verification blocker: `npm run check:android-tools` found local adb/emulator/EAS/Expo tooling but no connected adb device or running emulator, so `npm run verify:android-native` was not eligible for a production runtime claim.
+- Earlier native verification blocker: `npm run check:android-tools` found local adb/emulator/EAS/Expo tooling but no connected adb device or running emulator, so `npm run verify:android-native` was not eligible for a production runtime claim until the later SM-P613 USBIPD/ADB run completed.
 - Roadmap completion automation: `npm run verify:roadmap` now runs the local proof suite, browser proof, native/device detection, Google Earth visual-fidelity manifest validation, real-pivot fixture detection, typed native MapLibre report validation, and native adjacent-review-data persistence classification in one coordinator pass. The runner writes ignored reports under `reports/roadmap-completion/` and records unavailable external evidence as `blocked` instead of requiring step-by-step operator decisions.
 
 Completed 2026-06-03 follow-up:
 
-- Native adjacent review-data persistence code path: `ProjectRepository` now exposes optional adjacent review-data load/save methods, and the native SQLite adapter persists `layout_evidence`, `model_recommendations`, and `layout_decisions` records transactionally. This removes the missing API blocker; Android/iOS runtime behavior still requires device proof.
+- Native adjacent review-data persistence code path: `ProjectRepository` now exposes optional adjacent review-data load/save methods, and the native SQLite adapter persists `layout_evidence`, `model_recommendations`, and `layout_decisions` records transactionally. This removes the missing API blocker; adjacent review-data persistence remains covered by code/tests, while Android ZIP share/picker runtime proof is now separately completed.
 - Real-pivot fixture automation: `npm run real-pivot-fixture:generate` creates `fixtures/real-pivot/manifest.json` from the public Adams County project reference plus local Google Earth proof artifacts and hashes. `npm run verify:roadmap:fast` now proves this curated calibrated fixture emits a projected-XY `proposedGeometry.pivotCenter` without canonical geometry mutation.
-- Native MapLibre proof harness: `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1` enables a native MapLibre raster proof panel backed by a localhost tile URL template, and `npm run verify:native-maplibre` starts a local generated tile server, runs `adb reverse`, captures an Android screenshot, computes PNG pixel metrics, and writes `reports/native-maplibre/latest.json`.
-- Android device access result: Windows ADB, WSL ADB, `usbipd`, PnP, mDNS, and local TCP ADB probes found no live Samsung tablet. Windows PnP only reported phantom Samsung records, so Android native runtime and native MapLibre screenshot proof remain blocked by device transport visibility, not by missing repository automation.
+- Native MapLibre proof harness: `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1` enables a native MapLibre raster proof panel backed by a localhost tile URL template, and `npm run verify:native-maplibre` starts a local generated tile server, runs `adb reverse`, captures an Android screenshot, computes PNG pixel metrics, and writes `reports/native-maplibre/latest.json`. The Android generated TileJSON/template report passed; raw PMTiles/MBTiles remain unproved.
+- Earlier Android device access result: Windows ADB, WSL ADB, `usbipd`, PnP, mDNS, and local TCP ADB probes initially found no live Samsung tablet. That blocker was superseded when the tablet reappeared over USBIPD/ADB after the cable replacement and reattachment.
+- Android native runtime proof: after USB cable replacement and WSL USBIPD/ADB reattachment, Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) completed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json`. Evidence covers Expo SQLite schema v8, migrations 1-8, 3 geometries, 14 geometry vertices, 2 survey points, save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and manifest/project id/CRS agreement.
 
-Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry mutation, model output without fixture metrics, projected-XY output without CRS calibration, native/mobile claims without device proof, and Google Earth visual-fidelity claims without visible rendered evidence plus cleanup status.
+Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry mutation, model output without fixture metrics, projected-XY output without CRS calibration, native/mobile claims without the specific device proof for that platform/feature, and Google Earth visual-fidelity claims without visible rendered evidence plus cleanup status.
 
 ## Cleanup Policy
 
@@ -107,14 +108,14 @@ Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry 
 | Whole-codebase loop edits | `npm run verify:whole-loop`; `git diff --check`; `npm audit` |
 | ML/CV loop edits | `npm run verify:ml-cv-loop`; companion tests when companion code changes |
 | Local companion changes | `npm run test:ml-companion`; companion CLI dry-runs relevant to the changed command |
-| Native runtime claims | `npm run check:android-tools`; `npm run verify:android-native`; device/emulator report evidence |
+| Native runtime claims | `npm run check:android-tools`; `npm run verify:android-native -- --report <completed-report.json>`; device/emulator report evidence |
 | Native MapLibre render claims | Build with `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1`; `npm run verify:native-maplibre`; validate `reports/native-maplibre/latest.json` through `npm run verify:roadmap` |
 | Curated real-pivot fixture regeneration | `npm run real-pivot-fixture:generate`; `npm run test:ml-companion`; `npm run verify:roadmap:fast` |
 | Full roadmap completion pass | `npm run verify:roadmap`; provide resource reports through `CPLAYOUT_ANDROID_NATIVE_REPORT`, `CPLAYOUT_GOOGLE_EARTH_MANIFEST`, `CPLAYOUT_REAL_PIVOT_FIXTURES`, or `CPLAYOUT_NATIVE_MAPLIBRE_REPORT` when those external proofs exist |
 
 ## Current Non-Claims
 
-- No native Android/iOS runtime behavior was proven in this consolidation pass.
+- Android native SQLite and ZIP share/picker runtime behavior is proven for Samsung SM-P613 through the completed 2026-06-03 Android report. No iOS runtime behavior was proven in this pass.
 - No web SQLite deployment proof exists.
 - No native raw PMTiles/MBTiles archive rendering proof exists.
 - No general automatic projected-XY pivot locating proof exists beyond the curated public Adams County fixture generated from existing repository evidence; additional operator-qualified fixtures are still required before making broad model-quality claims.

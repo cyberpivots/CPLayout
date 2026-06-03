@@ -54,6 +54,7 @@ export function collectAndroidToolSnapshot(options: {
     eas: commandCheck("eas"),
     expo: commandCheck("expo"),
   };
+  const windowsAdb = windowsAdbCommandCheck();
 
   const baseSnapshot: AndroidToolSnapshot = {
     generatedAt,
@@ -67,6 +68,7 @@ export function collectAndroidToolSnapshot(options: {
     blocker: null,
   };
 
+  if (!commands.adb.path && windowsAdb.path) commands.adb = windowsAdb;
   if (!commands.adb.path) {
     return {
       ...baseSnapshot,
@@ -74,7 +76,14 @@ export function collectAndroidToolSnapshot(options: {
     };
   }
 
-  const devices = listAndroidDevices(commands.adb.path);
+  let devices = listAndroidDevices(commands.adb.path);
+  if (devices.length === 0 && windowsAdb.path && windowsAdb.path !== commands.adb.path) {
+    const windowsDevices = listAndroidDevices(windowsAdb.path);
+    if (windowsDevices.length > 0) {
+      commands.adb = windowsAdb;
+      devices = windowsDevices;
+    }
+  }
   const selectedDevice = devices.find((device) => device.state === "device") ?? null;
   if (!selectedDevice) {
     return {
@@ -84,7 +93,17 @@ export function collectAndroidToolSnapshot(options: {
     };
   }
 
-  const installedPackage = readPackageInfo(commands.adb.path, selectedDevice.serial, options.packageName);
+  const adbPath = commands.adb.path;
+  if (!adbPath) {
+    return {
+      ...baseSnapshot,
+      devices,
+      selectedDevice,
+      blocker: "blocked: Android SDK/device unavailable (adb path was lost after device selection).",
+    };
+  }
+
+  const installedPackage = readPackageInfo(adbPath, selectedDevice.serial, options.packageName);
   if (!installedPackage) {
     return {
       ...baseSnapshot,
@@ -94,7 +113,7 @@ export function collectAndroidToolSnapshot(options: {
     };
   }
 
-  const logExcerptPath = writeLogExcerpt(commands.adb.path, selectedDevice.serial, options.packageName, options.outputDirectory, generatedAt);
+  const logExcerptPath = writeLogExcerpt(adbPath, selectedDevice.serial, options.packageName, options.outputDirectory, generatedAt);
   return {
     ...baseSnapshot,
     devices,
@@ -150,6 +169,17 @@ function commandCheck(name: string): CommandCheck {
   return { name, path: path.length > 0 ? path : null };
 }
 
+function windowsAdbCommandCheck(): CommandCheck {
+  const result = spawnSync("powershell.exe", [
+    "-NoProfile",
+    "-Command",
+    "$p=Join-Path $env:LOCALAPPDATA 'Android\\Sdk\\platform-tools\\adb.exe'; if(Test-Path $p){ Write-Output $p }",
+  ], { encoding: "utf8" });
+  const windowsPath = result.status === 0 ? result.stdout.trim().split(/\r?\n/)[0] ?? "" : "";
+  const path = windowsPathToWslPath(windowsPath);
+  return { name: "adb", path: path.length > 0 ? path : null };
+}
+
 function currentGitCommit(): string {
   try {
     return execFileSync("git", ["rev-parse", "--short=12", "HEAD"], { encoding: "utf8" }).trim();
@@ -159,6 +189,7 @@ function currentGitCommit(): string {
 }
 
 function listAndroidDevices(adbPath: string): AndroidDeviceInfo[] {
+  spawnSync(adbPath, ["start-server"], { encoding: "utf8" });
   const result = spawnSync(adbPath, ["devices"], { encoding: "utf8" });
   if (result.status !== 0) return [];
   return result.stdout
@@ -177,6 +208,16 @@ function listAndroidDevices(adbPath: string): AndroidDeviceInfo[] {
         apiLevel: readDeviceProp(adbPath, serial, "ro.build.version.sdk"),
       };
     });
+}
+
+function windowsPathToWslPath(value: string): string {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([A-Za-z]):\\(.+)$/);
+  if (!match) return trimmed && existsSync(trimmed) ? trimmed : "";
+  const drive = match[1].toLowerCase();
+  const rest = match[2].replaceAll("\\", "/");
+  const path = `/mnt/${drive}/${rest}`;
+  return existsSync(path) ? path : "";
 }
 
 function readDeviceProp(adbPath: string, serial: string, propName: string): string {

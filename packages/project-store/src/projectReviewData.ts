@@ -37,6 +37,9 @@ interface RawProjectReviewImport {
 type RecommendationImportInput = string | unknown;
 
 export async function loadProjectReviewDataAsync(projectId: string): Promise<ProjectReviewData> {
+  if (projectRepository.loadProjectReviewDataAsync) {
+    return parseProjectReviewData(projectId, await projectRepository.loadProjectReviewDataAsync(projectId));
+  }
   if (typeof localStorage === "undefined") return emptyReviewData();
   const raw = localStorage.getItem(reviewStorageKey(projectId));
   if (!raw) return emptyReviewData();
@@ -59,6 +62,10 @@ export async function saveProjectReviewDataAsync(projectId: string, data: Partia
     modelRecommendations: data.modelRecommendations ?? [],
     layoutDecisions: data.layoutDecisions ?? [],
   });
+  if (projectRepository.saveProjectReviewDataAsync) {
+    await projectRepository.saveProjectReviewDataAsync(projectId, parsed);
+    return;
+  }
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(reviewStorageKey(projectId), JSON.stringify(reviewDataEnvelope(projectId, parsed)));
 }

@@ -1,5 +1,11 @@
-import { parseProjectDocument, serializeProjectDocument } from "@cplayout/core";
-import type { LayoutResult, PivotProject } from "@cplayout/core";
+import {
+  parseLayoutDecisionRecord,
+  parseLayoutEvidenceRecord,
+  parseModelRecommendation,
+  parseProjectDocument,
+  serializeProjectDocument,
+} from "@cplayout/core";
+import type { LayoutDecisionRecord, LayoutEvidenceRecord, LayoutResult, ModelRecommendation, PivotProject } from "@cplayout/core";
 import { buildSaveProjectStatementPlan } from "./projectPersistence";
 import { LOAD_ACTIVE_PROJECT_BY_ID_SQL } from "./projectRepositorySql";
 import {
@@ -690,8 +696,167 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       });
       return record;
     },
+
+    async loadProjectReviewDataAsync(projectId: string) {
+      const db = await openProjectDatabaseAsync();
+      const evidenceRows = await db.getAllAsync<{ record_json: string }>(
+        "SELECT record_json FROM layout_evidence WHERE project_id = ? ORDER BY created_at ASC, id ASC;",
+        projectId,
+      );
+      const recommendationRows = await db.getAllAsync<{ recommendation_json: string }>(
+        "SELECT recommendation_json FROM model_recommendations WHERE project_id = ? ORDER BY created_at ASC, id ASC;",
+        projectId,
+      );
+      const decisionRows = await db.getAllAsync<{ decision_json: string }>(
+        "SELECT decision_json FROM layout_decisions WHERE project_id = ? ORDER BY created_at ASC, id ASC;",
+        projectId,
+      );
+      return {
+        evidenceRecords: evidenceRows.map((row) => parseLayoutEvidenceRecord(JSON.parse(row.record_json))),
+        modelRecommendations: recommendationRows.map((row) => parseModelRecommendation(JSON.parse(row.recommendation_json))),
+        layoutDecisions: decisionRows.map((row) => parseLayoutDecisionRecord(JSON.parse(row.decision_json))),
+      };
+    },
+
+    async saveProjectReviewDataAsync(projectId: string, data) {
+      const evidenceRecords = data.evidenceRecords.map(parseLayoutEvidenceRecord);
+      const modelRecommendations = data.modelRecommendations.map(parseModelRecommendation);
+      const layoutDecisions = data.layoutDecisions.map(parseLayoutDecisionRecord);
+      for (const record of [...evidenceRecords, ...modelRecommendations, ...layoutDecisions]) {
+        if (record.projectId !== projectId) {
+          throw new Error(`Project review record ${record.id} belongs to ${record.projectId}, not ${projectId}.`);
+        }
+      }
+
+      const db = await openProjectDatabaseAsync();
+      await db.withTransactionAsync(async () => {
+        await db.runAsync("DELETE FROM layout_evidence WHERE project_id = ?;", projectId);
+        await db.runAsync("DELETE FROM model_recommendations WHERE project_id = ?;", projectId);
+        await db.runAsync("DELETE FROM layout_decisions WHERE project_id = ?;", projectId);
+        for (const record of evidenceRecords) {
+          await insertLayoutEvidenceRecordAsync(db, record);
+        }
+        for (const recommendation of modelRecommendations) {
+          await insertModelRecommendationAsync(db, recommendation);
+        }
+        for (const decision of layoutDecisions) {
+          await insertLayoutDecisionRecordAsync(db, decision);
+        }
+      });
+    },
   };
   return repository;
+}
+
+async function insertLayoutEvidenceRecordAsync(
+  db: Awaited<ReturnType<typeof openProjectDatabaseAsync>>,
+  record: LayoutEvidenceRecord,
+): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO layout_evidence (
+      id,
+      project_id,
+      source_kind,
+      project_crs,
+      confidence,
+      review_status,
+      record_json,
+      created_at,
+      collected_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      project_id = excluded.project_id,
+      source_kind = excluded.source_kind,
+      project_crs = excluded.project_crs,
+      confidence = excluded.confidence,
+      review_status = excluded.review_status,
+      record_json = excluded.record_json,
+      created_at = excluded.created_at,
+      collected_at = excluded.collected_at`,
+    record.id,
+    record.projectId,
+    record.sourceKind,
+    record.projectCrs ?? "",
+    record.confidence,
+    record.reviewStatus,
+    JSON.stringify(record),
+    record.createdAt,
+    record.collectedAt ?? null,
+  );
+}
+
+async function insertModelRecommendationAsync(
+  db: Awaited<ReturnType<typeof openProjectDatabaseAsync>>,
+  recommendation: ModelRecommendation,
+): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO model_recommendations (
+      id,
+      project_id,
+      model_name,
+      model_version,
+      project_crs,
+      confidence,
+      review_status,
+      score,
+      recommendation_json,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      project_id = excluded.project_id,
+      model_name = excluded.model_name,
+      model_version = excluded.model_version,
+      project_crs = excluded.project_crs,
+      confidence = excluded.confidence,
+      review_status = excluded.review_status,
+      score = excluded.score,
+      recommendation_json = excluded.recommendation_json,
+      created_at = excluded.created_at`,
+    recommendation.id,
+    recommendation.projectId,
+    recommendation.modelName,
+    recommendation.modelVersion,
+    recommendation.projectCrs,
+    recommendation.confidence,
+    recommendation.reviewStatus,
+    recommendation.score ?? null,
+    JSON.stringify(recommendation),
+    recommendation.createdAt,
+  );
+}
+
+async function insertLayoutDecisionRecordAsync(
+  db: Awaited<ReturnType<typeof openProjectDatabaseAsync>>,
+  decision: LayoutDecisionRecord,
+): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO layout_decisions (
+      id,
+      project_id,
+      recommendation_id,
+      decided_by,
+      decision,
+      decision_json,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      project_id = excluded.project_id,
+      recommendation_id = excluded.recommendation_id,
+      decided_by = excluded.decided_by,
+      decision = excluded.decision,
+      decision_json = excluded.decision_json,
+      created_at = excluded.created_at`,
+    decision.id,
+    decision.projectId,
+    decision.recommendationId ?? null,
+    decision.decidedBy,
+    decision.decision,
+    JSON.stringify(decision),
+    decision.createdAt,
+  );
 }
 
 async function readCatalogAsync(db: Awaited<ReturnType<typeof openProjectDatabaseAsync>>): Promise<ProjectCatalog> {

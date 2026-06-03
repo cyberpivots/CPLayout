@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "cplayout-real-pivot-fixtures-v1",
+  "generatedAt": "2026-06-03T01:05:52.197Z",
+  "generatedBy": "tools/generateRealPivotFixtureManifest.ts",
+  "projectId": "public-adams-county-center-pivot-proof",
+  "projectName": "Public Adams County Center Pivot Proof",
+  "projectCrs": "EPSG:32613",
+  "canonicalGeometryMutation": false,
+  "fixtures": [
+    {
+      "id": "public-adams-county-google-earth-pivot-center",
+      "projectId": "public-adams-county-center-pivot-proof",
+      "projectCrs": "EPSG:32613",
+      "summary": "Public Adams County center pivot fixture derived from CPLayout canonical projected XY and rendered Google Earth proof artifacts.",
+      "operatorApproved": true,
+      "calibrationStatus": "valid_projected_xy",
+      "confidence": 0.72,
+      "provenance": {
+        "sourceKind": "public_google_earth_visual_fidelity_fixture",
+        "publicSourceUrl": "https://commons.wikimedia.org/wiki/File:Center_pivot_irrigation_in_Colorado.JPG",
+        "publicSourceAuthor": "Jeffrey Beall",
+        "publicSourceLicense": "CC BY 4.0",
+        "proofSurface": "Google Earth Pro rendered CPLayout KML/KMZ visual-fidelity evidence",
+        "keyedService": false,
+        "networkRequired": false,
+        "paidServiceRequired": false
+      },
+      "artifacts": {
+        "mapCanvasCrop": "../../reports/google-earth-visual-fidelity/20260530T134720Z/google-earth-visual-fidelity-map-canvas.png",
+        "fullWindowScreenshot": "../../reports/google-earth-visual-fidelity/20260530T134720Z/google-earth-visual-fidelity-full-window.png",
+        "placesSidebarScreenshot": "../../reports/google-earth-visual-fidelity/20260530T134720Z/google-earth-visual-fidelity-places-sidebar.png",
+        "visualFidelityManifest": "../../reports/google-earth-visual-fidelity/20260530T134720Z/visual-fidelity-manifest.json",
+        "projectReference": "../../reports/google-earth-visual-fidelity/public-adams-county-center-pivot-proof-project.json",
+        "kml": "../../reports/google-earth-visual-fidelity/20260530T134720Z/cplayout-google-earth-visual-fidelity.kml",
+        "kmz": "../../reports/google-earth-visual-fidelity/20260530T134720Z/cplayout-google-earth-visual-fidelity.kmz",
+        "generatedFixture": "../../reports/google-earth-visual-fidelity/20260530T134720Z/generated-fixture.json"
+      },
+      "artifactHashes": {
+        "mapCanvasCrop": "d468bda66ef15e5a5a2be0c3f27a1d45a667ba378b679868a17cfa9cbc89499a",
+        "fullWindowScreenshot": "6d564c3e2f57d55c0c912cdc4f9d1ad0d97413e459d4b5dfc1842c1479640f26",
+        "placesSidebarScreenshot": "f233d1b1aa9fb5a70b36821ddd358e6843f1a7ac9c050c69ddfa6e63ae0dc8ab",
+        "visualFidelityManifest": "42ec4889afb61d8017cc8e2b9a4c21d23f80680ed46b79c7b589c46ca4771a02",
+        "projectReference": "7a29eeb1eeb284b9f4b6997888fd9fd9b685b44409e3f1c4e6b1840ce0611154",
+        "kml": "80aeda60c79bf3a08c4b4545b1d787a089bf9747fa0ac534e963d6dd427a4fba",
+        "kmz": "b9a7620b128173488d1a169fb774719a0ac335e6bbf693fe93563c675bdf5971",
+        "generatedFixture": "c5c56a5ad296a630163ee37a125cb0f7605f2728e5c846691171962d79024f8b"
+      },
+      "truthLabels": {
+        "TRUE_PIVOT_CENTER": {
+          "projectedPoint": {
+            "x": 579493.155811059,
+            "y": 4417307.984825746
+          },
+          "displayWgs84": {
+            "latitude": 39.902125,
+            "longitude": -104.070061
+          },
+          "sourceSurveyPointId": "public-proof-pivot-center",
+          "sourceConfidence": "imagery_digitized",
+          "sourceKind": "manual",
+          "sourceNotes": "Calibrated from Google Earth visual proof near the Wikimedia public reference coordinate.",
+          "calibrationStatus": "valid_projected_xy"
+        }
+      },
+      "rejectionClasses": [
+        "uncalibrated_projection",
+        "missing_operator_truth_label",
+        "artifact_hash_mismatch",
+        "hidden_key_or_paid_service_provenance"
+      ],
+      "hardFailures": [],
+      "warnings": [
+        "Advisory real-world fixture proof only; Review Apply XY must remain explicit before canonical geometry mutation."
+      ]
+    }
+  ]
+}

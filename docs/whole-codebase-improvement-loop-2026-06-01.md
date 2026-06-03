@@ -157,6 +157,8 @@ Current branch observed during preflight: `codex/cplayout-agent-specialists`, tr
 
 2026-06-02 follow-up on `codex/complete-roadmap-next`: rows 023 and 024 remain historical blocked outcomes for the original batch, but the current branch now implements and locally proves the targeted archive slice. `importProjectArchiveZipWithAdjacentData` restores adjacent evidence, decisions, and recommendations while `importProjectArchiveZip` remains project-only for compatibility. Project-store tests and focused browser proof cover adjacent ZIP round-trip, manifest/file consistency, supported filenames, compressed size, file count, entry size, total uncompressed size, project id/CRS gates, and `canonicalGeometryMutation: false`. Native ZIP sharing and native review-data persistence remain device-gated.
 
+2026-06-03 follow-up on `codex/complete-roadmap-next`: `npm run verify:roadmap:fast` now passes the native adjacent review-data API gate, Google Earth manifest gate, and curated real-pivot fixture gate. The real-pivot fixture is generated from existing public Adams County proof artifacts and emits a projected-XY pivot-center recommendation without hard failures. The native MapLibre proof harness and local tile-template adapter are implemented, but Android runtime proof remains blocked because Windows/WSL ADB, `usbipd`, PnP, mDNS, and TCP 5555 probes found no live Android device/emulator. Native SQLite, ZIP sharing, native MapLibre screenshot evidence, and raw PMTiles/MBTiles native rendering remain unclaimed until device proof exists.
+
 ## Validation Commands
 
 Required after changing this loop:

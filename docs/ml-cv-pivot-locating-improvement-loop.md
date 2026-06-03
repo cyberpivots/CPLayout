@@ -114,7 +114,7 @@ The first production slice is a local companion pivot candidate exporter, not an
 
 ## Current Blockers
 
-- No operator-approved real-world fixture artifact set has been supplied in this prompt. The companion now has a `cplayout-real-pivot-fixtures-v1` manifest path, but that path is not itself real-world projected-XY proof.
+- A curated public Adams County real-pivot fixture now exists at `fixtures/real-pivot/manifest.json` and proves the calibrated projected-XY manifest path. Additional operator-qualified fixtures are still required before claiming broad real-world automatic pivot locating quality.
 - `detect-pivot-candidates` exists for local image-space evidence, but it intentionally omits `proposedGeometry.pivotCenter` until project-CRS calibration is supplied and validated.
 - `build-evidence-packet --real-pivot-fixtures` emits `proposedGeometry.pivotCenter` only for operator-approved fixtures with valid projected-XY `TRUE_PIVOT_CENTER.projectedPoint`, matching project id/CRS, and verified local artifact hashes.
 - Existing CV can detect image-space pivot crop rings and overlay circles, but that is not enough to claim automatic projected-XY pivot locating.
@@ -243,6 +243,12 @@ The first executable 100-iteration run has been completed for a deterministic sy
 - Companion tests now cover calibrated fixture output with `proposedGeometry.pivotCenter`, uncalibrated fixture output that remains metadata-only with hard failures, and artifact hash mismatch rejection.
 - Browser archive proof now verifies adjacent review evidence, decisions, and recommendation GeoJSON round-trip through Project ZIP without applying projected geometry.
 - No operator-supplied real-world fixture was added in this follow-up; real-world/projected-XY automatic pivot locating remains unproved until a fixture set is supplied and validated.
+
+2026-06-03 follow-up:
+
+- `npm run real-pivot-fixture:generate` now creates `fixtures/real-pivot/manifest.json` from the public Adams County project reference and Google Earth visual-fidelity proof artifacts, including artifact SHA-256 hashes, no-key provenance, rejection classes, and `TRUE_PIVOT_CENTER.projectedPoint`.
+- `PYTHONPATH=tools/local-ml-companion/src python3 -m cplayout_ml.cli build-evidence-packet --project-id public-adams-county-center-pivot-proof --project-crs EPSG:32613 --real-pivot-fixtures fixtures/real-pivot/manifest.json --output-dir reports/real-pivot-fixtures/manual-proof --created-at 2026-06-03T00:00:00.000Z` emitted one projected-XY pivot-center recommendation with no hard failures and `canonicalGeometryMutation: false`.
+- `npm run verify:roadmap:fast` also proved the real-pivot fixture gate in the integrated runner. The remaining blocker is model breadth: one curated fixture is not enough to claim generalized automatic pivot locating across fields, imagery conditions, pivots, and rejection classes.
 
 The ledger rows remain the implementation roadmap for replacing synthetic proof with real proof packets, projected-XY calibration, review import, UI proof, archive proof, and device-gated native ML validation. A row can move from `Planned` to `Pass`, `Blocked`, or `Fail` only after its research gate, improvement, test gate, and weighted vote record exist.
 

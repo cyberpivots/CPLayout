@@ -14,6 +14,7 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 - `npm run check:android-tools` detects `adb`, connected devices/emulators, whether `local.centerpivot.layout` is installed, and basic package/log evidence.
 - `npm run verify:android-native` writes a timestamped JSON report under `reports/android-native-verification/` and fails until a built app plus completed checklist evidence are available.
 - `npm run verify:android-native -- --report <report.json>` validates a completed report. Incomplete reports fail and must not be used to claim native runtime verification.
+- `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run android` builds a development app with the native MapLibre tile-template proof panel enabled; after install, `npm run verify:native-maplibre` starts the local proof tile server, runs `adb reverse`, captures a device screenshot, computes pixel metrics, and writes `reports/native-maplibre/latest.json`.
 - Use `docs/android-native-verification-report-template.json` as the checked-in report shape. Runtime reports are intentionally ignored by Git unless a specific report is promoted intentionally.
 
 ## SQLite Project Store
@@ -42,6 +43,14 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 - `map_packages` has the tile metadata columns from migrations `3` and `8`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `vector_overlay_json`, `checksum_sha256`, and `install_status`.
 - The v4 project-adjacent evidence tables exist: `layout_evidence`, `model_recommendations`, and `layout_decisions`.
 - Geometry rows and vertices are populated after save.
+
+## Native MapLibre Tile Template Proof
+
+1. Build/install the native development app with `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run android`.
+2. Confirm `adb devices -l` shows the target device/emulator in `device` state.
+3. Run `npm run verify:native-maplibre`.
+4. Validate that `reports/native-maplibre/latest.json` has `status: "pass"`, `tileSource.tileSourceKind: "tilejson_or_template"`, a local `127.0.0.1` tile URL template, screenshot SHA-256, positive dimensions, nonblank pixel ratio, and gray variance.
+5. Do not treat this as raw PMTiles/MBTiles native rendering proof; it proves the generated TileJSON/template adapter path only.
 
 ## Pass Criteria
 

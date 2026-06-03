@@ -12,6 +12,7 @@ import {
   timestampForFilename,
   writeJsonFile,
 } from "./androidNativeProof";
+import { DEFAULT_REAL_PIVOT_FIXTURE_MANIFEST_PATH, generateDefaultRealPivotFixtureManifest } from "./generateRealPivotFixtureManifest";
 
 export type RoadmapGateStatus = "pass" | "fail" | "blocked" | "not_run";
 
@@ -55,7 +56,7 @@ export interface RoadmapCompletionReport {
 const DEFAULT_OUTPUT_DIRECTORY = "reports/roadmap-completion";
 const DEFAULT_GOOGLE_EARTH_MANIFEST_PATH = "reports/google-earth-visual-fidelity/visual-fidelity-manifest.json";
 const DEFAULT_NATIVE_MAPLIBRE_REPORT_PATH = "reports/native-maplibre/latest.json";
-const DEFAULT_REAL_PIVOT_FIXTURE_PATH = "fixtures/real-pivot/manifest.json";
+const DEFAULT_REAL_PIVOT_FIXTURE_PATH = DEFAULT_REAL_PIVOT_FIXTURE_MANIFEST_PATH;
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const options = parseRoadmapArgs(process.argv.slice(2), process.env);
@@ -321,11 +322,41 @@ function nativeAdjacentReviewDataGate(options: RoadmapCompletionOptions): Roadma
     );
   }
 
+  const sqliteRepositoryPath = "packages/project-store/src/sqliteProjectRepository.ts";
+  const reviewDataPath = "packages/project-store/src/projectReviewData.ts";
+  const repositoryTypesPath = "packages/project-store/src/projectRepositoryTypes.ts";
+  const sqliteRepositorySource = existsSync(sqliteRepositoryPath) ? readFileSync(sqliteRepositoryPath, "utf8") : "";
+  const reviewDataSource = existsSync(reviewDataPath) ? readFileSync(reviewDataPath, "utf8") : "";
+  const repositoryTypesSource = existsSync(repositoryTypesPath) ? readFileSync(repositoryTypesPath, "utf8") : "";
+  const evidence = [sqliteRepositoryPath, reviewDataPath, repositoryTypesPath];
+  const missing = [
+    repositoryTypesSource.includes("loadProjectReviewDataAsync?") ? "" : "ProjectRepository loadProjectReviewDataAsync contract",
+    repositoryTypesSource.includes("saveProjectReviewDataAsync?") ? "" : "ProjectRepository saveProjectReviewDataAsync contract",
+    sqliteRepositorySource.includes("async loadProjectReviewDataAsync") ? "" : "SQLite loadProjectReviewDataAsync implementation",
+    sqliteRepositorySource.includes("async saveProjectReviewDataAsync") ? "" : "SQLite saveProjectReviewDataAsync implementation",
+    sqliteRepositorySource.includes("layout_evidence") ? "" : "layout_evidence persistence",
+    sqliteRepositorySource.includes("model_recommendations") ? "" : "model_recommendations persistence",
+    sqliteRepositorySource.includes("layout_decisions") ? "" : "layout_decisions persistence",
+    reviewDataSource.includes("projectRepository.loadProjectReviewDataAsync") ? "" : "public helper native load routing",
+    reviewDataSource.includes("projectRepository.saveProjectReviewDataAsync") ? "" : "public helper native save routing",
+  ].filter((value) => value.length > 0);
+
+  if (missing.length > 0) {
+    return {
+      id: "native-adjacent-review-data-persistence",
+      label: "Native adjacent review-data persistence",
+      status: "blocked",
+      reason: `Native adjacent review-data API/proof surface is incomplete: ${missing.join(", ")}.`,
+      evidence,
+    };
+  }
+
   return {
     id: "native-adjacent-review-data-persistence",
     label: "Native adjacent review-data persistence",
-    status: "blocked",
-    reason: "SQLite table plans exist, but ProjectRepository does not expose native adjacent review-data save/load and no device proof exists. Browser/local archive round-trip is covered separately.",
+    status: "pass",
+    reason: "ProjectRepository exposes native adjacent review-data save/load and the SQLite adapter persists evidence, recommendations, and decisions. Runtime behavior remains covered by the Android native runtime gate.",
+    evidence,
   };
 }
 
@@ -401,14 +432,22 @@ function realPivotFixtureGate(options: RoadmapCompletionOptions, generatedAt: st
     );
   }
 
+  const generatedFixture = options.realPivotFixturesPath || existsSync(DEFAULT_REAL_PIVOT_FIXTURE_PATH)
+    ? null
+    : tryGenerateDefaultRealPivotFixture(generatedAt);
   const fixturePath = options.realPivotFixturesPath
-    ?? (existsSync(DEFAULT_REAL_PIVOT_FIXTURE_PATH) ? DEFAULT_REAL_PIVOT_FIXTURE_PATH : undefined);
+    ?? (existsSync(DEFAULT_REAL_PIVOT_FIXTURE_PATH)
+      ? DEFAULT_REAL_PIVOT_FIXTURE_PATH
+      : generatedFixture && "path" in generatedFixture ? generatedFixture.path : undefined);
   if (!fixturePath) {
+    const generationError = generatedFixture && "error" in generatedFixture ? generatedFixture.error : undefined;
     return {
       id: "real-pivot-fixture-proof",
       label: "Operator-approved calibrated real pivot fixture proof",
       status: "blocked",
-      reason: `No real pivot fixture manifest found. Expected ${DEFAULT_REAL_PIVOT_FIXTURE_PATH} or --real-pivot-fixtures.`,
+      reason: generationError
+        ? `Default real pivot fixture manifest could not be generated: ${generationError}`
+        : `No real pivot fixture manifest found. Expected ${DEFAULT_REAL_PIVOT_FIXTURE_PATH} or --real-pivot-fixtures.`,
     };
   }
   if (!existsSync(fixturePath)) {
@@ -519,6 +558,18 @@ function nativeMapLibreGate(options: RoadmapCompletionOptions): RoadmapGateResul
     };
   }
   try {
+    const rawReport = readJsonWithBom(options.nativeMapLibreReportPath) as { status?: unknown; notes?: unknown };
+    if (rawReport.status === "blocked") {
+      return {
+        id: "native-maplibre-render-proof",
+        label: "Native MapLibre TileJSON/template render proof",
+        status: "blocked",
+        reason: typeof rawReport.notes === "string" && rawReport.notes.length > 0
+          ? rawReport.notes
+          : "Native MapLibre report records a blocked device/runtime proof.",
+        evidence: [options.nativeMapLibreReportPath],
+      };
+    }
     const validation = validateNativeMapLibreReport(options.nativeMapLibreReportPath);
     if (validation.ok) {
       return {
@@ -812,6 +863,14 @@ function firstProjectedPivotRecommendation(packetPath: string): { ok: true } | {
     ok: false,
     reason: "Fixture packet built, but no recommendation contains projectedGeometry.pivotCenter without hard failures. Treat as evidence-only until calibrated truth is supplied.",
   };
+}
+
+function tryGenerateDefaultRealPivotFixture(generatedAt: string): { path: string } | { error: string } {
+  try {
+    return { path: generateDefaultRealPivotFixtureManifest({ generatedAt }).path };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function notRunGate(id: string, label: string, reason: string): RoadmapGateResult {

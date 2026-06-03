@@ -70,7 +70,7 @@ The panel weighting favors source-backed blockers that reduce false product clai
 
 1. Documentation and source consolidation: keep this plan, prompt registry, source ledger, and known gaps aligned after every major pass.
 2. Native runtime verification: run Android/iOS device or emulator proof for native SQLite, ZIP sharing, native MapLibre gates, network isolation, and report completion.
-3. Real-world ML/CV fixture execution: supply operator-approved pivot truth labels, source/provenance, calibration, hard-failure reasons, and companion output hashes through the local fixture manifest path.
+3. Real-world ML/CV fixture execution: broaden from the curated public Adams County proof fixture to additional operator-qualified field fixtures with provenance, calibration, rejection classes, and companion output hashes.
 4. Native raw tile adapter proof: decide local protocol, extracted tiles, local server, or conversion path; then prove on device before claiming native raw PMTiles/MBTiles.
 5. Browser/UI polish: continue accessibility and review workflow refinements only after the data/archive/native/fixture blockers above stay visible.
 
@@ -80,6 +80,13 @@ Completed 2026-06-02 follow-up:
 - Real-world ML/CV fixture manifest path: `build-evidence-packet --real-pivot-fixtures` accepts local operator-approved fixture manifests, hashes local artifacts, rejects hash mismatches and hidden-key provenance, emits projected-XY pivot recommendations only for calibrated truth, and keeps uncalibrated fixtures metadata-only with hard failures.
 - Native verification blocker: `npm run check:android-tools` found local adb/emulator/EAS/Expo tooling but no connected adb device or running emulator, so `npm run verify:android-native` was not eligible for a production runtime claim.
 - Roadmap completion automation: `npm run verify:roadmap` now runs the local proof suite, browser proof, native/device detection, Google Earth visual-fidelity manifest validation, real-pivot fixture detection, typed native MapLibre report validation, and native adjacent-review-data persistence classification in one coordinator pass. The runner writes ignored reports under `reports/roadmap-completion/` and records unavailable external evidence as `blocked` instead of requiring step-by-step operator decisions.
+
+Completed 2026-06-03 follow-up:
+
+- Native adjacent review-data persistence code path: `ProjectRepository` now exposes optional adjacent review-data load/save methods, and the native SQLite adapter persists `layout_evidence`, `model_recommendations`, and `layout_decisions` records transactionally. This removes the missing API blocker; Android/iOS runtime behavior still requires device proof.
+- Real-pivot fixture automation: `npm run real-pivot-fixture:generate` creates `fixtures/real-pivot/manifest.json` from the public Adams County project reference plus local Google Earth proof artifacts and hashes. `npm run verify:roadmap:fast` now proves this curated calibrated fixture emits a projected-XY `proposedGeometry.pivotCenter` without canonical geometry mutation.
+- Native MapLibre proof harness: `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1` enables a native MapLibre raster proof panel backed by a localhost tile URL template, and `npm run verify:native-maplibre` starts a local generated tile server, runs `adb reverse`, captures an Android screenshot, computes PNG pixel metrics, and writes `reports/native-maplibre/latest.json`.
+- Android device access result: Windows ADB, WSL ADB, `usbipd`, PnP, mDNS, and local TCP ADB probes found no live Samsung tablet. Windows PnP only reported phantom Samsung records, so Android native runtime and native MapLibre screenshot proof remain blocked by device transport visibility, not by missing repository automation.
 
 Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry mutation, model output without fixture metrics, projected-XY output without CRS calibration, native/mobile claims without device proof, and Google Earth visual-fidelity claims without visible rendered evidence plus cleanup status.
 
@@ -101,6 +108,8 @@ Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry 
 | ML/CV loop edits | `npm run verify:ml-cv-loop`; companion tests when companion code changes |
 | Local companion changes | `npm run test:ml-companion`; companion CLI dry-runs relevant to the changed command |
 | Native runtime claims | `npm run check:android-tools`; `npm run verify:android-native`; device/emulator report evidence |
+| Native MapLibre render claims | Build with `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1`; `npm run verify:native-maplibre`; validate `reports/native-maplibre/latest.json` through `npm run verify:roadmap` |
+| Curated real-pivot fixture regeneration | `npm run real-pivot-fixture:generate`; `npm run test:ml-companion`; `npm run verify:roadmap:fast` |
 | Full roadmap completion pass | `npm run verify:roadmap`; provide resource reports through `CPLAYOUT_ANDROID_NATIVE_REPORT`, `CPLAYOUT_GOOGLE_EARTH_MANIFEST`, `CPLAYOUT_REAL_PIVOT_FIXTURES`, or `CPLAYOUT_NATIVE_MAPLIBRE_REPORT` when those external proofs exist |
 
 ## Current Non-Claims
@@ -108,5 +117,5 @@ Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry 
 - No native Android/iOS runtime behavior was proven in this consolidation pass.
 - No web SQLite deployment proof exists.
 - No native raw PMTiles/MBTiles archive rendering proof exists.
-- No operator-supplied real-world projected-XY automatic pivot locating proof exists; the manifest path and calibrated/uncalibrated gates exist, but no real fixture has been supplied and proved.
+- No general automatic projected-XY pivot locating proof exists beyond the curated public Adams County fixture generated from existing repository evidence; additional operator-qualified fixtures are still required before making broad model-quality claims.
 - No managed Codex endpoint enforcement proof exists; repo-local hooks remain advisory unless managed deployment is verified.

@@ -17,6 +17,7 @@ assert.equal(defaults.offlineMaps.allowNetworkTiles, false);
 assert.equal(defaults.offlineMaps.requireAttribution, true);
 assert.equal(defaults.onlineImagery.enabled, false);
 assert.equal(defaults.onlineImagery.providerId, "usgs_imagery_only");
+assert.equal(defaults.aerialImagery.mode, "auto");
 assert.equal(defaults.referenceOverlay.mode, "auto");
 assert.equal(defaults.referenceOverlay.schema, "cplayout_reference_v1");
 assert.match(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileUrlTemplate, /basemap\.nationalmap\.gov/);
@@ -41,11 +42,19 @@ assert.equal(merged.drawing.featureSnapToleranceMeters, defaults.drawing.feature
 
 const projectSettings = projectSettingsFromApp(merged);
 assert.equal(projectSettings.mappingWorkflowMode, "design");
+assert.equal(projectSettings.aerialImagery.mode, "auto");
 assert.equal(projectSettings.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in projectSettings.offlineMaps, false);
 assert.equal("onlineImagery" in projectSettings, false);
 assert.equal("referenceOverlay" in projectSettings, false);
 assert.deepEqual(parseAppSettings(merged), merged);
+
+const manualAerial = projectSettingsFromApp(mergeAppSettings({
+  aerialImagery: { mode: "manual", sourcePackageId: "naip-local-package" },
+  onlineImagery: { enabled: true, providerId: "usgs_imagery_only", maxTilesPerView: 32 },
+}));
+assert.deepEqual(manualAerial.aerialImagery, { mode: "manual", sourcePackageId: "naip-local-package" });
+assert.equal("onlineImagery" in manualAerial, false);
 
 assert.equal(gpsFixMeetsThreshold("rtk_fixed", "rtk_float"), true);
 assert.equal(gpsFixMeetsThreshold("autonomous", "rtk_float"), false);

@@ -1,22 +1,22 @@
 # Reasoning Routing
 
-Use CPLayout's `AGENTS.md` reasoning policy as the source of truth. The repo default is xhigh; lower reasoning is allowed only when the user explicitly requests it.
+Use CPLayout's `AGENTS.md` reasoning policy as the source of truth. There is no repo-wide reasoning-effort fallback. Every non-trivial pass records the task complexity band, selected reasoning effort, subagent decision or fallback, and validation gates before mutation.
 
-## Xhigh
+## Complexity Bands
 
-Use `xhigh` for all CPLayout panel roles by default, including:
+Use `xhigh` only when the task analysis warrants it, including:
 
-- file lookup, skill inventory, formatting, and dirty-tree snapshots,
-- ordinary TypeScript, UI, documentation, skill, and bounded implementation work,
 - package architecture, storage, maps, native gates, cross-package changes, and source-backed research,
 - release arbitration, reviewer disagreement, security/safety, and native verification disputes.
+- managed Codex policy, hook deployment, subagent process, Google Earth proof, and broad cross-module mutation.
 
-Do not route CPLayout panel work to a lower reasoning level unless the user explicitly asks for a lower setting.
+Use `high` for bounded implementation or review with meaningful behavior risk. Use `medium` for narrow docs, tests, fixtures, or read-only scans. Use `low` only for trivial status or formatting work.
 
 ## Routing Output
 
 Every panel cycle should state:
 
+- complexity band,
 - selected reasoning level,
 - why that level is sufficient,
 - what would trigger escalation,

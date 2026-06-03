@@ -111,6 +111,21 @@ const projectWithTiles = {
         places: "places",
       },
     },
+    imageryProvenance: {
+      providerId: "usgs_naip",
+      providerName: "USGS EROS NAIP",
+      sourceUrl: "https://www.usgs.gov/centers/eros/science/national-agriculture-imagery-program-naip",
+      productId: "M_4010521_NE_13_1_20250715",
+      acquisitionYear: 2025,
+      sourceResolutionMeters: 1,
+      originalCrs: "EPSG:26913",
+      preprocessingSummary: "GDAL generated XYZ PNG tiles and TileJSON outside the app.",
+      accessedAt: "2026-06-03T12:00:00.000Z",
+      attribution: "USDA Farm Service Agency, USGS EROS NAIP",
+      licenseText: "Public domain NAIP imagery; verify source notices for the selected product.",
+      offlineCopyAllowed: true,
+      keyedService: false as const,
+    },
     checksumSha256: "b".repeat(64),
     installStatus: "available" as const,
     attribution: "Local imagery",
@@ -125,10 +140,12 @@ assert.ok(mapPackageStatement);
 assert.match(mapPackageStatement.sql, /tile_content_type/);
 assert.match(mapPackageStatement.sql, /tile_url_templates_json/);
 assert.match(mapPackageStatement.sql, /vector_overlay_json/);
+assert.match(mapPackageStatement.sql, /imagery_provenance_json/);
 assert.equal(mapPackageStatement.params[4], "raster");
 assert.equal(mapPackageStatement.params[8], "xyz");
 assert.match(String(mapPackageStatement.params[15]), /cplayout_reference_v1/);
-assert.equal(mapPackageStatement.params[17], "available");
+assert.match(String(mapPackageStatement.params[16]), /usgs_naip/);
+assert.equal(mapPackageStatement.params[18], "available");
 
 const bboxQuery = buildGeometryBboxQueryPlan({
   projectId: sampleProject.id,

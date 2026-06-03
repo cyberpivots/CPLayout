@@ -10,12 +10,19 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOK_PATH = ROOT / ".codex" / "hooks" / "cplayout_prompt_triage.py"
+STOP_HOOK_PATH = ROOT / ".codex" / "hooks" / "cplayout_stop_multi_agent.py"
 
 spec = importlib.util.spec_from_file_location("cplayout_prompt_triage", HOOK_PATH)
 assert spec is not None and spec.loader is not None
 triage = importlib.util.module_from_spec(spec)
 sys.modules["cplayout_prompt_triage"] = triage
 spec.loader.exec_module(triage)
+
+stop_spec = importlib.util.spec_from_file_location("cplayout_stop_multi_agent", STOP_HOOK_PATH)
+assert stop_spec is not None and stop_spec.loader is not None
+stop_hook = importlib.util.module_from_spec(stop_spec)
+sys.modules["cplayout_stop_multi_agent"] = stop_hook
+stop_spec.loader.exec_module(stop_hook)
 
 
 class PromptTriageTests(unittest.TestCase):
@@ -74,6 +81,8 @@ class PromptTriageTests(unittest.TestCase):
     def test_route_metadata_is_loaded(self) -> None:
         route_data = triage.load_route_data()
         curator = next(route for route in route_data.routes if route.route_id == "cplayout_kb_curator")
+        self.assertEqual(route_data.unmatched_complexity, "complexity analysis required before mutation")
+        self.assertEqual(route_data.unmatched_reasoning_effort, "select reasoning effort after task complexity analysis")
         self.assertEqual(curator.agent, "cplayout_kb_curator")
         self.assertEqual(curator.complexity_band, "xhigh")
         self.assertEqual(curator.reasoning_effort, "xhigh")
@@ -84,7 +93,7 @@ class PromptTriageTests(unittest.TestCase):
     def test_coordinator_contract_includes_complexity_and_reprompt(self) -> None:
         context = self.hook_context("Implement multi-agent managed hook enforcement with prompt triage.")
         self.assertIn("CPLayout coordinator contract:", context)
-        self.assertIn("Complexity band: xhigh; reasoning effort: xhigh.", context)
+        self.assertIn("Complexity: xhigh; reasoning: xhigh.", context)
         self.assertIn("Subagents: required.", context)
         self.assertIn("Optimized re-prompt:", context)
         self.assertIn("cplayout_kb_curator", context)
@@ -117,8 +126,83 @@ class PromptTriageTests(unittest.TestCase):
 
     def test_no_match_prompt_gets_coordinator_only_contract(self) -> None:
         context = self.hook_context("Format this sentence with no CPLayout domain change.")
-        self.assertIn("No specialist keywords matched", context)
+        self.assertIn("Routes: none; complexity analysis required before mutation.", context)
+        self.assertIn("Complexity: complexity analysis required before mutation", context)
+        self.assertIn("reasoning: select reasoning effort after task complexity analysis", context)
         self.assertIn("Subagents: not useful.", context)
+        self.assertIn("Perform complexity analysis before mutation", context)
+
+    def stop_hook_output(self, payload: dict[str, object]) -> str:
+        result = subprocess.run(
+            [sys.executable, str(STOP_HOOK_PATH)],
+            input=json.dumps(payload),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        return result.stdout
+
+    def test_stop_hook_flags_explicit_multi_agent_without_decision(self) -> None:
+        output = self.stop_hook_output(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "prompt": "Use multi-agent expert panels to review managed hook enforcement.",
+                "last_assistant_message": "Implemented the change and ran tests.",
+            }
+        )
+        parsed = json.loads(output)
+        self.assertEqual(parsed["decision"], "block")
+        self.assertIn("subagent accounting", parsed["reason"])
+
+    def test_stop_hook_flags_matched_specialist_without_decision(self) -> None:
+        output = self.stop_hook_output(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "prompt": "Review Expo SQLite project archive persistence and ZIP schema migration.",
+                "last_assistant_message": "Validated the storage route.",
+            }
+        )
+        parsed = json.loads(output)
+        self.assertEqual(parsed["decision"], "block")
+
+    def test_stop_hook_uses_official_last_assistant_message_and_loop_guard(self) -> None:
+        output = self.stop_hook_output(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "prompt": "Review Expo SQLite project archive persistence and ZIP schema migration.",
+                "last_assistant_message": "Validated the storage route.",
+            }
+        )
+        self.assertEqual(json.loads(output)["decision"], "block")
+
+        guarded_output = self.stop_hook_output(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": True,
+                "prompt": "Review Expo SQLite project archive persistence and ZIP schema migration.",
+                "last_assistant_message": "Validated the storage route.",
+            }
+        )
+        self.assertEqual(guarded_output.strip(), "")
+
+    def test_stop_hook_accepts_exact_subagent_decision_or_fallback_labels(self) -> None:
+        for assistant_response in (
+            "Subagent decision: required. Spawned the database specialist and summarized findings.",
+            "Accepted fallback: no subagent tool is available, so review was local.",
+        ):
+            with self.subTest(assistant_response=assistant_response):
+                output = self.stop_hook_output(
+                    {
+                        "hook_event_name": "Stop",
+                        "prompt": "Review Expo SQLite project archive persistence and ZIP schema migration.",
+                        "last_assistant_message": assistant_response,
+                    }
+                )
+                self.assertEqual(output.strip(), "")
 
 
 if __name__ == "__main__":

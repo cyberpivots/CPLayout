@@ -20,6 +20,44 @@ const noOpSettingsState = reduceProjectEditorState(state, {
 assert.equal(noOpSettingsState.revision, 0);
 assert.equal(noOpSettingsState.past.length, 0);
 
+const mapPackageState = reduceProjectEditorState(state, {
+  type: "upsert_map_package",
+  mapPackage: {
+    id: "naip-logical-package",
+    name: "NAIP logical package",
+    packageType: "raster_tiles",
+    tileContentType: "raster",
+    uri: "app://map-packages/naip-logical-package/",
+    minZoom: 12,
+    maxZoom: 18,
+    tileScheme: "xyz",
+    boundsWgs84: {
+      minLongitude: -105.2,
+      minLatitude: 40.01,
+      maxLongitude: -105.1,
+      maxLatitude: 40.08,
+    },
+    tileJsonUrl: "app://map-packages/naip-logical-package/tilejson.json",
+    tileUrlTemplates: ["app://map-packages/naip-logical-package/tiles/{z}/{x}/{y}.png"],
+    imageryProvenance: {
+      providerId: "usgs_naip",
+      providerName: "USGS EROS NAIP",
+      accessedAt: "2026-06-03T12:00:00.000Z",
+      attribution: "USDA Farm Service Agency, USGS EROS NAIP",
+      licenseText: "Public domain NAIP imagery; verify source notices for the selected product.",
+      offlineCopyAllowed: true,
+      keyedService: false,
+    },
+    installStatus: "available",
+    attribution: "USDA Farm Service Agency, USGS EROS NAIP",
+    licenseText: "Public domain NAIP imagery; verify source notices for the selected product.",
+    importedAt: "2026-06-03T12:00:00.000Z",
+  },
+});
+assert.equal(mapPackageState.project.mapPackages?.[0].id, "naip-logical-package");
+assert.deepEqual(mapPackageState.project.fieldBoundary, state.project.fieldBoundary);
+assert.equal(mapPackageState.lastError, null);
+
 state = reduceProjectEditorState(state, { type: "commit_boundary_draft", vertices: boundary });
 assert.equal(state.project.fieldBoundary.length, 4);
 assert.equal(state.past.length, 1);

@@ -17,8 +17,10 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-na
 
 import { resolveDraftVertexIntent } from "@cplayout/geometry";
 import {
+  resolveAerialReferenceImagerySource,
   resolveReferenceOverlaySource,
-  resolveOnlineImageryProvider,
+  type AerialReferenceImageryResolution,
+  type MapLibreTileSourceDescriptor,
   type OnlineImageryProvider,
   type ObstacleZone,
   type ProjectMapFeatureKind,
@@ -53,6 +55,19 @@ interface InteractionState {
   mode: DrawingMode;
   projectCrs: string;
   workflowMode: MapSurfaceProps["settings"]["mappingWorkflowMode"];
+}
+
+interface RasterImageryStyleSource {
+  id: string;
+  name: string;
+  attribution: string;
+  licenseText: string;
+  minzoom: number;
+  maxzoom: number;
+  scheme: "xyz" | "tms";
+  tileSize: number;
+  tiles?: string[];
+  url?: string;
 }
 
 export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
@@ -99,14 +114,6 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [status, setStatus] = useState("Imagery is a live reference. Project edits remain projected XY.");
   const mapFeatureOption = featureOptionForKind(mapFeatureKind);
-  const provider = useMemo(() => {
-    if (!settings.onlineImagery.enabled) return null;
-    try {
-      return resolveOnlineImageryProvider(settings.onlineImagery.providerId, settings.onlineImagery.customSource);
-    } catch (error) {
-      return error instanceof Error ? error : new Error(String(error));
-    }
-  }, [settings.onlineImagery.customSource, settings.onlineImagery.enabled, settings.onlineImagery.providerId]);
   const projectionFrame = useMemo(() => {
     if (homeView) {
       return {
@@ -149,19 +156,33 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     }
   }, [draftVertices, homeView, project, result]);
   const projectionError = projectionFrame.error ?? overlayState.error;
-  const activeProvider = provider instanceof Error ? null : provider;
-  const providerError = provider instanceof Error ? provider.message : null;
-  const providerKey = activeProvider
-    ? `${activeProvider.id}:${activeProvider.tileUrlTemplate}:${activeProvider.tileScheme}:${activeProvider.minZoom}:${activeProvider.maxZoom}`
+  const aerialImagery = useMemo(
+    () => resolveAerialReferenceImagerySource({
+      preferences: settings.aerialImagery,
+      onlineImagery: settings.onlineImagery,
+      mapPackages: project.mapPackages ?? [],
+      target: "web_maplibre_gl_js",
+    }),
+    [project.mapPackages, settings.aerialImagery, settings.onlineImagery],
+  );
+  const activeImagery = useMemo(
+    () => rasterStyleSourceFromAerialReferenceResolution(aerialImagery),
+    [aerialImagery],
+  );
+  const imageryKey = activeImagery
+    ? `${activeImagery.id}:${activeImagery.url ?? ""}:${activeImagery.tiles?.join("|") ?? ""}:${activeImagery.minzoom}:${activeImagery.maxzoom}`
+    : "no-aerial-imagery";
+  const providerKey = aerialImagery.onlineProvider
+    ? `${aerialImagery.onlineProvider.id}:${aerialImagery.onlineProvider.tileUrlTemplate}:${aerialImagery.onlineProvider.tileScheme}:${aerialImagery.onlineProvider.minZoom}:${aerialImagery.onlineProvider.maxZoom}`
     : "no-live-imagery";
   const referenceOverlay = useMemo(
     () => resolveReferenceOverlaySource({
-      allowPublicNetwork: Boolean(activeProvider),
+      allowPublicNetwork: settings.onlineImagery.enabled || aerialImagery.sourceKind === "online_provider",
       preferences: settings.referenceOverlay,
       mapPackages: project.mapPackages ?? [],
       target: "web_maplibre_gl_js",
     }),
-    [activeProvider, project.mapPackages, settings.referenceOverlay],
+    [aerialImagery.sourceKind, project.mapPackages, settings.onlineImagery.enabled, settings.referenceOverlay],
   );
   const referenceOverlayKey = [
     referenceOverlay.status,
@@ -181,7 +202,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     activeLayer,
     featureGeometry: mapFeatureOption.geometry,
     featureKind: mapFeatureKind,
-    imageryEnabled: settings.onlineImagery.enabled,
+    imageryEnabled: Boolean(activeImagery),
     mode,
     projectCrs: project.projectCrs,
     workflowMode: settings.mappingWorkflowMode,
@@ -204,12 +225,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       activeLayer,
       featureGeometry: mapFeatureOption.geometry,
       featureKind: mapFeatureKind,
-      imageryEnabled: settings.onlineImagery.enabled,
+      imageryEnabled: Boolean(activeImagery),
       mode,
       projectCrs: project.projectCrs,
       workflowMode: settings.mappingWorkflowMode,
     };
-  }, [activeLayer, mapFeatureKind, mapFeatureOption.geometry, mode, project.projectCrs, settings.mappingWorkflowMode, settings.onlineImagery.enabled]);
+  }, [activeImagery, activeLayer, mapFeatureKind, mapFeatureOption.geometry, mode, project.projectCrs, settings.mappingWorkflowMode]);
 
   useEffect(() => {
     if (!canEditOnMap) return;
@@ -242,14 +263,14 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       container: containerRef.current,
       dragRotate: false,
       pitchWithRotate: false,
-      style: buildWorkbenchStyle(activeProvider, overlayState.featureCollection, referenceOverlay, settings.referenceOverlay),
-      zoom: activeProvider ? Math.min(15, activeProvider.maxZoom) : 14,
+      style: buildWorkbenchStyle(activeImagery, overlayState.featureCollection, referenceOverlay, settings.referenceOverlay),
+      zoom: activeImagery ? Math.min(15, activeImagery.maxzoom) : 14,
     });
     mapRef.current = map;
     map.doubleClickZoom.disable();
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
-    const fitProject = () => fitBoundsToProject(map, projectionFrame.bounds, activeProvider);
+    const fitProject = () => fitBoundsToProject(map, projectionFrame.bounds, activeImagery);
     map.once("load", () => {
       fitProject();
       setTimeout(() => map.resize(), 0);
@@ -325,7 +346,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       mapRef.current = null;
       map.remove();
     };
-  }, [activeProvider, homeView, providerKey, project.id, projectionError, projectionFrame.bounds, projectionFrame.center, referenceOverlayKey, settings.referenceOverlay]);
+  }, [activeImagery, homeView, imageryKey, project.id, projectionError, projectionFrame.bounds, projectionFrame.center, providerKey, referenceOverlayKey, settings.referenceOverlay]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -334,6 +355,16 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     if (map.isStyleLoaded()) updateSource();
     else map.once("load", updateSource);
   }, [projectionError, overlayState.featureCollection]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      mapRef.current?.resize();
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   if (projectionError) {
     return (
@@ -458,7 +489,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>{homeView ? "North America Map" : "Imagery Workbench"}</Text>
-          <Text style={styles.subtitle}>{homeView ? "Customer/project catalog view" : `${project.projectCrs} canonical geometry`} · {activeProvider?.name ?? "offline overlay"} </Text>
+          <Text style={styles.subtitle}>{homeView ? "Customer/project catalog view" : `${project.projectCrs} canonical geometry`} · {activeImagery?.name ?? "offline overlay"} </Text>
         </View>
         <View style={styles.segmented}>
           <ModeSwitch
@@ -594,7 +625,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         <View style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]} testID="browser-map-attribution-hud">
           <Satellite size={13} color="#173428" />
           <Text style={styles.attributionText}>
-            {providerError ? providerError : `${activeProvider?.attribution ?? "No live imagery source enabled"} · ${activeProvider?.licenseText ?? "Offline overlay only"}`}
+            {activeImagery ? `${activeImagery.attribution} · ${activeImagery.licenseText}` : aerialImagery.reason}
           </Text>
         </View>
         {runtimeError ? <Text style={styles.runtimeError}>{runtimeError}</Text> : null}
@@ -604,7 +635,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
 }
 
 function buildWorkbenchStyle(
-  provider: OnlineImageryProvider | null,
+  imagery: RasterImageryStyleSource | null,
   featureCollection: ReturnType<typeof projectLayoutToWgs84FeatureCollection>,
   referenceOverlay: ReturnType<typeof resolveReferenceOverlaySource>,
   referenceOverlayPreferences: MapSurfaceProps["settings"]["referenceOverlay"],
@@ -621,20 +652,22 @@ function buildWorkbenchStyle(
     {
       id: "background",
       type: "background",
-      paint: { "background-color": provider ? "#d8dfd5" : "#eef2ec" },
+      paint: { "background-color": imagery ? "#d8dfd5" : "#eef2ec" },
     },
   ];
 
-  if (provider) {
-    sources.imagery = {
+  if (imagery) {
+    const source: Record<string, unknown> = {
       type: "raster",
-      tiles: [toMapLibreTileTemplate(provider.tileUrlTemplate)],
-      tileSize: provider.tileSize,
-      minzoom: provider.minZoom,
-      maxzoom: provider.maxZoom,
-      scheme: provider.tileScheme,
-      attribution: provider.attribution,
+      tileSize: imagery.tileSize,
+      minzoom: imagery.minzoom,
+      maxzoom: imagery.maxzoom,
+      scheme: imagery.scheme,
+      attribution: imagery.attribution,
     };
+    if (imagery.url) source.url = imagery.url;
+    if (imagery.tiles) source.tiles = imagery.tiles.map(toMapLibreTileTemplate);
+    sources.imagery = source as StyleSpecification["sources"][string];
     layers.push({
       id: "imagery",
       type: "raster",
@@ -737,7 +770,7 @@ function circleLayer(id: string, layerType: string, color: string, radius: numbe
 function fitBoundsToProject(
   map: maplibregl.Map,
   bounds: [number, number, number, number],
-  provider: OnlineImageryProvider | null,
+  imagery: RasterImageryStyleSource | null,
 ): void {
   map.fitBounds(
     [
@@ -746,10 +779,52 @@ function fitBoundsToProject(
     ],
     {
       duration: 0,
-      maxZoom: provider ? Math.min(17, provider.maxZoom) : 17,
+      maxZoom: imagery ? Math.min(17, imagery.maxzoom) : 17,
       padding: 48,
     },
   );
+}
+
+function rasterStyleSourceFromOnlineProvider(provider: OnlineImageryProvider): RasterImageryStyleSource {
+  return {
+    id: `online-${provider.id}`,
+    name: provider.name,
+    attribution: provider.attribution,
+    licenseText: provider.licenseText,
+    minzoom: provider.minZoom,
+    maxzoom: provider.maxZoom,
+    scheme: provider.tileScheme,
+    tileSize: provider.tileSize,
+    tiles: [provider.tileUrlTemplate],
+  };
+}
+
+function rasterStyleSourceFromAerialReferenceResolution(resolution: AerialReferenceImageryResolution): RasterImageryStyleSource | null {
+  if (resolution.sourceKind === "online_provider" && resolution.onlineProvider) {
+    return rasterStyleSourceFromOnlineProvider(resolution.onlineProvider);
+  }
+  if (!resolution.localAerial.canRender || !resolution.localAerial.source) return null;
+  return {
+    ...rasterStyleSourceFromTileDescriptor(resolution.localAerial.source),
+    name: resolution.localAerial.packageName ?? resolution.localAerial.packageId ?? resolution.localAerial.source.id,
+    attribution: resolution.localAerial.attribution ?? resolution.localAerial.source.attribution,
+    licenseText: resolution.localAerial.licenseText ?? "License metadata required.",
+  };
+}
+
+function rasterStyleSourceFromTileDescriptor(source: MapLibreTileSourceDescriptor): RasterImageryStyleSource {
+  return {
+    id: source.id,
+    name: source.id,
+    attribution: source.attribution,
+    licenseText: "License metadata required.",
+    minzoom: source.minzoom,
+    maxzoom: source.maxzoom,
+    scheme: source.scheme,
+    tileSize: 256,
+    tiles: source.tiles,
+    url: source.url,
+  };
 }
 
 function syncLayoutSource(
@@ -877,15 +952,14 @@ const mapContainerStyle: React.CSSProperties = {
 
 const styles = StyleSheet.create({
   shell: {
-    alignSelf: "flex-start",
+    alignSelf: "stretch",
     backgroundColor: "#f7faf5",
     borderColor: "#ccd8cf",
     borderRadius: 8,
     borderWidth: 1,
-    flexBasis: 620,
-    flexGrow: 1,
-    flexShrink: 1,
+    flex: 1,
     gap: 10,
+    minHeight: 0,
     minWidth: 0,
     overflow: "hidden",
   },
@@ -936,21 +1010,20 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   mapFrame: {
-    height: 620,
-    minHeight: 500,
+    flex: 1,
+    minHeight: 0,
     overflow: "hidden",
     position: "relative",
   },
   mapFrameCompact: {
-    height: 560,
-    minHeight: 500,
+    minHeight: 420,
   },
   toolHud: {
     backgroundColor: "rgba(251,253,249,0.95)",
     borderColor: "#c9d6cb",
     borderRadius: 8,
     borderWidth: 1,
-    bottom: 42,
+    bottom: 66,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
@@ -959,9 +1032,10 @@ const styles = StyleSheet.create({
     padding: 6,
     position: "absolute",
     right: 12,
+    zIndex: 3,
   },
   toolHudCompact: {
-    bottom: 44,
+    bottom: 76,
     left: 8,
     maxWidth: "94%",
     right: 8,
@@ -972,9 +1046,11 @@ const styles = StyleSheet.create({
     borderColor: "#cbd8ce",
     borderRadius: 8,
     borderWidth: 1,
+    flexBasis: 74,
+    flexGrow: 0,
     flexDirection: "row",
     gap: 6,
-    minHeight: 34,
+    minHeight: 44,
     paddingHorizontal: 9,
     paddingVertical: 7,
   },
@@ -1003,6 +1079,7 @@ const styles = StyleSheet.create({
     padding: 6,
     position: "absolute",
     top: 70,
+    zIndex: 5,
   },
   optionHudCompact: {
     left: 8,
@@ -1054,7 +1131,7 @@ const styles = StyleSheet.create({
     borderColor: "#d2ded4",
     borderRadius: 8,
     borderWidth: 1,
-    minHeight: 32,
+    minHeight: 44,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
@@ -1111,6 +1188,7 @@ const styles = StyleSheet.create({
     padding: 10,
     position: "absolute",
     right: 12,
+    zIndex: 4,
   },
   statusHudCompact: {
     alignItems: "flex-start",
@@ -1121,7 +1199,7 @@ const styles = StyleSheet.create({
   statusTextGroup: {
     flex: 1,
     gap: 2,
-    minWidth: 220,
+    minWidth: 0,
   },
   statusText: {
     color: "#f8fbf6",
@@ -1138,6 +1216,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
+    maxWidth: "100%",
   },
   hudButton: {
     alignItems: "center",
@@ -1147,7 +1226,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: 5,
-    minHeight: 32,
+    minHeight: 44,
     paddingHorizontal: 9,
     paddingVertical: 7,
   },
@@ -1207,6 +1286,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 7,
     position: "absolute",
+    zIndex: 1,
   },
   attributionHudCompact: {
     left: 8,

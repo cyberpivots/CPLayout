@@ -1,6 +1,8 @@
 import { StatusBar } from "expo-status-bar";
 import {
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   ClipboardList,
   Calculator,
@@ -15,7 +17,6 @@ import {
   Map as MapIcon,
   MapPin,
   MapPinned,
-  MousePointer2,
   PackageCheck,
   Pentagon,
   Route,
@@ -32,12 +33,12 @@ import {
   WifiOff,
   Wrench,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useReducer, useState } from "react";
+import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
+  Linking,
   Modal,
   Pressable,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -45,6 +46,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CoordinateFormatPanel } from "./src/components/CoordinateFormatPanel";
 import { BrowserRtkReceiverPanel } from "./src/components/BrowserRtkReceiverPanel";
@@ -61,8 +63,10 @@ import {
 } from "./src/components/ProjectCatalogDialog";
 import { ProjectFilesPanel } from "./src/components/ProjectFilesPanel";
 import { SettingsPanel } from "./src/components/SettingsPanel";
+import { DrawingToolPalette, type DrawingToolPaletteModal } from "./src/components/DrawingToolPalette";
 import { useProjectRepository, type ProjectWorkspaceStatus } from "./src/hooks/useProjectRepository";
 import type { CustomerRecord } from "@cplayout/project-store";
+import { rehydrateInstalledMapPackageManifestsAsync } from "@cplayout/project-store";
 import {
   COORDINATE_FORMAT_LABELS,
   MACHINE_CATALOG_PRESETS,
@@ -71,11 +75,14 @@ import {
   coordinateExample,
   defaultProjectSettings,
   formatCoordinate,
+  listAerialImageryCandidates,
   mergeAppSettings,
   parseCoordinateInput,
   parseAppSettings,
+  projectXyToLonLat,
   projectSettingsFromApp,
   reduceProjectEditorState,
+  resolveAerialReferenceImagerySource,
   importGoogleEarthKmlToProject,
   importProjectedGeoJsonToProject,
   importSurveyCsvToProject,
@@ -85,6 +92,7 @@ import {
   type AppSettings,
   type GoogleEarthKmlImportResult,
   type LonLat,
+  type MapPackageManifest,
   type ModelRecommendation,
   type PivotMachine,
   type PivotProject,
@@ -100,7 +108,8 @@ import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFe
 type WorkspaceView = "dashboard" | "map" | "survey" | "review" | "files" | "settings";
 type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "review" | "export";
-type DesignConsoleModal = "point" | "line" | "polygon" | "circle" | "pivot" | "obstacle" | "machine" | "endGun" | "cornerArm" | "calculate" | "layers" | null;
+type DesignConsoleModal = DrawingToolPaletteModal;
+type InspectorPage = "metrics" | "layers" | "feature" | "rtk" | "validation";
 
 function createBlankDesignProject(settings: AppSettings): PivotProject {
   const timestamp = new Date().toISOString();
@@ -142,10 +151,24 @@ function createBlankDesignProject(settings: AppSettings): PivotProject {
 }
 
 export default function App(): React.JSX.Element {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>("workspace");
   const [activeView, setActiveView] = useState<WorkspaceView>("map");
   const [editor, dispatchProject] = useReducer(reduceProjectEditorState, sampleProject, createProjectEditorState);
   const project = editor.project;
+  const [runtimeMapPackages, setRuntimeMapPackages] = useState<MapPackageManifest[]>([]);
+  const projectLoadSequenceRef = useRef(0);
+  const runtimeProject = useMemo(() => ({
+    ...project,
+    mapPackages: mergeMapPackageManifests(project.mapPackages ?? [], runtimeMapPackages),
+  }), [project, runtimeMapPackages]);
   const [savedRevision, setSavedRevision] = useState(0);
   const [settings, setSettings] = useState<AppSettings>(() => browserLocalSettings(sampleProject.settings));
   const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(sampleProject.id));
@@ -176,8 +199,16 @@ export default function App(): React.JSX.Element {
   const [deletingCustomerId, setDeletingCustomerId] = useState<string | null>(null);
   const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
   const [catalogDialogSubmitting, setCatalogDialogSubmitting] = useState(false);
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const compactLayout = windowWidth < 760;
+  const tabletConsole = windowWidth >= 700 && windowWidth < 1180;
+  const desktopConsole = Platform.OS === "web" && windowWidth >= 1180;
+  const landscapeConsole = windowWidth > windowHeight;
+  const safeBottomGutter = Math.max(insets.bottom, Platform.OS === "android" ? 24 : 0) + 10;
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState(() => desktopConsole);
+  const [rightDrawerOpen, setRightDrawerOpen] = useState(() => desktopConsole);
+  const [activeInspectorPage, setActiveInspectorPage] = useState<InspectorPage>("metrics");
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
   const isDirty = editor.revision !== savedRevision;
@@ -218,6 +249,24 @@ export default function App(): React.JSX.Element {
     if (homeMapView) setDesignConsoleModal(null);
   }, [homeMapView]);
 
+  useEffect(() => {
+    if (!selectedMapFeatureId) return;
+    setActiveInspectorPage("feature");
+    setRightDrawerOpen(true);
+  }, [selectedMapFeatureId]);
+
+  useEffect(() => {
+    if (desktopConsole) {
+      setLeftDrawerOpen(true);
+      setRightDrawerOpen(true);
+      return;
+    }
+    if (tabletConsole || landscapeConsole) {
+      setLeftDrawerOpen(false);
+      setRightDrawerOpen(false);
+    }
+  }, [desktopConsole, landscapeConsole, tabletConsole]);
+
   function applyPivotCoordinate(coordinate: XY, wgs84?: LonLat): void {
     dispatchProject({ type: "place_pivot", point: coordinate, wgs84 });
   }
@@ -251,7 +300,11 @@ export default function App(): React.JSX.Element {
   }
 
   function loadProject(nextProject: PivotProject, context?: Partial<typeof activeCatalogContext>): void {
+    const loadSequence = projectLoadSequenceRef.current + 1;
+    projectLoadSequenceRef.current = loadSequence;
     dispatchProject({ type: "load_project", project: nextProject });
+    setRuntimeMapPackages([]);
+    void rehydrateRuntimeMapPackages(loadSequence, nextProject.mapPackages ?? []);
     setSavedRevision(0);
     setSettings((current) => browserLocalSettings(nextProject.settings, current));
     setWalkthroughProgress(loadWalkthroughProgress(nextProject.id));
@@ -264,6 +317,16 @@ export default function App(): React.JSX.Element {
       setActiveCatalogContext((current) => ({ ...current, ...context }));
     }
     setScreen("workspace");
+  }
+
+  async function rehydrateRuntimeMapPackages(loadSequence: number, mapPackages: MapPackageManifest[]): Promise<void> {
+    try {
+      const runtimeManifests = await rehydrateInstalledMapPackageManifestsAsync(mapPackages);
+      if (projectLoadSequenceRef.current !== loadSequence || runtimeManifests.length === 0) return;
+      setRuntimeMapPackages(runtimeManifests);
+    } catch {
+      // Runtime tile URLs are opportunistic display state; project metadata stays logical.
+    }
   }
 
   function loadProjectDashboard(nextProject: PivotProject, context?: Partial<typeof activeCatalogContext>): void {
@@ -328,6 +391,12 @@ export default function App(): React.JSX.Element {
     const imported = importSurveyCsvToProject(project, csv);
     dispatchProject({ type: "import_survey_csv", csv });
     return `Imported ${imported.importedPointCount} survey point${imported.importedPointCount === 1 ? "" : "s"} into the current project.`;
+  }
+
+  function importMapPackage(manifest: MapPackageManifest, runtimeManifest: MapPackageManifest): string {
+    dispatchProject({ type: "upsert_map_package", mapPackage: manifest });
+    setRuntimeMapPackages((current) => mergeMapPackageManifests(current, [runtimeManifest]));
+    return `Imported map package ${manifest.name}. Save Local to persist package metadata; runtime file URLs stay local to this app install.`;
   }
 
   function previewGoogleEarthKml(kmlText: string, selectedItemIds?: string[]): GoogleEarthKmlImportResult {
@@ -689,9 +758,9 @@ export default function App(): React.JSX.Element {
 
   if (screen === "projects") {
     return (
-      <SafeAreaView style={styles.safeArea} testID="launcher-screen">
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea} testID="launcher-screen">
         <StatusBar style="dark" />
-        <View style={styles.app}>
+        <View style={[styles.app, { paddingBottom: safeBottomGutter }]}>
           <View style={styles.topBar}>
             <View>
               <Text style={styles.appTitle}>CPLayout</Text>
@@ -753,9 +822,9 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-      <SafeAreaView style={styles.safeArea} testID="workspace-screen">
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea} testID="workspace-screen">
       <StatusBar style="dark" />
-      <View style={styles.app}>
+      <View style={[styles.app, { paddingBottom: safeBottomGutter }]}>
         <View style={styles.topBar}>
           <View>
             <Text style={styles.appTitle}>CPLayout</Text>
@@ -777,19 +846,22 @@ export default function App(): React.JSX.Element {
               setActiveView("map");
               setHomeMapView(true);
             }} />
+            {activeView === "map" && !leftDrawerOpen ? <SmallActionButton label="Open Sample" onPress={() => loadProjectDashboard(sampleProject)} /> : null}
+            {activeView === "map" && homeMapView && !rightDrawerOpen ? <SmallActionButton label="Start Blank Design" onPress={startBlankDesign} /> : null}
             <SmallActionButton label="Dashboard" onPress={() => setActiveView("dashboard")} />
             <SmallActionButton label="Undo" disabled={editor.past.length === 0} onPress={() => dispatchProject({ type: "undo" })} />
             <SmallActionButton label="Redo" disabled={editor.future.length === 0} onPress={() => dispatchProject({ type: "redo" })} />
           </View>
         </View>
 
-        <View style={[styles.workspaceShell, compactLayout && styles.workspaceShellCompact]}>
+        <View style={[styles.workspaceShell, activeView !== "map" && compactLayout && styles.workspaceShellCompact, activeView === "map" && styles.workspaceShellConsole]} testID="workspace-shell">
           <ProjectTreeRail
             activeContext={activeCatalogContext}
             activeView={activeView}
             catalog={repository.catalog}
             compact={compactLayout}
-            mapFocus={compactLayout && activeView === "map" && !homeMapView}
+            consoleMode={activeView === "map"}
+            drawerOpen={activeView === "map" ? leftDrawerOpen : true}
             onCreateCustomer={openCustomerCreateDialog}
             onCreateDesign={() => openCatalogDialog("design")}
             onCreateFieldMap={() => openCatalogDialog("fieldMap")}
@@ -805,9 +877,14 @@ export default function App(): React.JSX.Element {
             onSelectCustomer={selectCustomerFolder}
             onSelectProject={selectProjectCatalogOnly}
             onSelectFieldMap={selectFieldMapCatalogOnly}
+            onToggleDrawer={() => setLeftDrawerOpen((open) => !open)}
           />
 
-          <ScrollView style={styles.workspaceScroll} contentContainerStyle={[styles.content, compactLayout && styles.contentCompact]}>
+          <ScrollView
+            scrollEnabled={activeView !== "map" || windowWidth < 700}
+            style={[styles.workspaceScroll, activeView === "map" && windowWidth >= 700 && styles.workspaceScrollConsole]}
+            contentContainerStyle={activeView === "map" ? styles.contentConsole : [styles.content, compactLayout && styles.contentCompact]}
+          >
           {activeView === "dashboard" && (
             <ProjectDashboard
               compact={compactLayout}
@@ -836,7 +913,7 @@ export default function App(): React.JSX.Element {
           )}
 
           {activeView === "map" && (
-            <View style={[styles.layoutGrid, compactLayout && styles.layoutGridCompact]} testID="map-view">
+            <WorkspaceConsoleShell compact={compactLayout} rightDrawerOpen={rightDrawerOpen} testID="map-view">
               <View style={styles.mapConsoleFrame}>
                 <MapSurface
                   activeLayer={guidedMapTool?.activeLayer}
@@ -844,7 +921,7 @@ export default function App(): React.JSX.Element {
                   activeToolMode={guidedMapTool?.mode}
                   activeToolRequestId={guidedMapTool?.requestId}
                   homeView={homeMapView}
-                  project={project}
+                  project={runtimeProject}
                   result={result}
                   settings={settings}
                   selectedMapFeatureId={selectedMapFeatureId}
@@ -883,7 +960,13 @@ export default function App(): React.JSX.Element {
                   />
                 ) : null}
               </View>
-              <View style={[styles.sidePanel, compactLayout && styles.sidePanelCompact]}>
+              <InspectorDrawer
+                activePage={activeInspectorPage}
+                homeView={homeMapView}
+                onPageChange={setActiveInspectorPage}
+                onToggle={() => setRightDrawerOpen((open) => !open)}
+                open={rightDrawerOpen}
+              >
                 {homeMapView ? (
                   selectedCustomer ? (
                     <CustomerDetailPanel
@@ -920,22 +1003,42 @@ export default function App(): React.JSX.Element {
                   )
                 ) : (
                   <>
-                    <Text style={styles.sectionTitle}>Map Inspector</Text>
-                    <View style={styles.metricGrid}>
-                      <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
-                      <MetricTile label="Dry / non-irrigated" value={formatAreaFromAcres(result.metrics.nonIrrigatedAcres, settings.unitSystem)} tone="warn" />
-                      <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} tone="neutral" />
-                      <MetricTile label="End gun" value={formatAreaFromAcres(result.metrics.endGunAcres, settings.unitSystem)} tone="neutral" />
-                      <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
-                      <MetricTile label="Obstacle hits" value={`${result.metrics.obstacleConflictCount}`} tone={result.metrics.obstacleConflictCount > 0 ? "danger" : "good"} />
-                      <MetricTile label="Hard path conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
-                    </View>
-                    <View style={styles.mapFeatureEditor} testID="design-console-status">
-                      <Text style={styles.mapFeatureTitle}>Design Console</Text>
-                      <Text style={styles.mapFeatureMeta}>Use the bottom HUD for drawing and focused inputs. GPS entry uses decimal degrees; projected XY is available only in Expert XY disclosures.</Text>
-                    </View>
+                    {activeInspectorPage === "metrics" ? (
+                      <>
+                        <Text style={styles.sectionTitle}>Metrics</Text>
+                        <View style={styles.metricGrid}>
+                          <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
+                          <MetricTile label="Dry / non-irrigated" value={formatAreaFromAcres(result.metrics.nonIrrigatedAcres, settings.unitSystem)} tone="warn" />
+                          <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} tone="neutral" />
+                          <MetricTile label="End gun" value={formatAreaFromAcres(result.metrics.endGunAcres, settings.unitSystem)} tone="neutral" />
+                          <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
+                          <MetricTile label="Obstacle hits" value={`${result.metrics.obstacleConflictCount}`} tone={result.metrics.obstacleConflictCount > 0 ? "danger" : "good"} />
+                          <MetricTile label="Hard path conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
+                        </View>
+                        <View style={styles.mapFeatureEditor} testID="design-console-status">
+                          <Text style={styles.mapFeatureTitle}>Design Console</Text>
+                          <Text style={styles.mapFeatureMeta}>Use the bottom HUD for drawing and focused inputs. GPS entry uses decimal degrees; projected XY is available only in Expert XY disclosures.</Text>
+                        </View>
+                      </>
+                    ) : null}
 
-                    {settings.mappingWorkflowMode === "layout" ? (
+                    {activeInspectorPage === "layers" ? (
+                      <>
+                        <Text style={styles.sectionTitle}>Layers</Text>
+                        <LayersSheet
+                          mapPackages={runtimeProject.mapPackages ?? []}
+                          onOpenFiles={() => {
+                            setDesignConsoleModal(null);
+                            setActiveView("files");
+                          }}
+                          onSettingsChange={commitSettings}
+                          project={runtimeProject}
+                          settings={settings}
+                        />
+                      </>
+                    ) : null}
+
+                    {activeInspectorPage === "rtk" && settings.mappingWorkflowMode === "layout" ? (
                       <>
                         <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
                         <BrowserRtkReceiverPanel
@@ -948,33 +1051,51 @@ export default function App(): React.JSX.Element {
                         />
                       </>
                     ) : null}
-
-                    <MapFeatureEditor
-                      feature={selectedMapFeature}
-                      onDelete={deleteMapFeature}
-                      onRename={updateMapFeatureName}
-                      onUpdate={updateMapFeature}
-                    />
-
-                    <Text style={styles.sectionTitle}>Validation</Text>
-                    <View style={styles.warningList}>
-                      {editor.lastError ? (
-                        <View style={styles.warningItem}>
-                          <AlertTriangle size={17} color="#9a4c1c" />
-                          <Text style={styles.warningText}>{editor.lastError}</Text>
+                    {activeInspectorPage === "rtk" && settings.mappingWorkflowMode !== "layout" ? (
+                      <>
+                        <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
+                        <View style={styles.mapFeatureEditor}>
+                          <Text style={styles.mapFeatureTitle}>Layout mode inactive</Text>
+                          <Text style={styles.mapFeatureMeta}>Switch to Layout when RTK-only capture is needed. Design mode keeps pointer edits separate from survey capture.</Text>
                         </View>
-                      ) : null}
-                      {result.warnings.map((warning) => (
-                        <View key={warning} style={styles.warningItem}>
-                          <AlertTriangle size={17} color="#9a4c1c" />
-                          <Text style={styles.warningText}>{warning}</Text>
+                      </>
+                    ) : null}
+
+                    {activeInspectorPage === "feature" ? (
+                      <>
+                        <Text style={styles.sectionTitle}>Feature</Text>
+                        <MapFeatureEditor
+                          feature={selectedMapFeature}
+                          onDelete={deleteMapFeature}
+                          onRename={updateMapFeatureName}
+                          onUpdate={updateMapFeature}
+                        />
+                      </>
+                    ) : null}
+
+                    {activeInspectorPage === "validation" ? (
+                      <>
+                        <Text style={styles.sectionTitle}>Validation</Text>
+                        <View style={styles.warningList}>
+                          {editor.lastError ? (
+                            <View style={styles.warningItem}>
+                              <AlertTriangle size={17} color="#9a4c1c" />
+                              <Text style={styles.warningText}>{editor.lastError}</Text>
+                            </View>
+                          ) : null}
+                          {result.warnings.map((warning) => (
+                            <View key={warning} style={styles.warningItem}>
+                              <AlertTriangle size={17} color="#9a4c1c" />
+                              <Text style={styles.warningText}>{warning}</Text>
+                            </View>
+                          ))}
                         </View>
-                      ))}
-                    </View>
+                      </>
+                    ) : null}
                   </>
                 )}
-              </View>
-            </View>
+              </InspectorDrawer>
+            </WorkspaceConsoleShell>
           )}
 
           {activeView === "survey" && (
@@ -1011,7 +1132,7 @@ export default function App(): React.JSX.Element {
           )}
 
           {activeView === "settings" && (
-            <SettingsPanel mapPackages={project.mapPackages ?? []} settings={settings} onChange={commitSettings} />
+            <SettingsPanel mapPackages={runtimeProject.mapPackages ?? []} settings={settings} onChange={commitSettings} />
           )}
 
           {activeView === "review" && (
@@ -1036,6 +1157,7 @@ export default function App(): React.JSX.Element {
                 }}
                 onImportProjectedGeoJson={importProjectedGeoJson}
                 onImportSurveyCsv={importSurveyCsv}
+                onMapPackageImported={importMapPackage}
                 onOpenProject={openSavedProject}
                 onPreviewGoogleEarthKml={previewGoogleEarthKml}
                 onProjectLoaded={loadProject}
@@ -1076,7 +1198,7 @@ export default function App(): React.JSX.Element {
           onSettingsChange={commitSettings}
           onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
           preview={designScenarioPreview}
-          project={project}
+          project={runtimeProject}
           result={result}
           settings={settings}
           visible={designConsoleModal !== null}
@@ -1172,7 +1294,7 @@ const WALKTHROUGH_MODULES: Array<{
   title: string;
   checkpoint: string;
 }> = [
-  { id: "imagery", title: "Setup Imagery", checkpoint: "USGS/default or approved custom source visible with attribution." },
+  { id: "imagery", title: "Setup Imagery", checkpoint: "Local aerial package or USGS preview selected with attribution." },
   { id: "boundary", title: "Trace Boundary", checkpoint: "Field boundary draft is reviewed and committed as projected XY." },
   { id: "obstacles", title: "Add Obstacles", checkpoint: "Roads, ditches, buildings, and no-spray zones are marked." },
   { id: "pivot", title: "Place Pivot", checkpoint: "Pivot, water source, and power source are positioned." },
@@ -1202,134 +1324,18 @@ function DesignActionHud({
   onToggleLayers: () => void;
   settings: AppSettings;
 }): React.JSX.Element {
-  const designMode = settings.mappingWorkflowMode === "design";
   return (
-    <View style={styles.designActionHud} testID="design-action-hud">
-      <HudToolButton
-        active={activeTool?.mode === "pan"}
-        icon={(color) => <MousePointer2 size={19} color={color} />}
-        label="Pan"
-        onPress={() => onActivateTool("pan", "field_boundary")}
-        testID="design-action-pan"
-      />
-      <HudToolButton
-        active={activeModal === "point"}
-        icon={(color) => <MapPin size={19} color={color} />}
-        label="Point"
-        onPress={() => onOpenModal("point")}
-        testID="design-action-point"
-      />
-      <HudToolButton
-        active={activeModal === "line"}
-        icon={(color) => <Route size={19} color={color} />}
-        label="Line"
-        onPress={() => onOpenModal("line")}
-        testID="design-action-line"
-      />
-      <HudToolButton
-        active={activeModal === "polygon" || activeTool?.mode === "draw_boundary" || activeTool?.mode === "mark_obstacle"}
-        icon={(color) => <Pentagon size={19} color={color} />}
-        label="Polygon"
-        onPress={() => onOpenModal("polygon")}
-        testID="design-action-polygon"
-      />
-      <HudToolButton
-        active={activeModal === "circle" || activeTool?.featureKind === "end_gun_arc"}
-        icon={(color) => <Circle size={19} color={color} />}
-        label="Circle"
-        onPress={() => onOpenModal("circle")}
-        testID="design-action-circle"
-      />
-      <HudToolButton
-        active={activeModal === "pivot" || activeTool?.activeLayer === "pivot_center"}
-        icon={(color) => <CircleDot size={19} color={color} />}
-        label="Pivot"
-        onPress={() => onOpenModal("pivot")}
-        testID="design-action-pivot"
-      />
-      <HudToolButton
-        active={activeModal === "obstacle" || activeTool?.mode === "mark_obstacle"}
-        icon={(color) => <Sprout size={19} color={color} />}
-        label="Obstacles"
-        onPress={() => onOpenModal("obstacle")}
-        testID="design-action-obstacles"
-      />
-      <HudToolButton
-        active={activeModal === "machine"}
-        icon={(color) => <Wrench size={19} color={color} />}
-        label="Machine"
-        onPress={() => onOpenModal("machine")}
-        testID="design-action-machine"
-      />
-      <HudToolButton
-        active={activeModal === "endGun"}
-        icon={(color) => <Ruler size={19} color={color} />}
-        label="End Gun"
-        onPress={() => onOpenModal("endGun")}
-        testID="design-action-end-gun"
-      />
-      <HudToolButton
-        active={activeModal === "cornerArm" || activeTool?.featureKind === "corner_swing_limit"}
-        icon={(color) => <Waypoints size={19} color={color} />}
-        label="Corner"
-        onPress={() => onOpenModal("cornerArm")}
-        testID="design-action-corner-arm"
-      />
-      <HudToolButton
-        active={activeModal === "calculate"}
-        icon={(color) => <Calculator size={19} color={color} />}
-        label="Calc"
-        onPress={onCalculate}
-        testID="design-action-calculate"
-      />
-      <HudToolButton
-        active={activeModal === "layers"}
-        icon={(color) => <Layers size={19} color={color} />}
-        label="Layers"
-        onPress={onToggleLayers}
-        testID="design-action-layers"
-      />
-      <HudToolButton
-        active={false}
-        icon={(color) => <Download size={19} color={color} />}
-        label={dirty ? "Files *" : "Files"}
-        onPress={onOpenFiles}
-        testID="design-action-files"
-      />
-      {!designMode ? (
-        <Text style={styles.designHudNotice}>Layout mode is read-only for pointer edits.</Text>
-      ) : null}
-    </View>
-  );
-}
-
-function HudToolButton({
-  active,
-  icon,
-  label,
-  onPress,
-  testID,
-}: {
-  active: boolean;
-  icon: (color: string) => React.ReactNode;
-  label: string;
-  onPress: () => void;
-  testID?: string;
-}): React.JSX.Element {
-  const color = active ? "#ffffff" : "#173428";
-  return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      aria-pressed={active}
-      onPress={onPress}
-      style={[styles.designHudButton, active && styles.designHudButtonActive]}
-      testID={testID}
-    >
-      {icon(color)}
-      <Text style={[styles.designHudButtonText, active && styles.designHudButtonTextActive]}>{label}</Text>
-    </Pressable>
+    <DrawingToolPalette
+      activeModal={activeModal}
+      activeTool={activeTool}
+      dirty={dirty}
+      onActivateTool={onActivateTool}
+      onCalculate={onCalculate}
+      onOpenFiles={onOpenFiles}
+      onOpenModal={onOpenModal}
+      onToggleLayers={onToggleLayers}
+      settings={settings}
+    />
   );
 }
 
@@ -1413,8 +1419,10 @@ function DesignConsoleDialog({
             ) : null}
             {activeModal === "layers" ? (
               <LayersSheet
+                mapPackages={project.mapPackages ?? []}
                 onOpenFiles={onOpenFiles}
                 onSettingsChange={onSettingsChange}
+                project={project}
                 settings={settings}
               />
             ) : null}
@@ -1772,35 +1780,142 @@ function CalculateSheet({
 }
 
 function LayersSheet({
+  mapPackages,
   onOpenFiles,
   onSettingsChange,
+  project,
   settings,
 }: {
+  mapPackages: MapPackageManifest[];
   onOpenFiles: () => void;
   onSettingsChange: (settings: AppSettings) => void;
+  project: PivotProject;
   settings: AppSettings;
 }): React.JSX.Element {
+  const [mapAppStatus, setMapAppStatus] = useState<string | null>(null);
+  const mapLibreTarget = Platform.OS === "android"
+    ? "android_maplibre_rn"
+    : Platform.OS === "ios"
+      ? "ios_maplibre_rn"
+      : "web_maplibre_gl_js";
+  const aerialCandidates = listAerialImageryCandidates({ mapPackages, target: mapLibreTarget });
+  const aerialReference = useMemo(
+    () => resolveAerialReferenceImagerySource({
+      preferences: settings.aerialImagery,
+      onlineImagery: settings.onlineImagery,
+      mapPackages,
+      target: mapLibreTarget,
+    }),
+    [mapLibreTarget, mapPackages, settings.aerialImagery, settings.onlineImagery],
+  );
+  const aerialMode = settings.aerialImagery.mode === "off" && settings.onlineImagery.enabled && settings.onlineImagery.providerId === "usgs_imagery_only"
+    ? "USGS only"
+    : settings.aerialImagery.mode === "off"
+      ? "Off"
+      : settings.aerialImagery.mode === "manual"
+        ? "Manual local"
+        : "Auto";
+  const aerialStatus = aerialReference.sourceKind === "local_raster"
+    ? `Local raster first: ${aerialReference.localAerial.packageName ?? aerialReference.localAerial.packageId}.`
+    : aerialReference.sourceKind === "online_provider" && aerialReference.onlineProvider
+      ? `${aerialProviderLabel(aerialReference.autoFallback, settings.aerialImagery.mode, aerialReference.onlineProvider.id)}: ${aerialReference.onlineProvider.name}.`
+      : aerialReference.reason;
+
+  function setAerialMode(mode: "off" | "auto" | "manual" | "usgs_live_preview"): void {
+    if (mode === "usgs_live_preview") {
+      onSettingsChange({
+        ...settings,
+        aerialImagery: { ...settings.aerialImagery, mode: "off" },
+        onlineImagery: { ...settings.onlineImagery, enabled: true, providerId: "usgs_imagery_only" },
+      });
+      return;
+    }
+    if (mode === "auto") {
+      onSettingsChange({
+        ...settings,
+        aerialImagery: { ...settings.aerialImagery, mode: "auto" },
+        onlineImagery: { ...settings.onlineImagery, enabled: true, providerId: "usgs_imagery_only" },
+      });
+      return;
+    }
+    onSettingsChange({
+      ...settings,
+      aerialImagery: { ...settings.aerialImagery, mode },
+      onlineImagery: { ...settings.onlineImagery, enabled: false },
+    });
+  }
+
+  async function openAndroidMapApp(): Promise<void> {
+    if (Platform.OS !== "android") {
+      setMapAppStatus("External map handoff is Android-only.");
+      return;
+    }
+    try {
+      const center = project.wgs84Companion?.pivotCenter ?? projectXyToLonLat(project.pivotCenter, project.projectCrs);
+      const label = encodeURIComponent(`${project.name} pivot reference`);
+      const url = `geo:0,0?q=${center.latitude.toFixed(7)},${center.longitude.toFixed(7)}(${label})`;
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        setMapAppStatus("No installed map app accepted the geo handoff.");
+        return;
+      }
+      await Linking.openURL(url);
+      setMapAppStatus("Opened external map app as a reference handoff.");
+    } catch (error) {
+      setMapAppStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   return (
     <View style={styles.machineForm}>
       <View style={styles.metricGrid}>
-        <MetricTile label="Imagery" value={settings.onlineImagery.enabled ? "On" : "Off"} />
+        <MetricTile label="Aerial imagery" value={aerialMode} />
         <MetricTile label="Reference overlay" value={settings.referenceOverlay.mode === "off" ? "Off" : settings.referenceOverlay.mode} />
         <MetricTile label="Coordinate display" value={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
       </View>
       <Text style={styles.mapFeatureMeta}>
-        Online imagery remains no-key public reference only. Custom URLs and local package paths are local settings and are not stored in project ZIPs.
+        Auto uses a renderable local raster package first, then the no-key USGS ImageryOnly connected preview. USGS only turns local aerial off and remains a reference handoff outside project ZIPs.
+      </Text>
+      <Text style={styles.mapFeatureMeta}>
+        {aerialStatus}
       </Text>
       <View style={styles.inlineActions}>
         <SmallActionButton
-          label={settings.onlineImagery.enabled ? "Imagery Off" : "Imagery On"}
-          onPress={() => onSettingsChange({ ...settings, onlineImagery: { ...settings.onlineImagery, enabled: !settings.onlineImagery.enabled } })}
+          label="Aerial Off"
+          onPress={() => setAerialMode("off")}
         />
+        <SmallActionButton
+          label="Auto"
+          onPress={() => setAerialMode("auto")}
+        />
+        <SmallActionButton
+          label="Manual Local"
+          onPress={() => setAerialMode("manual")}
+        />
+        <SmallActionButton
+          label="USGS Only"
+          onPress={() => setAerialMode("usgs_live_preview")}
+        />
+        {Platform.OS === "android" ? (
+          <SmallActionButton
+            label="Open Maps App"
+            onPress={() => void openAndroidMapApp()}
+          />
+        ) : null}
         <SmallActionButton
           label={settings.referenceOverlay.mode === "off" ? "Overlay On" : "Overlay Off"}
           onPress={() => onSettingsChange({ ...settings, referenceOverlay: { ...settings.referenceOverlay, mode: settings.referenceOverlay.mode === "off" ? "manual" : "off" } })}
         />
         <SmallActionButton label="Import / Export" onPress={onOpenFiles} />
       </View>
+      {mapAppStatus ? <Text style={styles.mapFeatureMeta}>{mapAppStatus}</Text> : null}
+      {settings.aerialImagery.mode === "manual" && !settings.onlineImagery.enabled ? (
+        <Text style={styles.mapFeatureMeta}>
+          {aerialCandidates.length > 0
+            ? `Manual local aerial candidates: ${aerialCandidates.map((candidate) => candidate.packageName).join(", ")}. Choose the exact package in Settings.`
+            : "Manual local aerial needs an imported raster package with local TileJSON or tile URL templates."}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -2490,8 +2605,8 @@ function recommendedWorkflowStep(
   dirty: boolean,
 ): string {
   if (dirty) return "Next: save local edits and export a project package.";
-  if (!settings.onlineImagery.enabled && !progress.imagery) return "Next: keep offline overlay or enable approved no-key imagery in Settings.";
-  if (!progress.imagery) return "Next: confirm imagery attribution and live-source status.";
+  if (!settings.onlineImagery.enabled && !progress.imagery) return "Next: choose local aerial package or USGS preview in Settings.";
+  if (!progress.imagery) return "Next: confirm imagery attribution and source status.";
   if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or review the field boundary in Design mode.";
   if (project.obstacles.length === 0 || !progress.obstacles) return "Next: add visible obstacles and no-spray zones.";
   if (!progress.pivot) return "Next: place pivot, water source, and power source.";
@@ -2507,6 +2622,12 @@ function editorWarningRows(result: ReturnType<typeof evaluateLayout>): string[] 
     ...(result.metrics.obstacleConflictCount > 0 ? [`${result.metrics.obstacleConflictCount} obstacle conflict${result.metrics.obstacleConflictCount === 1 ? "" : "s"} detected.`] : []),
     ...(result.metrics.outsideFieldAcres > 0 ? [`${result.metrics.outsideFieldAcres.toFixed(2)} acres of wet coverage are outside the field.`] : []),
   ];
+}
+
+function mergeMapPackageManifests(base: MapPackageManifest[], overrides: MapPackageManifest[]): MapPackageManifest[] {
+  const byId = new Map(base.map((mapPackage) => [mapPackage.id, mapPackage]));
+  for (const mapPackage of overrides) byId.set(mapPackage.id, mapPackage);
+  return [...byId.values()];
 }
 
 function browserLocalSettings(settings?: PivotProject["settings"], current?: AppSettings): AppSettings {
@@ -2580,6 +2701,12 @@ function workflowModeLabel(mode: AppSettings["mappingWorkflowMode"]): string {
   return mode === "design" ? "Design" : "Layout RTK";
 }
 
+function aerialProviderLabel(autoFallback: boolean, aerialMode: AppSettings["aerialImagery"]["mode"], providerId: string): string {
+  if (providerId === "usgs_imagery_only" && (autoFallback || aerialMode === "auto")) return "USGS fallback";
+  if (providerId === "usgs_imagery_only") return "USGS only";
+  return "Connected preview";
+}
+
 function Section({ title, icon, children, testID }: { title: string; icon: React.ReactNode; children: React.ReactNode; testID?: string }): React.JSX.Element {
   return (
     <View style={styles.section} testID={testID}>
@@ -2601,12 +2728,93 @@ function StatusPill({ icon, label, testID }: { icon: React.ReactNode; label: str
   );
 }
 
+function WorkspaceConsoleShell({
+  children,
+  compact,
+  rightDrawerOpen,
+  testID,
+}: {
+  children: React.ReactNode;
+  compact: boolean;
+  rightDrawerOpen: boolean;
+  testID?: string;
+}): React.JSX.Element {
+  return (
+    <View style={[styles.consoleShell, compact && styles.consoleShellCompact, !rightDrawerOpen && styles.consoleShellRightCollapsed]} testID={testID}>
+      {children}
+    </View>
+  );
+}
+
+const INSPECTOR_PAGES: Array<{ id: InspectorPage; label: string }> = [
+  { id: "metrics", label: "Metrics" },
+  { id: "layers", label: "Layers" },
+  { id: "feature", label: "Feature" },
+  { id: "rtk", label: "RTK" },
+  { id: "validation", label: "Validation" },
+];
+
+function InspectorDrawer({
+  activePage,
+  children,
+  homeView,
+  onPageChange,
+  onToggle,
+  open,
+}: {
+  activePage: InspectorPage;
+  children: React.ReactNode;
+  homeView: boolean;
+  onPageChange: (page: InspectorPage) => void;
+  onToggle: () => void;
+  open: boolean;
+}): React.JSX.Element {
+  return (
+    <View style={[styles.inspectorDrawer, !open && styles.inspectorDrawerCollapsed]} testID="inspector-drawer">
+      <Pressable
+        accessibilityLabel={open ? "Collapse map inspector" : "Open map inspector"}
+        accessibilityRole="button"
+        onPress={onToggle}
+        style={styles.inspectorDrawerHandle}
+        testID="right-drawer-handle"
+      >
+        {open ? <ChevronRight size={21} color="#d5e2db" /> : <ChevronLeft size={21} color="#d5e2db" />}
+      </Pressable>
+      {open ? (
+        <View style={styles.inspectorDrawerBody}>
+          {!homeView ? (
+            <View style={styles.inspectorTabs} testID="inspector-tabs">
+              {INSPECTOR_PAGES.map((page) => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: activePage === page.id }}
+                  aria-selected={activePage === page.id}
+                  key={page.id}
+                  onPress={() => onPageChange(page.id)}
+                  style={[styles.inspectorTab, activePage === page.id && styles.inspectorTabActive]}
+                  testID={`inspector-tab-${page.id}`}
+                >
+                  <Text style={[styles.inspectorTabText, activePage === page.id && styles.inspectorTabTextActive]}>{page.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          <ScrollView style={styles.inspectorScroll} contentContainerStyle={styles.inspectorContent} testID="inspector-scroll">
+            {children}
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function ProjectTreeRail({
   activeContext,
   activeView,
   catalog,
   compact,
-  mapFocus,
+  consoleMode,
+  drawerOpen,
   onCreateCustomer,
   onCreateDesign,
   onCreateFieldMap,
@@ -2620,6 +2828,7 @@ function ProjectTreeRail({
   onSelectCustomer,
   onSelectFieldMap,
   onSelectProject,
+  onToggleDrawer,
 }: {
   activeContext: {
     customerId: string | null;
@@ -2630,7 +2839,8 @@ function ProjectTreeRail({
   activeView: WorkspaceView;
   catalog: ProjectWorkspaceStatus["catalog"];
   compact: boolean;
-  mapFocus: boolean;
+  consoleMode: boolean;
+  drawerOpen: boolean;
   onCreateCustomer: () => void | Promise<void>;
   onCreateDesign: () => void | Promise<void>;
   onCreateFieldMap: () => void | Promise<void>;
@@ -2644,6 +2854,7 @@ function ProjectTreeRail({
   onSelectCustomer: (customerId: string) => void;
   onSelectFieldMap: (fieldMapId: string) => void;
   onSelectProject: (projectId: string) => void;
+  onToggleDrawer: () => void;
 }): React.JSX.Element {
   const visibleCustomers = activeContext.projectId
     ? catalog.customers.filter((customer) => customer.id === activeContext.customerId)
@@ -2653,8 +2864,19 @@ function ProjectTreeRail({
     : null;
 
   return (
-    <View style={[styles.leftRail, compact && styles.leftRailCompact, mapFocus && styles.leftRailCompactMapFocus]} testID="workspace-rail">
-      {!mapFocus ? (
+    <View style={[styles.leftRail, compact && !consoleMode && styles.leftRailCompact, consoleMode && styles.leftRailConsole, consoleMode && !drawerOpen && styles.leftRailConsoleCollapsed]} testID="workspace-rail">
+      {consoleMode ? (
+        <Pressable
+          accessibilityLabel={drawerOpen ? "Collapse project drawer" : "Open project drawer"}
+          accessibilityRole="button"
+          onPress={onToggleDrawer}
+          style={styles.leftDrawerHandle}
+          testID="left-drawer-handle"
+        >
+          {drawerOpen ? <ChevronLeft size={21} color="#d5e2db" /> : <ChevronRight size={21} color="#d5e2db" />}
+        </Pressable>
+      ) : null}
+      {drawerOpen ? (
         <View style={styles.projectTreePanel} testID="project-tree-rail">
           <View style={styles.projectTreeHeader}>
             <FolderOpen size={18} color="#d5e2db" />
@@ -2740,13 +2962,13 @@ function ProjectTreeRail({
           </ScrollView>
         </View>
       ) : null}
-      <View style={[styles.projectTreeNav, compact && styles.projectTreeNavCompact, mapFocus && styles.projectTreeNavMapFocus]}>
-        <RailButton active={activeView === "dashboard"} icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
-        <RailButton active={activeView === "map"} icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
-        <RailButton active={activeView === "survey"} icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
-        <RailButton active={activeView === "review"} icon={<ClipboardList size={18} />} label="Review" onPress={() => onNavigate("review")} testID="workspace-nav-review" />
-        <RailButton active={activeView === "files"} icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
-        <RailButton active={activeView === "settings"} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => onNavigate("settings")} testID="workspace-nav-settings" />
+      <View style={[styles.projectTreeNav, compact && !consoleMode && styles.projectTreeNavCompact, consoleMode && styles.projectTreeNavConsole, consoleMode && !drawerOpen && styles.projectTreeNavCollapsed]}>
+        <RailButton active={activeView === "dashboard"} collapsed={consoleMode} icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
+        <RailButton active={activeView === "map"} collapsed={consoleMode} icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
+        <RailButton active={activeView === "survey"} collapsed={consoleMode} icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
+        <RailButton active={activeView === "review"} collapsed={consoleMode} icon={<ClipboardList size={18} />} label="Review" onPress={() => onNavigate("review")} testID="workspace-nav-review" />
+        <RailButton active={activeView === "files"} collapsed={consoleMode} icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
+        <RailButton active={activeView === "settings"} collapsed={consoleMode} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => onNavigate("settings")} testID="workspace-nav-settings" />
       </View>
     </View>
   );
@@ -2801,14 +3023,14 @@ function webDoubleClickProps(onDoubleClick: () => void | Promise<void>): Record<
   };
 }
 
-function RailButton({ active, icon, label, onPress, testID }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
+function RailButton({ active, collapsed = false, icon, label, onPress, testID }: { active: boolean; collapsed?: boolean; icon: React.ReactNode; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
   const tintedIcon = React.isValidElement<{ color?: string }>(icon)
     ? React.cloneElement(icon, { color: active ? "#ffffff" : "#d5e2db" })
     : icon;
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} aria-selected={active} onPress={onPress} style={[styles.railButton, active && styles.railButtonActive]} testID={testID}>
+    <Pressable accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ selected: active }} aria-selected={active} onPress={onPress} style={[styles.railButton, collapsed && styles.railButtonCollapsed, active && styles.railButtonActive]} testID={testID}>
       {tintedIcon}
-      <Text style={[styles.railLabel, active && styles.railLabelActive]}>{label}</Text>
+      {!collapsed ? <Text style={[styles.railLabel, active && styles.railLabelActive]}>{label}</Text> : null}
     </Pressable>
   );
 }
@@ -3219,6 +3441,10 @@ const styles = StyleSheet.create({
   workspaceShellCompact: {
     flexDirection: "column",
   },
+  workspaceShellConsole: {
+    flexDirection: "row",
+    overflow: "hidden",
+  },
   leftRail: {
     backgroundColor: "#13211b",
     borderRightColor: "#26392f",
@@ -3230,6 +3456,21 @@ const styles = StyleSheet.create({
     width: 292,
     zIndex: 2,
   },
+  leftRailConsole: {
+    flexShrink: 0,
+    gap: 8,
+    minHeight: 0,
+    paddingBottom: 8,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingTop: 8,
+    width: 292,
+  },
+  leftRailConsoleCollapsed: {
+    alignItems: "center",
+    paddingHorizontal: 4,
+    width: 64,
+  },
   leftRailCompact: {
     borderRightWidth: 0,
     flexShrink: 0,
@@ -3237,12 +3478,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     width: "100%",
   },
-  leftRailCompactMapFocus: {
-    maxHeight: 108,
-    paddingVertical: 8,
-  },
   workspaceScroll: {
     flex: 1,
+    minHeight: 0,
+  },
+  workspaceScrollConsole: {
+    overflow: "hidden",
   },
   projectTreeHeader: {
     alignItems: "center",
@@ -3251,7 +3492,9 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   projectTreePanel: {
+    flex: 1,
     gap: 6,
+    minHeight: 0,
   },
   projectTreeTitle: {
     color: "#eef7f1",
@@ -3330,9 +3573,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
   },
-  projectTreeNavMapFocus: {
+  projectTreeNavConsole: {
+    alignItems: "flex-end",
+    alignSelf: "flex-end",
     borderTopWidth: 0,
+    flexShrink: 0,
     paddingTop: 0,
+    width: 56,
+  },
+  projectTreeNavCollapsed: {
+    alignItems: "center",
+    gap: 7,
+    width: 56,
+  },
+  leftDrawerHandle: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    backgroundColor: "#1b3026",
+    borderColor: "#30483b",
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 56,
+    width: 56,
   },
   railButton: {
     alignItems: "center",
@@ -3341,9 +3604,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: 8,
-    minHeight: 40,
+    minHeight: 48,
     paddingHorizontal: 10,
     paddingVertical: 9,
+  },
+  railButtonCollapsed: {
+    justifyContent: "center",
+    paddingHorizontal: 0,
+    width: 48,
   },
   railButtonActive: {
     backgroundColor: "#2f6f5b",
@@ -3368,7 +3636,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
     paddingHorizontal: 11,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    minHeight: 44,
   },
   smallActionButtonDisabled: {
     opacity: 0.45,
@@ -3435,6 +3704,28 @@ const styles = StyleSheet.create({
   contentCompact: {
     padding: 10,
   },
+  contentConsole: {
+    flex: 1,
+    flexGrow: 1,
+    minHeight: 0,
+    padding: 0,
+  },
+  consoleShell: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 0,
+    overflow: "hidden",
+    padding: 10,
+    width: "100%",
+  },
+  consoleShellCompact: {
+    gap: 8,
+    padding: 8,
+  },
+  consoleShellRightCollapsed: {
+    gap: 8,
+  },
   layoutGrid: {
     alignItems: "stretch",
     flexDirection: "row",
@@ -3446,61 +3737,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   mapConsoleFrame: {
-    flexBasis: 620,
-    flexGrow: 1,
-    flexShrink: 1,
+    flex: 1,
     gap: 10,
+    minHeight: 0,
     minWidth: 0,
-  },
-  designActionHud: {
-    alignItems: "center",
-    backgroundColor: "#fbfcf8",
-    borderColor: "#c8d6cc",
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 7,
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  designHudButton: {
-    alignItems: "center",
-    backgroundColor: "#eef4ef",
-    borderColor: "#cbd8ce",
-    borderRadius: 8,
-    borderWidth: 1,
-    flexBasis: 74,
-    flexGrow: 1,
-    gap: 4,
-    justifyContent: "center",
-    maxWidth: 104,
-    minHeight: 52,
-    minWidth: 66,
-    paddingHorizontal: 7,
-    paddingVertical: 7,
-  },
-  designHudButtonActive: {
-    backgroundColor: "#173428",
-    borderColor: "#173428",
-  },
-  designHudButtonText: {
-    color: "#173428",
-    fontSize: 10,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  designHudButtonTextActive: {
-    color: "#ffffff",
-  },
-  designHudNotice: {
-    color: "#7a4a12",
-    flexBasis: "100%",
-    fontSize: 11,
-    fontWeight: "900",
-    lineHeight: 15,
-    textAlign: "center",
   },
   sidePanel: {
     backgroundColor: "#fbfcf8",
@@ -3517,6 +3757,73 @@ const styles = StyleSheet.create({
   sidePanelCompact: {
     flexBasis: "100%",
     width: "100%",
+  },
+  inspectorDrawer: {
+    backgroundColor: "#fbfcf8",
+    borderColor: "#d8ded6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexShrink: 0,
+    minHeight: 0,
+    overflow: "hidden",
+    width: 360,
+  },
+  inspectorDrawerCollapsed: {
+    backgroundColor: "#13211b",
+    borderColor: "#26392f",
+    width: 56,
+  },
+  inspectorDrawerHandle: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    backgroundColor: "#1b3026",
+    justifyContent: "center",
+    minHeight: 56,
+    width: 56,
+  },
+  inspectorDrawerBody: {
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
+  },
+  inspectorTabs: {
+    borderBottomColor: "#d8ded6",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    padding: 10,
+  },
+  inspectorTab: {
+    backgroundColor: "#eef4ef",
+    borderColor: "#cbd8ce",
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  inspectorTabActive: {
+    backgroundColor: "#254234",
+    borderColor: "#254234",
+  },
+  inspectorTabText: {
+    color: "#254234",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  inspectorTabTextActive: {
+    color: "#ffffff",
+  },
+  inspectorScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  inspectorContent: {
+    gap: 14,
+    padding: 14,
+    paddingBottom: 20,
   },
   dashboard: {
     gap: 14,

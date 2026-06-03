@@ -14,7 +14,7 @@ Create a CPLayout-local expert-agent panel skill that coordinates source-backed 
 | --- | --- | --- | --- |
 | LOCAL-001 | `AGENTS.md` | 2026-05-19 | Confirms CPLayout repository shape, offline-first/no-cost constraints, projected/local `XY` canonical geometry, repo-local skill usage, subagent boundary, and validation requirements. Does not prove runtime behavior. |
 | LOCAL-002 | `git status --short` | 2026-05-19 | Confirms pre-existing dirty work in mobile, core, geometry, and map-adapter files before this skill/doc pass. These files were treated as user or prior-agent work and were not modified. |
-| LOCAL-003 | `.codex/config.toml` | 2026-05-19 | Originally recorded the project-local model and reasoning settings for expert-panel research. The current repo default is xhigh for normal and plan-mode reasoning. Does not prove a fresh session has loaded newly created skills. |
+| LOCAL-003 | `.codex/config.toml` | 2026-05-19, refreshed 2026-06-03 | Originally recorded the project-local model and reasoning settings for expert-panel research. Current repo policy selects reasoning per task in `AGENTS.md` instead of pinning `model_reasoning_effort` or `plan_mode_reasoning_effort` project-wide. Does not prove a fresh session has loaded newly created skills or changed its already-running model settings. |
 | LOCAL-004 | `codex --version` | 2026-05-19 | Confirms active local CLI reports `codex-cli 0.130.0`. |
 | LOCAL-005 | `docs/cplayout-decision-complete-improvement-plan.md` | 2026-05-19 | Confirms existing CPLayout expert-panel product/process direction and native/web gate language. Some external-source references in that document are not revalidated by this note unless listed below. |
 

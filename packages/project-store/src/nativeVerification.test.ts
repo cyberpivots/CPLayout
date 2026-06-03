@@ -108,4 +108,15 @@ assert.throws(
   /tile_scheme/,
 );
 
+assert.throws(
+  () => parseCompleteAndroidNativeVerificationReport({
+    ...completed,
+    sqlite: {
+      ...completed.sqlite,
+      mapPackageColumns: ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS.filter((column) => column !== "imagery_provenance_json"),
+    },
+  }),
+  /imagery_provenance_json/,
+);
+
 console.log("native verification tests passed");

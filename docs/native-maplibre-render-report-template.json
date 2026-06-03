@@ -19,8 +19,16 @@
   },
   "tileSource": {
     "tileSourceKind": "tilejson_or_template",
+    "tileContentType": "vector",
+    "sourceComponent": "VectorSource",
     "tileJsonUrl": "",
     "tileUrlTemplates": [],
+    "sourceLayers": {
+      "roads": "",
+      "roadLabels": "",
+      "borders": "",
+      "places": ""
+    },
     "attribution": ""
   },
   "screenshot": {
@@ -36,5 +44,9 @@
     "canonicalGeometryMutation": false,
     "networkRequired": false
   },
-  "notes": "Set status to pass only after a built native app renders a local TileJSON or tile URL template source on device/emulator and the screenshot hash plus pixel metrics are recorded. This template does not prove raw PMTiles/MBTiles native archive rendering."
+  "tileServer": {
+    "tileJsonRequests": 0,
+    "tileRequests": 0
+  },
+  "notes": "Set status to pass only after a built native app renders a local vector TileJSON or tile URL template source through MapLibre React Native VectorSource on device/emulator, the local tile server records tileRequests greater than zero, and the screenshot hash plus pixel metrics are recorded. This template does not prove raw PMTiles/MBTiles native archive rendering."
 }

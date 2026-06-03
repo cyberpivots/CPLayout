@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-import { REFERENCE_OVERLAY_SCHEMAS } from "./settings";
+import { ImageryProvenanceSchema } from "./layoutEvidence";
+import { REFERENCE_OVERLAY_SCHEMAS, resolveOnlineImageryProvider } from "./settings";
+import type { AerialImageryPreferences, OnlineImageryPreferences, OnlineImageryProvider, OnlineImageryProviderId } from "./settings";
 import type { MapPackageManifest, TileContentType } from "./types";
 
 export const TILE_CONTENT_TYPES = ["raster", "vector"] as const;
@@ -37,6 +39,7 @@ export const MapPackageManifestSchema = z.object({
   tileJsonUrl: z.string().min(1).optional(),
   tileUrlTemplates: z.array(z.string().min(1)).default([]),
   vectorOverlay: VectorOverlayMetadataSchema.optional(),
+  imageryProvenance: ImageryProvenanceSchema.optional(),
   checksumSha256: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
   installStatus: z.enum(TILE_PACKAGE_INSTALL_STATUSES).default("metadata_only"),
   attribution: z.string().min(1),
@@ -78,7 +81,8 @@ export interface MapLibreTileSourceDescriptor {
   attribution: string;
 }
 
-export type TileRuntimeTarget = "svg_mvp" | "web_maplibre_gl_js" | "native_maplibre_rn";
+export type TileRuntimeTarget = "svg_mvp" | "web_maplibre_gl_js" | "native_maplibre_rn" | "android_maplibre_rn" | "ios_maplibre_rn";
+export type TileSourceReadinessKind = "generated_tilejson_or_template" | "raw_pmtiles_archive" | "raw_mbtiles_archive" | "raw_tile_archive";
 
 export interface TilePackageReadiness {
   target: TileRuntimeTarget;
@@ -86,6 +90,39 @@ export interface TilePackageReadiness {
   requiresAdapter: boolean;
   reason: string;
   source?: MapLibreTileSourceDescriptor;
+  sourceKind?: TileSourceReadinessKind;
+}
+
+export interface AerialImageryResolution {
+  status: "off" | "missing_source" | "missing_package" | "ambiguous_source" | "unavailable" | "ready";
+  canRender: boolean;
+  reason: string;
+  mode: AerialImageryPreferences["mode"];
+  autoApplied: boolean;
+  sourceKind: "none" | "local_raster";
+  packageId?: string;
+  packageName?: string;
+  source?: MapLibreTileSourceDescriptor;
+  attribution?: string;
+  licenseText?: string;
+  imageryProvenance?: MapPackageManifest["imageryProvenance"];
+}
+
+export interface AerialImageryCandidate {
+  packageId: string;
+  packageName: string;
+  attribution: string;
+  licenseText: string;
+  imageryProvenance?: MapPackageManifest["imageryProvenance"];
+}
+
+export interface AerialReferenceImageryResolution {
+  canRender: boolean;
+  reason: string;
+  sourceKind: "none" | "local_raster" | "online_provider";
+  localAerial: AerialImageryResolution;
+  onlineProvider?: OnlineImageryProvider;
+  autoFallback: boolean;
 }
 
 export function validateMapPackageManifest(input: unknown): MapPackageManifest {
@@ -128,6 +165,15 @@ export function describeTilePackageReadiness(
   }
 
   const tileUrls = tileSourceUrls(parsed);
+  if (tileUrls.some(isLogicalMapPackageUrl)) {
+    return {
+      target,
+      canRender: false,
+      requiresAdapter: false,
+      reason: "Logical app:// map package URLs must be rewritten to app-readable runtime URLs before MapLibre rendering.",
+      sourceKind: "generated_tilejson_or_template",
+    };
+  }
   if (tileUrls.length > 0 && !tileUrls.every(isLocalTileSourceUrl)) {
     return {
       target,
@@ -142,8 +188,9 @@ export function describeTilePackageReadiness(
       target,
       canRender: true,
       requiresAdapter: false,
-      reason: "TileJSON or tile URL templates are available for a map renderer.",
+      reason: "Generated local TileJSON or tile URL templates are available for this MapLibre renderer.",
       source,
+      sourceKind: "generated_tilejson_or_template",
     };
   }
 
@@ -154,6 +201,7 @@ export function describeTilePackageReadiness(
         canRender: false,
         requiresAdapter: false,
         reason: "PMTiles URIs must point to local app-readable files or localhost tile services before this offline-first app marks them renderable.",
+        sourceKind: "raw_pmtiles_archive",
       };
     }
     return {
@@ -170,6 +218,20 @@ export function describeTilePackageReadiness(
         scheme: parsed.tileScheme,
         attribution: parsed.attribution,
       },
+      sourceKind: "raw_pmtiles_archive",
+    };
+  }
+
+  const archiveSourceKind = rawArchiveSourceKind(parsed.packageType);
+  if (isNativeMapLibreTarget(target) && parsed.packageType === "pmtiles" && parsed.uri.startsWith("pmtiles://")) {
+    return {
+      target,
+      canRender: false,
+      requiresAdapter: true,
+      reason: isPlatformNativeMapLibreTarget(target)
+        ? "Direct local PMTiles native rendering is platform-gated until a completed Android or iOS VectorSource/PMTiles proof report exists; use generated local TileJSON or tile URL templates first."
+        : "Native MapLibre React Native consumes generated TileJSON or tile URL templates; direct PMTiles needs a platform-specific proof report before readiness is enabled.",
+      sourceKind: archiveSourceKind,
     };
   }
 
@@ -177,10 +239,192 @@ export function describeTilePackageReadiness(
     target,
     canRender: false,
     requiresAdapter: true,
-    reason: target === "native_maplibre_rn"
-      ? "Native MapLibre React Native consumes TileJSON or tile URL templates; raw PMTiles/MBTiles files need a local protocol or tile-serving adapter first."
+    reason: isNativeMapLibreTarget(target)
+      ? "Native MapLibre React Native consumes generated TileJSON or tile URL templates; raw PMTiles/MBTiles files need a local protocol, tile-serving adapter, or platform-specific proof first."
       : "Raw tile archives need a renderer-specific protocol or tile-serving adapter before display.",
+    sourceKind: archiveSourceKind,
   };
+}
+
+export function resolveAerialImagerySource({
+  mapPackages,
+  preferences,
+  target,
+}: {
+  mapPackages?: MapPackageManifest[];
+  preferences: AerialImageryPreferences;
+  target: TileRuntimeTarget;
+}): AerialImageryResolution {
+  const base = {
+    mode: preferences.mode,
+    autoApplied: false,
+    sourceKind: "none" as const,
+  };
+
+  if (preferences.mode === "off") {
+    return {
+      ...base,
+      status: "off",
+      canRender: false,
+      reason: "Aerial imagery is off.",
+    };
+  }
+
+  if (target === "svg_mvp") {
+    return {
+      ...base,
+      status: "unavailable",
+      canRender: false,
+      reason: "The SVG drawing surface does not render local aerial raster packages.",
+    };
+  }
+
+  if (preferences.mode === "manual") {
+    if (!preferences.sourcePackageId) {
+      return {
+        ...base,
+        status: "missing_source",
+        canRender: false,
+        reason: "Choose a local raster aerial package before enabling manual aerial imagery.",
+      };
+    }
+    return resolveSelectedAerialImageryPackage({
+      autoApplied: false,
+      mapPackages: mapPackages ?? [],
+      packageId: preferences.sourcePackageId,
+      target,
+    });
+  }
+
+  if (preferences.sourcePackageId) {
+    const sticky = resolveSelectedAerialImageryPackage({
+      autoApplied: true,
+      mapPackages: mapPackages ?? [],
+      packageId: preferences.sourcePackageId,
+      suppressMissingPackage: true,
+      target,
+    });
+    if (sticky.canRender) return sticky;
+  }
+
+  const candidates = listAerialImageryCandidates({
+    mapPackages,
+    target,
+  });
+  if (candidates.length === 0) {
+    return {
+      ...base,
+      status: "missing_source",
+      canRender: false,
+      reason: "No auto-eligible local raster TileJSON/template aerial package is available; use a generated offline NAIP package or the explicit USGS live preview.",
+    };
+  }
+  if (candidates.length > 1) {
+    return {
+      ...base,
+      status: "ambiguous_source",
+      canRender: false,
+      reason: "Multiple local raster aerial packages are available; choose one manually to make the aerial layer deterministic.",
+    };
+  }
+
+  return resolveSelectedAerialImageryPackage({
+    autoApplied: true,
+    mapPackages: mapPackages ?? [],
+    packageId: candidates[0].packageId,
+    target,
+  });
+}
+
+export function resolveAerialReferenceImagerySource({
+  autoFallbackProviderId = "usgs_imagery_only",
+  mapPackages,
+  onlineImagery,
+  preferences,
+  target,
+}: {
+  autoFallbackProviderId?: OnlineImageryProviderId | null;
+  mapPackages?: MapPackageManifest[];
+  onlineImagery: OnlineImageryPreferences;
+  preferences: AerialImageryPreferences;
+  target: TileRuntimeTarget;
+}): AerialReferenceImageryResolution {
+  const localAerial = resolveAerialImagerySource({ mapPackages, preferences, target });
+  if (localAerial.canRender) {
+    return {
+      canRender: true,
+      reason: localAerial.reason,
+      sourceKind: "local_raster",
+      localAerial,
+      autoFallback: false,
+    };
+  }
+
+  const explicitProvider = resolveOptionalOnlineProvider(onlineImagery);
+  if (explicitProvider.provider) {
+    return {
+      canRender: true,
+      reason: `${explicitProvider.provider.name} is enabled as a connected preview. Local raster imagery remains preferred when renderable.`,
+      sourceKind: "online_provider",
+      localAerial,
+      onlineProvider: explicitProvider.provider,
+      autoFallback: false,
+    };
+  }
+
+  if (preferences.mode === "auto" && target !== "svg_mvp" && autoFallbackProviderId) {
+    const fallbackProvider = resolveOnlineImageryProvider(autoFallbackProviderId);
+    return {
+      canRender: true,
+      reason: `No renderable local aerial package is available; ${fallbackProvider.name} is used as a connected preview fallback.`,
+      sourceKind: "online_provider",
+      localAerial,
+      onlineProvider: fallbackProvider,
+      autoFallback: true,
+    };
+  }
+
+  return {
+    canRender: false,
+    reason: explicitProvider.error ?? localAerial.reason,
+    sourceKind: "none",
+    localAerial,
+    autoFallback: false,
+  };
+}
+
+export function listAerialImageryCandidates({
+  mapPackages,
+  target,
+}: {
+  mapPackages?: MapPackageManifest[];
+  target: TileRuntimeTarget;
+}): AerialImageryCandidate[] {
+  if (target === "svg_mvp") return [];
+  return (mapPackages ?? []).flatMap((mapPackage) => {
+    const resolved = resolveSelectedAerialImageryPackage({
+      autoApplied: true,
+      mapPackages: [mapPackage],
+      packageId: mapPackage.id,
+      target,
+    });
+    if (!resolved.canRender) return [];
+    return [{
+      packageId: mapPackage.id,
+      packageName: mapPackage.name,
+      attribution: mapPackage.attribution,
+      licenseText: mapPackage.licenseText,
+      imageryProvenance: mapPackage.imageryProvenance,
+    }];
+  });
+}
+
+export function isNativeMapLibreTarget(target: TileRuntimeTarget): boolean {
+  return target === "native_maplibre_rn" || target === "android_maplibre_rn" || target === "ios_maplibre_rn";
+}
+
+export function isPlatformNativeMapLibreTarget(target: TileRuntimeTarget): boolean {
+  return target === "android_maplibre_rn" || target === "ios_maplibre_rn";
 }
 
 function tileSourceUrls(manifest: MapPackageManifest): string[] {
@@ -188,6 +432,140 @@ function tileSourceUrls(manifest: MapPackageManifest): string[] {
     manifest.tileJsonUrl,
     ...(manifest.tileUrlTemplates ?? []),
   ].filter((url): url is string => typeof url === "string" && url.trim().length > 0);
+}
+
+function rawArchiveSourceKind(packageType: MapPackageManifest["packageType"]): TileSourceReadinessKind {
+  if (packageType === "pmtiles") return "raw_pmtiles_archive";
+  if (packageType === "mbtiles") return "raw_mbtiles_archive";
+  return "raw_tile_archive";
+}
+
+function resolveOptionalOnlineProvider(
+  onlineImagery: OnlineImageryPreferences,
+): { provider: OnlineImageryProvider | null; error?: string } {
+  if (!onlineImagery.enabled) return { provider: null };
+  try {
+    return { provider: resolveOnlineImageryProvider(onlineImagery.providerId, onlineImagery.customSource) };
+  } catch (error) {
+    return {
+      provider: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function resolveSelectedAerialImageryPackage({
+  autoApplied,
+  mapPackages,
+  packageId,
+  suppressMissingPackage = false,
+  target,
+}: {
+  autoApplied: boolean;
+  mapPackages: MapPackageManifest[];
+  packageId: string;
+  suppressMissingPackage?: boolean;
+  target: TileRuntimeTarget;
+}): AerialImageryResolution {
+  const mapPackage = mapPackages.find((candidate) => candidate.id === packageId);
+  const base = {
+    mode: autoApplied ? "auto" as const : "manual" as const,
+    autoApplied,
+    sourceKind: "none" as const,
+  };
+
+  if (!mapPackage) {
+    return {
+      ...base,
+      status: "missing_package",
+      canRender: false,
+      packageId,
+      reason: suppressMissingPackage
+        ? "The sticky aerial imagery package is not present in this project."
+        : "The selected aerial imagery package is not present in this project.",
+    };
+  }
+
+  const parsed = validateMapPackageManifest(mapPackage);
+  const metadata = packageMetadata(parsed);
+  if (parsed.tileContentType !== "raster") {
+    return {
+      ...base,
+      ...metadata,
+      status: "unavailable",
+      canRender: false,
+      reason: "Aerial imagery requires a local raster package; vector packages are handled by reference overlays.",
+    };
+  }
+
+  if (parsed.installStatus !== "available" && parsed.installStatus !== "indexed") {
+    return {
+      ...base,
+      ...metadata,
+      status: "unavailable",
+      canRender: false,
+      reason: "Aerial imagery package metadata is present, but the local raster package is not installed or indexed.",
+    };
+  }
+
+  if (parsed.imageryProvenance?.keyedService !== undefined && parsed.imageryProvenance.keyedService !== false) {
+    return {
+      ...base,
+      ...metadata,
+      status: "unavailable",
+      canRender: false,
+      reason: "Aerial imagery package provenance cannot depend on keyed imagery services.",
+    };
+  }
+
+  const readiness = describeTilePackageReadiness(parsed, target);
+  if (!readiness.canRender || !readiness.source || readiness.sourceKind !== "generated_tilejson_or_template") {
+    return {
+      ...base,
+      ...metadata,
+      status: "unavailable",
+      canRender: false,
+      reason: readiness.reason,
+    };
+  }
+
+  if (readiness.source.type !== "raster") {
+    return {
+      ...base,
+      ...metadata,
+      status: "unavailable",
+      canRender: false,
+      reason: "Aerial imagery requires a raster MapLibre source.",
+    };
+  }
+
+  return {
+    ...base,
+    ...metadata,
+    sourceKind: "local_raster",
+    status: "ready",
+    canRender: true,
+    source: readiness.source,
+    reason: autoApplied
+      ? `Local raster aerial imagery package was auto-applied in the ${aerialImageryTargetLabel(target)}.`
+      : `Local raster aerial imagery package is renderable in the ${aerialImageryTargetLabel(target)}.`,
+  };
+}
+
+function packageMetadata(mapPackage: MapPackageManifest): Pick<AerialImageryResolution, "packageId" | "packageName" | "attribution" | "licenseText" | "imageryProvenance"> {
+  return {
+    packageId: mapPackage.id,
+    packageName: mapPackage.name,
+    attribution: mapPackage.attribution,
+    licenseText: mapPackage.licenseText,
+    imageryProvenance: mapPackage.imageryProvenance,
+  };
+}
+
+function aerialImageryTargetLabel(target: TileRuntimeTarget): string {
+  if (target === "web_maplibre_gl_js") return "browser MapLibre surface";
+  if (isNativeMapLibreTarget(target)) return "native MapLibre surface";
+  return "selected map surface";
 }
 
 function isLocalTileSourceUrl(value: string): boolean {
@@ -214,4 +592,8 @@ function isLocalTileSourceUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isLogicalMapPackageUrl(value: string): boolean {
+  return value.trim().toLowerCase().startsWith("app://map-packages/");
 }

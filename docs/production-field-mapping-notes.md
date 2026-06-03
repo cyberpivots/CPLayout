@@ -12,7 +12,7 @@
   Source: https://proj4js.org/
 - Offline map policy: OpenStreetMap's public raster tile service does not permit offline bulk downloading; use self-hosted tiles or providers/packages whose terms explicitly allow offline use.
   Source: https://operations.osmfoundation.org/policies/tiles/
-- Advanced map renderer lane: MapLibre React Native is installed/configured in this repo. The generated TileJSON/tile-template path has Android device proof, but iOS and raw PMTiles/MBTiles still need their own adapters and verification before production claims. Production apps must provide their own style/tiles.
+- Advanced map renderer lane: MapLibre React Native is installed/configured in this repo. Generated TileJSON/tile-template descriptors are the supported native source shape, but each native claim must be tied to a completed device report. Imported local aerial raster packages, iOS, and raw PMTiles/MBTiles still need their own adapters or proof before production claims. Production apps must provide their own style/tiles.
   Source: https://maplibre.org/maplibre-react-native/docs/setup/getting-started/
 - Tile package formats: PMTiles is a single-file tile archive; MBTiles stores tiled map data in SQLite and is limited to Spherical Mercator presentation.
   Sources: https://github.com/protomaps/PMTiles/blob/main/spec/v3/spec.md, https://github.com/mapbox/mbtiles-spec
@@ -30,12 +30,14 @@
 - ZIP packages include `manifest.json`, `project.json`, scenario GeoJSON, Google Earth KML, survey CSV, metrics CSV, and map package metadata CSV. Map package binaries are referenced by metadata; they are not embedded as canonical project geometry.
 - Google Earth KML/KMZ import/export is implemented as GIS exchange. KML/KMZ imports are reviewed before apply, converted from WGS84 lon/lat into the project CRS, and do not make WGS84 the canonical project geometry.
 - Map package manifests now separate archive type from tile content type, tile scheme, TileJSON URL, tile URL templates, checksum, install status, attribution, and license.
+- Aerial imagery preferences now separate offline local package selection from session-only live imagery preview. NAIP-style package provenance is stored as metadata; large tile binaries are imported map packages rather than canonical project geometry.
 - The project files UI reports the active persistence backend, runtime, schema version, and project count so compile-ready native code is not confused with device-verified runtime behavior.
 - The SVG drawing workspace supports draft vertex capture while keeping pan/zoom as viewport-only state.
 
 ## Deferred Work
 
 - Raw native PMTiles/MBTiles protocol adapters and iOS MapLibre runtime verification.
+- Android imported local aerial raster package rendering through MapLibre RN `RasterSource`.
 - Production web SQLite, because Expo SQLite web support is alpha and needs WASM plus COOP/COEP headers.
 - Native large-file import workflows beyond user-picked ZIP packages.
 - Advanced Google Earth constructs including NetworkLinks, overlays, 3D models, tours, embedded KMZ assets, style fidelity, and altitude/extrusion semantics as engineering data.

@@ -18,12 +18,12 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 - For Expo development-client runs, start Metro with the same proof environment and pass the dev-client URL to the proof runner with `--dev-client-url` or `CPLAYOUT_EXPO_DEV_CLIENT_URL`. Redirect Metro logs during automation so ANSI progress output does not flood WSL sessions.
 - Use `docs/android-native-verification-report-template.json` as the checked-in report shape. Runtime reports are intentionally ignored by Git unless a specific report is promoted intentionally.
 
-Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) passed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` for Expo SQLite save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and schema migration evidence. This is Android proof only; iOS and raw PMTiles/MBTiles native rendering still require their own reports.
+Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) passed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` for Expo SQLite save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and schema migration evidence through schema v8. This is Android proof only; schema v9 imagery provenance, imported local aerial raster packages, iOS, Android vector MapLibre after the new `VectorSource` harness, and raw PMTiles/MBTiles native rendering still require their own reports.
 
 ## SQLite Project Store
 
 1. Open the app and navigate to `Files`.
-2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v8`.
+2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v9`.
 3. Save the sample project.
 4. Close and relaunch the app.
 5. Refresh the project list and open the saved project.
@@ -41,20 +41,42 @@ Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 
 
 ## Migration Evidence
 
-- `schema_migrations` contains ids `1` through `8`.
-- `PRAGMA user_version` returns `8`.
-- `map_packages` has the tile metadata columns from migrations `3` and `8`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `vector_overlay_json`, `checksum_sha256`, and `install_status`.
+- `schema_migrations` contains ids `1` through `9`.
+- `PRAGMA user_version` returns `9`.
+- `map_packages` has the tile metadata columns from migrations `3`, `8`, and `9`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `vector_overlay_json`, `imagery_provenance_json`, `checksum_sha256`, and `install_status`.
 - The v4 project-adjacent evidence tables exist: `layout_evidence`, `model_recommendations`, and `layout_decisions`.
 - Geometry rows and vertices are populated after save.
 
-## Native MapLibre Tile Template Proof
+## Native MapLibre Vector Tile Template Proof
 
 1. Build/install the native development app with `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run android`.
 2. Confirm `adb devices -l` shows the target device/emulator in `device` state.
 3. Start the Expo dev server with the proof environment, for example `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run start -w @cplayout/mobile -- --dev-client --port 8082 --clear`.
 4. Run `npm run verify:native-maplibre -- --dev-client-url "exp+center-pivot-layout://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082" --wait-ms 20000`.
-5. Validate that `reports/native-maplibre/latest.json` has `status: "pass"`, `tileSource.tileSourceKind: "tilejson_or_template"`, a local `127.0.0.1` tile URL template, screenshot SHA-256, positive dimensions, nonblank pixel ratio, and gray variance.
-6. Do not treat this as raw PMTiles/MBTiles native rendering proof; it proves the generated TileJSON/template adapter path only.
+5. Validate that `reports/native-maplibre/latest.json` has `status: "pass"`, `tileSource.tileSourceKind: "tilejson_or_template"`, `tileSource.tileContentType: "vector"`, `tileSource.sourceComponent: "VectorSource"`, source layers for roads, borders, labels, and places, a local `127.0.0.1` `.pbf` tile URL template, `tileServer.tileRequests` greater than zero, screenshot SHA-256, positive dimensions, nonblank pixel ratio, and gray variance.
+6. Confirm the app screenshot shows nonblank rendered map content from the vector fixture and not only a launched app shell.
+7. Do not treat this as raw PMTiles/MBTiles native rendering proof; it proves the generated vector TileJSON/template adapter path only.
+
+## Android Free Aerial Imagery Package Proof
+
+1. Build/install a native development client with `EXPO_PUBLIC_CPLAYOUT_NATIVE_AERIAL_REFERENCE=1`; Expo Go is not valid for this proof.
+2. Confirm `adb devices -l` shows the target Samsung SM-P613 (`R52W20BK7XH`) or another recorded device/emulator in `device` state.
+3. In Files, use `Import Map Package` to import a generated `cplayout-map-package-v1.zip` package that contains `manifest.json`, optional `tilejson.json`, and concrete `tiles/{z}/{x}/{y}.png` entries. The manifest URLs must be logical `app://map-packages/<id>/...` values before import.
+4. Confirm the native installer extracts files under Expo FileSystem document storage, stores logical metadata in the project, and rewrites runtime source URLs to app-readable `file://` templates before MapLibre receives them.
+5. Select `Auto local` or `Manual local` aerial imagery. Confirm the selected package attribution and license text are visible.
+6. Capture portrait and landscape screenshots with `adb exec-out screencap -p`.
+7. Record screenshot SHA-256, dimensions, nonblank pixel ratio, selected source, attribution text, device identity, Android version, app build type, and whether network was disabled for the local package run.
+8. Save the project before and after pan/zoom/layer-toggle checks and confirm projected/local `XY` vertices did not change.
+9. Run a separate connected-preview check for USGS TNM ImageryOnly only when network is enabled, and label it `connected-preview` rather than offline proof.
+10. Do not treat this as raw PMTiles/MBTiles rendering proof; it proves generated local raster TileJSON/template packages only.
+
+## Android Tablet Console Layout Proof
+
+1. Run the app on the target tablet in portrait and landscape.
+2. Capture app screenshots after opening a sample design on the map route.
+3. Confirm the map route has no page-level scroll on tablet dimensions, left and right drawer handles remain visible, and the bottom design HUD sits above Android system navigation.
+4. Record screenshot paths, device model, orientation, and whether the proof used `adb exec-out screencap`, UIAutomator bounds, or manual screenshot capture.
+5. Do not report Android tablet console runtime proof until this evidence exists. Web Playwright tablet screenshots are browser proof only.
 
 ## Pass Criteria
 

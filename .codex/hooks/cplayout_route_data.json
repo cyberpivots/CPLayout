@@ -1,10 +1,11 @@
 {
   "maxRoutes": 3,
   "minScore": 10,
-  "defaultComplexityBand": "xhigh",
-  "defaultReasoningEffort": "xhigh",
+  "unmatchedComplexity": "complexity analysis required before mutation",
+  "unmatchedReasoningEffort": "select reasoning effort after task complexity analysis",
   "baseValidationExpectations": [
     "Re-read AGENTS.md and run git status --short before non-trivial work.",
+    "Record complexity band, selected reasoning effort, and subagent decision before mutation.",
     "Run npm run validate:skills for hook, skill, agent, or record changes.",
     "Run git diff --check and npm audit before reporting success."
   ],
@@ -58,7 +59,7 @@
       "skill": "cplayout-interface-development-agent",
       "agent": "cplayout_interface_developer",
       "complexityBand": "high",
-      "reasoningEffort": "xhigh",
+      "reasoningEffort": "high",
       "spawnPolicy": "required",
       "note": "Preserve offline-first Expo boundaries and run visible UI proof when screens change.",
       "routingReason": "Expo, React Native, web, screen, component, or visible workflow work needs interface verification.",

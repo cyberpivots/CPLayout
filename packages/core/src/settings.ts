@@ -18,6 +18,8 @@ export const REFERENCE_OVERLAY_SCHEMAS = ["cplayout_reference_v1", "openmaptiles
 export type ReferenceOverlaySchema = typeof REFERENCE_OVERLAY_SCHEMAS[number];
 export const REFERENCE_OVERLAY_MODES = ["auto", "manual", "off"] as const;
 export type ReferenceOverlayMode = typeof REFERENCE_OVERLAY_MODES[number];
+export const AERIAL_IMAGERY_MODES = ["auto", "manual", "off"] as const;
+export type AerialImageryMode = typeof AERIAL_IMAGERY_MODES[number];
 
 export const MAPPING_WORKFLOW_MODES = ["design", "layout"] as const;
 export type MappingWorkflowMode = typeof MAPPING_WORKFLOW_MODES[number];
@@ -64,6 +66,11 @@ export interface ReferenceOverlayPreferences {
   schema: ReferenceOverlaySchema;
 }
 
+export interface AerialImageryPreferences {
+  mode: AerialImageryMode;
+  sourcePackageId?: string;
+}
+
 export interface OnlineImageryProvider {
   id: OnlineImageryProviderId;
   name: string;
@@ -92,6 +99,7 @@ export interface AppSettings {
   drawing: DrawingSettings;
   gpsQuality: GpsQualityThresholds;
   offlineMaps: OfflineMapPreferences;
+  aerialImagery: AerialImageryPreferences;
   onlineImagery: OnlineImageryPreferences;
   referenceOverlay: ReferenceOverlayPreferences;
 }
@@ -112,6 +120,7 @@ const OfflinePackageTypeSchema = z.enum(OFFLINE_PACKAGE_TYPES);
 const OnlineImageryProviderIdSchema = z.enum(ONLINE_IMAGERY_PROVIDERS);
 const ReferenceOverlaySchemaIdSchema = z.enum(REFERENCE_OVERLAY_SCHEMAS);
 const ReferenceOverlayModeSchema = z.enum(REFERENCE_OVERLAY_MODES);
+const AerialImageryModeSchema = z.enum(AERIAL_IMAGERY_MODES);
 const TileSchemeSchema = z.enum(["xyz", "tms"]);
 const MinimumGpsFixTypeSchema = z.enum(GPS_FIX_ORDER);
 const OptionalUrlSchema = z.preprocess(
@@ -204,6 +213,11 @@ export const ReferenceOverlayPreferencesSchema = z.preprocess(
   }),
 );
 
+export const AerialImageryPreferencesSchema = z.object({
+  mode: AerialImageryModeSchema.default("auto"),
+  sourcePackageId: z.string().trim().min(1).optional(),
+}).default({ mode: "auto" });
+
 export const AppSettingsSchema = z.object({
   unitSystem: UnitSystemSchema,
   coordinateDisplayFormat: CoordinateDisplayFormatSchema,
@@ -213,6 +227,7 @@ export const AppSettingsSchema = z.object({
   drawing: DrawingSettingsSchema,
   gpsQuality: GpsQualityThresholdsSchema,
   offlineMaps: OfflineMapPreferencesSchema,
+  aerialImagery: AerialImageryPreferencesSchema,
   onlineImagery: OnlineImageryPreferencesSchema,
   referenceOverlay: ReferenceOverlayPreferencesSchema,
 });
@@ -247,6 +262,9 @@ export function defaultAppSettings(): AppSettings {
       requireAttribution: true,
       allowNetworkTiles: false,
       packageDirectory: "offline-map-packages",
+    },
+    aerialImagery: {
+      mode: "auto",
     },
     onlineImagery: {
       enabled: false,
@@ -289,6 +307,10 @@ export function projectSettingsFromApp(settings: AppSettings): ProjectSettings {
       preferredPackageType: settings.offlineMaps.preferredPackageType,
       requireAttribution: true,
       allowNetworkTiles: false,
+    },
+    aerialImagery: {
+      mode: settings.aerialImagery.mode,
+      sourcePackageId: settings.aerialImagery.sourcePackageId,
     },
   });
 }

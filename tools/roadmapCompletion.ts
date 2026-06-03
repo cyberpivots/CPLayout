@@ -734,8 +734,11 @@ export function validateNativeMapLibreReport(reportPath: string): {
     app?: { packageName?: unknown; versionName?: unknown; versionCode?: unknown; buildType?: unknown; commit?: unknown };
     tileSource?: {
       tileSourceKind?: unknown;
+      tileContentType?: unknown;
+      sourceComponent?: unknown;
       tileJsonUrl?: unknown;
       tileUrlTemplates?: unknown;
+      sourceLayers?: unknown;
       attribution?: unknown;
     };
     screenshot?: {
@@ -750,6 +753,10 @@ export function validateNativeMapLibreReport(reportPath: string): {
       noRawPmtilesMbtilesNativeProof?: unknown;
       canonicalGeometryMutation?: unknown;
       networkRequired?: unknown;
+    };
+    tileServer?: {
+      tileJsonRequests?: unknown;
+      tileRequests?: unknown;
     };
   };
   if (report.reportSchemaVersion !== 1) errors.push("reportSchemaVersion must be 1");
@@ -770,6 +777,21 @@ export function validateNativeMapLibreReport(reportPath: string): {
   }
   if (report.tileSource?.tileSourceKind !== "tilejson_or_template") {
     errors.push("tileSource.tileSourceKind must be tilejson_or_template");
+  }
+  if (report.tileSource?.tileContentType !== "vector") {
+    errors.push("tileSource.tileContentType must be vector");
+  }
+  if (report.tileSource?.sourceComponent !== "VectorSource") {
+    errors.push("tileSource.sourceComponent must be VectorSource");
+  }
+  const sourceLayers = report.tileSource?.sourceLayers as { roads?: unknown; roadLabels?: unknown; borders?: unknown; places?: unknown } | undefined;
+  for (const [label, value] of Object.entries({
+    roads: sourceLayers?.roads,
+    roadLabels: sourceLayers?.roadLabels,
+    borders: sourceLayers?.borders,
+    places: sourceLayers?.places,
+  })) {
+    if (typeof value !== "string" || value.trim().length === 0) errors.push(`tileSource.sourceLayers.${label} is required`);
   }
   const tileUrls = [
     typeof report.tileSource?.tileJsonUrl === "string" ? report.tileSource.tileJsonUrl : undefined,
@@ -811,6 +833,13 @@ export function validateNativeMapLibreReport(reportPath: string): {
   if (report.boundaries?.networkRequired !== false) {
     errors.push("boundaries.networkRequired must be false");
   }
+  if (typeof report.tileServer?.tileRequests !== "number" || report.tileServer.tileRequests <= 0) {
+    errors.push("tileServer.tileRequests must be greater than zero");
+  }
+  if (report.tileServer?.tileJsonRequests !== undefined
+    && (typeof report.tileServer.tileJsonRequests !== "number" || report.tileServer.tileJsonRequests < 0)) {
+    errors.push("tileServer.tileJsonRequests must be a nonnegative number when present");
+  }
 
   return {
     ok: errors.length === 0,
@@ -821,6 +850,7 @@ export function validateNativeMapLibreReport(reportPath: string): {
       tileSource: report.tileSource,
       screenshot: report.screenshot,
       boundaries: report.boundaries,
+      tileServer: report.tileServer,
     },
   };
 }

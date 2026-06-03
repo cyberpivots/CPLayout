@@ -16,13 +16,16 @@ Use imagery, KML/KMZ, OCR, CV, and Google Earth Pro output as evidence only. Ope
 3. Classify each input as canonical project geometry, operator evidence, CV candidate, visual interchange metadata, or render proof.
 4. For field-boundary or pivot-layout work, require a clear operator-defined boundary before optimization. If a boundary is missing, report the blocker instead of inventing one.
 5. Prefer local, no-cost, offline methods: local companion tools, exported KML/KMZ, local screenshots, local OCR/CV, and source-backed algorithms.
-6. Hand off geometry scoring questions to `$cplayout-center-pivot-design-agent`, UI presentation to `$cplayout-interface-development-agent`, and persistence/archive impacts to `$cplayout-database-agent`.
+6. For free U.S. aerial imagery, prefer offline NAIP-style raster packages generated outside the app with GDAL or equivalent preprocessing, then imported as `cplayout-map-package-v1.zip` with TileJSON/templates, visible attribution, and provenance.
+7. Treat USGS TNM ImageryOnly as an optional connected preview only; do not use live public tiles as a bulk cache or offline package source.
+8. Hand off geometry scoring questions to `$cplayout-center-pivot-design-agent`, UI presentation to `$cplayout-interface-development-agent`, and persistence/archive impacts to `$cplayout-database-agent`.
 
 ## Evidence Rules
 
 - Keep KML/KMZ `Style`, `LineStyle`, `PolyStyle`, `IconStyle`, `LabelStyle`, and `styleUrl` visual-only.
 - Do not claim Google Earth render success from exporter correctness, process launch, or a partial window capture.
 - For visual-fidelity work, non-black rendered map evidence remains a hard acceptance gate.
+- Do not claim Android aerial package runtime proof until a development client renders an imported local raster package through MapLibre RN with screenshot, pixel, attribution, source, and vertex-stability evidence.
 - Record artifact paths, SHA-256 hashes when available, source URLs, and proof caveats.
 - If Google Earth automation runs, follow the cleanup checklist in `AGENTS.md` unless `-LeaveGoogleEarthOpen` is explicitly selected and reported.
 
@@ -30,6 +33,7 @@ Use imagery, KML/KMZ, OCR, CV, and Google Earth Pro output as evidence only. Ope
 
 - No paid imagery, Google Maps, paid Mapbox, Esri paid services, hidden keys, or cloud backends.
 - No React Native claims that Python/GDAL/RTKLIB runs in the app runtime.
+- No public live tile endpoint bulk caching and no raw PMTiles/MBTiles native rendering claim without a local protocol, conversion, or tile-serving adapter plus device proof.
 - No automatic canonical projected-XY mutation from CV, KML style, Google Earth imagery, or operator scoring evidence.
 
 ## Outputs

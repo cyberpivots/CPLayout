@@ -70,6 +70,35 @@ assert.equal(autoReady.autoApplied, true);
 assert.equal(autoReady.packageId, vectorPackage.id);
 assert.equal(autoReady.sourceKind, "vector");
 
+const vectorTemplatePackage: MapPackageManifest = {
+  ...vectorPackage,
+  id: "local-reference-template",
+  name: "Local reference overlay template",
+  uri: "file:///offline/reference-template",
+  tileJsonUrl: "http://127.0.0.1:8765/reference/tilejson.json",
+  tileUrlTemplates: ["http://127.0.0.1:8765/reference/{z}/{x}/{y}.pbf"],
+};
+
+const nativeTemplateReady = resolveReferenceOverlaySource({
+  preferences: { ...defaults.referenceOverlay, mode: "manual", sourcePackageId: vectorTemplatePackage.id },
+  mapPackages: [vectorTemplatePackage],
+  target: "android_maplibre_rn",
+});
+assert.equal(nativeTemplateReady.canRender, true);
+assert.equal(nativeTemplateReady.status, "ready");
+assert.equal(nativeTemplateReady.sourceKind, "vector");
+assert.equal(nativeTemplateReady.source?.tiles?.[0], "http://127.0.0.1:8765/reference/{z}/{x}/{y}.pbf");
+assert.match(nativeTemplateReady.reason, /native MapLibre surface/);
+
+const nativeRawPmtilesBlocked = resolveReferenceOverlaySource({
+  preferences: { ...defaults.referenceOverlay, mode: "manual", sourcePackageId: vectorPackage.id },
+  mapPackages: [vectorPackage],
+  target: "android_maplibre_rn",
+});
+assert.equal(nativeRawPmtilesBlocked.canRender, false);
+assert.equal(nativeRawPmtilesBlocked.status, "unavailable");
+assert.match(nativeRawPmtilesBlocked.reason, /PMTiles|platform-gated/);
+
 const noSource = resolveReferenceOverlaySource({
   preferences: { ...defaults.referenceOverlay, mode: "auto" },
   mapPackages: [],
@@ -116,6 +145,11 @@ assert.deepEqual(listReferenceOverlayCandidates({
   mapPackages: [vectorPackage],
   target: "web_maplibre_gl_js",
 }).map((candidate) => candidate.packageId), [vectorPackage.id]);
+
+assert.deepEqual(listReferenceOverlayCandidates({
+  mapPackages: [vectorTemplatePackage],
+  target: "android_maplibre_rn",
+}).map((candidate) => candidate.packageId), [vectorTemplatePackage.id]);
 
 const unannotatedPackage: MapPackageManifest = {
   ...vectorPackage,

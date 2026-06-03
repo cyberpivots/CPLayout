@@ -1,5 +1,5 @@
 import type { ReferenceOverlayMode, ReferenceOverlayPreferences, ReferenceOverlaySchema } from "./settings";
-import { describeTilePackageReadiness, type MapLibreTileSourceDescriptor, type TileRuntimeTarget } from "./mapTilePackages";
+import { describeTilePackageReadiness, isNativeMapLibreTarget, type MapLibreTileSourceDescriptor, type TileRuntimeTarget } from "./mapTilePackages";
 import type { MapPackageManifest, VectorOverlayMetadata } from "./types";
 
 export type ReferenceOverlayLayerKey = "roads" | "borders" | "labels";
@@ -122,14 +122,12 @@ export function resolveReferenceOverlaySource({
     };
   }
 
-  if (target !== "web_maplibre_gl_js") {
+  if (target === "svg_mvp") {
     return {
       ...base,
       status: "unavailable",
       canRender: false,
-      reason: target === "native_maplibre_rn"
-        ? "Native reference overlay rendering is device-gated until a verified local vector-tile adapter exists."
-        : "The SVG drawing surface does not render local vector tile reference overlays.",
+      reason: "The SVG drawing surface does not render local vector tile reference overlays.",
     };
   }
 
@@ -170,12 +168,14 @@ export function resolveReferenceOverlaySource({
   });
 
   if (candidates.length === 0) {
-    if (allowPublicNetwork) return publicRasterReferenceOverlayResolution(preferences);
+    if (allowPublicNetwork && target === "web_maplibre_gl_js") return publicRasterReferenceOverlayResolution(preferences);
     return {
       ...base,
       status: "missing_source",
       canRender: false,
-      reason: "No auto-eligible local vector reference package is available; public no-key USGS Imagery Topo can auto-apply when live reference sources are enabled.",
+      reason: target === "web_maplibre_gl_js"
+        ? "No auto-eligible local vector reference package is available; public no-key USGS Imagery Topo can auto-apply when live reference sources are enabled."
+        : "No auto-eligible local vector TileJSON/template reference package is available for native MapLibre.",
     };
   }
 
@@ -205,7 +205,7 @@ export function listReferenceOverlayCandidates({
   mapPackages?: MapPackageManifest[];
   target: TileRuntimeTarget;
 }): ReferenceOverlayCandidate[] {
-  if (target !== "web_maplibre_gl_js") return [];
+  if (target === "svg_mvp") return [];
   return (mapPackages ?? []).flatMap((mapPackage) => {
     const overlay = validVectorOverlayMetadata(mapPackage.vectorOverlay);
     if (!overlay) return [];
@@ -365,9 +365,15 @@ function resolveSelectedReferenceOverlayPackage({
     attribution: mapPackage.attribution,
     licenseText: mapPackage.licenseText,
     reason: autoApplied
-      ? "Local vector reference overlay package was auto-applied in the browser MapLibre surface."
-      : "Local vector reference overlay package is renderable in the browser MapLibre surface.",
+      ? `Local vector reference overlay package was auto-applied in the ${referenceOverlayTargetLabel(target)}.`
+      : `Local vector reference overlay package is renderable in the ${referenceOverlayTargetLabel(target)}.`,
   };
+}
+
+function referenceOverlayTargetLabel(target: TileRuntimeTarget): string {
+  if (target === "web_maplibre_gl_js") return "browser MapLibre surface";
+  if (isNativeMapLibreTarget(target)) return "native MapLibre surface";
+  return "selected map surface";
 }
 
 function validVectorOverlayMetadata(metadata: VectorOverlayMetadata | undefined): VectorOverlayMetadata | null {

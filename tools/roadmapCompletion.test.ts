@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -114,8 +114,16 @@ writeFileSync(nativeMapLibreReportPath, JSON.stringify({
   },
   tileSource: {
     tileSourceKind: "tilejson_or_template",
+    tileContentType: "vector",
+    sourceComponent: "VectorSource",
     tileJsonUrl: "http://127.0.0.1:8765/field/tilejson.json",
-    tileUrlTemplates: ["http://127.0.0.1:8765/field/{z}/{x}/{y}.png"],
+    tileUrlTemplates: ["http://127.0.0.1:8765/field/{z}/{x}/{y}.pbf"],
+    sourceLayers: {
+      roads: "roads",
+      roadLabels: "road_labels",
+      borders: "borders",
+      places: "places",
+    },
     attribution: "Local fixture",
   },
   screenshot: {
@@ -131,7 +139,19 @@ writeFileSync(nativeMapLibreReportPath, JSON.stringify({
     canonicalGeometryMutation: false,
     networkRequired: false,
   },
+  tileServer: {
+    tileJsonRequests: 1,
+    tileRequests: 4,
+  },
 }), "utf8");
 assert.equal(validateNativeMapLibreReport(nativeMapLibreReportPath).ok, true);
+
+const missingTileServerReportPath = join(proofRoot, "native-maplibre-missing-tile-server-report.json");
+const missingTileServerReport = JSON.parse(readFileSync(nativeMapLibreReportPath, "utf8")) as { tileServer?: unknown };
+delete missingTileServerReport.tileServer;
+writeFileSync(missingTileServerReportPath, JSON.stringify(missingTileServerReport), "utf8");
+const missingTileServerValidation = validateNativeMapLibreReport(missingTileServerReportPath);
+assert.equal(missingTileServerValidation.ok, false);
+assert.match(missingTileServerValidation.errors.join("\n"), /tileServer\.tileRequests/);
 
 console.log("roadmap completion automation tests passed");

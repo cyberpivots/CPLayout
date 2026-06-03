@@ -14,6 +14,7 @@ assert.equal(parsed.wgs84Companion?.status, "projected");
 assert.equal(parsed.wgs84Companion?.coordinateSystem, "decimal_degrees");
 assert.equal(parsed.wgs84Companion?.fieldBoundary?.length, sampleProject.fieldBoundary.length);
 assert.equal(parsed.settings?.offlineMaps.allowNetworkTiles, false);
+assert.equal(parsed.settings?.aerialImagery.mode, "auto");
 assert.equal("packageDirectory" in (parsed.settings?.offlineMaps ?? {}), false);
 assert.equal("onlineImagery" in (parsed.settings ?? {}), false);
 assert.equal("referenceOverlay" in (parsed.settings ?? {}), false);
@@ -54,6 +55,10 @@ const parsedWithLocalOnlyDrafts = parseProjectDocument({
       ...sampleProject.settings?.offlineMaps,
       packageDirectory: "/local/operator/maps",
     },
+    aerialImagery: {
+      mode: "manual",
+      sourcePackageId: "local-naip-aerial",
+    },
     walkthroughProgress: {
       imagery: true,
       boundary: true,
@@ -72,6 +77,10 @@ assert.equal("onlineImagery" in (parsedWithLocalOnlyDrafts.settings ?? {}), fals
 assert.equal("referenceOverlay" in (parsedWithLocalOnlyDrafts.settings ?? {}), false);
 assert.equal("walkthroughProgress" in (parsedWithLocalOnlyDrafts.settings ?? {}), false);
 assert.equal("packageDirectory" in (parsedWithLocalOnlyDrafts.settings?.offlineMaps ?? {}), false);
+assert.deepEqual(parsedWithLocalOnlyDrafts.settings?.aerialImagery, {
+  mode: "manual",
+  sourcePackageId: "local-naip-aerial",
+});
 
 const parsedMapFeatures = parseProjectDocument({
   ...sampleProject,
@@ -139,6 +148,7 @@ const parsedLegacySettings = parseProjectDocument({
 });
 assert.equal(parsedLegacySettings.settings?.coordinateDisplayFormat, "decimal_degrees");
 assert.equal(parsedLegacySettings.settings?.mappingWorkflowMode, "design");
+assert.equal(parsedLegacySettings.settings?.aerialImagery.mode, "auto");
 
 const parsedLayoutSettings = parseProjectDocument({
   ...sampleProject,
@@ -172,6 +182,49 @@ const parsedLegacyMapPackage = parseProjectDocument({
 assert.equal(parsedLegacyMapPackage.mapPackages?.[0].tileContentType, "raster");
 assert.equal(parsedLegacyMapPackage.mapPackages?.[0].tileScheme, "xyz");
 assert.equal(parsedLegacyMapPackage.mapPackages?.[0].installStatus, "metadata_only");
+
+const parsedNaipMapPackage = parseProjectDocument({
+  ...sampleProject,
+  mapPackages: [{
+    id: "naip-local-aerial",
+    name: "NAIP local aerial",
+    packageType: "raster_tiles",
+    tileContentType: "raster",
+    uri: "app://map-packages/naip-local-aerial/",
+    minZoom: 12,
+    maxZoom: 18,
+    tileScheme: "xyz",
+    boundsWgs84: {
+      minLongitude: -105.2,
+      minLatitude: 40.01,
+      maxLongitude: -105.1,
+      maxLatitude: 40.08,
+    },
+    tileJsonUrl: "app://map-packages/naip-local-aerial/tilejson.json",
+    tileUrlTemplates: ["app://map-packages/naip-local-aerial/tiles/{z}/{x}/{y}.png"],
+    imageryProvenance: {
+      providerId: "usgs_naip",
+      providerName: "USGS EROS NAIP",
+      sourceUrl: "https://www.usgs.gov/centers/eros/science/national-agriculture-imagery-program-naip",
+      productId: "M_4010521_NE_13_1_20250715",
+      acquisitionYear: 2025,
+      sourceResolutionMeters: 1,
+      originalCrs: "EPSG:26913",
+      preprocessingSummary: "GDAL generated XYZ PNG tiles outside the app.",
+      accessedAt: "2026-06-03T12:00:00.000Z",
+      attribution: "USDA Farm Service Agency, USGS EROS NAIP",
+      licenseText: "Public domain NAIP imagery; verify source notices for the selected product.",
+      offlineCopyAllowed: true,
+      keyedService: false,
+    },
+    installStatus: "available",
+    attribution: "USDA Farm Service Agency, USGS EROS NAIP",
+    licenseText: "Public domain NAIP imagery; verify source notices for the selected product.",
+    importedAt: "2026-06-03T12:00:00.000Z",
+  }],
+});
+assert.equal(parsedNaipMapPackage.mapPackages?.[0].imageryProvenance?.providerId, "usgs_naip");
+assert.equal(parsedNaipMapPackage.mapPackages?.[0].tileJsonUrl, "app://map-packages/naip-local-aerial/tilejson.json");
 
 assert.throws(
   () => parseProjectDocument({ ...sampleProject, projectCrs: "EPSG:4326" }),

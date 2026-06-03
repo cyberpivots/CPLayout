@@ -112,6 +112,21 @@ const mapPackageCsv = mapPackagesToCsv({
         places: "places",
       },
     },
+    imageryProvenance: {
+      providerId: "usgs_naip",
+      providerName: "USGS EROS NAIP",
+      sourceUrl: "https://www.usgs.gov/centers/eros/science/national-agriculture-imagery-program-naip",
+      productId: "M_4010521_NE_13_1_20250715",
+      acquisitionYear: 2025,
+      sourceResolutionMeters: 1,
+      originalCrs: "EPSG:26913",
+      preprocessingSummary: "GDAL generated XYZ PNG tiles and TileJSON outside the app.",
+      accessedAt: "2026-06-03T12:00:00.000Z",
+      attribution: "USDA Farm Service Agency, USGS EROS NAIP",
+      licenseText: "Public domain NAIP imagery; verify source notices for the selected product.",
+      offlineCopyAllowed: true,
+      keyedService: false,
+    },
     installStatus: "available",
     attribution: "Local imagery",
     licenseText: "Offline permitted",
@@ -120,7 +135,45 @@ const mapPackageCsv = mapPackagesToCsv({
 });
 assert.match(mapPackageCsv, /tileContentType/);
 assert.match(mapPackageCsv, /vectorOverlay/);
+assert.match(mapPackageCsv, /imageryProvenance/);
+assert.match(mapPackageCsv, /usgs_naip/);
 assert.match(mapPackageCsv, /field-imagery/);
+
+const logicalMapPackageProject = {
+  ...sampleProject,
+  mapPackages: [{
+    id: "naip-local-aerial",
+    name: "NAIP local aerial",
+    packageType: "raster_tiles" as const,
+    tileContentType: "raster" as const,
+    uri: "app://map-packages/naip-local-aerial/",
+    minZoom: 12,
+    maxZoom: 18,
+    tileScheme: "xyz" as const,
+    boundsWgs84: {
+      minLongitude: -105.2,
+      minLatitude: 40.01,
+      maxLongitude: -105.1,
+      maxLatitude: 40.08,
+    },
+    tileJsonUrl: "app://map-packages/naip-local-aerial/tilejson.json",
+    tileUrlTemplates: ["app://map-packages/naip-local-aerial/tiles/{z}/{x}/{y}.png"],
+    installStatus: "available" as const,
+    attribution: "USDA Farm Service Agency, USGS EROS NAIP",
+    licenseText: "Public domain NAIP imagery; verify source notices for the selected product.",
+    importedAt: "2026-06-03T12:00:00.000Z",
+  }],
+};
+const logicalMapPackageBundle = buildProjectArchiveBundle(
+  logicalMapPackageProject,
+  evaluateLayout(logicalMapPackageProject),
+  exportScenarioGeoJson(logicalMapPackageProject, evaluateLayout(logicalMapPackageProject)),
+  "2026-06-03T12:00:00.000Z",
+);
+assert.match(logicalMapPackageBundle.files[PROJECT_JSON_FILENAME], /app:\/\/map-packages\/naip-local-aerial\/tilejson\.json/);
+assert.match(logicalMapPackageBundle.files[MAP_PACKAGES_CSV_FILENAME], /app:\/\/map-packages\/naip-local-aerial\/tiles\/\{z\}\/\{x\}\/\{y\}\.png/);
+assert.doesNotMatch(logicalMapPackageBundle.files[PROJECT_JSON_FILENAME], /file:\/\/\/documents\/map-packages/);
+assert.doesNotMatch(logicalMapPackageBundle.files[MAP_PACKAGES_CSV_FILENAME], /file:\/\/\/documents\/map-packages/);
 
 const projectWithMapFeatures = {
   ...sampleProject,

@@ -1,4 +1,5 @@
 import type { ProjectSettings, ReferenceOverlaySchema } from "./settings";
+import type { ImageryProvenance } from "./layoutEvidence";
 
 export type UnitSystem = "metric" | "us_survey_feet";
 
@@ -260,6 +261,7 @@ export interface MapPackageManifest {
   tileJsonUrl?: string;
   tileUrlTemplates?: string[];
   vectorOverlay?: VectorOverlayMetadata;
+  imageryProvenance?: ImageryProvenance;
   checksumSha256?: string;
   installStatus?: TilePackageInstallStatus;
   attribution: string;

@@ -6,7 +6,7 @@ Use these prompts only after deciding subagents are authorized by standing CPLay
 
 Agent type: `explorer`
 
-Reasoning: `xhigh`
+Reasoning: task-selected from `references/reasoning-routing.md`
 
 Prompt:
 
@@ -18,7 +18,7 @@ You are the workspace-cartographer for a CPLayout expert panel. Read only. Map t
 
 Agent type: `default` or local review lens
 
-Reasoning: `xhigh`
+Reasoning: task-selected from `references/reasoning-routing.md`
 
 Prompt:
 
@@ -30,7 +30,7 @@ You are the product-ux-reviewer for a CPLayout expert panel. Read only unless ex
 
 Agent type: `explorer` or `default`
 
-Reasoning: `xhigh`
+Reasoning: task-selected from `references/reasoning-routing.md`
 
 Prompt:
 
@@ -42,7 +42,7 @@ You are the gis-map-reviewer for a CPLayout expert panel. Read only. Check proje
 
 Agent type: `explorer` for local review; `default` when source-backed external research is needed.
 
-Reasoning: `xhigh`
+Reasoning: task-selected from `references/reasoning-routing.md`
 
 Prompt:
 
@@ -54,7 +54,7 @@ You are the architecture-storage-native-gate-reviewer for a CPLayout expert pane
 
 Agent type: `worker`
 
-Reasoning: `xhigh`
+Reasoning: task-selected from `references/reasoning-routing.md`
 
 Prompt:
 
@@ -66,7 +66,7 @@ You are the implementation-worker for a CPLayout expert panel. You are not alone
 
 Agent type: `explorer` or `default`
 
-Reasoning: `xhigh`
+Reasoning: task-selected from `references/reasoning-routing.md`
 
 Prompt:
 
@@ -78,7 +78,7 @@ You are the qa-reviewer for a CPLayout expert panel. Read only. Review whether t
 
 Agent type: `default`
 
-Reasoning: `xhigh`
+Reasoning: task-selected from `references/reasoning-routing.md`
 
 Prompt:
 

@@ -26,10 +26,11 @@ Use this reference when a prompt asks for specialist routing, agent panels, sour
 
 The `UserPromptSubmit` hook should emit a compact contract for non-trivial prompts:
 
-- matched specialist routes with route id, skill, configured agent, score, complexity band, reasoning effort, spawn policy, and routing reason,
+- matched specialist routes with route id, configured agent, score, complexity band, reasoning effort, spawn policy, and routing reason,
 - required preflight: re-read `AGENTS.md`, run `git status --short`, and preserve unrelated dirty work,
 - auditable subagent decision: `required`, `optional`, or `not useful`, with a short reason,
-- complexity band and reasoning effort from route metadata,
+- complexity band and reasoning effort from route metadata when a route matches,
+- no hidden global fallback: if no route or clear complexity signal exists, emit `complexity analysis required before mutation`,
 - optimized re-prompt that preserves CPLayout no-cost/offline-first, projected/local `XY`, and evidence-only KML/KMZ/imagery boundaries,
 - validation expectations merged from base hook checks and matched routes.
 
@@ -47,6 +48,10 @@ Subagent decision rules:
 - `required`: the user explicitly asks for multi-agent, subagent, panel, parallel-agent, delegation, or specialist-team work, or the prompt is non-trivial CPLayout work with matched specialist routes under the owner's standing authorization.
 - `optional`: a trivial or narrow prompt matched a specialist but the coordinator can show that spawning would not add useful independent evidence.
 - `not useful`: no specialist route matched and coordinator-only preflight is enough.
+
+## Stop Hook
+
+The `Stop` hook uses the documented Stop continuation shape for missing subagent accounting: if an explicit multi-agent prompt or matched specialist prompt ends without `Subagent decision:` or `Accepted fallback:`, it returns `decision: "block"` with a one-more-pass reason. It must ignore repeat invocations when `stop_hook_active` is true.
 
 ## Validation
 

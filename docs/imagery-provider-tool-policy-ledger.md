@@ -1,29 +1,34 @@
 # Imagery Provider And Tool Policy Ledger
 
 Date: 2026-05-28
+Last updated: 2026-06-03
 
 ## Decision
 
-CPLayout uses open-source client software and free/no-cost, attribution-visible imagery paths. Live imagery is an interactive planning reference only. It must not become canonical geometry, a bulk downloader, a hidden-key integration, or a cloud telemetry path.
+CPLayout uses open-source client software and free/no-cost, attribution-visible imagery paths. Offline NAIP-style raster packages are the production U.S. farm-scale aerial imagery path. Live imagery is an optional connected preview only. Neither path may become canonical geometry, a bulk downloader, a hidden-key integration, or a cloud telemetry path.
 
-The v1 built-in live provider remains USGS The National Map Imagery Only. Custom open XYZ/WMTS templates are allowed only when the operator supplies a fixed tile URL template, attribution, license text, and no credentials. Reference overlays prefer local vector packages; when none are available and browser live reference sources are enabled, public no-key USGS TNM Imagery Topo may be used for roads, administrative boundaries, and labels. OpenLayers stays deferred until browser-side raster reprojection into arbitrary projected views is needed.
+The v1 built-in live provider remains USGS The National Map Imagery Only and is labeled as connected preview. Custom open XYZ/WMTS templates are allowed only when the operator supplies a fixed tile URL template, attribution, license text, and no credentials. Reference overlays prefer local vector packages; when none are available and browser live reference sources are enabled, public no-key USGS TNM Imagery Topo may be used for roads, administrative boundaries, and labels. OpenLayers stays deferred until browser-side raster reprojection into arbitrary projected views is needed.
 
 ## Local Facts
 
 - App/session online imagery settings live in `packages/core/src/settings.ts`.
+- Project-safe local aerial imagery preferences live in `packages/core/src/settings.ts` as `aerialImagery`; live `onlineImagery` remains app/session-only and is excluded from project exports.
+- Map package manifests carry optional `imageryProvenance` in `packages/core/src/mapTilePackages.ts` and `packages/core/src/types.ts`.
+- Offline aerial package archives use `cplayout-map-package-v1.zip` with logical `app://map-packages/<id>/...` URLs and are parsed by `packages/project-store/src/mapPackageArchive.ts`.
+- The Files panel exposes native map-package ZIP import; Android package install rewrites logical URLs to app-readable file URIs in `packages/project-store/src/mapPackageArchiveInstall.native.ts` while project metadata keeps the logical URLs.
 - SVG tile planning lives in `packages/geometry/src/onlineImagery.ts` and is Web Mercator gated.
 - SVG attribution rendering lives in `packages/map-adapters/src/SvgMapSurface.tsx`.
-- MapLibre preview files are present under `packages/map-adapters/src/`; Android native runtime behavior is proven only for the generated TileJSON/tile-template proof path.
+- MapLibre preview files are present under `packages/map-adapters/src/`; Android aerial `RasterSource` runtime behavior for imported local packages still needs a completed device screenshot report.
 - Project export settings intentionally exclude `onlineImagery`; canonical project geometry remains project-CRS `XY`.
 
 ## Provider Ledger
 
 | Source | CPLayout policy | Primary source |
 | --- | --- | --- |
-| USGS TNM Imagery Only | Built-in live U.S. imagery provider for v1, disabled by default and capped per viewport. | USGS lists `USGS Imagery Only` as a National Map base map and describes resolution variation; TNM tiled services use Web Mercator. https://www.usgs.gov/faqs/what-are-base-map-services-or-urls-used-national-map |
-| USGS TNM imagery service endpoint | Current built-in URL-template source. Keep attribution visible. | Service metadata: https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer?f=pjson |
+| USGS TNM Imagery Only | Built-in connected U.S. imagery preview for v1, capped per viewport and not persisted into project exports. | USGS lists `USGS Imagery Only` as a National Map base map and describes resolution variation; TNM tiled services use Web Mercator. https://www.usgs.gov/faqs/what-are-base-map-services-or-urls-used-national-map |
+| USGS TNM imagery service endpoint | Current built-in URL-template source for connected preview. Keep attribution visible. | Service metadata says the service is a cached orthoimagery basemap, mostly NAIP in CONUS, with resolution varying from 6 inches to 1 meter. https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer?f=pjson |
 | USGS TNM Imagery Topo | Public no-key browser reference overlay for roads, administrative boundaries, and labels when no local vector reference package is available. | Service metadata describes a cached basemap of orthoimagery and US Topo vector data visible to the 1:9,028 scale. https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer?f=pjson |
-| NAIP | Offline/preprocessed source and component of USGS imagery, not a separate CPLayout live default yet. | Data.gov/USDA NAIP record: https://catalog.data.gov/dataset/national-agriculture-imagery-program-naip-imagery |
+| NAIP | Primary offline/preprocessed U.S. farm-scale aerial package source. Download outside the app, tile into XYZ PNG plus TileJSON, and import as `cplayout-map-package-v1.zip`. | USGS EROS describes NAIP as USDA aerial imagery acquired during agricultural growing seasons in the conterminous United States, with public-domain usage notes and historical 1-meter GSD coverage. https://www.usgs.gov/centers/eros/science/usgs-eros-archive-aerial-photography-national-agriculture-imagery-program-naip |
 | NASA GIBS | Candidate custom fixed-template science layer if license, attribution, layer, and time are explicit. | GIBS documents standards-based WMTS/WMS/TWMS/XYZ access. https://nasa-gibs.github.io/gibs-api-docs/access-basics/ |
 | Landsat and NASA Earthdata | Offline/preprocessed source lane. | NASA Earthdata open data guidance: https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-information-guidance |
 | Copernicus Sentinel | Offline/preprocessed source lane or explicit custom source with required notices. | Copernicus data access terms: https://www.copernicus.eu/en/terms-use/how-access-data |
@@ -36,7 +41,8 @@ The v1 built-in live provider remains USGS The National Map Imagery Only. Custom
 
 | Tool or format | CPLayout policy | Primary source |
 | --- | --- | --- |
-| MapLibre raster sources | Preferred renderer path already represented by installed dependencies and local preview work. | MapLibre raster source spec supports tile templates, tile size, scheme, zoom bounds, and attribution. https://maplibre.org/maplibre-style-spec/sources/ |
+| MapLibre raster sources | Preferred renderer path for generated local aerial package TileJSON/templates and optional USGS live preview. | MapLibre RN `RasterSource` accepts TileJSON `url`, tile URL templates, zoom bounds, scheme, tile size, and attribution. https://maplibre.org/maplibre-react-native/docs/components/sources/raster-source/ |
+| GDAL raster tiling | Offline preprocessing lane only. Use outside the app to turn NAIP GeoTIFF/JPEG2000 into XYZ PNG tiles plus TileJSON/package metadata. | `gdal raster tile` generates separate raster tile files from a raster dataset. https://gdal.org/en/stable/programs/gdal_raster_tile.html |
 | PMTiles with MapLibre | Advanced offline/native lane only until a local protocol or tile-serving adapter exists and devices pass. | PMTiles MapLibre docs: https://docs.protomaps.com/pmtiles/maplibre |
 | MBTiles | Advanced offline/native lane; needs a local serving/protocol adapter before raw archive rendering claims. | Keep under `packages/project-store` metadata until adapter work is explicit. |
 | COG/GeoTIFF | Offline preprocessing and companion-tool lane, not React Native runtime GIS. | GDAL COG docs: https://gdal.org/en/latest/drivers/raster/cog.html |
@@ -46,6 +52,8 @@ The v1 built-in live provider remains USGS The National Map Imagery Only. Custom
 ## Non-Goals
 
 - No Google, Bing, paid Mapbox, paid Esri/ArcGIS, hidden API keys, scraping, public OSM bulk tile use, or trial-only hosted imagery.
+- No bulk caching, repackaging, or offline downloading of public live tile endpoints through CPLayout.
+- No raw PMTiles/MBTiles Android production claim until a local protocol, conversion, or tile-serving adapter is implemented and device-proven.
 - No claim that raw PMTiles/MBTiles rendering, iOS MapLibre behavior, or iOS native ZIP sharing is production-verified before device/emulator evidence. Android generated-template MapLibre and Android canonical ZIP share/picker have separate completed reports.
 - No automatic geometry mutation from imagery. Imagery-derived vertices are planning evidence until field-verified and explicitly accepted.
 - No verified Google Earth headless screenshot API, no permission claim for bulk automated CV extraction from Earth imagery, and no product-facing Google Earth comparison dataset rights.

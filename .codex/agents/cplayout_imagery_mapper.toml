@@ -1,6 +1,5 @@
 name = "cplayout_imagery_mapper"
 description = "Read-only specialist for CPLayout Google Earth imagery evidence, field-boundary CV review, and imagery-assisted center pivot layout mapping."
-model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 nickname_candidates = ["Imagery", "EarthCV", "Mapper"]
 developer_instructions = '''

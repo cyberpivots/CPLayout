@@ -74,8 +74,8 @@ EXPLICIT_MULTI_AGENT_TERMS = (
 class RouteData:
     max_routes: int
     min_score: int
-    default_complexity_band: str
-    default_reasoning_effort: str
+    unmatched_complexity: str
+    unmatched_reasoning_effort: str
     base_validation_expectations: tuple[str, ...]
     routes: tuple[RouteDefinition, ...]
 
@@ -131,8 +131,8 @@ def load_route_data(path: Path | None = None) -> RouteData:
     raw_data = json.loads(path.read_text(encoding="utf-8"))
     max_routes = raw_data.get("maxRoutes")
     min_score = raw_data.get("minScore")
-    default_complexity_band = raw_data.get("defaultComplexityBand")
-    default_reasoning_effort = raw_data.get("defaultReasoningEffort")
+    unmatched_complexity = raw_data.get("unmatchedComplexity")
+    unmatched_reasoning_effort = raw_data.get("unmatchedReasoningEffort")
     base_validation_expectations = _string_list(
         raw_data.get("baseValidationExpectations"), "baseValidationExpectations"
     )
@@ -141,10 +141,10 @@ def load_route_data(path: Path | None = None) -> RouteData:
         raise ValueError("maxRoutes must be a positive integer")
     if not isinstance(min_score, int) or min_score < 0:
         raise ValueError("minScore must be a non-negative integer")
-    if default_complexity_band not in COMPLEXITY_ORDER:
-        raise ValueError("defaultComplexityBand must be one of low, medium, high, xhigh")
-    if default_reasoning_effort not in REASONING_EFFORTS:
-        raise ValueError("defaultReasoningEffort must be a supported reasoning effort")
+    if not isinstance(unmatched_complexity, str) or not unmatched_complexity.strip():
+        raise ValueError("unmatchedComplexity must be a non-empty string")
+    if not isinstance(unmatched_reasoning_effort, str) or not unmatched_reasoning_effort.strip():
+        raise ValueError("unmatchedReasoningEffort must be a non-empty string")
     if not isinstance(raw_routes, list):
         raise ValueError("routes must be a list")
 
@@ -200,8 +200,8 @@ def load_route_data(path: Path | None = None) -> RouteData:
     return RouteData(
         max_routes=max_routes,
         min_score=min_score,
-        default_complexity_band=default_complexity_band,
-        default_reasoning_effort=default_reasoning_effort,
+        unmatched_complexity=unmatched_complexity.strip(),
+        unmatched_reasoning_effort=unmatched_reasoning_effort.strip(),
         base_validation_expectations=base_validation_expectations,
         routes=tuple(routes),
     )
@@ -281,25 +281,23 @@ def match_routes(
     return matches[:max_routes]
 
 
-def _highest_complexity(matches: list[RouteMatch], default_band: str) -> str:
+def _selected_complexity(matches: list[RouteMatch], route_data: RouteData) -> str:
     if not matches:
-        return default_band
+        return route_data.unmatched_complexity
     return max(
         (match.route.complexity_band for match in matches),
         key=lambda band: COMPLEXITY_ORDER.get(band, 0),
     )
 
 
-def _highest_reasoning(matches: list[RouteMatch], default_effort: str) -> str:
-    if any(match.route.reasoning_effort == "xhigh" for match in matches):
-        return "xhigh"
-    if any(match.route.reasoning_effort == "high" for match in matches):
-        return "high"
-    if any(match.route.reasoning_effort == "medium" for match in matches):
-        return "medium"
-    if any(match.route.reasoning_effort == "low" for match in matches):
-        return "low"
-    return default_effort
+def _selected_reasoning(matches: list[RouteMatch], route_data: RouteData) -> str:
+    if not matches:
+        return route_data.unmatched_reasoning_effort
+    reasoning_order = {"minimal": -1, "low": 0, "medium": 1, "high": 2, "xhigh": 3}
+    return max(
+        (match.route.reasoning_effort for match in matches),
+        key=lambda effort: reasoning_order.get(effort, -1),
+    )
 
 
 def has_explicit_multi_agent_request(prompt: str) -> bool:
@@ -324,7 +322,7 @@ def _validation_expectations(route_data: RouteData, matches: list[RouteMatch]) -
         for expectation in match.route.validation_expectations:
             if expectation not in expectations:
                 expectations.append(expectation)
-    return expectations[:6]
+    return expectations[:5]
 
 
 def optimized_reprompt(
@@ -333,12 +331,16 @@ def optimized_reprompt(
     route_data: RouteData | None = None,
 ) -> str:
     route_data = load_route_data() if route_data is None else route_data
-    complexity = _highest_complexity(matches, route_data.default_complexity_band)
-    reasoning = _highest_reasoning(matches, route_data.default_reasoning_effort)
+    complexity = _selected_complexity(matches, route_data)
+    reasoning = _selected_reasoning(matches, route_data)
     decision, _reason = subagent_decision(prompt, matches)
     specialists = ", ".join(match.route.agent for match in matches) if matches else "coordinator only"
+    if matches:
+        opening = f"Use {reasoning} reasoning ({complexity})."
+    else:
+        opening = "Perform complexity analysis before mutation; select reasoning effort from task scope."
     return (
-        f"Use {reasoning} reasoning ({complexity}). Start with AGENTS.md plus git status. "
+        f"{opening} Start with AGENTS.md plus git status. "
         f"Route through {specialists}. Subagent decision: {decision}. "
         "Keep hooks advisory unless installed through managed requirements. "
         "Preserve offline/no-cost operation, projected/local XY canonical geometry, and evidence-only KML/KMZ/imagery boundaries."
@@ -347,32 +349,30 @@ def optimized_reprompt(
 
 def _context(prompt: str, matches: list[RouteMatch], shape_unknown: bool) -> str:
     route_data = load_route_data()
-    complexity = _highest_complexity(matches, route_data.default_complexity_band)
-    reasoning = _highest_reasoning(matches, route_data.default_reasoning_effort)
+    complexity = _selected_complexity(matches, route_data)
+    reasoning = _selected_reasoning(matches, route_data)
     decision, decision_reason = subagent_decision(prompt, matches)
     validation = _validation_expectations(route_data, matches)
     lines = [
         "CPLayout coordinator contract:",
-        "- Start non-trivial work with AGENTS.md plus git status preflight.",
-        "- Preserve offline-first, no-cost operation and projected/local XY canonical geometry.",
-        "- Treat Google Earth/KML styling and imagery/CV output as evidence unless the project schema explicitly changes.",
-        "- Hooks are advisory context, not enforcement or proof of runtime behavior.",
-        f"- Complexity band: {complexity}; reasoning effort: {reasoning}.",
+        "- Preflight: AGENTS.md plus git status --short; preserve unrelated dirty work.",
+        "- Hooks: advisory context only, not enforcement or runtime proof.",
+        f"- Complexity: {complexity}; reasoning: {reasoning}.",
         f"- Subagents: {decision}. {decision_reason}",
     ]
     if matches:
-        lines.append("- Matched specialists:")
+        lines.append(f"- Matched specialists (max {route_data.max_routes}):")
         for match in matches:
             route = match.route
             lines.append(
                 "  - "
-                f"{route.route_id} via ${route.skill}, agent {route.agent} "
-                f"(score {match.score}, {route.complexity_band}/{route.reasoning_effort}, "
-                f"spawn {route.spawn_policy}): {route.routing_reason}"
+                f"{route.route_id} -> {route.agent} "
+                f"(score {match.score}; {route.complexity_band}/{route.reasoning_effort}; "
+                f"{route.spawn_policy}): {route.routing_reason}"
             )
     else:
-        lines.append("- No specialist keywords matched; use workspace preflight and narrow source-backed planning.")
-    lines.append("- Validation expectations:")
+        lines.append("- Routes: none; complexity analysis required before mutation.")
+    lines.append(f"- Validation expectations (max {len(validation)}):")
     lines.extend(f"  - {expectation}" for expectation in validation)
     lines.append(f"- Optimized re-prompt: {optimized_reprompt(prompt, matches, route_data)}")
     if shape_unknown:

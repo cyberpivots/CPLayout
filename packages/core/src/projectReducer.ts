@@ -1,8 +1,9 @@
 import { importProjectedGeoJsonToProject, importSurveyCsvToProject } from "./projectImports";
 import { modelRecommendationHardFailures, type ModelRecommendation } from "./layoutEvidence";
 import { PivotProjectSchema, withWgs84Companion } from "./projectDocument";
+import { validateMapPackageManifest } from "./mapTilePackages";
 import type { ProjectSettings } from "./settings";
-import type { LonLat, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, UnitSystem, XY } from "./types";
+import type { LonLat, MapPackageManifest, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, UnitSystem, XY } from "./types";
 
 export interface ProjectEditorState {
   project: PivotProject;
@@ -34,6 +35,7 @@ export type ProjectEditorAction =
   | { type: "promote_survey_point"; id: string; target: InfrastructurePoint }
   | { type: "update_machine"; machine: PivotMachine }
   | { type: "apply_model_recommendation"; recommendation: ModelRecommendation }
+  | { type: "upsert_map_package"; mapPackage: MapPackageManifest }
   | { type: "update_project_settings"; unitSystem: UnitSystem; settings: ProjectSettings }
   | { type: "import_projected_geojson"; geoJson: string | unknown }
   | { type: "import_survey_csv"; csv: string }
@@ -103,6 +105,8 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
         return applyProjectChange(state, { ...state.project, machine: action.machine });
       case "apply_model_recommendation":
         return applyModelRecommendation(state, action.recommendation);
+      case "upsert_map_package":
+        return upsertMapPackage(state, action.mapPackage);
       case "update_project_settings":
         if (state.project.unitSystem === action.unitSystem && projectSettingsEqual(state.project.settings, action.settings)) return state;
         return applyProjectChange(state, {
@@ -246,6 +250,18 @@ function deleteMapFeature(state: ProjectEditorState, id: string): ProjectEditorS
   return applyProjectChange(state, {
     ...state.project,
     mapFeatures: (state.project.mapFeatures ?? []).filter((mapFeature) => mapFeature.id !== id),
+  });
+}
+
+function upsertMapPackage(state: ProjectEditorState, mapPackage: MapPackageManifest): ProjectEditorState {
+  const parsed = validateMapPackageManifest(mapPackage);
+  const current = state.project.mapPackages ?? [];
+  const nextPackages = current.some((candidate) => candidate.id === parsed.id)
+    ? current.map((candidate) => candidate.id === parsed.id ? parsed : candidate)
+    : [...current, parsed];
+  return applyProjectChange(state, {
+    ...state.project,
+    mapPackages: nextPackages,
   });
 }
 

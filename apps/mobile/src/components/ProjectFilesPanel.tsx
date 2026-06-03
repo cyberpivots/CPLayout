@@ -12,12 +12,13 @@ import {
   importProjectArchiveZipWithAdjacentData,
   importFileAsync,
   importZipFileAsync,
+  installMapPackageArchiveZipAsync,
   loadProjectReviewDataAsync,
   readGoogleEarthKmlFile,
   saveProjectReviewDataAsync,
   type ProjectArchiveAdjacentData,
 } from "@cplayout/project-store";
-import { exportProjectGoogleEarthKml, type GoogleEarthKmlImportResult, type LayoutResult, type PivotProject } from "@cplayout/core";
+import { exportProjectGoogleEarthKml, type GoogleEarthKmlImportResult, type LayoutResult, type MapPackageManifest, type PivotProject } from "@cplayout/core";
 import type { ProjectWorkspaceStatus } from "../hooks/useProjectRepository";
 import { GoogleEarthImportWizard } from "./GoogleEarthImportWizard";
 
@@ -28,6 +29,7 @@ interface ProjectFilesPanelProps {
   repository: ProjectWorkspaceStatus;
   onImportProjectedGeoJson: (geoJson: string) => string;
   onImportSurveyCsv: (csv: string) => string;
+  onMapPackageImported: (manifest: MapPackageManifest, runtimeManifest: MapPackageManifest) => string;
   onPreviewGoogleEarthKml: (kmlText: string, selectedItemIds?: string[]) => GoogleEarthKmlImportResult;
   onApplyGoogleEarthKmlImport: (project: PivotProject) => void;
   onProjectLoaded: (project: PivotProject) => void;
@@ -59,6 +61,7 @@ export function ProjectFilesPanel({
   repository,
   onImportProjectedGeoJson,
   onImportSurveyCsv,
+  onMapPackageImported,
   onPreviewGoogleEarthKml,
   onApplyGoogleEarthKmlImport,
   onProjectLoaded,
@@ -138,6 +141,28 @@ export function ProjectFilesPanel({
         text: saved
           ? `Imported ${imported.name}. ${reviewDataSummary(archive.adjacentData)} restored as adjacent review records; projected XY geometry was not applied from review data.`
           : `Opened ${imported.name}, but it was not saved locally. ${reviewDataSummary(archive.adjacentData)} available in the project package.`,
+      });
+    } catch (error) {
+      setStatus({ tone: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function importMapPackageZip(): Promise<void> {
+    try {
+      if (Platform.OS === "web") {
+        setStatus({ tone: "warning", text: "Map package ZIP install is native-only until web package storage is configured." });
+        return;
+      }
+      const bytes = await importZipFileAsync();
+      if (!bytes) {
+        setStatus({ tone: "info", text: "No map package selected." });
+        return;
+      }
+      const installed = await installMapPackageArchiveZipAsync(bytes);
+      const message = onMapPackageImported(installed.manifest, installed.runtimeManifest);
+      setStatus({
+        tone: "success",
+        text: `${message} Installed ${installed.fileCount} file${installed.fileCount === 1 ? "" : "s"} under app document storage.`,
       });
     } catch (error) {
       setStatus({ tone: "error", text: errorMessage(error) });
@@ -251,6 +276,12 @@ export function ProjectFilesPanel({
       {repository.backendInfo?.notes.map((note) => (
         <Text key={note} style={styles.backendNote}>{note}</Text>
       ))}
+
+      <Text style={styles.groupTitle}>Offline Map Packages</Text>
+      <View style={styles.actionRow}>
+        <FileAction icon={<Upload size={18} color="#254234" />} label="Import Map Package" onPress={importMapPackageZip} />
+      </View>
+      <Text style={styles.backendNote}>Map package ZIPs install generated local tiles. Project archives store logical package metadata and visible attribution, not tile binaries.</Text>
 
       <Text style={styles.groupTitle}>GIS Exchange</Text>
       <View style={styles.gisExchangeGrid}>

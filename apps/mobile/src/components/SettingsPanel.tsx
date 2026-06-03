@@ -1,20 +1,21 @@
 import { Database, Layers, Map, Ruler, Satellite, SlidersHorizontal } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { COORDINATE_FORMAT_LABELS, COORDINATE_FORMATS, type CoordinateDisplayFormat } from "@cplayout/core";
 import {
   AppSettings,
   describeTilePackageReadiness,
   GPS_FIX_ORDER,
+  listAerialImageryCandidates,
   MAP_STYLES,
   OFFLINE_PACKAGE_TYPES,
-  ONLINE_IMAGERY_PROVIDER_CATALOG,
   ONLINE_IMAGERY_PROVIDER_LIST,
   REFERENCE_OVERLAY_SCHEMAS,
+  resolveAerialReferenceImagerySource,
   resolveReferenceOverlaySource,
   validateCustomOpenImagerySource,
-  resolveOnlineImageryProvider,
+  type AerialImageryMode,
   type OnlineImageryCustomSource,
   type MapStyle,
   type MapPackageManifest,
@@ -35,35 +36,63 @@ export function SettingsPanel({ mapPackages = [], settings, onChange }: Settings
   const [customFormVisible, setCustomFormVisible] = useState(settings.onlineImagery.providerId === "custom_open_xyz");
   const [customDraft, setCustomDraft] = useState<CustomImageryDraft>(() => customDraftFromSettings(settings));
   const customValidation = useMemo(() => validateCustomOpenImagerySource(customDraft), [customDraft]);
-  const activeProvider = useMemo(() => {
-    try {
-      return resolveOnlineImageryProvider(settings.onlineImagery.providerId, settings.onlineImagery.customSource);
-    } catch {
-      return ONLINE_IMAGERY_PROVIDER_CATALOG[settings.onlineImagery.providerId];
-    }
-  }, [settings.onlineImagery.customSource, settings.onlineImagery.providerId]);
-  const imagerySourceSummary = settings.onlineImagery.enabled
-    ? `${activeProvider.coverageLabel} · ${activeProvider.projection} · ${activeProvider.tileScheme.toUpperCase()} ${activeProvider.tileSize}px · z${activeProvider.minZoom}-${activeProvider.maxZoom} · live preview only`
+  const mapLibreTarget = Platform.OS === "android"
+    ? "android_maplibre_rn"
+    : Platform.OS === "ios"
+      ? "ios_maplibre_rn"
+      : "web_maplibre_gl_js";
+  const localAerialCandidates = useMemo(
+    () => listAerialImageryCandidates({
+      mapPackages,
+      target: mapLibreTarget,
+    }),
+    [mapLibreTarget, mapPackages],
+  );
+  const aerialReferenceStatus = useMemo(
+    () => resolveAerialReferenceImagerySource({
+      preferences: settings.aerialImagery,
+      onlineImagery: settings.onlineImagery,
+      mapPackages,
+      target: mapLibreTarget,
+    }),
+    [mapLibreTarget, mapPackages, settings.aerialImagery, settings.onlineImagery],
+  );
+  const aerialWorkflow = settings.aerialImagery.mode === "off" && settings.onlineImagery.enabled && settings.onlineImagery.providerId === "usgs_imagery_only"
+    ? "usgs_live_preview"
+    : settings.aerialImagery.mode === "off"
+      ? "off"
+      : settings.aerialImagery.mode === "manual"
+        ? "manual_local"
+        : "auto_local";
+  const referenceProvider = aerialReferenceStatus.onlineProvider;
+  const aerialSummary = aerialReferenceStatus.sourceKind === "local_raster"
+    ? `${aerialReferenceStatus.localAerial.autoApplied ? "Auto local first" : "Manual local"}: ${aerialReferenceStatus.localAerial.packageName ?? aerialReferenceStatus.localAerial.packageId} · ${aerialReferenceStatus.localAerial.reason}`
+    : referenceProvider
+      ? `${aerialProviderLabel(aerialReferenceStatus.autoFallback, settings.aerialImagery.mode, referenceProvider.id)}: ${referenceProvider.name} · ${referenceProvider.coverageLabel} · connected preview only`
+      : aerialReferenceStatus.reason;
+  const imagerySourceSummary = referenceProvider
+    ? `${referenceProvider.coverageLabel} · ${referenceProvider.projection} · ${referenceProvider.tileScheme.toUpperCase()} ${referenceProvider.tileSize}px · z${referenceProvider.minZoom}-${referenceProvider.maxZoom} · live preview only`
     : "Live imagery disabled · browser map uses offline overlay only · no external tile source is requested";
-  const imageryGuardrailSummary = settings.onlineImagery.enabled
-    ? `${activeProvider.attribution} · ${activeProvider.licenseText} · imagery is reference-only and never canonical geometry`
+  const imageryGuardrailSummary = referenceProvider
+    ? `${referenceProvider.attribution} · ${referenceProvider.licenseText} · imagery is reference-only and never canonical geometry`
     : "Imagery settings are browser-local aids; project exports keep projected/local XY geometry and exclude live tile requests.";
+  const referenceOverlayTarget = mapLibreTarget;
   const referenceOverlayCandidates = useMemo(
     () => mapPackages.filter((mapPackage) => {
       if (mapPackage.tileContentType !== "vector") return false;
       if (mapPackage.installStatus !== "available" && mapPackage.installStatus !== "indexed") return false;
-      return describeTilePackageReadiness(mapPackage, "web_maplibre_gl_js").canRender;
+      return describeTilePackageReadiness(mapPackage, referenceOverlayTarget).canRender;
     }),
-    [mapPackages],
+    [mapPackages, referenceOverlayTarget],
   );
   const referenceOverlayStatus = useMemo(
     () => resolveReferenceOverlaySource({
       allowPublicNetwork: settings.onlineImagery.enabled,
       preferences: settings.referenceOverlay,
       mapPackages,
-      target: "web_maplibre_gl_js",
+      target: referenceOverlayTarget,
     }),
-    [mapPackages, settings.onlineImagery.enabled, settings.referenceOverlay],
+    [mapPackages, referenceOverlayTarget, settings.onlineImagery.enabled, settings.referenceOverlay],
   );
   const referenceOverlaySummary = referenceOverlayStatus.canRender
     ? `${referenceOverlayStatus.autoApplied ? "Auto-applied" : "Manual"}: ${referenceOverlayStatus.packageName ?? referenceOverlayStatus.packageId} · ${referenceOverlayStatus.sourceKind === "public_raster" ? "public no-key raster" : referenceOverlayStatus.schema.replaceAll("_", " ")} · ${referenceOverlayStatus.reason}`
@@ -83,6 +112,53 @@ export function SettingsPanel({ mapPackages = [], settings, onChange }: Settings
       referenceOverlay: {
         ...settings.referenceOverlay,
         ...next,
+      },
+    });
+  }
+
+  function updateAerialImagery(next: Partial<AppSettings["aerialImagery"]>): void {
+    update({
+      aerialImagery: {
+        ...settings.aerialImagery,
+        ...next,
+      },
+    });
+  }
+
+  function setAerialWorkflow(workflow: "off" | "auto_local" | "manual_local" | "usgs_live_preview"): void {
+    if (workflow === "usgs_live_preview") {
+      update({
+        aerialImagery: { ...settings.aerialImagery, mode: "off" },
+        onlineImagery: {
+          ...settings.onlineImagery,
+          enabled: true,
+          providerId: "usgs_imagery_only",
+        },
+      });
+      return;
+    }
+    if (workflow === "auto_local") {
+      update({
+        aerialImagery: {
+          ...settings.aerialImagery,
+          mode: "auto",
+        },
+        onlineImagery: {
+          ...settings.onlineImagery,
+          enabled: true,
+          providerId: "usgs_imagery_only",
+        },
+      });
+      return;
+    }
+    update({
+      aerialImagery: {
+        ...settings.aerialImagery,
+        mode: workflow === "manual_local" ? "manual" : "off",
+      },
+      onlineImagery: {
+        ...settings.onlineImagery,
+        enabled: false,
       },
     });
   }
@@ -193,6 +269,53 @@ export function SettingsPanel({ mapPackages = [], settings, onChange }: Settings
         </Text>
       </SettingsGroup>
 
+      <SettingsGroup icon={<Satellite size={20} color="#254234" />} title="Aerial Imagery">
+        <View style={styles.buttonRow}>
+          <Choice
+            active={aerialWorkflow === "off"}
+            label="Aerial Off"
+            onPress={() => setAerialWorkflow("off")}
+            testID="settings-aerial-mode-off"
+          />
+          <Choice
+            active={aerialWorkflow === "auto_local"}
+            label="Auto"
+            onPress={() => setAerialWorkflow("auto_local")}
+            testID="settings-aerial-mode-auto"
+          />
+          <Choice
+            active={aerialWorkflow === "manual_local"}
+            label="Manual local"
+            onPress={() => setAerialWorkflow("manual_local")}
+            testID="settings-aerial-mode-manual-local"
+          />
+          <Choice
+            active={aerialWorkflow === "usgs_live_preview"}
+            label="USGS only"
+            onPress={() => setAerialWorkflow("usgs_live_preview")}
+            testID="settings-aerial-mode-usgs-only"
+          />
+        </View>
+        {settings.aerialImagery.mode === "manual" && !settings.onlineImagery.enabled ? (
+          <View style={styles.buttonRow}>
+            {localAerialCandidates.map((candidate) => (
+              <Choice
+                key={candidate.packageId}
+                active={settings.aerialImagery.sourcePackageId === candidate.packageId}
+                label={candidate.packageName}
+                onPress={() => updateAerialImagery({ mode: "manual" as AerialImageryMode, sourcePackageId: candidate.packageId })}
+              />
+            ))}
+          </View>
+        ) : null}
+        <Text style={styles.lockedText} testID="settings-aerial-summary">
+          {aerialSummary}
+        </Text>
+        <Text style={styles.lockedText} testID="settings-aerial-guardrail">
+          Offline production imagery uses generated local raster TileJSON or tile templates, with NAIP packages as the preferred U.S. farm source. USGS live preview is connected-only; raw PMTiles/MBTiles and public tile caches remain blocked until separately adapter-proven.
+        </Text>
+      </SettingsGroup>
+
       <SettingsGroup icon={<Layers size={20} color="#254234" />} title="Reference Overlays">
         <View style={styles.buttonRow}>
           <Choice
@@ -247,7 +370,7 @@ export function SettingsPanel({ mapPackages = [], settings, onChange }: Settings
         <View style={styles.buttonRow}>
           <Choice
             active={!settings.onlineImagery.enabled}
-            label="Off"
+            label="Live Off"
             onPress={() => update({ onlineImagery: { ...settings.onlineImagery, enabled: false } })}
           />
           {ONLINE_IMAGERY_PROVIDER_LIST.map((provider) => (
@@ -377,9 +500,9 @@ function SettingsGroup({ icon, title, children }: { icon: React.ReactNode; title
   );
 }
 
-function Choice({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }): React.JSX.Element {
+function Choice({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
   return (
-    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={[styles.choice, active && styles.choiceActive]}>
+    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={[styles.choice, active && styles.choiceActive]} testID={testID}>
       <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -486,6 +609,12 @@ function mapStyleLabel(style: MapStyle): string {
     case "topographic":
       return "Topo";
   }
+}
+
+function aerialProviderLabel(autoFallback: boolean, aerialMode: AppSettings["aerialImagery"]["mode"], providerId: string): string {
+  if (providerId === "usgs_imagery_only" && (autoFallback || aerialMode === "auto")) return "Auto USGS fallback";
+  if (providerId === "usgs_imagery_only") return "USGS only";
+  return "Connected preview";
 }
 
 function referenceOverlaySchemaLabel(schema: ReferenceOverlaySchema): string {

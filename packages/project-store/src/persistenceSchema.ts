@@ -4,7 +4,7 @@ export interface SqlMigration {
   statements: string[];
 }
 
-export const SQLITE_SCHEMA_VERSION = 8;
+export const SQLITE_SCHEMA_VERSION = 9;
 
 export const SQLITE_MIGRATIONS: SqlMigration[] = [
   {
@@ -304,6 +304,13 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
     name: "add_map_package_vector_overlay_metadata",
     statements: [
       `ALTER TABLE map_packages ADD COLUMN vector_overlay_json TEXT`,
+    ],
+  },
+  {
+    id: 9,
+    name: "add_map_package_imagery_provenance",
+    statements: [
+      `ALTER TABLE map_packages ADD COLUMN imagery_provenance_json TEXT`,
     ],
   },
 ];

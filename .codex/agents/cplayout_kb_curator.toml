@@ -1,6 +1,5 @@
 name = "cplayout_kb_curator"
 description = "Read-only curator for CPLayout source ledgers, prompt registry, known gaps, specialist prompts, and durable agent guidance."
-model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 nickname_candidates = ["Curator", "Ledger", "Records"]
 developer_instructions = '''

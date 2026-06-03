@@ -7,8 +7,8 @@ import {
   migrationSql,
 } from "./persistenceSchema";
 
-assert.equal(SQLITE_SCHEMA_VERSION, 8);
-assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4, 5, 6, 7, 8]);
+assert.equal(SQLITE_SCHEMA_VERSION, 9);
+assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
 const sql = migrationSql();
 assert.match(sql, /CREATE TABLE IF NOT EXISTS projects/);
@@ -23,6 +23,7 @@ assert.match(sql, /license_text TEXT NOT NULL/);
 assert.match(sql, /tile_scheme TEXT NOT NULL DEFAULT 'xyz'/);
 assert.match(sql, /tile_url_templates_json TEXT NOT NULL DEFAULT '\[\]'/);
 assert.match(sql, /ALTER TABLE map_packages ADD COLUMN vector_overlay_json TEXT/);
+assert.match(sql, /ALTER TABLE map_packages ADD COLUMN imagery_provenance_json TEXT/);
 assert.match(sql, /install_status TEXT NOT NULL DEFAULT 'metadata_only'/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_evidence/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS model_recommendations/);

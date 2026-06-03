@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Advisory Stop hook for explicit CPLayout multi-agent prompts.
+"""Advisory Stop hook for CPLayout prompts that need subagent accounting.
 
-This script is intended for managed-hook deployments. Repo-local execution is
-still advisory because project hooks depend on trust and local configuration.
+When a required subagent decision is missing, the hook asks Codex for one more
+turn via the documented Stop continuation shape. Repo-local execution still
+depends on trust and local hook configuration.
 """
 
 from __future__ import annotations
@@ -10,6 +11,8 @@ from __future__ import annotations
 import json
 import re
 import sys
+import importlib.util
+from pathlib import Path
 from typing import Any
 
 
@@ -33,19 +36,9 @@ EXPLICIT_MULTI_AGENT_TERMS = (
     "specialist teams",
     "delegate to agents",
 )
-DECISION_TERMS = (
-    "subagent decision",
-    "subagents required",
-    "subagents optional",
-    "subagents not useful",
-    "subagent summary",
-    "multi-agent summary",
-    "spawned subagent",
-    "spawned agent",
-    "accepted fallback",
-    "fallback explanation",
-    "did not spawn subagents",
-    "did not spawn agents",
+DECISION_RE = re.compile(
+    r"\b(?:Subagent decision|Accepted fallback)\s*:",
+    re.IGNORECASE,
 )
 
 
@@ -102,16 +95,32 @@ def has_explicit_multi_agent_request(text: str) -> bool:
 
 
 def has_subagent_decision(text: str) -> bool:
-    return any(_has_phrase(text, phrase) for phrase in DECISION_TERMS)
+    return bool(DECISION_RE.search(text))
 
 
-def _context() -> str:
+def has_matched_cplayout_route(text: str) -> bool:
+    if not text.strip():
+        return False
+    triage_path = Path(__file__).with_name("cplayout_prompt_triage.py")
+    spec = importlib.util.spec_from_file_location("cplayout_prompt_triage_for_stop", triage_path)
+    if spec is None or spec.loader is None:
+        return False
+    triage = importlib.util.module_from_spec(spec)
+    try:
+        sys.modules[spec.name] = triage
+        spec.loader.exec_module(triage)
+        return bool(triage.match_routes(text))
+    except Exception:  # noqa: BLE001 - Stop hook must stay advisory/non-fatal.
+        return False
+
+
+def _continuation_reason() -> str:
     return "\n".join(
         [
-            "CPLayout Stop hook advisory:",
-            "- Explicit multi-agent or subagent request detected without an auditable subagent decision. Standing CPLayout preference also expects this summary for matched non-trivial specialist work.",
-            "- Continue the turn with either `Subagent decision: required/optional/not useful` plus specialist summary, or `Accepted fallback:` plus why local coordinator-only handling is acceptable.",
-            "- Keep the explanation source-backed; hooks remain advisory unless installed through managed requirements.toml.",
+            "CPLayout Stop hook continuation:",
+            "Explicit multi-agent request or matched CPLayout specialist prompt ended without auditable subagent accounting.",
+            "Continue the turn with either `Subagent decision: required/optional/not useful` plus specialist summary, or `Accepted fallback:` plus why local coordinator-only handling is acceptable.",
+            "Keep the explanation source-backed; hooks remain advisory unless installed through managed requirements.toml and verified after restart.",
         ]
     )
 
@@ -120,19 +129,32 @@ def main() -> int:
     payload = _read_payload()
     if payload.get("hook_event_name") not in (None, "Stop"):
         return 0
+    if payload.get("stop_hook_active") is True:
+        return 0
 
     prompt_text = _field_text(payload, ("prompt", "user_prompt", "messages", "transcript", "conversation"))
-    final_text = _field_text(payload, ("response", "assistant_response", "final_response", "messages", "transcript"))
+    final_text = _field_text(
+        payload,
+        (
+            "last_assistant_message",
+            "response",
+            "assistant_response",
+            "final_response",
+            "messages",
+            "transcript",
+        ),
+    )
     combined_text = "\n".join(part for part in (prompt_text, final_text) if part)
 
-    if has_explicit_multi_agent_request(prompt_text or combined_text) and not has_subagent_decision(final_text):
+    prompt_requires_decision = has_explicit_multi_agent_request(prompt_text or combined_text) or has_matched_cplayout_route(
+        prompt_text
+    )
+    if prompt_requires_decision and not has_subagent_decision(final_text):
         print(
             json.dumps(
                 {
-                    "hookSpecificOutput": {
-                        "hookEventName": "Stop",
-                        "additionalContext": _context(),
-                    }
+                    "decision": "block",
+                    "reason": _continuation_reason(),
                 }
             )
         )

@@ -1,6 +1,6 @@
 # CPLayout Managed Codex Hook Deployment
 
-Date checked: 2026-06-02
+Date checked: 2026-06-03
 
 This guide turns the repo-local CPLayout hook scripts into a managed Codex policy surface. It does not change CPLayout product runtime code, schemas, persistence, geometry, map rendering, Google Earth behavior, or native verification status.
 
@@ -12,10 +12,12 @@ Official Codex docs distinguish project hooks from managed hooks:
 - Managed hooks from system, MDM, cloud, or `requirements.toml` sources are trusted by policy and cannot be disabled from the user hook browser.
 - `requirements.toml` can pin `[features].hooks = true`, define `[hooks]`, and set `allow_managed_hooks_only = true` to skip user, project, session, and plugin hooks while still loading managed hooks.
 - Codex enforces managed hook configuration from `requirements.toml`, but it does not distribute scripts from `managed_dir`; endpoint management must install them.
+- `Stop` receives `last_assistant_message` and `stop_hook_active`, expects JSON on stdout, and can continue a turn with `decision: "block"` plus `reason`.
 
 Sources:
 
 - `https://developers.openai.com/codex/hooks#managed-hooks-from-requirementstoml`
+- `https://developers.openai.com/codex/hooks#stop`
 - `https://developers.openai.com/codex/hooks#review-and-trust-hooks`
 - `https://developers.openai.com/codex/config-reference#requirementstoml`
 - `https://developers.openai.com/codex/subagents#custom-agents`
@@ -74,15 +76,15 @@ Use multi-agent expert panels to review managed hook enforcement for CPLayout.
 
 Expected advisory behavior:
 
-- `UserPromptSubmit` emits a coordinator contract with matched specialists, complexity band, reasoning effort, subagent decision, optimized re-prompt, and validation expectations.
+- `UserPromptSubmit` emits a coordinator contract with matched specialists, complexity band, reasoning effort, subagent decision, optimized re-prompt, and validation expectations. If no route or clear complexity signal matches, it emits `complexity analysis required before mutation` instead of selecting a hidden default.
 - `SubagentStart` injects AGENTS markers plus the matching custom agent read-only scope.
 - `PreToolUse` advises or denies only within its documented command checks.
-- `Stop` emits a follow-up advisory when an explicit multi-agent prompt lacks either a `Subagent decision:` summary or an `Accepted fallback:` explanation.
+- `Stop` returns `decision: "block"` with a continuation reason when an explicit multi-agent prompt or matched specialist prompt lacks either a `Subagent decision:` summary or an `Accepted fallback:` explanation; it must not continue again when `stop_hook_active` is true.
 - A matched CPLayout specialist prompt emits `Subagent decision: required` under the owner's standing authorization.
 
 ## Non-Claims
 
-- This guide does not prove managed hooks loaded on a target machine. That requires a restarted Codex session on the managed endpoint.
+- This guide does not prove managed hooks loaded or that Stop continuation was honored on a target machine. That requires a restarted Codex session on the managed endpoint.
 - This guide does not prove subagents spawned. It only configures advisory context and custom agent files.
 - This guide does not prove Android/iOS native runtime behavior, native SQLite, ZIP sharing, raw PMTiles/MBTiles rendering, Google Earth rendering, imagery/CV truth, or canonical geometry mutation.
 - KML/KMZ styles remain visual interchange metadata only and must not alter projected/local `XY` project geometry.

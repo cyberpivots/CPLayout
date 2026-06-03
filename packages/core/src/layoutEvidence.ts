@@ -17,7 +17,12 @@ export interface ImageryProvenance {
   providerId: string;
   providerName: string;
   sourceUrl?: string;
+  productId?: string;
   captureDate?: string;
+  acquisitionYear?: number;
+  sourceResolutionMeters?: number;
+  originalCrs?: string;
+  preprocessingSummary?: string;
   accessedAt: string;
   attribution: string;
   licenseText: string;
@@ -97,7 +102,12 @@ export const ImageryProvenanceSchema = z.object({
   providerId: z.string().min(1),
   providerName: z.string().min(1),
   sourceUrl: z.string().url().optional(),
+  productId: z.string().min(1).optional(),
   captureDate: z.string().min(1).optional(),
+  acquisitionYear: z.number().int().min(1900).max(2200).optional(),
+  sourceResolutionMeters: z.number().positive().optional(),
+  originalCrs: z.string().min(1).optional(),
+  preprocessingSummary: z.string().min(1).optional(),
   accessedAt: z.string().min(1),
   attribution: z.string().min(1),
   licenseText: z.string().min(1),

@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 
 import {
   describeTilePackageReadiness,
+  listAerialImageryCandidates,
+  resolveAerialImagerySource,
+  resolveAerialReferenceImagerySource,
   toMapLibreTileSourceDescriptor,
   validateMapPackageManifest,
 } from "./mapTilePackages";
@@ -24,6 +27,21 @@ const packageManifest: MapPackageManifest = {
   },
   tileJsonUrl: "http://127.0.0.1:8765/field/tilejson.json",
   tileUrlTemplates: ["http://127.0.0.1:8765/field/{z}/{x}/{y}.png"],
+  imageryProvenance: {
+    providerId: "usgs_naip",
+    providerName: "USGS EROS NAIP",
+    sourceUrl: "https://www.usgs.gov/centers/eros/science/national-agriculture-imagery-program-naip",
+    productId: "M_4010521_NE_13_1_20250715",
+    acquisitionYear: 2025,
+    sourceResolutionMeters: 1,
+    originalCrs: "EPSG:26913",
+    preprocessingSummary: "GDAL preprocessing generated XYZ PNG tiles and TileJSON outside the app.",
+    accessedAt: "2026-06-03T12:00:00.000Z",
+    attribution: "USDA Farm Service Agency, USGS EROS NAIP",
+    licenseText: "Public domain NAIP imagery; verify source notices for the selected product.",
+    offlineCopyAllowed: true,
+    keyedService: false,
+  },
   checksumSha256: "a".repeat(64),
   installStatus: "available",
   attribution: "Local orthomosaic, licensed for offline field use.",
@@ -35,6 +53,8 @@ const packageManifest: MapPackageManifest = {
 const parsed = validateMapPackageManifest(packageManifest);
 assert.equal(parsed.tileScheme, "xyz");
 assert.equal(parsed.tileContentType, "raster");
+assert.equal(parsed.imageryProvenance?.providerId, "usgs_naip");
+assert.equal(parsed.imageryProvenance?.sourceResolutionMeters, 1);
 
 const source = toMapLibreTileSourceDescriptor(parsed);
 assert.ok(source);
@@ -46,6 +66,100 @@ const nativeReady = describeTilePackageReadiness(parsed, "native_maplibre_rn");
 assert.equal(nativeReady.canRender, true);
 assert.equal(nativeReady.requiresAdapter, false);
 assert.ok(nativeReady.source);
+assert.equal(nativeReady.sourceKind, "generated_tilejson_or_template");
+
+const androidReady = describeTilePackageReadiness(parsed, "android_maplibre_rn");
+assert.equal(androidReady.canRender, true);
+assert.equal(androidReady.requiresAdapter, false);
+assert.equal(androidReady.sourceKind, "generated_tilejson_or_template");
+
+const logicalAppPackage = validateMapPackageManifest({
+  ...packageManifest,
+  id: "logical-naip-package",
+  uri: "app://map-packages/logical-naip-package/",
+  tileJsonUrl: "app://map-packages/logical-naip-package/tilejson.json",
+  tileUrlTemplates: ["app://map-packages/logical-naip-package/tiles/{z}/{x}/{y}.png"],
+});
+const logicalAppReadiness = describeTilePackageReadiness(logicalAppPackage, "android_maplibre_rn");
+assert.equal(logicalAppReadiness.canRender, false);
+assert.equal(logicalAppReadiness.requiresAdapter, false);
+assert.match(logicalAppReadiness.reason, /rewritten to app-readable runtime URLs/);
+
+const aerialAuto = resolveAerialImagerySource({
+  preferences: { mode: "auto" },
+  mapPackages: [parsed],
+  target: "android_maplibre_rn",
+});
+assert.equal(aerialAuto.canRender, true);
+assert.equal(aerialAuto.status, "ready");
+assert.equal(aerialAuto.sourceKind, "local_raster");
+assert.equal(aerialAuto.autoApplied, true);
+assert.equal(aerialAuto.packageId, parsed.id);
+assert.equal(aerialAuto.imageryProvenance?.providerId, "usgs_naip");
+
+const aerialManual = resolveAerialImagerySource({
+  preferences: { mode: "manual", sourcePackageId: parsed.id },
+  mapPackages: [parsed],
+  target: "web_maplibre_gl_js",
+});
+assert.equal(aerialManual.canRender, true);
+assert.equal(aerialManual.autoApplied, false);
+assert.equal(aerialManual.source?.tiles?.[0], packageManifest.tileUrlTemplates?.[0]);
+
+const localBeatsConnectedPreview = resolveAerialReferenceImagerySource({
+  preferences: { mode: "auto" },
+  onlineImagery: { enabled: true, providerId: "usgs_imagery_only", maxTilesPerView: 64 },
+  mapPackages: [parsed],
+  target: "android_maplibre_rn",
+});
+assert.equal(localBeatsConnectedPreview.canRender, true);
+assert.equal(localBeatsConnectedPreview.sourceKind, "local_raster");
+assert.equal(localBeatsConnectedPreview.localAerial.packageId, parsed.id);
+assert.equal(localBeatsConnectedPreview.onlineProvider, undefined);
+
+const usgsFallback = resolveAerialReferenceImagerySource({
+  preferences: { mode: "auto" },
+  onlineImagery: { enabled: false, providerId: "usgs_imagery_only", maxTilesPerView: 64 },
+  mapPackages: [],
+  target: "android_maplibre_rn",
+});
+assert.equal(usgsFallback.canRender, true);
+assert.equal(usgsFallback.sourceKind, "online_provider");
+assert.equal(usgsFallback.onlineProvider?.id, "usgs_imagery_only");
+assert.equal(usgsFallback.autoFallback, true);
+assert.match(usgsFallback.reason, /connected preview fallback/);
+
+const explicitUsgsOnly = resolveAerialReferenceImagerySource({
+  preferences: { mode: "off" },
+  onlineImagery: { enabled: true, providerId: "usgs_imagery_only", maxTilesPerView: 64 },
+  mapPackages: [parsed],
+  target: "android_maplibre_rn",
+});
+assert.equal(explicitUsgsOnly.canRender, true);
+assert.equal(explicitUsgsOnly.sourceKind, "online_provider");
+assert.equal(explicitUsgsOnly.autoFallback, false);
+
+const fullyOff = resolveAerialReferenceImagerySource({
+  preferences: { mode: "off" },
+  onlineImagery: { enabled: false, providerId: "usgs_imagery_only", maxTilesPerView: 64 },
+  mapPackages: [parsed],
+  target: "android_maplibre_rn",
+});
+assert.equal(fullyOff.canRender, false);
+assert.equal(fullyOff.sourceKind, "none");
+
+assert.deepEqual(listAerialImageryCandidates({
+  mapPackages: [parsed],
+  target: "android_maplibre_rn",
+}).map((candidate) => candidate.packageId), [parsed.id]);
+
+const aerialOff = resolveAerialImagerySource({
+  preferences: { mode: "off" },
+  mapPackages: [parsed],
+  target: "android_maplibre_rn",
+});
+assert.equal(aerialOff.canRender, false);
+assert.equal(aerialOff.status, "off");
 
 const rawArchiveOnly = validateMapPackageManifest({
   ...packageManifest,
@@ -59,6 +173,16 @@ const nativeDeferred = describeTilePackageReadiness(rawArchiveOnly, "native_mapl
 assert.equal(nativeDeferred.canRender, false);
 assert.equal(nativeDeferred.requiresAdapter, true);
 assert.match(nativeDeferred.reason, /raw PMTiles\/MBTiles files need/);
+assert.equal(nativeDeferred.sourceKind, "raw_mbtiles_archive");
+
+const rawAerialDeferred = resolveAerialImagerySource({
+  preferences: { mode: "manual", sourcePackageId: rawArchiveOnly.id },
+  mapPackages: [rawArchiveOnly],
+  target: "android_maplibre_rn",
+});
+assert.equal(rawAerialDeferred.canRender, false);
+assert.equal(rawAerialDeferred.status, "unavailable");
+assert.match(rawAerialDeferred.reason, /raw PMTiles\/MBTiles|generated local TileJSON/);
 
 const webPmtiles = validateMapPackageManifest({
   ...packageManifest,
@@ -74,7 +198,16 @@ assert.match(webReady.reason, /pmtiles protocol/);
 const nativeRawPmtiles = describeTilePackageReadiness(webPmtiles, "native_maplibre_rn");
 assert.equal(nativeRawPmtiles.canRender, false);
 assert.equal(nativeRawPmtiles.requiresAdapter, true);
-assert.match(nativeRawPmtiles.reason, /raw PMTiles\/MBTiles files need/);
+assert.match(nativeRawPmtiles.reason, /direct PMTiles/);
+assert.equal(nativeRawPmtiles.sourceKind, "raw_pmtiles_archive");
+
+const androidRawPmtiles = describeTilePackageReadiness({
+  ...webPmtiles,
+  uri: "pmtiles://file:///offline/field.pmtiles",
+}, "android_maplibre_rn");
+assert.equal(androidRawPmtiles.canRender, false);
+assert.equal(androidRawPmtiles.requiresAdapter, true);
+assert.match(androidRawPmtiles.reason, /platform-gated/);
 
 const remotePmtiles = validateMapPackageManifest({
   ...packageManifest,
@@ -109,5 +242,24 @@ const remoteReadiness = describeTilePackageReadiness(remoteTileSource, "native_m
 assert.equal(remoteReadiness.canRender, false);
 assert.equal(remoteReadiness.requiresAdapter, false);
 assert.match(remoteReadiness.reason, /local app-readable files or localhost/);
+
+const remoteAerial = resolveAerialImagerySource({
+  preferences: { mode: "manual", sourcePackageId: remoteTileSource.id },
+  mapPackages: [remoteTileSource],
+  target: "android_maplibre_rn",
+});
+assert.equal(remoteAerial.canRender, false);
+assert.match(remoteAerial.reason, /local app-readable files or localhost/);
+
+assert.throws(
+  () => validateMapPackageManifest({
+    ...packageManifest,
+    imageryProvenance: {
+      ...packageManifest.imageryProvenance,
+      keyedService: true,
+    },
+  }),
+  /Invalid input|keyedService/,
+);
 
 console.log("map tile package tests passed");

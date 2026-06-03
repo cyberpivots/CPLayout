@@ -5,8 +5,11 @@ import { createServer, type Server } from "node:http";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { GeoJSONVT } from "@maplibre/geojson-vt";
+import { fromGeojsonVt } from "@maplibre/vt-pbf";
+
 import { readExpoAndroidPackageName, timestampForFilename, writeJsonFile } from "./androidNativeProof";
-import { analyzePngPixels, createNativeMapLibreProofTilePng } from "./pngMetrics";
+import { analyzePngPixels } from "./pngMetrics";
 
 interface NativeMapLibreProofOptions {
   outputDirectory: string;
@@ -39,9 +42,15 @@ interface TileServerHandle {
 }
 
 const DEFAULT_OUTPUT_DIRECTORY = "reports/native-maplibre";
-const TILE_TEMPLATE = "http://127.0.0.1:8765/cplayout-native-maplibre/{z}/{x}/{y}.png";
+const TILE_TEMPLATE = "http://127.0.0.1:8765/cplayout-native-maplibre/{z}/{x}/{y}.pbf";
 const TILEJSON_URL = "http://127.0.0.1:8765/cplayout-native-maplibre/tilejson.json";
-const TILE_ATTRIBUTION = "CPLayout local generated tile proof";
+const TILE_ATTRIBUTION = "CPLayout local generated vector tile proof";
+const VECTOR_SOURCE_LAYERS = {
+  roads: "roads",
+  roadLabels: "road_labels",
+  borders: "borders",
+  places: "places",
+};
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   runNativeMapLibreProof(parseArgs(process.argv.slice(2), process.env))
@@ -132,8 +141,11 @@ export async function runNativeMapLibreProof(options: NativeMapLibreProofOptions
       },
       tileSource: {
         tileSourceKind: "tilejson_or_template",
+        tileContentType: "vector",
+        sourceComponent: "VectorSource",
         tileJsonUrl: TILEJSON_URL,
         tileUrlTemplates: [TILE_TEMPLATE],
+        sourceLayers: VECTOR_SOURCE_LAYERS,
         attribution: TILE_ATTRIBUTION,
       },
       screenshot: {
@@ -150,8 +162,8 @@ export async function runNativeMapLibreProof(options: NativeMapLibreProofOptions
         networkRequired: false,
       },
       notes: status === "pass"
-        ? "Native app screenshot captured after rendering the local generated tile URL template through MapLibre React Native."
-        : "Screenshot was captured but did not meet nonblank/variance thresholds or the local tile server did not receive tile requests.",
+        ? "Native app screenshot captured after rendering the local generated vector tile URL template through MapLibre React Native VectorSource."
+        : "Screenshot was captured but did not meet nonblank/variance thresholds or the local vector tile server did not receive tile requests.",
       tileServer: tileServer.stats,
     };
     writeJsonFile(reportPath, report);
@@ -162,11 +174,11 @@ export async function runNativeMapLibreProof(options: NativeMapLibreProofOptions
 }
 
 function startTileServer(port: number): Promise<TileServerHandle> {
-  const tile = Buffer.from(createNativeMapLibreProofTilePng());
+  const tileIndexes = createNativeMapLibreProofTileIndexes();
   const stats = { tileJsonRequests: 0, tileRequests: 0 };
   const tileJson = JSON.stringify({
     tilejson: "3.0.0",
-    name: "CPLayout native MapLibre local proof tile",
+    name: "CPLayout native MapLibre local vector proof tile",
     version: "1.0.0",
     attribution: TILE_ATTRIBUTION,
     scheme: "xyz",
@@ -174,6 +186,12 @@ function startTileServer(port: number): Promise<TileServerHandle> {
     minzoom: 0,
     maxzoom: 22,
     bounds: [-180, -85, 180, 85],
+    vector_layers: [
+      { id: VECTOR_SOURCE_LAYERS.roads, description: "Generated proof roads", fields: { name: "String" } },
+      { id: VECTOR_SOURCE_LAYERS.roadLabels, description: "Generated proof road labels", fields: { name: "String" } },
+      { id: VECTOR_SOURCE_LAYERS.borders, description: "Generated proof borders", fields: { name: "String" } },
+      { id: VECTOR_SOURCE_LAYERS.places, description: "Generated proof places", fields: { name: "String" } },
+    ],
   });
   const server = createServer((request, response) => {
     const url = request.url ?? "";
@@ -183,9 +201,11 @@ function startTileServer(port: number): Promise<TileServerHandle> {
       response.end(tileJson);
       return;
     }
-    if (/^\/cplayout-native-maplibre\/\d+\/\d+\/\d+\.png$/.test(url)) {
+    const tileMatch = url.match(/^\/cplayout-native-maplibre\/(\d+)\/(\d+)\/(\d+)\.pbf$/);
+    if (tileMatch) {
       stats.tileRequests += 1;
-      response.writeHead(200, { "Content-Type": "image/png" });
+      const tile = createNativeMapLibreProofVectorTilePbf(tileIndexes, Number(tileMatch[1]), Number(tileMatch[2]), Number(tileMatch[3]));
+      response.writeHead(200, { "Content-Type": "application/x-protobuf" });
       response.end(tile);
       return;
     }
@@ -199,6 +219,59 @@ function startTileServer(port: number): Promise<TileServerHandle> {
       resolveServer({ server, stats });
     });
   });
+}
+
+type ProofTileIndex = { getTile(z: number, x: number, y: number): unknown };
+
+function createNativeMapLibreProofTileIndexes(): Record<string, ProofTileIndex> {
+  const layerInputs = {
+    [VECTOR_SOURCE_LAYERS.roads]: featureCollection([
+      lineFeature("Proof Road 1", [[-104.26, 39.77], [-104.12, 39.88], [-103.89, 40.02]]),
+      lineFeature("Proof Road 2", [[-104.32, 39.98], [-104.08, 39.91], [-103.78, 39.85]]),
+    ]),
+    [VECTOR_SOURCE_LAYERS.roadLabels]: featureCollection([
+      lineFeature("Vector Proof Road", [[-104.26, 39.77], [-104.12, 39.88], [-103.89, 40.02]]),
+    ]),
+    [VECTOR_SOURCE_LAYERS.borders]: featureCollection([
+      lineFeature("Proof Boundary", [[-104.38, 39.72], [-103.72, 39.72], [-103.72, 40.08], [-104.38, 40.08], [-104.38, 39.72]]),
+    ]),
+    [VECTOR_SOURCE_LAYERS.places]: featureCollection([
+      pointFeature("CPLayout Vector Proof", [-104.070061, 39.902125]),
+    ]),
+  };
+  return Object.fromEntries(Object.entries(layerInputs).map(([layerName, data]) => [
+    layerName,
+    new GeoJSONVT(data as never, { extent: 4096, indexMaxZoom: 14, maxZoom: 14 }),
+  ]));
+}
+
+function createNativeMapLibreProofVectorTilePbf(indexes: Record<string, ProofTileIndex>, z: number, x: number, y: number): Buffer {
+  const layers: Record<string, unknown> = {};
+  for (const [layerName, index] of Object.entries(indexes)) {
+    const tile = index.getTile(z, x, y);
+    if (tile) layers[layerName] = tile;
+  }
+  return Buffer.from(fromGeojsonVt(layers as never));
+}
+
+function featureCollection(features: unknown[]): { type: "FeatureCollection"; features: unknown[] } {
+  return { type: "FeatureCollection", features };
+}
+
+function lineFeature(name: string, coordinates: number[][]): object {
+  return {
+    type: "Feature",
+    properties: { name },
+    geometry: { type: "LineString", coordinates },
+  };
+}
+
+function pointFeature(name: string, coordinates: number[]): object {
+  return {
+    type: "Feature",
+    properties: { name },
+    geometry: { type: "Point", coordinates },
+  };
 }
 
 function collectAdbCandidates(): AdbCandidate[] {
@@ -292,8 +365,11 @@ function blockedReport(generatedAt: string, options: NativeMapLibreProofOptions,
     app: { packageName: options.packageName, versionName: "", versionCode: "", buildType: "", commit: currentGitCommit() },
     tileSource: {
       tileSourceKind: "tilejson_or_template",
+      tileContentType: "vector",
+      sourceComponent: "VectorSource",
       tileJsonUrl: TILEJSON_URL,
       tileUrlTemplates: [TILE_TEMPLATE],
+      sourceLayers: VECTOR_SOURCE_LAYERS,
       attribution: TILE_ATTRIBUTION,
     },
     screenshot: { path: "", sha256: "", width: 0, height: 0, nonBlankPixelRatio: 0, grayVariance: 0 },

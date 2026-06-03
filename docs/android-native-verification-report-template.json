@@ -18,7 +18,7 @@
     "packagePath": ""
   },
   "sqlite": {
-    "schemaVersion": 8,
+    "schemaVersion": 9,
     "pragmaUserVersion": 0,
     "schemaMigrations": [
       1,
@@ -28,7 +28,8 @@
       5,
       6,
       7,
-      8
+      8,
+      9
     ],
     "mapPackageColumns": [
       "tile_content_type",
@@ -36,6 +37,7 @@
       "tilejson_url",
       "tile_url_templates_json",
       "vector_overlay_json",
+      "imagery_provenance_json",
       "checksum_sha256",
       "install_status"
     ],

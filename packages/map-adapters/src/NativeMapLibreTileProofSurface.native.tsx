@@ -1,18 +1,22 @@
-import { Camera, Layer, Map as MapLibreMap, RasterSource, type StyleSpecification } from "@maplibre/maplibre-react-native";
+import { Camera, Layer, Map as MapLibreMap, VectorSource, type StyleSpecification } from "@maplibre/maplibre-react-native";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
 export const NATIVE_MAPLIBRE_PROOF_TILE_SOURCE = {
   id: "cplayout-native-maplibre-proof-source",
-  layerId: "cplayout-native-maplibre-proof-raster",
-  tileUrlTemplate: "http://127.0.0.1:8765/cplayout-native-maplibre/{z}/{x}/{y}.png",
+  tileUrlTemplate: "http://127.0.0.1:8765/cplayout-native-maplibre/{z}/{x}/{y}.pbf",
   tileJsonUrl: "http://127.0.0.1:8765/cplayout-native-maplibre/tilejson.json",
-  attribution: "CPLayout local generated tile proof",
+  attribution: "CPLayout local generated vector tile proof",
   minzoom: 0,
   maxzoom: 22,
-  tileSize: 256,
   scheme: "xyz" as const,
   center: [-104.070061, 39.902125] as [number, number],
+  layers: {
+    roads: "roads",
+    roadLabels: "road_labels",
+    borders: "borders",
+    places: "places",
+  },
   zoom: 11,
 };
 
@@ -48,27 +52,81 @@ export function NativeMapLibreTileProofSurface(): React.JSX.Element {
             zoom: NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.zoom,
           }}
         />
-        <RasterSource
+        <VectorSource
           id={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
           tiles={[NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.tileUrlTemplate]}
           minzoom={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.minzoom}
           maxzoom={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.maxzoom}
-          tileSize={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.tileSize}
           scheme={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.scheme}
           attribution={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.attribution}
-          testID="native-maplibre-proof-raster-source"
+          testID="native-maplibre-proof-vector-source"
         >
           <Layer
-            id={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layerId}
-            type="raster"
+            id="cplayout-native-maplibre-proof-borders"
+            type="line"
             source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
+            {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.borders }}
             style={{
-              rasterOpacity: 1,
-              rasterFadeDuration: 0,
-              rasterResampling: "nearest",
+              lineColor: "#f2d27a",
+              lineDasharray: [3, 2],
+              lineOpacity: 0.9,
+              lineWidth: 2,
             }}
           />
-        </RasterSource>
+          <Layer
+            id="cplayout-native-maplibre-proof-roads-casing"
+            type="line"
+            source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
+            {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.roads }}
+            style={{
+              lineCap: "round",
+              lineColor: "#fffaf0",
+              lineJoin: "round",
+              lineOpacity: 0.95,
+              lineWidth: 7,
+            }}
+          />
+          <Layer
+            id="cplayout-native-maplibre-proof-roads"
+            type="line"
+            source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
+            {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.roads }}
+            style={{
+              lineCap: "round",
+              lineColor: "#d97832",
+              lineJoin: "round",
+              lineOpacity: 0.95,
+              lineWidth: 3,
+            }}
+          />
+          <Layer
+            id="cplayout-native-maplibre-proof-road-labels"
+            type="symbol"
+            source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
+            {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.roadLabels }}
+            style={{
+              symbolPlacement: "line",
+              textColor: "#4d321d",
+              textField: ["coalesce", ["get", "name"], ""],
+              textHaloColor: "#fffef8",
+              textHaloWidth: 1.4,
+              textSize: 13,
+            }}
+          />
+          <Layer
+            id="cplayout-native-maplibre-proof-places"
+            type="symbol"
+            source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
+            {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.places }}
+            style={{
+              textColor: "#dceee6",
+              textField: ["coalesce", ["get", "name"], ""],
+              textHaloColor: "#1a2630",
+              textHaloWidth: 1.4,
+              textSize: 14,
+            }}
+          />
+        </VectorSource>
       </MapLibreMap>
     </View>
   );

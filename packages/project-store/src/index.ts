@@ -1,4 +1,6 @@
 export * from "./nativeVerification";
+export * from "./mapPackageArchive";
+export * from "./mapPackageArchiveInstall";
 export * from "./persistenceSchema";
 export * from "./projectArchive";
 export * from "./projectArchiveIO";

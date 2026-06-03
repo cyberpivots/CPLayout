@@ -29,7 +29,7 @@ timeout = 20
 statusMessage = "Injecting managed CPLayout subagent boundaries"
 
 [[hooks.PreToolUse]]
-matcher = "Bash|functions\\.exec_command|apply_patch|Edit|Write|mcp__.*"
+matcher = "^(Bash|functions\\.exec_command|apply_patch|Edit|Write|mcp__.*)$"
 [[hooks.PreToolUse.hooks]]
 type = "command"
 command = "python3 /opt/cplayout-codex/hooks/cplayout_pre_tool_use.py"

@@ -44,9 +44,14 @@
 
 ## Reasoning Policy
 
-- Use xhigh reasoning by default for CPLayout work.
-- Lower reasoning only when the user explicitly requests it for a narrow task.
-- Do not downgrade ordinary TypeScript, UI, documentation, or tool/debug work by default.
+- Every non-trivial CPLayout pass must record a task-complexity analysis before mutation:
+  - complexity band: `low`, `medium`, `high`, or `xhigh`
+  - selected reasoning effort
+  - `Subagent decision: required/optional/not useful` or `Accepted fallback:`
+  - validation gates selected from the task scope
+- Select reasoning effort from the task, not from a global default. Use `xhigh` only when the complexity analysis warrants it, including native/runtime proof, architecture or package/platform changes, storage contracts, release gates, managed Codex policy, Google Earth proof, broad cross-module mutation, or unresolved reviewer disagreement.
+- Use `high` for bounded implementation or review with meaningful behavior risk, `medium` for narrow docs/tests/fixtures or read-only scans, and `low` only for trivial status or formatting work.
+- Hooks may inject advisory routing context, but they cannot prove enforcement or change an already-running session's model settings.
 
 ## Current Blocker Boundaries
 

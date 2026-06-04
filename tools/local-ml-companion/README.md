@@ -1,6 +1,6 @@
 # CPLayout Local ML Companion
 
-This tool is a WSL-local file bridge for advisory layout recommendations. It reads a CPLayout project JSON or project ZIP, writes `ModelRecommendation` JSON plus projected-XY GeoJSON, and leaves browser/native runtime code free of Python, GDAL, or ML dependencies.
+This tool is a WSL-local companion for advisory layout analysis. It reads a CPLayout project JSON or project ZIP, writes standalone report JSON plus optional projected-XY GeoJSON for workspace inspection, and leaves browser/native runtime code free of Python, GDAL, or ML dependencies.
 
 ## Environment
 
@@ -52,20 +52,20 @@ uv run cplayout-ml probe-boundary-detector \
   --sam2-checkpoint "$CPLAYOUT_SAM2_CHECKPOINT"
 ```
 
-`CPLAYOUT_SAM2_CONFIG` and `CPLAYOUT_SAM2_CHECKPOINT` may be used instead of flags. If SAM2 is missing or unconfigured, `probe-boundary-detector` reports it as unavailable and the review can still run the OpenCV scoring path.
+`CPLAYOUT_SAM2_CONFIG` and `CPLAYOUT_SAM2_CHECKPOINT` may be used instead of flags. If SAM2 is missing or unconfigured, `probe-boundary-detector` reports it as unavailable and the companion can still run the OpenCV scoring path.
 
 ## File Bridge
 
 ```sh
-uv run cplayout-ml recommend-layout \
+uv run cplayout-ml report-layout-candidates \
   --input ../../sample-burgundy-quarter-section.center-pivot.zip \
   --output-dir ./out \
   --created-at 2026-05-28T00:00:00.000Z
 ```
 
-If `--created-at` is omitted, the CLI uses a fixed fixture timestamp so repeated runs with the same input produce byte-stable recommendation files. Pass an explicit ISO timestamp when preparing a field-review package.
+If `--created-at` is omitted, the CLI uses a fixed fixture timestamp so repeated runs with the same input produce byte-stable report files. Pass an explicit ISO timestamp when preparing a field-inspection package.
 
-Import `out/model-recommendations.json` or `out/model-recommendations.geojson` into the browser Review tab. Accept/Reject/Defer decisions are review records only and do not mutate canonical project geometry.
+Outputs are `layout-candidate-report.json` and `layout-candidate-report-candidates.geojson`. They are standalone companion reports, are not imported into CPLayout as recommendation records, and do not mutate canonical project geometry.
 
 ## Design-Only Google Earth Vision Review
 
@@ -85,13 +85,13 @@ uv run cplayout-ml design-vision-review \
   --created-at 2026-05-29T00:00:00.000Z
 ```
 
-Outputs are `visual-layout-review.json`, `visual-layout-review-recommendations.geojson`, and `visual-layout-review-annotated.png`. The JSON includes `LayoutEvidenceRecord`, `ModelRecommendation`, and deferred `LayoutDecisionRecord` payloads with `reviewStatus: "unreviewed"` and `canonicalGeometryMutation: false`. When `--project-reference` points to an accepted CPLayout project JSON or ZIP, projected-XY pivot and obstacle context can be copied from that reference into the recommendation for explicit browser review/apply. Field-boundary recommendations are included only when `--infer-field-boundary` finds and calibrates an imagery field outline. Without calibration, the recommendation remains metadata-only for boundary geometry and may include KML `LookAt` WGS84 display context. CV metrics are image-space only; they may warn about center/radius/overlay/boundary alignment, but any accepted geometry must still go through CPLayout projected-XY import, editor, validation, and operator review flows.
+Outputs are `visual-layout-review.json`, `visual-layout-review-candidates.geojson`, and `visual-layout-review-annotated.png`. The JSON is standalone companion evidence with `canonicalGeometryMutation: false`. When `--project-reference` points to an accepted CPLayout project JSON or ZIP, projected-XY pivot and obstacle context can be copied into the report for inspection. Field-boundary candidates are included only when `--infer-field-boundary` finds and calibrates an imagery field outline. Without calibration, the report remains metadata-only for boundary geometry and may include KML `LookAt` WGS84 display context. CV metrics are image-space only; they may warn about center/radius/overlay/boundary alignment, but canonical geometry changes still require CPLayout Files import, Map editing, validation, and operator action.
 
 Pass `--infer-field-boundary` when the review must look for a road, fenceline, treeline, or field-separation outline in the Google Earth map-canvas screenshot. This detector rejects circular crop or pivot coverage rings as field boundaries. It exports a projected-XY boundary recommendation only when a visible CPLayout overlay circle and a project reference provide calibration evidence; otherwise the detected polygon stays image-space advisory evidence.
 
-Pass `--operator-boundary-kml <path>` when Google Earth Pro contains a human-drawn Polygon Placemark for comparison. Use `--operator-boundary-kml -` to pipe pasted KML on stdin, or `--operator-boundary-kml-text "$KML"` when a caller already has raw KML text. The default placemark name is `USER DRAWN FIELD BOUNDARY`; override it with `--operator-boundary-name`. The command accepts `.kml`, `.kmz`, stdin, or raw text, extracts exactly one matching Polygon, rejects missing, line-only, unclosed, or duplicate matches with warnings, and writes it as operator evidence in `detections.truthBoundary`, `detections.operatorFieldBoundary`, and `detections.truthLabels.targetFieldBoundary`. Operator labels are scoring and learning feedback; they are not written to `detections.cvCandidateBoundary` or `detections.imageryFieldBoundary` as CV predictions and do not create `modelRecommendations[].proposedGeometry.fieldBoundary`.
+Pass `--operator-boundary-kml <path>` when Google Earth Pro contains a human-drawn Polygon Placemark for comparison. Use `--operator-boundary-kml -` to pipe pasted KML on stdin, or `--operator-boundary-kml-text "$KML"` when a caller already has raw KML text. The default placemark name is `USER DRAWN FIELD BOUNDARY`; override it with `--operator-boundary-name`. The command accepts `.kml`, `.kmz`, stdin, or raw text, extracts exactly one matching Polygon, rejects missing, line-only, unclosed, or duplicate matches with warnings, and writes it as operator evidence in `detections.truthBoundary`, `detections.operatorFieldBoundary`, and `detections.truthLabels.targetFieldBoundary`. Operator labels are scoring and learning feedback; they are not written to `detections.cvCandidateBoundary` or `detections.imageryFieldBoundary` as CV predictions and do not create `candidateReports[].proposedGeometry.fieldBoundary`.
 
-The detector must not synthesize a box around the pivot ring. If imagery-derived road, fenceline, treeline, or field-separation evidence is not strong enough, `detections.imageryFieldBoundary` is either `null` or marked `rejected: true`, and `modelRecommendations[].proposedGeometry.fieldBoundary` is omitted. Accepted detections include `source`, `imagePolygon`, optional `projectedPolygon`, `confidence`, `edgeAlignment`, `rectilinearity`, `circularity`, `containment`, `rejectionReasons`, and a `candidateMasks` audit summary.
+The detector must not synthesize a box around the pivot ring. If imagery-derived road, fenceline, treeline, or field-separation evidence is not strong enough, `detections.imageryFieldBoundary` is either `null` or marked `rejected: true`, and `candidateReports[].proposedGeometry.fieldBoundary` is omitted. Accepted detections include `source`, `imagePolygon`, optional `projectedPolygon`, `confidence`, `edgeAlignment`, `rectilinearity`, `circularity`, `containment`, `rejectionReasons`, and a `candidateMasks` audit summary.
 
 When an operator label can be pixel-aligned through the proof KML, project reference, and overlay-circle calibration, `visual-layout-review.json` also includes `operatorComparison` metrics for imagery candidates: `iou`, `boundaryMeanDistancePixels`, `boundaryMaxDistancePixels`, `falsePositiveAreaRatio`, and `falseNegativeAreaRatio`. CV candidates fail hard when they are 4-point axis-aligned extent rectangles, clipped by the screenshot edge, exceed `0.08` false-positive area ratio, exceed `80 px` mean boundary distance, or miss the irregular south/southeast operator-boundary features. High IoU alone is never sufficient for CV acceptance. `learningRecommendations[]` records detector/ranking issues such as weak candidate generation, low overlap, or unusable operator-label calibration.
 
@@ -99,12 +99,12 @@ Projected boundary output remains advisory local companion evidence. Operator ac
 
 ## Pivot Candidate Detection
 
-Use `detect-pivot-candidates` to run the local OpenCV pivot-center detector and emit Review-tab import records. This command is the first-class pivot candidate bridge; it writes evidence and a metadata-only `ModelRecommendation` unless a future calibrated path can prove projected `XY` output.
+Use `detect-pivot-candidates` to run the local OpenCV pivot-center detector and emit standalone companion report records. This command writes evidence and metadata-only candidate summaries unless a future calibrated path can prove projected `XY` output.
 
 ```sh
 uv run cplayout-ml detect-pivot-candidates \
   --synthetic-fixture \
-  --project-id synthetic-pivot-review \
+  --project-id synthetic-pivot-candidate \
   --project-crs LOCAL:IMAGE \
   --output-dir ../../reports/ml-cv-pivot-candidates/20260601T-run \
   --iterations 100
@@ -112,7 +112,7 @@ uv run cplayout-ml detect-pivot-candidates \
 
 For a real local screenshot, replace `--synthetic-fixture` with `--map-canvas <local-png>`. Optional `--truth-center-x`, `--truth-center-y`, and `--truth-radius` values score image-space truth only; they do not create project-CRS geometry.
 
-Outputs are `pivot-candidates-review.json`, `pivot-candidates-recommendations.geojson`, `pivot-candidates-iterations.jsonl`, and `pivot-candidates-annotated.png`. The recommendation intentionally omits `proposedGeometry.pivotCenter` while `projected XY calibration absent` remains in `metadata.hardFailures`. Importing it records advisory evidence for review, but it cannot auto-apply geometry.
+Outputs are `pivot-candidates-report.json`, `pivot-candidates-candidates.geojson`, `pivot-candidates-iterations.jsonl`, and `pivot-candidates-annotated.png`. The report intentionally omits projected pivot geometry while `projected XY calibration absent` remains in `metadata.hardFailures`. It cannot auto-apply geometry.
 
 ## Boundary Improvement Loop
 
@@ -205,9 +205,9 @@ uv run cplayout-ml validate-vector-labels \
   --project-crs EPSG:32613
 ```
 
-When GeoPandas is installed and a valid CRS transform is available, labels can be exported as projected-XY review evidence. Otherwise WGS84 or unknown-CRS labels remain evidence-only warnings.
+When GeoPandas is installed and a valid CRS transform is available, labels can be exported as projected-XY companion evidence. Otherwise WGS84 or unknown-CRS labels remain evidence-only warnings.
 
-Build an importable review packet:
+Build a standalone companion report packet:
 
 ```sh
 uv run cplayout-ml build-evidence-packet \
@@ -219,7 +219,7 @@ uv run cplayout-ml build-evidence-packet \
   --output-dir ./out/evidence-packet
 ```
 
-Outputs are `companion-evidence-packet.json`, `companion-evidence-packet-recommendations.geojson`, and `companion-evidence-packet-projected-xy.geojson`. The JSON uses the existing project review data schema so it can import through the Review tab. Candidates without valid projected-XY calibration are metadata-only recommendations with hard failures, so Apply XY stays blocked.
+Outputs are `companion-evidence-packet.json`, `companion-evidence-packet-candidates.geojson`, and `companion-evidence-packet-projected-xy.geojson`. The JSON is a companion-owned report packet, not a CPLayout project review schema. Candidates without valid projected-XY calibration remain metadata-only with hard failures.
 
 Run a read-only local Streamlit dashboard dry run:
 
@@ -229,7 +229,7 @@ uv run cplayout-ml serve-review-dashboard \
   --dry-run
 ```
 
-Streamlit is the primary review dashboard. It shows packet health, CRS/calibration status, evidence records, model recommendations, hard failures, artifact hashes, projected-XY features, warnings, and local provenance. The dashboard is read-only: it has no Apply action, writes no CPLayout project database, requires no key, and keeps any geometry change behind the existing browser Review Apply XY path.
+Streamlit is the primary companion dashboard. It shows packet health, CRS/calibration status, evidence records, candidate summaries, hard failures, artifact hashes, projected-XY features, warnings, and local provenance. The dashboard is read-only: it has no Apply action, writes no CPLayout project database, requires no key, and cannot mutate geometry.
 
 Use the secondary Dash/Plotly comparison dashboard when candidate filtering is needed:
 
@@ -262,11 +262,11 @@ uv run cplayout-ml serve-companion-api \
 The sidecar exposes local-only endpoints:
 
 - `GET /health`
-- `GET /review-packet?path=...`
+- `GET /report-packet?path=...`
 - `POST /packets/build`
 - `GET /artifacts/hash?path=...`
 
-`POST /packets/build` runs the same in-process evidence-packet builder under the configured workspace. It does not execute arbitrary commands. All paths must stay inside the workspace, hidden keys are rejected, non-local binds are rejected, and output remains advisory Review evidence until imported and applied through projected-XY gates.
+`POST /packets/build` runs the same in-process evidence-packet builder under the configured workspace. It does not execute arbitrary commands. All paths must stay inside the workspace, hidden keys are rejected, non-local binds are rejected, and output remains standalone advisory companion evidence.
 
 Optionally record API reads/builds in a companion-owned experiment index:
 

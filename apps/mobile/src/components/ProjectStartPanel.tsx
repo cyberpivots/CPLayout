@@ -22,7 +22,7 @@ export function ProjectStartPanel({ onCreate, onOpenImprovedProof, onOpenProject
       </View>
       <View style={styles.projectActionRow}>
         <ActionButton label="Create New Layout" onPress={onCreate} selected />
-        <ActionButton label="Open Improved Pivot Review" onPress={onOpenImprovedProof} />
+        <ActionButton label="Open Improved Pivot Proof" onPress={onOpenImprovedProof} />
         <ActionButton label="Open Real Pivot Proof" onPress={onOpenRealProof} />
         <ActionButton label="Open Sample" onPress={onOpenSample} />
         <ActionButton label="Refresh" onPress={() => void repository.refreshProjects()} />

@@ -5,11 +5,10 @@ import {
   buildGeometryBboxQueryPlan,
   buildGeometryVerticesQueryPlan,
   buildProjectGeometryRows,
-  buildSaveProjectAdjacentDataStatementPlan,
   buildSaveProjectStatementPlan,
 } from "./projectPersistence";
 import { LOAD_ACTIVE_PROJECT_BY_ID_SQL } from "./projectRepositorySql";
-import { sampleProject, type LayoutDecisionRecord, type LayoutEvidenceRecord, type ModelRecommendation } from "@cplayout/core";
+import { sampleProject } from "@cplayout/core";
 
 const rows = buildProjectGeometryRows(sampleProject);
 assert.equal(rows.length, 1 + sampleProject.obstacles.length);
@@ -190,64 +189,6 @@ assert.ok(
     && statement.params[2] === 1
     && statement.params[3] === sampleProject.pivotCenter.x
   ),
-);
-
-const evidenceRecord: LayoutEvidenceRecord = {
-  id: "evidence-001",
-  projectId: sampleProject.id,
-  sourceKind: "imagery",
-  createdAt: "2026-05-22T12:00:00.000Z",
-  projectCrs: sampleProject.projectCrs,
-  summary: "Visible road edge used as planning evidence.",
-  geometry: sampleProject.fieldBoundary.slice(0, 3),
-  confidence: 0.72,
-  reviewStatus: "unreviewed",
-};
-const modelRecommendation: ModelRecommendation = {
-  id: "recommendation-001",
-  projectId: sampleProject.id,
-  modelName: "baseline-local-ranker",
-  modelVersion: "0.1.0",
-  createdAt: "2026-05-22T12:05:00.000Z",
-  projectCrs: sampleProject.projectCrs,
-  summary: "Move pivot center east to reduce outside-field acres.",
-  proposedGeometry: {
-    projectCrs: sampleProject.projectCrs,
-    pivotCenter: { x: sampleProject.pivotCenter.x + 10, y: sampleProject.pivotCenter.y },
-  },
-  confidence: 0.61,
-  evidenceIds: [evidenceRecord.id],
-  reviewStatus: "unreviewed",
-  score: 88.2,
-  warnings: [],
-};
-const layoutDecision: LayoutDecisionRecord = {
-  id: "decision-001",
-  projectId: sampleProject.id,
-  createdAt: "2026-05-22T12:10:00.000Z",
-  decidedBy: "operator",
-  decision: "deferred",
-  recommendationId: modelRecommendation.id,
-  evidenceIds: [evidenceRecord.id],
-  reason: "Needs field verification before production geometry changes.",
-};
-const adjacentPlan = buildSaveProjectAdjacentDataStatementPlan(sampleProject.id, {
-  evidenceRecords: [evidenceRecord],
-  modelRecommendations: [modelRecommendation],
-  layoutDecisions: [layoutDecision],
-});
-assert.equal(adjacentPlan[0].sql, "DELETE FROM layout_decisions WHERE project_id = ?");
-assert.equal(adjacentPlan[1].sql, "DELETE FROM model_recommendations WHERE project_id = ?");
-assert.equal(adjacentPlan[2].sql, "DELETE FROM layout_evidence WHERE project_id = ?");
-assert.ok(adjacentPlan.some((statement) => statement.sql.includes("INSERT INTO layout_evidence")));
-assert.ok(adjacentPlan.some((statement) => statement.sql.includes("INSERT INTO model_recommendations")));
-assert.ok(adjacentPlan.some((statement) => statement.sql.includes("INSERT INTO layout_decisions")));
-assert.ok(String(adjacentPlan.find((statement) => statement.sql.includes("INSERT INTO layout_evidence"))?.params[6]).includes("Visible road edge"));
-assert.throws(
-  () => buildSaveProjectAdjacentDataStatementPlan(sampleProject.id, {
-    evidenceRecords: [{ ...evidenceRecord, projectId: "other-project" }],
-  }),
-  /belongs to other-project/,
 );
 
 console.log("project persistence plan tests passed");

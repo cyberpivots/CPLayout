@@ -4,7 +4,7 @@ export interface SqlMigration {
   statements: string[];
 }
 
-export const SQLITE_SCHEMA_VERSION = 9;
+export const SQLITE_SCHEMA_VERSION = 10;
 
 export const SQLITE_MIGRATIONS: SqlMigration[] = [
   {
@@ -313,6 +313,19 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
       `ALTER TABLE map_packages ADD COLUMN imagery_provenance_json TEXT`,
     ],
   },
+  {
+    id: 10,
+    name: "drop_review_recommendation_contracts",
+    statements: [
+      `DROP INDEX IF EXISTS idx_layout_evidence_project_status`,
+      `DROP INDEX IF EXISTS idx_layout_evidence_source`,
+      `DROP INDEX IF EXISTS idx_model_recommendations_project_status`,
+      `DROP INDEX IF EXISTS idx_layout_decisions_project_created`,
+      `DROP TABLE IF EXISTS layout_decisions`,
+      `DROP TABLE IF EXISTS model_recommendations`,
+      `DROP TABLE IF EXISTS layout_evidence`,
+    ],
+  },
 ];
 
 export function migrationSql(): string {
@@ -320,8 +333,14 @@ export function migrationSql(): string {
 }
 
 export function listSchemaIndexNames(): string[] {
+  const droppedIndexes = new Set(
+    SQLITE_MIGRATIONS
+      .flatMap((migration) => migration.statements)
+      .map((statement) => statement.match(/DROP INDEX IF EXISTS\s+(\w+)/i)?.[1])
+      .filter((name): name is string => Boolean(name)),
+  );
   return SQLITE_MIGRATIONS
     .flatMap((migration) => migration.statements)
     .map((statement) => statement.match(/CREATE INDEX IF NOT EXISTS\s+(\w+)/i)?.[1])
-    .filter((name): name is string => Boolean(name));
+    .filter((name): name is string => typeof name === "string" && !droppedIndexes.has(name));
 }

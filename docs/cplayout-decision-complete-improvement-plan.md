@@ -2,7 +2,7 @@
 
 ## Summary
 
-CPLayout should keep canonical layout geometry in projected/local `XY` coordinates while making decimal degrees the default user-facing WGS84 entry/display mode. Offline imagery should remain free/no-cost and locally packaged, with Android MapLibre limited to the proven TileJSON/tile URL template path until raw PMTiles/MBTiles adapters are device-proven. Expert review should be visible in the GUI as bounded role outputs, not as an unbounded agent swarm. ML belongs in offline preprocessing or companion tooling unless a native on-device inference path is proven on Android/iOS.
+CPLayout should keep canonical layout geometry in projected/local `XY` coordinates while making decimal degrees the default user-facing WGS84 entry/display mode. Offline imagery should remain free/no-cost and locally packaged, with Android MapLibre limited to the proven TileJSON/tile URL template path until raw PMTiles/MBTiles adapters are device-proven. Expert-agent review belongs in chat/workspace planning and validation records, not as an application route or project data contract. ML belongs in offline preprocessing or companion tooling unless a native on-device inference path is proven on Android/iOS.
 
 ## Key Implementation Changes
 
@@ -10,7 +10,7 @@ CPLayout should keep canonical layout geometry in projected/local `XY` coordinat
 - Coordinate flow: continue using `parseCoordinateInput`, `projectLonLatToXy`, and `projectXyToLonLat` for WGS84 input/display and CRS projection. Do not change the project document schema to store WGS84 geometry as canonical.
 - Imagery: use `MapPackageManifest` metadata for package type, content type, TileJSON URL, tile URL templates, bounds, attribution, license, checksum, and install status. Do not add paid imagery services or hidden-key providers.
 - Native maps: treat `@maplibre/maplibre-react-native` as a native/development-build lane only. TileJSON URLs and tile URL templates can map to MapLibre sources; raw PMTiles/MBTiles still need a local protocol, generated TileJSON/templates, extracted tile directories, or a local tile server before native rendering.
-- Expert panel: expose a GUI Review tab backed by pure TypeScript findings for Product/UX, GIS/Mapping, Architecture/Storage, ML Feasibility, and QA/Safety.
+- Expert panels: keep Product/UX, GIS/Mapping, Architecture/Storage, ML Feasibility, and QA/Safety review as bounded chat/workspace agent behavior. Do not expose it as a mobile Review tab, reducer action, archive payload, SQLite API, or app-importable recommendation contract.
 - Agent process: keep the main agent on the implementation path. Under the CPLayout owner's standing authorization, use bounded subagents for non-trivial matched source checks, test triage, implementation slices, or final review when those tasks can run without duplicating the main exploration; otherwise record `Accepted fallback:`.
 - Model/reasoning policy: use low reasoning for file lookup, formatting, and narrow docs checks; medium for ordinary TypeScript/UI planning; high for architecture, map/provider, storage, data migration, and multi-package changes; xhigh only for high-risk cross-platform/native/ML decisions or final expert-panel arbitration. Track task class, tool count, test failures, and reviewer disagreement before escalating.
 
@@ -21,7 +21,7 @@ CPLayout should keep canonical layout geometry in projected/local `XY` coordinat
 3. `PivotProject` continues to store field geometry, obstacles, pivot center, infrastructure points, and layout results as `XY`.
 4. Project settings export the selected coordinate display format, but local-only package directories stay outside project export data.
 5. Map package metadata round-trips through project documents, ZIP archives, and SQLite tables; binary imagery packages are referenced by manifest metadata and are not treated as canonical geometry.
-6. Review findings are computed from typed project/settings/layout data and shown in the mobile Review tab.
+6. App validation is shown through Dashboard warnings, Map inspection, Files import previews, Settings, and Help. Expert-agent findings stay in workspace records outside product schemas.
 
 ## Expert Panel Process
 

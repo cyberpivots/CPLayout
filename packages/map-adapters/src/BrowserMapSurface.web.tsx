@@ -11,7 +11,7 @@ import {
   UtilityPole,
   X,
 } from "lucide-react-native";
-import maplibregl, { type StyleSpecification } from "maplibre-gl";
+import maplibregl from "maplibre-gl";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
@@ -19,9 +19,6 @@ import { resolveDraftVertexIntent } from "@cplayout/geometry";
 import {
   resolveAerialReferenceImagerySource,
   resolveReferenceOverlaySource,
-  type AerialReferenceImageryResolution,
-  type MapLibreTileSourceDescriptor,
-  type OnlineImageryProvider,
   type ObstacleZone,
   type ProjectMapFeatureKind,
   type ReferenceOverlayLayerKey,
@@ -29,10 +26,10 @@ import {
 } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 import {
-  browserMapClickToProjectedIntent,
   confidenceForImagery,
-  type BrowserMapClickIntent,
-} from "./browserMapInteraction";
+  mapClickToProjectedIntent,
+  type MapClickIntent,
+} from "./mapClickIntent";
 import {
   defaultMapFeatureName,
   draftVerticesToFeatureGeometry,
@@ -42,8 +39,14 @@ import {
   type UtilityFeatureGeometry,
 } from "./mapTools";
 import { projectLayoutToWgs84FeatureCollection, projectWgs84Bounds, projectWgs84Center } from "./mapOverlayGeoJson";
+import {
+  buildWorkbenchStyle,
+  formatReferenceOverlayStatus,
+  rasterStyleSourceFromAerialReferenceResolution,
+  toMapLibreTileTemplate,
+  type RasterImageryStyleSource,
+} from "./mapWorkbenchStyle";
 import { registerPmtilesProtocolOnce } from "./pmtilesProtocol.web";
-import { buildReferenceOverlayStyleParts } from "./referenceOverlayStyle";
 import { SvgMapSurface } from "./SvgMapSurface";
 import type { MapSurfaceProps } from "./types";
 
@@ -57,19 +60,6 @@ interface InteractionState {
   workflowMode: MapSurfaceProps["settings"]["mappingWorkflowMode"];
 }
 
-interface RasterImageryStyleSource {
-  id: string;
-  name: string;
-  attribution: string;
-  licenseText: string;
-  minzoom: number;
-  maxzoom: number;
-  scheme: "xyz" | "tms";
-  tileSize: number;
-  tiles?: string[];
-  url?: string;
-}
-
 export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const {
     activeLayer: externalActiveLayer,
@@ -79,7 +69,6 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     project,
     result,
     settings,
-    advisoryRecommendationPreview,
     onAddMapFeature,
     onAddSurveyPoint,
     onCommitBoundaryDraft,
@@ -293,7 +282,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         setStatus(`Selected map feature ${selectedFeatureId}. Project geometry is unchanged.`);
         return;
       }
-      const intent = browserMapClickToProjectedIntent({
+      const intent = mapClickToProjectedIntent({
         ...current,
         lonLat: { longitude: lngLat.lng, latitude: lngLat.lat },
       });
@@ -331,7 +320,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       event.preventDefault();
       const current = interactionRef.current;
       if (homeView || current.workflowMode !== "design") return;
-      const intent = browserMapClickToProjectedIntent({
+      const intent = mapClickToProjectedIntent({
         ...current,
         lonLat: { longitude: event.lngLat.lng, latitude: event.lngLat.lat },
       });
@@ -384,9 +373,9 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     }
   }
 
-  function applyClickIntent(intent: BrowserMapClickIntent, closeRequested: boolean): void {
+  function applyClickIntent(intent: MapClickIntent, closeRequested: boolean): void {
     if (intent.type === "none") {
-      if (intent.reason === "review_layout_no_mutation") setStatus("Layout mode is RTK-only; switch to Design for pointer-based geometry edits.");
+      if (intent.reason === "layout_mode_no_mutation") setStatus("Layout mode is RTK-only; switch to Design for pointer-based geometry edits.");
       return;
     }
     if (intent.type === "draft_vertex") {
@@ -482,7 +471,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     && mapFeatureOption.geometry !== "Point"
     && draftVertices.length >= featureDraftMinimumVertices(mapFeatureOption.geometry);
   const canToggleReferenceOverlay = Boolean(onSettingsChange && referenceOverlay.canRender);
-  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${utilitySaveHint(mode, mapFeatureOption.geometry)}${advisoryRecommendationPreview ? " · advisory preview visible" : ""}`;
+  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${utilitySaveHint(mode, mapFeatureOption.geometry)}`;
 
   return (
     <View style={styles.shell} testID="browser-map-workbench">
@@ -514,15 +503,15 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           style: mapContainerStyle,
         })}
         <View style={[styles.toolHud, compactLayout && styles.toolHudCompact]}>
-          <ToolButton active={mode === "pan"} icon={<Hand size={17} color={mode === "pan" ? "#ffffff" : "#173428"} />} label="Pan" onPress={() => setTool("pan")} testID="browser-tool-pan" />
-          <ToolButton active={layersPanelOpen} icon={<Layers size={17} color={layersPanelOpen ? "#ffffff" : "#173428"} />} label="Layers" onPress={() => setLayersPanelOpen((open) => !open)} testID="browser-reference-layers-button" />
+          <ToolButton active={mode === "pan"} compact={compactLayout} icon={<Hand size={17} color={mode === "pan" ? "#ffffff" : "#173428"} />} label="Pan" onPress={() => setTool("pan")} testID="browser-tool-pan" />
+          <ToolButton active={layersPanelOpen} compact={compactLayout} icon={<Layers size={17} color={layersPanelOpen ? "#ffffff" : "#173428"} />} label="Layers" onPress={() => setLayersPanelOpen((open) => !open)} testID="browser-reference-layers-button" />
           {canEditOnMap ? (
             <>
-              <ToolButton active={mode === "draw_boundary"} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} testID="browser-tool-boundary" />
-              <ToolButton active={mode === "mark_obstacle"} icon={<Layers size={17} color={mode === "mark_obstacle" ? "#ffffff" : "#173428"} />} label="Obstacle" onPress={() => setTool("mark_obstacle", "obstacle")} testID="browser-tool-obstacle" />
-              <ToolButton active={mode === "place_pivot"} icon={<LocateFixed size={17} color={mode === "place_pivot" ? "#ffffff" : "#173428"} />} label="Pivot" onPress={() => setTool("place_pivot", "pivot_center")} testID="browser-tool-pivot" />
-              <ToolButton active={mode === "capture_point"} icon={<Crosshair size={17} color={mode === "capture_point" ? "#ffffff" : "#173428"} />} label="Survey" onPress={() => setTool("capture_point", "control_point")} testID="browser-tool-survey" />
-              <ToolButton active={mode === "measure"} icon={<UtilityPole size={17} color={mode === "measure" ? "#ffffff" : "#173428"} />} label="Utility" onPress={() => setTool("measure")} testID="browser-tool-utility" />
+              <ToolButton active={mode === "measure"} compact={compactLayout} icon={<UtilityPole size={17} color={mode === "measure" ? "#ffffff" : "#173428"} />} label="Utility" onPress={() => setTool("measure")} testID="browser-tool-utility" />
+              <ToolButton active={mode === "draw_boundary"} compact={compactLayout} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} testID="browser-tool-boundary" />
+              <ToolButton active={mode === "mark_obstacle"} compact={compactLayout} icon={<Layers size={17} color={mode === "mark_obstacle" ? "#ffffff" : "#173428"} />} label="Obstacle" onPress={() => setTool("mark_obstacle", "obstacle")} testID="browser-tool-obstacle" />
+              <ToolButton active={mode === "place_pivot"} compact={compactLayout} icon={<LocateFixed size={17} color={mode === "place_pivot" ? "#ffffff" : "#173428"} />} label="Pivot" onPress={() => setTool("place_pivot", "pivot_center")} testID="browser-tool-pivot" />
+              <ToolButton active={mode === "capture_point"} compact={compactLayout} icon={<Crosshair size={17} color={mode === "capture_point" ? "#ffffff" : "#173428"} />} label="Survey" onPress={() => setTool("capture_point", "control_point")} testID="browser-tool-survey" />
             </>
           ) : null}
         </View>
@@ -603,7 +592,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        <View pointerEvents="box-none" style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
+        <View pointerEvents={compactLayout && !canCommitDraft && !canSaveFeature ? "none" : "box-none"} style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
           <View pointerEvents="none" style={styles.statusTextGroup}>
             <Text style={styles.statusText}>{status}</Text>
             <Text style={styles.statusMeta}>{statusMetaText}</Text>
@@ -616,15 +605,15 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         </View>
 
         {!canEditOnMap ? (
-          <View style={[styles.reviewHud, compactLayout && styles.reviewHudCompact]} testID="browser-map-review-hud">
+          <View style={[styles.layoutHud, compactLayout && styles.layoutHudCompact]} testID="browser-map-layout-hud">
             <MapPinned size={17} color="#173428" />
-            <Text style={styles.reviewHudText}>{homeView ? "Catalog map: open a field map or design before editing." : "Layout mode: RTK-only geometry changes; pointer gestures inspect only."}</Text>
+            <Text style={styles.layoutHudText}>{homeView ? "Catalog map: open a field map or design before editing." : "Layout mode: RTK-only geometry changes; pointer gestures inspect only."}</Text>
           </View>
         ) : null}
 
         <View style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]} testID="browser-map-attribution-hud">
           <Satellite size={13} color="#173428" />
-          <Text style={styles.attributionText}>
+          <Text numberOfLines={compactLayout ? 1 : undefined} style={styles.attributionText}>
             {activeImagery ? `${activeImagery.attribution} · ${activeImagery.licenseText}` : aerialImagery.reason}
           </Text>
         </View>
@@ -632,139 +621,6 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       </View>
     </View>
   );
-}
-
-function buildWorkbenchStyle(
-  imagery: RasterImageryStyleSource | null,
-  featureCollection: ReturnType<typeof projectLayoutToWgs84FeatureCollection>,
-  referenceOverlay: ReturnType<typeof resolveReferenceOverlaySource>,
-  referenceOverlayPreferences: MapSurfaceProps["settings"]["referenceOverlay"],
-): StyleSpecification {
-  const referenceOverlayParts = buildReferenceOverlayStyleParts(referenceOverlay, referenceOverlayPreferences);
-  const sources: StyleSpecification["sources"] = {
-    ...referenceOverlayParts.sources,
-    layout: {
-      type: "geojson",
-      data: featureCollection,
-    },
-  };
-  const layers: StyleSpecification["layers"] = [
-    {
-      id: "background",
-      type: "background",
-      paint: { "background-color": imagery ? "#d8dfd5" : "#eef2ec" },
-    },
-  ];
-
-  if (imagery) {
-    const source: Record<string, unknown> = {
-      type: "raster",
-      tileSize: imagery.tileSize,
-      minzoom: imagery.minzoom,
-      maxzoom: imagery.maxzoom,
-      scheme: imagery.scheme,
-      attribution: imagery.attribution,
-    };
-    if (imagery.url) source.url = imagery.url;
-    if (imagery.tiles) source.tiles = imagery.tiles.map(toMapLibreTileTemplate);
-    sources.imagery = source as StyleSpecification["sources"][string];
-    layers.push({
-      id: "imagery",
-      type: "raster",
-      source: "imagery",
-      paint: { "raster-opacity": 0.88 },
-    });
-  }
-
-  layers.push(
-    ...referenceOverlayParts.layers,
-    fillLayer("field-fill", "field_boundary", "#f4f1df", 0.18),
-    fillLayer("allowed-fill", "allowed_coverage", "#2f8fc1", 0.34),
-    fillLayer("end-gun-fill", "end_gun_coverage", "#33a79b", 0.28),
-    fillLayer("outside-fill", "outside_field_coverage", "#d8893f", 0.28),
-    fillLayer("obstacle-fill", "obstacle", "#b73f35", 0.5),
-    fillLayer("map-feature-polygon", "map_feature", "#7c5b14", 0.18, ["all", ["==", ["geometry-type"], "Polygon"], ["==", ["get", "layerType"], "map_feature"]]),
-    lineLayer("field-line", "field_boundary", "#111c17", 3),
-    lineLayer("obstacle-line", "obstacle", "#6d251f", 2),
-    lineLayer("map-feature-line", "map_feature", "#7c5b14", 3, ["all", ["==", ["geometry-type"], "LineString"], ["==", ["get", "layerType"], "map_feature"]]),
-    lineLayer("draft-line", "draft_vertices", "#ffffff", 5, ["all", ["==", ["geometry-type"], "LineString"], ["==", ["get", "layerType"], "draft_vertices"]]),
-    lineLayer("draft-line-core", "draft_vertices", "#0f766e", 2, ["all", ["==", ["geometry-type"], "LineString"], ["==", ["get", "layerType"], "draft_vertices"]]),
-    circleLayer("pivot-point", "pivot_center", "#111827", 7),
-    circleLayer("water-point", "water_source", "#006a9f", 6),
-    circleLayer("power-point", "power_source", "#a36500", 6),
-    circleLayer("tower-point", "tower_location", "#49574f", 3),
-    circleLayer("map-feature-point", "map_feature", "#7c5b14", 6),
-    circleLayer("draft-point", "draft_vertices", "#0f766e", 7),
-  );
-
-  const style: StyleSpecification = {
-    version: 8,
-    sources,
-    layers,
-  };
-  if (referenceOverlayParts.glyphs) style.glyphs = referenceOverlayParts.glyphs;
-  return style;
-}
-
-function formatReferenceOverlayStatus(referenceOverlay: ReturnType<typeof resolveReferenceOverlaySource>): string {
-  if (referenceOverlay.sourceKind === "public_raster") {
-    return `${referenceOverlay.autoApplied ? "Auto-applied" : "Manual"}: ${referenceOverlay.packageName ?? "USGS public reference"} · public no-key raster`;
-  }
-  return `${referenceOverlay.autoApplied ? "Auto-applied" : "Manual"}: ${referenceOverlay.packageName ?? referenceOverlay.packageId} · ${referenceOverlay.schema.replaceAll("_", " ")}`;
-}
-
-function fillLayer(
-  id: string,
-  layerType: string,
-  color: string,
-  opacity: number,
-  filter: unknown[] = ["==", ["get", "layerType"], layerType],
-): StyleSpecification["layers"][number] {
-  return {
-    id,
-    type: "fill",
-    source: "layout",
-    filter: filter as never,
-    paint: {
-      "fill-color": color,
-      "fill-opacity": opacity,
-    },
-  };
-}
-
-function lineLayer(
-  id: string,
-  layerType: string,
-  color: string,
-  width: number,
-  filter: unknown[] = ["==", ["get", "layerType"], layerType],
-): StyleSpecification["layers"][number] {
-  return {
-    id,
-    type: "line",
-    source: "layout",
-    filter: filter as never,
-    paint: {
-      "line-color": color,
-      "line-width": width,
-      "line-opacity": 0.95,
-    },
-  };
-}
-
-function circleLayer(id: string, layerType: string, color: string, radius: number): StyleSpecification["layers"][number] {
-  return {
-    id,
-    type: "circle",
-    source: "layout",
-    filter: ["==", ["get", "layerType"], layerType],
-    paint: {
-      "circle-color": "#fffef8",
-      "circle-radius": radius,
-      "circle-stroke-color": color,
-      "circle-stroke-width": 2,
-    },
-  };
 }
 
 function fitBoundsToProject(
@@ -785,48 +641,6 @@ function fitBoundsToProject(
   );
 }
 
-function rasterStyleSourceFromOnlineProvider(provider: OnlineImageryProvider): RasterImageryStyleSource {
-  return {
-    id: `online-${provider.id}`,
-    name: provider.name,
-    attribution: provider.attribution,
-    licenseText: provider.licenseText,
-    minzoom: provider.minZoom,
-    maxzoom: provider.maxZoom,
-    scheme: provider.tileScheme,
-    tileSize: provider.tileSize,
-    tiles: [provider.tileUrlTemplate],
-  };
-}
-
-function rasterStyleSourceFromAerialReferenceResolution(resolution: AerialReferenceImageryResolution): RasterImageryStyleSource | null {
-  if (resolution.sourceKind === "online_provider" && resolution.onlineProvider) {
-    return rasterStyleSourceFromOnlineProvider(resolution.onlineProvider);
-  }
-  if (!resolution.localAerial.canRender || !resolution.localAerial.source) return null;
-  return {
-    ...rasterStyleSourceFromTileDescriptor(resolution.localAerial.source),
-    name: resolution.localAerial.packageName ?? resolution.localAerial.packageId ?? resolution.localAerial.source.id,
-    attribution: resolution.localAerial.attribution ?? resolution.localAerial.source.attribution,
-    licenseText: resolution.localAerial.licenseText ?? "License metadata required.",
-  };
-}
-
-function rasterStyleSourceFromTileDescriptor(source: MapLibreTileSourceDescriptor): RasterImageryStyleSource {
-  return {
-    id: source.id,
-    name: source.id,
-    attribution: source.attribution,
-    licenseText: "License metadata required.",
-    minzoom: source.minzoom,
-    maxzoom: source.maxzoom,
-    scheme: source.scheme,
-    tileSize: 256,
-    tiles: source.tiles,
-    url: source.url,
-  };
-}
-
 function syncLayoutSource(
   map: maplibregl.Map,
   featureCollection: ReturnType<typeof projectLayoutToWgs84FeatureCollection>,
@@ -843,17 +657,6 @@ function mapFeatureIdAtPoint(map: maplibregl.Map, point: maplibregl.PointLike): 
   });
   const id = features.find((feature) => typeof feature.properties?.id === "string")?.properties?.id;
   return typeof id === "string" && id.length > 0 ? id : null;
-}
-
-function toMapLibreTileTemplate(template: string): string {
-  return template
-    .replace(/\{TileMatrix\}/gi, "{z}")
-    .replace(/\{TileCol\}/gi, "{x}")
-    .replace(/\{TileRow\}/gi, "{y}")
-    .replace(/\{level\}/gi, "{z}")
-    .replace(/\{column\}/gi, "{x}")
-    .replace(/\{col\}/gi, "{x}")
-    .replace(/\{row\}/gi, "{y}");
 }
 
 function obstacleKindForLayer(layer: DrawingLayerType): ObstacleZone["kind"] {
@@ -899,11 +702,11 @@ function ModeSwitch({ active, label, onPress, testID }: { active: boolean; label
   );
 }
 
-function ToolButton({ active, icon, label, onPress, testID }: { active: boolean; icon: React.ReactNode; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
+function ToolButton({ active, compact = false, icon, label, onPress, testID }: { active: boolean; compact?: boolean; icon: React.ReactNode; label: string; onPress: () => void; testID?: string }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} aria-pressed={active} onPress={onPress} style={[styles.toolButton, active && styles.toolButtonActive]} testID={testID}>
+    <Pressable accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ selected: active }} aria-pressed={active} onPress={onPress} style={[styles.toolButton, compact && styles.toolButtonCompact, active && styles.toolButtonActive]} testID={testID}>
       {icon}
-      <Text style={[styles.toolButtonText, active && styles.toolButtonTextActive]}>{label}</Text>
+      {!compact ? <Text style={[styles.toolButtonText, active && styles.toolButtonTextActive]}>{label}</Text> : null}
     </Pressable>
   );
 }
@@ -1023,7 +826,6 @@ const styles = StyleSheet.create({
     borderColor: "#c9d6cb",
     borderRadius: 8,
     borderWidth: 1,
-    bottom: 66,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
@@ -1031,14 +833,16 @@ const styles = StyleSheet.create({
     maxWidth: "92%",
     padding: 6,
     position: "absolute",
-    right: 12,
+    top: 12,
     zIndex: 3,
   },
   toolHudCompact: {
-    bottom: 76,
+    flexDirection: "column",
+    flexWrap: "nowrap",
     left: 8,
-    maxWidth: "94%",
-    right: 8,
+    maxWidth: 58,
+    top: 72,
+    width: 58,
   },
   toolButton: {
     alignItems: "center",
@@ -1057,6 +861,14 @@ const styles = StyleSheet.create({
   toolButtonActive: {
     backgroundColor: "#173428",
     borderColor: "#173428",
+  },
+  toolButtonCompact: {
+    flexBasis: 44,
+    height: 44,
+    justifyContent: "center",
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    width: 44,
   },
   toolButtonText: {
     color: "#173428",
@@ -1082,9 +894,9 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   optionHudCompact: {
-    left: 8,
-    maxWidth: "94%",
-    top: 104,
+    left: 74,
+    maxWidth: "72%",
+    top: 72,
   },
   referenceLayerHud: {
     backgroundColor: "rgba(251,253,249,0.97)",
@@ -1099,10 +911,10 @@ const styles = StyleSheet.create({
     top: 70,
   },
   referenceLayerHudCompact: {
-    left: 8,
-    maxWidth: "94%",
+    left: 74,
+    maxWidth: "72%",
     right: 8,
-    top: 104,
+    top: 72,
   },
   referenceLayerTitle: {
     color: "#173428",
@@ -1178,7 +990,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(17,28,23,0.92)",
     borderRadius: 8,
-    bottom: 112,
+    bottom: 136,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
@@ -1192,8 +1004,8 @@ const styles = StyleSheet.create({
   },
   statusHudCompact: {
     alignItems: "flex-start",
-    bottom: 132,
-    left: 8,
+    bottom: 78,
+    left: 74,
     right: 8,
   },
   statusTextGroup: {
@@ -1248,7 +1060,7 @@ const styles = StyleSheet.create({
   hudButtonTextDisabled: {
     color: "#718077",
   },
-  reviewHud: {
+  layoutHud: {
     alignItems: "center",
     backgroundColor: "rgba(255,250,235,0.96)",
     borderColor: "#dfc77f",
@@ -1262,13 +1074,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 70,
   },
-  reviewHudCompact: {
-    left: 8,
-    maxWidth: "94%",
+  layoutHudCompact: {
+    left: 74,
+    maxWidth: "72%",
     right: 8,
-    top: 106,
+    top: 72,
   },
-  reviewHudText: {
+  layoutHudText: {
     color: "#553b09",
     flexShrink: 1,
     fontSize: 12,
@@ -1278,7 +1090,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(251,253,249,0.95)",
     borderRadius: 8,
-    bottom: 8,
+    bottom: 84,
     flexDirection: "row",
     gap: 6,
     left: 12,
@@ -1289,9 +1101,14 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   attributionHudCompact: {
-    left: 8,
-    maxWidth: "94%",
+    bottom: "auto",
+    left: 74,
+    maxHeight: 30,
+    maxWidth: "72%",
+    overflow: "hidden",
+    paddingVertical: 5,
     right: 8,
+    top: 64,
   },
   attributionText: {
     color: "#173428",

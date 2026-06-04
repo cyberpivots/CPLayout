@@ -24,8 +24,8 @@ Scope: a 100 iteration analysis -> research -> improvement -> test -> repeat loo
 | Local ML is already companion-first and advisory. | `docs/local-ml-data-improvement-plan.md`; `tools/local-ml-companion/README.md` |
 | Existing local CV uses OpenCV for pivot crop rings, overlay circles, Hough lines, field-boundary cues, and annotated evidence. | `tools/local-ml-companion/src/cplayout_ml/cli.py` |
 | Existing ML loop metadata records local fixture hashes, deterministic splits, DVC metadata, MLflow outputs, no network requirement, and no canonical geometry mutation. | `tools/local-ml-companion/src/cplayout_ml/ml_loop.py`; `tools/local-ml-companion/tests/test_ml_loop.py` |
-| CPLayout already has advisory `LayoutEvidenceRecord`, `ModelRecommendation`, and `LayoutDecisionRecord` contracts. | `packages/core/src/layoutEvidence.ts` |
-| Pivot center alternatives already exist as deterministic projected-XY advisory recommendations. | `packages/geometry/src/pivotCenterOptimizer.ts`; `packages/geometry/src/pivotCenterOptimizer.test.ts` |
+| CPLayout review/recommendation contracts are retired from the product surface. | App Review routes, reducer recommendation actions, project-store review APIs, archive exports, and SQLite final tables are removed; legacy review archive files are ignored on import. |
+| Pivot center alternatives exist as deterministic geometry analysis helpers. | `packages/geometry/src/pivotCenterOptimizer.ts`; `packages/geometry/src/pivotCenterOptimizer.test.ts` |
 
 ## Source-Backed Research Basis
 
@@ -104,13 +104,12 @@ The required values for this loop are `canonicalGeometryMutation: false` and `ne
 
 The first production slice is a local companion pivot candidate exporter, not an in-app native ML runtime:
 
-1. Extend `tools/local-ml-companion` with first-class pivot-center commands. `detect-pivot-candidates` now emits advisory evidence and metadata-only review recommendations; `evaluate-pivot-fixtures` remains a future real-fixture evaluation command.
-2. Emit `LayoutEvidenceRecord` entries for source provenance, screenshot/crop hashes, thresholds, calibration status, rejection reasons, and non-black visual evidence when Google Earth proof packets are used.
-3. Emit `ModelRecommendation` entries only when projected calibration is valid. The recommendation may include `proposedGeometry.pivotCenter` in the project CRS, but it must remain `reviewStatus: "unreviewed"` and carry `canonicalGeometryMutation: false`.
-4. Keep radius, image-space center, detector confidence, and Hough/Canny/radial/tower cues in metrics and metadata until an explicit project-CRS reducer path is reviewed and tested.
-5. In the Review UI, group these as CV pivot candidates. Preview is advisory. Accept, Reject, and Defer record decisions only. Apply XY remains the only geometry-changing action and must keep reducer validation and confirmation.
-6. Add archive/review export checks for `exports/layout-evidence.jsonl`, `exports/layout-decisions.jsonl`, and `exports/model-recommendations.geojson` when adjacent review data is exported.
-7. Add the operator-approved real fixture manifest path through `build-evidence-packet --real-pivot-fixtures`; calibrated truth may emit projected-XY pivot recommendations, while uncalibrated or metadata-only fixtures stay hard-blocked.
+1. Extend `tools/local-ml-companion` with first-class pivot-center commands. `detect-pivot-candidates` emits standalone companion evidence reports; `evaluate-pivot-fixtures` remains a future real-fixture evaluation command.
+2. Emit report entries for source provenance, screenshot/crop hashes, thresholds, calibration status, rejection reasons, and non-black visual evidence when Google Earth proof packets are used.
+3. Include projected `XY` candidates only when projected calibration is valid. Candidate data must carry `canonicalGeometryMutation: false` and remain outside CPLayout project schemas.
+4. Keep radius, image-space center, detector confidence, and Hough/Canny/radial/tower cues in metrics and metadata until a new project-CRS edit/import path is explicitly designed and tested.
+5. Do not add Browser Review UI grouping, recommendation preview, decision records, Apply XY, adjacent archive exports, or app-importable model recommendation flows.
+6. Add the operator-approved real fixture manifest path through `build-evidence-packet --real-pivot-fixtures`; calibrated truth may emit projected-XY candidate data in companion reports, while uncalibrated or metadata-only fixtures stay hard-blocked.
 
 ## Current Blockers
 
@@ -127,7 +126,7 @@ The first production slice is a local companion pivot candidate exporter, not an
 | Iteration | Focus | Research Gate | Improvement | Test Gate | Weighted Vote Status | Decision |
 | --- | --- | --- | --- | --- | --- | --- |
 | 001 | Governance bootstrap | Verify local docs, contracts, constraints, and sources. | Add this loop and mechanical verifier. | `npm run verify:ml-cv-loop` | Weighted vote planned | Planned |
-| 002 | Decision record schema | Verify current `LayoutDecisionRecord` covers model decisions. | Define vote payload shape in docs before code. | Core schema review | Weighted vote planned | Planned |
+| 002 | Companion report schema | Verify report fields cover model decisions without app review contracts. | Define vote payload shape in docs before code. | Companion schema review | Weighted vote planned | Planned |
 | 003 | Fixture inventory | Locate available proof packets and local screenshots. | Build fixture manifest template for pivot locating. | Manifest parse check | Weighted vote planned | Planned |
 | 004 | Provenance gate | Verify every image source has attribution and no key. | Add fixture provenance checklist. | Hidden-key rejection test | Weighted vote planned | Planned |
 | 005 | No-assumption gate | Define unknown/blocker fields for each fixture. | Require blocked status when labels/calibration are absent. | Fixture validation test | Weighted vote planned | Planned |
@@ -148,7 +147,7 @@ The first production slice is a local companion pivot candidate exporter, not an
 | 020 | Milestone 2 | Review deterministic circle baseline metrics. | Curate synthetic and proof-packet evidence. | Python tests plus verifier | Weighted vote planned | Planned |
 | 021 | Project calibration review | Verify affine calibration path from KML/project reference/overlay circle. | Add pivot center image-to-XY calibration audit. | Companion test | Weighted vote planned | Planned |
 | 022 | CRS gate | Verify projected CRS rejection for EPSG:4326. | Add pivot recommendation CRS validation. | Core schema test | Weighted vote planned | Planned |
-| 023 | Projected pivot candidate | Convert accepted image-space center to advisory projected `XY` when calibrated. | Emit `ModelRecommendation.proposedGeometry.pivotCenter`. | Core parse test | Weighted vote planned | Planned |
+| 023 | Projected pivot candidate | Convert accepted image-space center to advisory projected `XY` when calibrated. | Emit companion report candidate geometry with `canonicalGeometryMutation: false`. | Companion report test | Weighted vote planned | Planned |
 | 024 | Evidence linkage | Link pivot recommendation to image artifacts and metrics. | Add evidence IDs and artifact hashes. | JSON output test | Weighted vote planned | Planned |
 | 025 | Operator truth labels | Verify `TRUE_PIVOT_CENTER` KML point parsing. | Compare CV center to operator truth. | KML fixture test | Weighted vote planned | Planned |
 | 026 | Center error metric | Define pixel and projected-meter center error. | Add center error thresholds. | Metric unit test | Weighted vote planned | Planned |
@@ -186,11 +185,11 @@ The first production slice is a local companion pivot candidate exporter, not an
 | 058 | GPU evidence | Gate GPU-backed claim on `probe-gpu`. | Add CUDA preflight linkage. | Probe test | Weighted vote planned | Planned |
 | 059 | Baseline superiority rule | Require trained model to beat deterministic baseline before UI preference. | Add vote veto. | Report verifier | Weighted vote planned | Planned |
 | 060 | Milestone 6 | Review optional ML proposal lane. | Curate model-slot and local-only evidence. | Companion tests | Weighted vote planned | Planned |
-| 061 | Review queue import | Verify model recommendations import into browser review path. | Add pivot-locator recommendation sample. | Web E2E | Weighted vote planned | Planned |
-| 062 | Candidate preview UI | Show candidate point/radius as advisory overlay. | Add test IDs and copy. | Playwright screenshot | Weighted vote planned | Planned |
-| 063 | Apply confirmation | Require before/after metrics confirmation. | Block direct apply from CV card. | Playwright test | Weighted vote planned | Planned |
-| 064 | Reject/defer flows | Verify reject/defer records decisions only. | Add decision test. | Playwright test | Weighted vote planned | Planned |
-| 065 | Export boundary | Ensure evidence/recommendations export separately from project settings. | Add archive test. | Project archive test | Weighted vote planned | Planned |
+| 061 | Companion report handoff | Verify model output remains standalone workspace evidence. | Add pivot-locator report sample. | Companion report test | Weighted vote planned | Planned |
+| 062 | Candidate inspection UI | Keep candidate point/radius inspection in companion dashboards only. | Add report/dashboard copy. | Companion dashboard test | Weighted vote planned | Planned |
+| 063 | Mutation boundary | Require no app-importable apply path from CV cards. | Block direct mutation from companion output. | Report verifier | Weighted vote planned | Planned |
+| 064 | Operator disposition notes | Verify accept/reject/defer-style notes remain companion report metadata only. | Add report metadata test. | Companion test | Weighted vote planned | Planned |
+| 065 | Export boundary | Ensure companion evidence/recommendations do not enter project ZIP exports. | Add archive exclusion test. | Project archive test | Weighted vote planned | Planned |
 | 066 | Mobile layout | Verify 390 px review queue usability. | Add mobile screenshot gate. | Playwright test | Weighted vote planned | Planned |
 | 067 | Accessibility | Add candidate action names and states. | ARIA state proof. | Playwright test | Weighted vote planned | Planned |
 | 068 | Network guardrail | Block any ML/CV UI external calls. | Add request interception proof. | Playwright test | Weighted vote planned | Planned |
@@ -241,13 +240,13 @@ The first executable 100-iteration run has been completed for a deterministic sy
 
 - `build-evidence-packet --real-pivot-fixtures` now accepts `cplayout-real-pivot-fixtures-v1` manifests, hashes local artifacts, rejects hash mismatches, requires no-key provenance, and preserves `canonicalGeometryMutation: false`.
 - Companion tests now cover calibrated fixture output with `proposedGeometry.pivotCenter`, uncalibrated fixture output that remains metadata-only with hard failures, and artifact hash mismatch rejection.
-- Browser archive proof now verifies adjacent review evidence, decisions, and recommendation GeoJSON round-trip through Project ZIP without applying projected geometry.
+- The prior browser archive proof for adjacent review evidence, decisions, and recommendation GeoJSON is historical. Current Project ZIP exports exclude those retired review contract files; companion evidence remains standalone report output.
 - No operator-supplied real-world fixture was added in this follow-up; real-world/projected-XY automatic pivot locating remains unproved until a fixture set is supplied and validated.
 
 2026-06-03 follow-up:
 
 - `npm run real-pivot-fixture:generate` now creates `fixtures/real-pivot/manifest.json` from the public Adams County project reference and Google Earth visual-fidelity proof artifacts, including artifact SHA-256 hashes, no-key provenance, rejection classes, and `TRUE_PIVOT_CENTER.projectedPoint`.
-- `PYTHONPATH=tools/local-ml-companion/src python3 -m cplayout_ml.cli build-evidence-packet --project-id public-adams-county-center-pivot-proof --project-crs EPSG:32613 --real-pivot-fixtures fixtures/real-pivot/manifest.json --output-dir reports/real-pivot-fixtures/manual-proof --created-at 2026-06-03T00:00:00.000Z` emitted one projected-XY pivot-center recommendation with no hard failures and `canonicalGeometryMutation: false`.
+- `PYTHONPATH=tools/local-ml-companion/src python3 -m cplayout_ml.cli build-evidence-packet --project-id public-adams-county-center-pivot-proof --project-crs EPSG:32613 --real-pivot-fixtures fixtures/real-pivot/manifest.json --output-dir reports/real-pivot-fixtures/manual-proof --created-at 2026-06-03T00:00:00.000Z` now emits a standalone companion candidate report with projected-XY pivot-center evidence, no hard failures, and `canonicalGeometryMutation: false`.
 - `npm run verify:roadmap:fast` also proved the real-pivot fixture gate in the integrated runner. The remaining blocker is model breadth: one curated fixture is not enough to claim generalized automatic pivot locating across fields, imagery conditions, pivots, and rejection classes.
 
 The ledger rows remain the implementation roadmap for replacing synthetic proof with real proof packets, projected-XY calibration, review import, UI proof, archive proof, and device-gated native ML validation. A row can move from `Planned` to `Pass`, `Blocked`, or `Fail` only after its research gate, improvement, test gate, and weighted vote record exist.

@@ -59,7 +59,7 @@ export function buildDesignScenarioPreview(
       rejectionReasons: alternative.disqualificationReasons,
       warnings: [
         ...alternative.warnings,
-        "Optimizer candidate is advisory; Apply XY must use reducer validation before geometry changes.",
+        "Optimizer candidate is advisory; coordinate changes must use reducer validation.",
       ],
       pivotCenter: alternative.pivotCenter,
     })));
@@ -76,7 +76,7 @@ export function buildDesignScenarioPreview(
       score: 0,
       feasible: false,
       rejectionReasons: ["Corner-arm footprint is operator/vendor-supplied advisory metadata; manufacturer kinematics are not modeled."],
-      warnings: ["Use this footprint for review only until vendor-supplied coverage and track geometry are verified."],
+      warnings: ["Use this footprint for inspection only until vendor-supplied coverage and track geometry are verified."],
     });
   }
 

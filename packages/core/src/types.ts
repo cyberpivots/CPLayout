@@ -1,5 +1,4 @@
 import type { ProjectSettings, ReferenceOverlaySchema } from "./settings";
-import type { ImageryProvenance } from "./layoutEvidence";
 
 export type UnitSystem = "metric" | "us_survey_feet";
 
@@ -21,6 +20,23 @@ export interface XY {
 export interface LonLat {
   longitude: number;
   latitude: number;
+}
+
+export interface ImageryProvenance {
+  providerId: string;
+  providerName: string;
+  sourceUrl?: string;
+  productId?: string;
+  captureDate?: string;
+  acquisitionYear?: number;
+  sourceResolutionMeters?: number;
+  originalCrs?: string;
+  preprocessingSummary?: string;
+  accessedAt: string;
+  attribution: string;
+  licenseText: string;
+  offlineCopyAllowed: boolean;
+  keyedService: false;
 }
 
 export interface RtkQuality {

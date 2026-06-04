@@ -10,15 +10,16 @@ The wizard is instructional UI only. It does not change `PivotProject`, KML pars
 
 ## Current User-Facing Drawing Instructions
 
-1. Start in Google Earth Pro.
-2. Draw the field boundary with `Add > Polygon`.
-3. Name the boundary polygon `field_boundary` or `Boundary`.
-4. Draw obstacle areas with `Add > Polygon`.
+1. Start in Google Earth Pro and use Search to find the field.
+2. Stage CPLayout candidates in a focused Places folder; Google Earth Layers remain visual context only.
+3. Draw the field boundary and obstacle areas with `Add > Polygon`.
+4. Name the boundary polygon `field_boundary` or `Boundary`.
 5. Name obstacle polygons with CPLayout obstacle names: `road`, `ditch`, `fence`, `building`, `canal`, `tree`, or `exclusion`.
 6. Draw utility lines with `Add > Path` and utility points with `Add > Placemark`.
 7. Use CPLayout utility names such as `underground_pipeline`, `power_line`, `power_pole`, `pump_location`, `access_lane`, `end_gun_arc`, and `corner_swing_limit`.
 8. Save/export a focused KML or KMZ from Google Earth Pro.
 9. In CPLayout, use `Import KML/KMZ`, review the selectable cards, deselect unintended features, and apply only the intended import.
+10. Treat KML/KMZ styles, labels, `LookAt`, imagery, and screenshots as visual context or evidence only, not canonical projected `XY` geometry.
 
 ## Primary-Source Facts Used
 

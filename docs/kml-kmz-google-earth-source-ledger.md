@@ -43,3 +43,4 @@ Date verified: 2026-05-28
 - KML/KMZ is a GIS exchange format only. Project backup/restore remains the CPLayout ZIP package.
 - Android native file picker/share behavior is proven for the canonical project ZIP package by the completed Android report; iOS behavior and any KML/KMZ-specific native picker/share regression still need their own checklist evidence.
 - Browser import wizard screenshots and capture notes are recorded in `docs/google-earth-import-wizard-research.md`; the wizard is instructional UI and does not change KML/KMZ import semantics.
+- The v1 Google Earth-inspired wizard maps Search and a focused Places folder to reviewed CPLayout import candidates, maps Add Polygon/Add Path/Add Placemark to current importer-supported geometry classes, and treats Layers, KML/KMZ styles, labels, LookAt, imagery, and screenshots as visual context only.

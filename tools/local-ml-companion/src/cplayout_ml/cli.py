@@ -26,7 +26,8 @@ VISION_MODEL_NAME = "design-only-google-earth-vision-review"
 VISION_MODEL_VERSION = "0.1.0"
 PIVOT_CANDIDATE_MODEL_NAME = "local-opencv-pivot-candidate-detector"
 PIVOT_CANDIDATE_MODEL_VERSION = "0.1.0"
-SCHEMA_VERSION = "cplayout-model-recommendations-v1"
+LAYOUT_CANDIDATE_REPORT_SCHEMA_VERSION = "cplayout-layout-candidate-report-v1"
+COMPANION_CANDIDATE_GEOJSON_SCHEMA_VERSION = "cplayout-companion-candidate-reports-geojson-v1"
 VISION_SCHEMA_VERSION = "cplayout-design-vision-review-v1"
 PIVOT_CANDIDATE_SCHEMA_VERSION = "cplayout-pivot-candidates-v1"
 DEFAULT_CREATED_AT = "1970-01-01T00:00:00.000Z"
@@ -64,14 +65,14 @@ def main(argv: list[str] | None = None) -> int:
     boundary_probe.add_argument("--sam2-config", type=Path, help=f"SAM2 config path. Defaults to ${SAM2_CONFIG_ENV}.")
     boundary_probe.add_argument("--sam2-checkpoint", type=Path, help=f"SAM2 checkpoint path. Defaults to ${SAM2_CHECKPOINT_ENV}.")
 
-    recommend = subcommands.add_parser("recommend-layout", help="Generate deterministic advisory layout recommendations.")
-    recommend.add_argument("--input", required=True, type=Path, help="CPLayout project.json or .center-pivot.zip")
-    recommend.add_argument("--output-dir", required=True, type=Path, help="Directory for model-recommendations outputs")
-    recommend.add_argument("--max-alternatives", type=int, default=5)
-    recommend.add_argument(
+    layout_candidates = subcommands.add_parser("report-layout-candidates", help="Generate deterministic standalone layout candidate reports.")
+    layout_candidates.add_argument("--input", required=True, type=Path, help="CPLayout project.json or .center-pivot.zip")
+    layout_candidates.add_argument("--output-dir", required=True, type=Path, help="Directory for standalone companion report outputs")
+    layout_candidates.add_argument("--max-alternatives", type=int, default=5)
+    layout_candidates.add_argument(
       "--created-at",
       default=DEFAULT_CREATED_AT,
-      help="ISO timestamp to write into recommendations. Defaults to a stable fixture timestamp for deterministic output.",
+      help="ISO timestamp to write into candidate reports. Defaults to a stable fixture timestamp for deterministic output.",
     )
 
     vision = subcommands.add_parser("design-vision-review", help="Create a local design-only CV review from Google Earth proof artifacts.")
@@ -214,8 +215,8 @@ def main(argv: list[str] | None = None) -> int:
         return probe_companion_deps(args.groups, args.require_installed)
     if args.command == "probe-boundary-detector":
         return probe_boundary_detector(args.sam2_config, args.sam2_checkpoint)
-    if args.command == "recommend-layout":
-        return recommend_layout(args.input, args.output_dir, args.max_alternatives, args.created_at)
+    if args.command == "report-layout-candidates":
+        return report_layout_candidates(args.input, args.output_dir, args.max_alternatives, args.created_at)
     if args.command == "design-vision-review":
         return design_vision_review(
             args.kml,
@@ -812,7 +813,7 @@ def detect_pivot_candidates(
 
     best_candidate = best.get("bestCandidate") if best is not None else None
     evidence_id = f"{project_id}:pivot-candidate-evidence"
-    recommendation_id = f"{project_id}:pivot-candidate-review"
+    recommendation_id = f"{project_id}:pivot-candidate-report"
     confidence = round(float(best_candidate["confidence"]), 3) if best_candidate is not None else 0.0
     weighted_score = best.get("weightedVote", {}).get("score") if best is not None else None
     candidate_score = best_candidate.get("score") if best_candidate is not None else None
@@ -887,7 +888,7 @@ def detect_pivot_candidates(
         },
         "warnings": [
             "Image-space pivot candidate only; no projected-XY pivot center is emitted without calibration.",
-            "Operator review is required before any CPLayout geometry workflow action.",
+            "Operator inspection is required before any CPLayout geometry workflow action.",
             "This local companion output is not survey grade and does not prove native/mobile ML runtime behavior.",
             *hard_failures,
         ],
@@ -909,9 +910,9 @@ def detect_pivot_candidates(
             "bestIteration": best,
             "topCandidates": [] if best is None else best.get("topCandidates", []),
         },
-        "layoutEvidenceRecords": [evidence_record],
-        "modelRecommendations": [recommendation],
-        "layoutDecisionRecords": [],
+        "evidenceRecords": [evidence_record],
+        "candidateReports": [recommendation],
+        "operatorDecisionNotes": [],
         "acceptance": {
             "accepted": False,
             "status": "blocked_missing_projected_xy_calibration",
@@ -924,8 +925,8 @@ def detect_pivot_candidates(
             "Does not use paid APIs, hidden keys, cloud training, hosted imagery, or telemetry.",
         ],
     }
-    json_path = output_dir / "pivot-candidates-review.json"
-    geojson_path = output_dir / "pivot-candidates-recommendations.geojson"
+    json_path = output_dir / "pivot-candidates-report.json"
+    geojson_path = output_dir / "pivot-candidates-candidates.geojson"
     json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     geojson_path.write_text(json.dumps(recommendations_to_geojson([recommendation]), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
@@ -1824,23 +1825,36 @@ def probe_cuda() -> dict[str, Any]:
     }
 
 
-def recommend_layout(input_path: Path, output_dir: Path, max_alternatives: int, created_at: str) -> int:
+def report_layout_candidates(input_path: Path, output_dir: Path, max_alternatives: int, created_at: str) -> int:
     project = load_project(input_path)
     validate_project(project)
-    recommendations = build_recommendations(project, max(1, min(max_alternatives, 12)), created_at)
+    candidates = build_layout_candidate_reports(project, max(1, min(max_alternatives, 12)), created_at)
     output_dir.mkdir(parents=True, exist_ok=True)
-    json_path = output_dir / "model-recommendations.json"
-    geojson_path = output_dir / "model-recommendations.geojson"
-    json_path.write_text(json.dumps(recommendations, indent=2) + "\n", encoding="utf-8")
-    geojson_path.write_text(json.dumps(recommendations_to_geojson(recommendations), indent=2) + "\n", encoding="utf-8")
+    json_path = output_dir / "layout-candidate-report.json"
+    geojson_path = output_dir / "layout-candidate-report-candidates.geojson"
+    report = {
+      "schemaVersion": LAYOUT_CANDIDATE_REPORT_SCHEMA_VERSION,
+      "projectId": project["id"],
+      "projectCrs": project["projectCrs"],
+      "createdAt": created_at,
+      "candidateReports": candidates,
+      "canonicalGeometryMutation": False,
+      "appImportable": False,
+      "nonGoals": [
+        "Does not create CPLayout project review records.",
+        "Does not mutate canonical projected XY geometry.",
+      ],
+    }
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    geojson_path.write_text(json.dumps(recommendations_to_geojson(candidates), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
       "projectId": project["id"],
       "projectCrs": project["projectCrs"],
-      "recommendationCount": len(recommendations),
+      "candidateReportCount": len(candidates),
       "json": str(json_path),
       "geojson": str(geojson_path),
       "gpuBacked": False,
-      "note": "Deterministic advisory baseline; run probe-gpu separately before treating outputs as GPU-backed.",
+      "note": "Deterministic advisory baseline; standalone companion report only.",
     }, indent=2))
     return 0
 
@@ -2082,9 +2096,9 @@ def design_vision_review(
             "hardFailures": hard_failures,
         },
         "assessment": assessment,
-        "layoutEvidenceRecords": [evidence_record],
-        "modelRecommendations": [recommendation],
-        "layoutDecisionRecords": [decision_record],
+        "evidenceRecords": [evidence_record],
+        "candidateReports": [recommendation],
+        "operatorDecisionNotes": [decision_record],
         "nonGoals": [
             "Does not mutate PivotProject geometry, schemas, persistence, or archives.",
             "Does not treat screenshot-derived field-boundary geometry as survey-grade evidence.",
@@ -2094,7 +2108,7 @@ def design_vision_review(
     }
 
     json_path = output_dir / "visual-layout-review.json"
-    geojson_path = output_dir / "visual-layout-review-recommendations.geojson"
+    geojson_path = output_dir / "visual-layout-review-candidates.geojson"
     json_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     geojson_path.write_text(json.dumps(recommendations_to_geojson([recommendation]), indent=2) + "\n", encoding="utf-8")
     print(json.dumps({
@@ -2135,7 +2149,7 @@ def validate_project(project: dict[str, Any]) -> None:
         raise SystemExit("Project fieldBoundary must contain at least three projected XY vertices.")
 
 
-def build_recommendations(project: dict[str, Any], max_alternatives: int, created_at: str) -> list[dict[str, Any]]:
+def build_layout_candidate_reports(project: dict[str, Any], max_alternatives: int, created_at: str) -> list[dict[str, Any]]:
     pivot = project["pivotCenter"]
     boundary = project["fieldBoundary"]
     centroid = polygon_centroid(boundary)
@@ -2158,24 +2172,24 @@ def build_recommendations(project: dict[str, Any], max_alternatives: int, create
         score = max(0.0, min(100.0, 100.0 - distance_to_centroid / 12.0 - fit_penalty * 20.0))
         confidence = max(0.35, min(0.78, 0.72 - index * 0.04))
         scored.append({
-          "id": f"{project['id']}:baseline-rec-{index + 1}",
+          "id": f"{project['id']}:baseline-candidate-{index + 1}",
           "projectId": project["id"],
           "modelName": MODEL_NAME,
           "modelVersion": MODEL_VERSION,
           "createdAt": created_at,
           "projectCrs": project["projectCrs"],
-          "summary": f"Review {label}.",
+          "summary": f"Inspect {label}.",
           "proposedGeometry": {
             "projectCrs": project["projectCrs"],
             "pivotCenter": candidate,
           },
           "confidence": round(confidence, 3),
           "evidenceIds": [],
-          "reviewStatus": "unreviewed",
+          "inspectionStatus": "unreviewed",
           "score": round(score, 3),
           "warnings": [
             "Advisory deterministic baseline; not a production-trained agronomy model.",
-            "Acceptance records a review decision only and must not mutate canonical geometry in this milestone.",
+            "Standalone companion report only; CPLayout geometry changes require Files import, Map editing, validation, and operator action.",
           ],
         })
     return sorted(scored, key=lambda item: item["score"], reverse=True)
@@ -2193,7 +2207,7 @@ def recommendations_to_geojson(recommendations: list[dict[str, Any]]) -> dict[st
           "modelName": recommendation["modelName"],
           "modelVersion": recommendation["modelVersion"],
           "confidence": recommendation["confidence"],
-          "reviewStatus": recommendation["reviewStatus"],
+          "inspectionStatus": recommendation.get("inspectionStatus", recommendation.get("reviewStatus")),
           "score": recommendation["score"],
           "summary": recommendation["summary"],
           "warnings": recommendation["warnings"],
@@ -2230,8 +2244,8 @@ def recommendations_to_geojson(recommendations: list[dict[str, Any]]) -> dict[st
             })
     return {
       "type": "FeatureCollection",
-      "schemaVersion": SCHEMA_VERSION,
-      "name": "cplayout-model-recommendations",
+      "schemaVersion": COMPANION_CANDIDATE_GEOJSON_SCHEMA_VERSION,
+      "name": "cplayout-companion-candidate-reports",
       "coordinateReferenceSystem": "project_crs_xy",
       "canonicalGeometryMutation": False,
       "features": features,

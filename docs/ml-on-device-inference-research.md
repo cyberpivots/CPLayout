@@ -21,12 +21,12 @@ geometry writes.
 | Fact | Worktree evidence |
 | --- | --- |
 | ML is already companion-first and advisory. | `docs/local-ml-data-improvement-plan.md` says model output must not mutate field boundaries, obstacles, or pivot geometry without explicit operator acceptance. |
-| The local companion is Python-only and outside the React Native runtime. | `tools/local-ml-companion/README.md` describes a WSL-local file bridge that writes `ModelRecommendation` JSON and projected-XY GeoJSON while keeping browser/native runtime code free of Python, GDAL, or ML dependencies. |
+| The local companion is Python-only and outside the React Native runtime. | `tools/local-ml-companion/README.md` describes a WSL-local companion report workflow while keeping browser/native runtime code free of Python, GDAL, or ML dependencies. |
 | Current local CV dependencies are OpenCV and scikit-learn. | `tools/local-ml-companion/pyproject.toml` depends on `opencv-python-headless>=4.10`, `pandas>=2.2`, and `scikit-learn>=1.5`. |
 | GPU probing already belongs to the local companion. | `tools/local-ml-companion/src/cplayout_ml/cli.py` exposes `probe-gpu`, checks `torch.cuda.is_available()`, and records CUDA device metadata when available. |
 | SAM2 is optional and local-only. | `tools/local-ml-companion/README.md` and `cli.py` require local SAM2 config/checkpoint paths and state that the companion does not download checkpoints or call a network service. |
 | Boundary improvement output is advisory evidence. | `tools/local-ml-companion/README.md` documents `boundary-improvement-loop.json`, candidate rejection reasons, operator IoU, and `canonicalGeometryMutation: false`. |
-| Accepted geometry still routes through projected-XY validation. | `packages/core/src/layoutEvidence.ts` requires projected `projectCrs` for `ModelRecommendation`, and `packages/core/src/projectReducer.ts` applies `apply_model_recommendation` only after project ID, CRS, hard-failure, ring, and pivot-inside-field checks pass. |
+| Model output is not an app geometry mutation path. | Expert Review/recommendation contracts were retired from app routes, reducers, archives, repository APIs, and SQLite final schema. Any future geometry change requires a separately designed projected-XY edit/import workflow. |
 
 ## Source-Backed Platform Claims
 
@@ -85,7 +85,7 @@ Refinement loop:
    and overlay containment.
 4. Use SAM2 only as a proposal generator when locally installed and configured.
    SAM2 masks must still pass OpenCV/geometric rejection before entering a
-   `ModelRecommendation`.
+   standalone companion report packet.
 5. Reject false positives with named categories:
    `pivot_ring_box`, `coverage_circle`, `screenshot_edge_clip`,
    `road_or_driveway`, `building_or_tree_cluster`, `watermark_or_ui`,
@@ -127,8 +127,8 @@ Minimum reproducibility metadata:
 - Train/validation/test split IDs.
 - CPU/GPU device metadata and dependency versions.
 - Metrics summary plus per-case JSONL results.
-- Export validation result for generated `LayoutEvidenceRecord`,
-  `ModelRecommendation`, and optional `LayoutDecisionRecord` payloads.
+- Export validation result for generated standalone companion report payloads,
+  including calibration, provenance, artifact hashes, and non-mutation flags.
 
 ## On-Device Inference Feasibility Matrix
 
@@ -148,13 +148,12 @@ No public interfaces should change for this research lane.
 Future implementation should keep this flow:
 
 1. Local companion or future mobile inference writes advisory output.
-2. Output is imported through the existing review/evidence path as
-   `LayoutEvidenceRecord`, `ModelRecommendation`, and optional
-   `LayoutDecisionRecord`.
+2. Output remains a standalone companion/workspace report, not an app-imported
+   recommendation or review record.
 3. Proposed geometry remains project-CRS `XY` plus optional display WGS84.
-4. Operator review accepts, rejects, or defers the recommendation.
-5. Accepted geometry changes go through reducer actions and validation, including
-   `apply_model_recommendation`, undo, and hard-failure checks.
+4. Operator inspection may inform manual Map or Files edits.
+5. Any future app geometry-change workflow must be designed separately with
+   reducer validation, undo, and hard-failure checks.
 
 This preserves canonical projected/local `XY` geometry and keeps KML/KMZ,
 imagery, model masks, and display WGS84 as evidence or interchange layers.

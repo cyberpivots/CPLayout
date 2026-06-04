@@ -23,7 +23,7 @@ def companion_api_launch_plan(workspace: Path, host: str, port: int, experiment_
         "port": port,
         "workspace": str(resolved_workspace),
         "experimentDb": str(resolved_experiment_db) if resolved_experiment_db else None,
-        "endpoints": ["GET /health", "GET /review-packet", "POST /packets/build", "GET /artifacts/hash"],
+        "endpoints": ["GET /health", "GET /report-packet", "POST /packets/build", "GET /artifacts/hash"],
         "networkRequired": False,
         "keyedService": False,
         "canonicalGeometryMutation": False,
@@ -58,13 +58,13 @@ def create_app(workspace: Path, experiment_db: Path | None = None) -> Any:
     def health() -> dict[str, Any]:
         return companion_api_launch_plan(root, "127.0.0.1", 0, db_path)
 
-    @app.get("/review-packet")
-    def review_packet(path: str = Query(..., description="Path under the configured workspace")) -> dict[str, Any]:
+    @app.get("/report-packet")
+    def report_packet(path: str = Query(..., description="Path under the configured workspace")) -> dict[str, Any]:
         try:
             packet_path = resolve_workspace_path(root, path, "Packet", require_file=True)
             packet = load_json(packet_path)
             reject_hidden_keys(packet)
-            record_experiment_event(db_path, "review_packet_read", {"path": str(packet_path), "projectId": packet.get("projectId")})
+            record_experiment_event(db_path, "report_packet_read", {"path": str(packet_path), "projectId": packet.get("projectId")})
             return packet
         except SystemExit as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -113,7 +113,7 @@ def create_app(workspace: Path, experiment_db: Path | None = None) -> Any:
             packet_path = output_dir / "companion-evidence-packet.json"
             result = {
                 "packet": file_artifact(packet_path),
-                "recommendationsGeoJson": file_artifact(output_dir / "companion-evidence-packet-recommendations.geojson"),
+                "candidateReportsGeoJson": file_artifact(output_dir / "companion-evidence-packet-candidates.geojson"),
                 "projectedXyGeoJson": file_artifact(output_dir / "companion-evidence-packet-projected-xy.geojson"),
                 "networkRequired": False,
                 "keyedService": False,

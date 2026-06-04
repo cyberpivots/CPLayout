@@ -161,6 +161,8 @@ Current branch observed during preflight: `codex/cplayout-agent-specialists`, tr
 
 2026-06-03 continuation on `codex/complete-roadmap-next`: the no-device outcome above was superseded after the Samsung SM-P613 tablet reappeared over USBIPD/ADB with a new USB cable. `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` passed for Android Expo SQLite schema v8, migrations 1-8, save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and manifest/project id/CRS agreement. The Android native MapLibre generated TileJSON/template report also passed in `reports/native-maplibre/latest.json`. Native raw PMTiles/MBTiles rendering, iOS persistence/share/picker proof, on-device ML, and live GNSS remain unclaimed.
 
+2026-06-03 review-contract retirement follow-up: the adjacent review archive/API slice described above is historical only. Current product code removes the Review route, ExpertReviewPanel, recommendation reducer action, app-importable review contracts, project-store review APIs, adjacent review ZIP exports, and SQLite review tables. Legacy review ZIP filenames are ignored during import for compatibility and are not exported.
+
 ## Validation Commands
 
 Required after changing this loop:

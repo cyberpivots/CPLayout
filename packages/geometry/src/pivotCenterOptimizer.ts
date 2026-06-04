@@ -1,4 +1,4 @@
-import type { ModelRecommendation, PivotProject, XY } from "@cplayout/core";
+import type { PivotProject, XY } from "@cplayout/core";
 
 import { DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS, boundsForGeometry, evaluateLayout, validateWetCoverageWithinField } from "./geometry";
 import { scoreLayoutAlternative, type RankedLayoutAlternative } from "./layoutScoring";
@@ -68,50 +68,6 @@ export function optimizePivotCenter(
   return dedupeAlternatives([...seedAlternatives, ...refinedAlternatives])
     .sort(compareAlternatives)
     .slice(0, maxAlternatives);
-}
-
-export function buildPivotCenterModelRecommendation(
-  project: PivotProject,
-  alternative: PivotCenterAlternative,
-  createdAt: string,
-): ModelRecommendation {
-  return {
-    id: `pivot-center-${alternative.id}`,
-    projectId: project.id,
-    modelName: "cplayout-deterministic-pivot-center-optimizer",
-    modelVersion: "0.1.0",
-    createdAt,
-    projectCrs: project.projectCrs,
-    summary: alternative.feasible
-      ? `Move pivot center to (${alternative.pivotCenter.x.toFixed(2)}, ${alternative.pivotCenter.y.toFixed(2)}) for a hard-boundary-feasible layout.`
-      : `Review pivot center candidate at (${alternative.pivotCenter.x.toFixed(2)}, ${alternative.pivotCenter.y.toFixed(2)}); it is not hard-boundary feasible.`,
-    proposedGeometry: {
-      projectCrs: project.projectCrs,
-      pivotCenter: alternative.pivotCenter,
-    },
-    confidence: alternative.feasible ? 0.8 : 0.35,
-    evidenceIds: [],
-    reviewStatus: "unreviewed",
-    score: alternative.score,
-    scoreBreakdown: alternative.scoreBreakdown,
-    metadata: {
-      sourceSeed: alternative.sourceSeed,
-      feasible: alternative.feasible,
-      hardFailures: alternative.feasible ? [] : alternative.disqualificationReasons,
-      distanceFromCurrentMeters: Number(alternative.distanceFromCurrentMeters.toFixed(3)),
-      coveragePercent: Number(alternative.metrics.coveragePercent.toFixed(3)),
-      outsideFieldAcres: Number(alternative.metrics.outsideFieldAcres.toFixed(6)),
-      obstacleConflictCount: alternative.metrics.obstacleConflictCount,
-      roadConflict: false,
-      buildingTreeConflict: false,
-      boundaryFalsePositiveRatio: 0,
-    },
-    warnings: [
-      ...alternative.warnings,
-      ...alternative.disqualificationReasons,
-      "Advisory optimizer output only; accepting this recommendation must go through project review before geometry changes.",
-    ],
-  };
 }
 
 function buildAlternative(

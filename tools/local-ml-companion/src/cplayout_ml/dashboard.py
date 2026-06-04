@@ -96,7 +96,7 @@ def serve_review_dashboard(packet_path: Path, host: str, port: int, dry_run: boo
     except Exception as exc:
         raise SystemExit(f"Streamlit is required for serve-review-dashboard. Install the dashboard extra. {exc}")
     env = os.environ.copy()
-    env["CPLAYOUT_REVIEW_PACKET"] = str(packet_path)
+    env["CPLAYOUT_COMPANION_PACKET"] = str(packet_path)
     return subprocess.run(plan["command"], env=env, cwd=COMPANION_ROOT, check=False).returncode
 
 
@@ -109,14 +109,14 @@ def dashboard_model(packet_path: Path) -> dict[str, Any]:
         "crsCalibration": crs_calibration_status(packet),
         "localProvenance": local_provenance(packet),
         "evidenceRows": evidence_rows(packet),
-        "recommendationRows": recommendation_rows(packet),
+        "candidateRows": recommendation_rows(packet),
         "artifactRows": artifact_rows(packet),
         "projectedFeatureRows": projected_feature_rows(projected_features),
         "warnings": packet_warnings(packet),
         "rawPacket": packet,
     }
-    model["calibrationStatuses"] = sorted({row["calibrationStatus"] for row in model["recommendationRows"]} | {model["crsCalibration"]["calibrationStatus"]})
-    model["geometryGroups"] = sorted({row["geometryGroup"] for row in model["recommendationRows"]} or {"metadata_only"})
+    model["calibrationStatuses"] = sorted({row["calibrationStatus"] for row in model["candidateRows"]} | {model["crsCalibration"]["calibrationStatus"]})
+    model["geometryGroups"] = sorted({row["geometryGroup"] for row in model["candidateRows"]} or {"metadata_only"})
     return model
 
 
@@ -139,18 +139,18 @@ def packet_health(packet: dict[str, Any], projected_features: list[dict[str, Any
     failures = []
     for key in ["networkRequired", "keyedService", "hiddenKeysAllowed", "canonicalGeometryMutation"]:
         if packet.get(key) is True:
-            failures.append(f"{key} must be false for local companion review")
-    recommendations = packet.get("modelRecommendations") if isinstance(packet.get("modelRecommendations"), list) else []
+            failures.append(f"{key} must be false for local companion reports")
+    candidates = candidate_reports(packet)
     return {
         "projectId": packet.get("projectId"),
         "projectCrs": packet.get("projectCrs"),
         "packetVersion": packet.get("packetVersion"),
         "schemaVersion": packet.get("schemaVersion"),
-        "status": "blocked" if failures else "ready_for_read_only_review",
+        "status": "blocked" if failures else "ready_for_read_only_report",
         "failureCount": len(failures),
         "failures": failures,
         "evidenceCount": len(packet.get("evidenceRecords", [])) if isinstance(packet.get("evidenceRecords"), list) else 0,
-        "recommendationCount": len(recommendations),
+        "candidateReportCount": len(candidates),
         "projectedFeatureCount": len(projected_features),
         "readOnly": True,
         "canonicalGeometryMutation": False,
@@ -158,14 +158,14 @@ def packet_health(packet: dict[str, Any], projected_features: list[dict[str, Any
 
 
 def crs_calibration_status(packet: dict[str, Any]) -> dict[str, Any]:
-    recommendations = packet.get("modelRecommendations") if isinstance(packet.get("modelRecommendations"), list) else []
-    projected_count = sum(1 for recommendation in recommendations if recommendation_geometry_group(recommendation) == "projected_xy")
-    metadata_only_count = len(recommendations) - projected_count
+    candidates = candidate_reports(packet)
+    projected_count = sum(1 for candidate in candidates if recommendation_geometry_group(candidate) == "projected_xy")
+    metadata_only_count = len(candidates) - projected_count
     return {
         "projectCrs": packet.get("projectCrs"),
         "calibrationStatus": packet.get("calibrationStatus", "evidence_only"),
-        "projectedRecommendationCount": projected_count,
-        "metadataOnlyRecommendationCount": metadata_only_count,
+        "projectedCandidateCount": projected_count,
+        "metadataOnlyCandidateCount": metadata_only_count,
         "canonicalGeometrySource": "projected_local_xy",
         "wgs84Policy": "display_or_input_only",
     }
@@ -206,14 +206,20 @@ def evidence_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def candidate_reports(packet: dict[str, Any]) -> list[dict[str, Any]]:
+    candidates = packet.get("candidateReports")
+    if isinstance(candidates, list):
+        return [candidate for candidate in candidates if isinstance(candidate, dict)]
+    legacy_recommendations = packet.get("modelRecommendations")
+    if isinstance(legacy_recommendations, list):
+        return [candidate for candidate in legacy_recommendations if isinstance(candidate, dict)]
+    return []
+
+
 def recommendation_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
-    recommendations = packet.get("modelRecommendations")
-    if not isinstance(recommendations, list):
-        return []
+    candidates = candidate_reports(packet)
     rows = []
-    for recommendation in recommendations:
-        if not isinstance(recommendation, dict):
-            continue
+    for recommendation in candidates:
         metadata = recommendation.get("metadata") if isinstance(recommendation.get("metadata"), dict) else {}
         hard_failures = [str(item) for item in metadata.get("hardFailures", [])] if isinstance(metadata.get("hardFailures"), list) else []
         warnings = [str(item) for item in recommendation.get("warnings", [])] if isinstance(recommendation.get("warnings"), list) else []
@@ -322,7 +328,7 @@ def create_candidate_comparison_figure(
 ) -> Any:
     import plotly.graph_objects as go  # type: ignore
 
-    rows = filter_recommendation_rows(model["recommendationRows"], calibration_statuses, geometry_groups)
+    rows = filter_recommendation_rows(model["candidateRows"], calibration_statuses, geometry_groups)
     x = [str(row["id"]) for row in rows]
     score = [row["score"] if row["score"] is not None else 0 for row in rows]
     confidence = [row["confidence"] if row["confidence"] is not None else 0 for row in rows]
@@ -385,7 +391,7 @@ def create_dash_app(packet_path: Path) -> Any:
                 style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "maxWidth": "920px"},
             ),
             dcc.Graph(id="candidate-comparison"),
-            dash_table.DataTable(id="recommendation-table", columns=table_columns(model["recommendationRows"]), data=model["recommendationRows"], page_size=10),
+            dash_table.DataTable(id="candidate-table", columns=table_columns(model["candidateRows"]), data=model["candidateRows"], page_size=10),
             dash_html.H2("Evidence"),
             dash_table.DataTable(columns=table_columns(model["evidenceRows"]), data=model["evidenceRows"], page_size=8),
             dash_html.H2("Artifacts"),
@@ -398,12 +404,12 @@ def create_dash_app(packet_path: Path) -> Any:
 
     @app.callback(
         Output("candidate-comparison", "figure"),
-        Output("recommendation-table", "data"),
+        Output("candidate-table", "data"),
         Input("calibration-filter", "value"),
         Input("geometry-filter", "value"),
     )
     def update_candidate_view(calibration_statuses: list[str] | None, geometry_groups: list[str] | None) -> tuple[Any, list[dict[str, Any]]]:
-        rows = filter_recommendation_rows(model["recommendationRows"], calibration_statuses, geometry_groups)
+        rows = filter_recommendation_rows(model["candidateRows"], calibration_statuses, geometry_groups)
         return create_candidate_comparison_figure(model, calibration_statuses, geometry_groups), rows
 
     return app
@@ -437,8 +443,8 @@ def write_plotly_comparison_report(packet_path: Path, output_path: Path) -> dict
         figure_html,
         "<h2>Packet Health</h2>",
         html_table([model["packetHealth"]]),
-        "<h2>Recommendations</h2>",
-        html_table(model["recommendationRows"]),
+        "<h2>Candidate Reports</h2>",
+        html_table(model["candidateRows"]),
         "<h2>Artifacts</h2>",
         html_table(model["artifactRows"]),
         "<h2>Projected XY Features</h2>",

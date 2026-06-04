@@ -254,13 +254,13 @@ $summary = [pscustomobject]@{
   outputDir = $runOutputRelative
   visualFidelityManifest = $manifestPath
   designVisionReview = Join-Path $reviewOutputPath "visual-layout-review.json"
-  designVisionRecommendations = Join-Path $reviewOutputPath "visual-layout-review-recommendations.geojson"
+  designVisionCandidates = Join-Path $reviewOutputPath "visual-layout-review-candidates.geojson"
   proofPassed = $manifest.proofPassed
   googleEarthCleanup = $manifest.googleEarth.cleanup
   googleEarthLeftOpen = [bool]($manifest.googleEarth.cleanup.status -eq "skipped_leave_open")
   contaminatedGoogleEarthWorkspace = $contaminatedGoogleEarthWorkspace
   canonicalGeometryMutation = $false
-  reviewGate = "Import recommendations in the Review tab, then use Accept or Apply as an explicit operator action."
+  geometryGate = "Companion candidate reports are standalone evidence; any geometry change must use explicit CPLayout Files import or Map editing."
 }
 $summaryPath = Join-Path $runOutputPath "design-loop-summary.json"
 $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8

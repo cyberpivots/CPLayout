@@ -1,10 +1,4 @@
-import type {
-  LayoutDecisionRecord,
-  LayoutEvidenceRecord,
-  LayoutResult,
-  ModelRecommendation,
-  PivotProject,
-} from "@cplayout/core";
+import type { LayoutResult, PivotProject } from "@cplayout/core";
 
 export interface CustomerRecord {
   id: string;
@@ -65,12 +59,6 @@ export interface ProjectSummary {
   projectCrs: string;
   unitSystem: string;
   updatedAt: string;
-}
-
-export interface RepositoryProjectReviewData {
-  evidenceRecords: LayoutEvidenceRecord[];
-  modelRecommendations: ModelRecommendation[];
-  layoutDecisions: LayoutDecisionRecord[];
 }
 
 export interface CustomerProfileInput {
@@ -167,8 +155,6 @@ export interface ProjectRepository {
   moveProjectToCustomerAsync(projectId: string, customerId: string): Promise<CatalogProjectRecord>;
   createFieldMapRecordAsync(input: { id?: string; projectId: string; name: string }): Promise<FieldMapRecord>;
   createDesignRecordAsync(input: { id?: string; fieldMapId: string; name: string; pivotProjectId: string; isActive?: boolean }): Promise<DesignRecord>;
-  loadProjectReviewDataAsync?(projectId: string): Promise<RepositoryProjectReviewData>;
-  saveProjectReviewDataAsync?(projectId: string, data: RepositoryProjectReviewData): Promise<void>;
   getBackendInfoAsync(): Promise<ProjectRepositoryBackendInfo>;
   backendLabel: string;
 }

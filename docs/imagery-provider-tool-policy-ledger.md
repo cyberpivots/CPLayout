@@ -20,6 +20,7 @@ The v1 built-in live provider remains USGS The National Map Imagery Only and is 
 - SVG attribution rendering lives in `packages/map-adapters/src/SvgMapSurface.tsx`.
 - MapLibre preview files are present under `packages/map-adapters/src/`; Android aerial `RasterSource` runtime behavior for imported local packages still needs a completed device screenshot report.
 - Project export settings intentionally exclude `onlineImagery`; canonical project geometry remains project-CRS `XY`.
+- Google Earth-inspired Help, Places/Layers, and import-wizard wording is a companion workflow and training surface only. It does not add Google Earth imagery as a CPLayout provider, permit Google imagery caching, or create a substitute mapping dataset.
 
 ## Provider Ledger
 

@@ -158,11 +158,11 @@ class CompanionToolingTests(unittest.TestCase):
             )
 
             packet = json.loads((root / "packet" / "companion-evidence-packet.json").read_text(encoding="utf-8"))
-            recommendations = packet["modelRecommendations"]
+            recommendations = packet["candidateReports"]
             projected = json.loads((root / "packet" / "companion-evidence-packet-projected-xy.geojson").read_text(encoding="utf-8"))
-            recommendation_geojson = json.loads((root / "packet" / "companion-evidence-packet-recommendations.geojson").read_text(encoding="utf-8"))
+            recommendation_geojson = json.loads((root / "packet" / "companion-evidence-packet-candidates.geojson").read_text(encoding="utf-8"))
 
-            self.assertEqual(packet["schemaVersion"], "cplayout-project-review-data-v1")
+            self.assertEqual(packet["schemaVersion"], "cplayout-companion-report-packet-v1")
             self.assertEqual(packet["packetVersion"], "cplayout-companion-evidence-packet-v1")
             self.assertFalse(packet["networkRequired"])
             self.assertFalse(packet["keyedService"])
@@ -217,7 +217,7 @@ class CompanionToolingTests(unittest.TestCase):
             )
 
             packet = json.loads((root / "packet" / "companion-evidence-packet.json").read_text(encoding="utf-8"))
-            recommendation = packet["modelRecommendations"][0]
+            recommendation = packet["candidateReports"][0]
             artifact_hash = hashlib.sha256(b"real pivot fixture").hexdigest()
 
             self.assertEqual(recommendation["proposedGeometry"]["pivotCenter"], {"x": 500000.0, "y": 4410000.0})
@@ -264,8 +264,8 @@ class CompanionToolingTests(unittest.TestCase):
             )
 
             packet = json.loads((root / "packet" / "companion-evidence-packet.json").read_text(encoding="utf-8"))
-            recommendation = packet["modelRecommendations"][0]
-            recommendation_geojson = json.loads((root / "packet" / "companion-evidence-packet-recommendations.geojson").read_text(encoding="utf-8"))
+            recommendation = packet["candidateReports"][0]
+            recommendation_geojson = json.loads((root / "packet" / "companion-evidence-packet-candidates.geojson").read_text(encoding="utf-8"))
 
             self.assertNotIn("pivotCenter", recommendation["proposedGeometry"])
             self.assertIn("real-world pivot fixture calibration is not valid_projected_xy", recommendation["metadata"]["hardFailures"])
@@ -374,13 +374,13 @@ class CompanionToolingTests(unittest.TestCase):
             }), encoding="utf-8")
 
             model = dashboard_model(packet)
-            groups = {row["id"]: row["geometryGroup"] for row in model["recommendationRows"]}
+            groups = {row["id"]: row["geometryGroup"] for row in model["candidateRows"]}
 
-            self.assertEqual(model["packetHealth"]["status"], "ready_for_read_only_review")
+            self.assertEqual(model["packetHealth"]["status"], "ready_for_read_only_report")
             self.assertEqual(model["packetHealth"]["projectedFeatureCount"], 1)
             self.assertEqual(groups["sample-project:companion:image-space-center"], "metadata_only")
             self.assertEqual(groups["sample-project:companion:calibrated-center"], "projected_xy")
-            self.assertIn("projected XY calibration absent", model["recommendationRows"][0]["hardFailures"])
+            self.assertIn("projected XY calibration absent", model["candidateRows"][0]["hardFailures"])
             self.assertFalse(model["localProvenance"]["writesProjectDatabase"])
 
     def test_cli_dry_runs_cover_streamlit_dash_and_fastapi(self) -> None:
@@ -461,7 +461,7 @@ class CompanionToolingTests(unittest.TestCase):
             self.assertEqual(built.status_code, 200)
             self.assertFalse(built.json()["writesCplayoutProjectDb"])
 
-            packet = client.get("/review-packet", params={"path": "packet/companion-evidence-packet.json"})
+            packet = client.get("/report-packet", params={"path": "packet/companion-evidence-packet.json"})
             self.assertEqual(packet.status_code, 200)
             self.assertEqual(packet.json()["projectId"], "sample-project")
 
@@ -470,7 +470,7 @@ class CompanionToolingTests(unittest.TestCase):
 
             keyed = root / "keyed-packet.json"
             keyed.write_text(json.dumps({"projectId": "sample-project", "keyedService": True}), encoding="utf-8")
-            hidden = client.get("/review-packet", params={"path": "keyed-packet.json"})
+            hidden = client.get("/report-packet", params={"path": "keyed-packet.json"})
             self.assertEqual(hidden.status_code, 400)
 
             hidden_build = client.post("/packets/build", json={

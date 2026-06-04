@@ -9,14 +9,11 @@ import {
   exportFileAsync,
   exportProjectArchiveZip,
   exportZipFileAsync,
-  importProjectArchiveZipWithAdjacentData,
+  importProjectArchiveZip,
   importFileAsync,
   importZipFileAsync,
   installMapPackageArchiveZipAsync,
-  loadProjectReviewDataAsync,
   readGoogleEarthKmlFile,
-  saveProjectReviewDataAsync,
-  type ProjectArchiveAdjacentData,
 } from "@cplayout/project-store";
 import { exportProjectGoogleEarthKml, type GoogleEarthKmlImportResult, type LayoutResult, type MapPackageManifest, type PivotProject } from "@cplayout/core";
 import type { ProjectWorkspaceStatus } from "../hooks/useProjectRepository";
@@ -72,20 +69,19 @@ export function ProjectFilesPanel({
 }: ProjectFilesPanelProps): React.JSX.Element {
   const [status, setStatus] = useState<PanelStatus>({ tone: "info", text: "Project ZIP is the canonical project package." });
   const [pendingKmlImport, setPendingKmlImport] = useState<PendingKmlImport | null>(null);
-  const [selectedKmlReviewItemIds, setSelectedKmlReviewItemIds] = useState<string[]>([]);
+  const [selectedKmlImportItemIds, setSelectedKmlImportItemIds] = useState<string[]>([]);
   const [geoJsonImport, setGeoJsonImport] = useState("");
   const [surveyCsvImport, setSurveyCsvImport] = useState("");
 
   async function exportZip(): Promise<void> {
     try {
-      const reviewData = await loadProjectReviewDataAsync(project.id);
-      const bundle = buildProjectArchiveBundle(project, result, exportScenarioGeoJson(project, result), new Date().toISOString(), reviewData);
+      const bundle = buildProjectArchiveBundle(project, result, exportScenarioGeoJson(project, result), new Date().toISOString());
       const zip = exportProjectArchiveZip(bundle);
       const filename = `${project.id}.center-pivot.zip`;
       const outcome = await exportZipFileAsync(filename, zip);
       setStatus({
         tone: outcome.ok ? "success" : "error",
-        text: `${outcome.message} ${reviewDataSummary(reviewData)} exported as adjacent review records.`,
+        text: `${outcome.message} Project package includes canonical project JSON, GIS exchange files, survey CSV, metrics CSV, and map-package metadata.`,
       });
     } catch (error) {
       setStatus({ tone: "error", text: errorMessage(error) });
@@ -129,18 +125,14 @@ export function ProjectFilesPanel({
         setStatus({ tone: "info", text: "No project package selected." });
         return;
       }
-      const archive = importProjectArchiveZipWithAdjacentData(bytes);
-      const imported = archive.project;
+      const imported = importProjectArchiveZip(bytes);
       onProjectLoaded(imported);
       const saved = await repository.saveProject(imported);
-      if (hasAdjacentReviewData(archive.adjacentData)) {
-        await saveProjectReviewDataAsync(imported.id, archive.adjacentData);
-      }
       setStatus({
         tone: saved ? "success" : "warning",
         text: saved
-          ? `Imported ${imported.name}. ${reviewDataSummary(archive.adjacentData)} restored as adjacent review records; projected XY geometry was not applied from review data.`
-          : `Opened ${imported.name}, but it was not saved locally. ${reviewDataSummary(archive.adjacentData)} available in the project package.`,
+          ? `Imported ${imported.name}. Retired legacy package files are ignored; only canonical project data is restored.`
+          : `Opened ${imported.name}, but it was not saved locally. Retired legacy package files are ignored.`,
       });
     } catch (error) {
       setStatus({ tone: "error", text: errorMessage(error) });
@@ -188,11 +180,11 @@ export function ProjectFilesPanel({
         result,
         archiveWarnings: googleEarthFile.warnings,
       });
-      setSelectedKmlReviewItemIds(result.items.filter((item) => item.selected).map((item) => item.id));
+      setSelectedKmlImportItemIds(result.items.filter((item) => item.selected).map((item) => item.id));
       const tone: StatusTone = result.warnings.length > 0 || googleEarthFile.warnings.length > 0 ? "warning" : "info";
       setStatus({
         tone,
-        text: `${googleEarthFile.filename} is ready for review. ${kmlImportSummary(result)}${formatWarnings([...googleEarthFile.warnings, ...result.warnings])}`,
+        text: `${googleEarthFile.filename} is ready for import selection. ${kmlImportSummary(result)}${formatWarnings([...googleEarthFile.warnings, ...result.warnings])}`,
       });
     } catch (error) {
       setStatus({ tone: "error", text: errorMessage(error) });
@@ -221,24 +213,24 @@ export function ProjectFilesPanel({
 
   function applyPendingKmlImport(): void {
     if (!pendingKmlImport) return;
-    const selectedResult = onPreviewGoogleEarthKml(pendingKmlImport.kmlText, selectedKmlReviewItemIds);
+    const selectedResult = onPreviewGoogleEarthKml(pendingKmlImport.kmlText, selectedKmlImportItemIds);
     onApplyGoogleEarthKmlImport(selectedResult.project);
     setStatus({
       tone: "success",
       text: `Applied ${pendingKmlImport.filename}. ${kmlImportSummary(selectedResult)}`,
     });
     setPendingKmlImport(null);
-    setSelectedKmlReviewItemIds([]);
+    setSelectedKmlImportItemIds([]);
   }
 
   function cancelPendingKmlImport(): void {
     setPendingKmlImport(null);
-    setSelectedKmlReviewItemIds([]);
-    setStatus({ tone: "info", text: "Canceled Google Earth import review." });
+    setSelectedKmlImportItemIds([]);
+    setStatus({ tone: "info", text: "Canceled Google Earth import selection." });
   }
 
-  function toggleKmlReviewItem(itemId: string): void {
-    setSelectedKmlReviewItemIds((current) =>
+  function toggleKmlImportItem(itemId: string): void {
+    setSelectedKmlImportItemIds((current) =>
       current.includes(itemId)
         ? current.filter((candidate) => candidate !== itemId)
         : [...current, itemId],
@@ -295,36 +287,36 @@ export function ProjectFilesPanel({
         <GoogleEarthImportWizard />
       </View>
       {pendingKmlImport ? (
-        <View style={styles.reviewBox}>
+        <View style={styles.importPreviewBox}>
           <View>
-            <Text style={styles.importTitle}>Review {pendingKmlImport.kind.toUpperCase()} Import</Text>
-            <Text style={styles.reviewText}>
+            <Text style={styles.importTitle}>Select {pendingKmlImport.kind.toUpperCase()} Import Features</Text>
+            <Text style={styles.importPreviewText}>
               {pendingKmlImport.filename} · {kmlImportSummary(pendingKmlImport.result)}
             </Text>
-            <View style={styles.reviewItemGrid}>
-              {kmlReviewItems(pendingKmlImport.result).map((item) => {
-                const selected = selectedKmlReviewItemIds.includes(item.id);
+            <View style={styles.importPreviewItemGrid}>
+              {kmlImportItems(pendingKmlImport.result).map((item) => {
+                const selected = selectedKmlImportItemIds.includes(item.id);
                 return (
                   <Pressable
                     key={item.id}
                     accessibilityRole="button"
-                    onPress={() => toggleKmlReviewItem(item.id)}
-                    style={[styles.reviewItem, selected && styles.reviewItemSelected]}
+                    onPress={() => toggleKmlImportItem(item.id)}
+                    style={[styles.importPreviewItem, selected && styles.importPreviewItemSelected]}
                   >
-                    <Text style={[styles.reviewItemTitle, selected && styles.reviewItemTitleSelected]}>{item.title}</Text>
-                    <Text style={[styles.reviewItemMeta, selected && styles.reviewItemMetaSelected]}>{item.detail}</Text>
+                    <Text style={[styles.importPreviewItemTitle, selected && styles.importPreviewItemTitleSelected]}>{item.title}</Text>
+                    <Text style={[styles.importPreviewItemMeta, selected && styles.importPreviewItemMetaSelected]}>{item.detail}</Text>
                   </Pressable>
                 );
               })}
             </View>
             {pendingKmlImport.result.importedBoundary ? (
-              <Text style={styles.reviewWarning}>Existing field boundary will be replaced after projection into {project.projectCrs}.</Text>
+              <Text style={styles.importPreviewWarning}>Existing field boundary will be replaced after projection into {project.projectCrs}.</Text>
             ) : null}
             {pendingKmlImport.result.warnings.map((warning) => (
-              <Text key={warning} style={styles.reviewWarning}>{warning}</Text>
+              <Text key={warning} style={styles.importPreviewWarning}>{warning}</Text>
             ))}
             {pendingKmlImport.archiveWarnings.map((warning) => (
-              <Text key={warning} style={styles.reviewWarning}>{warning}</Text>
+              <Text key={warning} style={styles.importPreviewWarning}>{warning}</Text>
             ))}
           </View>
           <View style={styles.actionRow}>
@@ -438,7 +430,7 @@ function kmlImportSummary(result: GoogleEarthKmlImportResult): string {
   return parts.join(", ");
 }
 
-function kmlReviewItems(result: GoogleEarthKmlImportResult): { id: string; title: string; detail: string }[] {
+function kmlImportItems(result: GoogleEarthKmlImportResult): { id: string; title: string; detail: string }[] {
   const items = result.items.map((item) => ({
     id: item.id,
     title: item.name,
@@ -456,19 +448,6 @@ function kmlReviewItems(result: GoogleEarthKmlImportResult): { id: string; title
 function formatWarnings(warnings: string[]): string {
   const uniqueWarnings = [...new Set(warnings)];
   return uniqueWarnings.length > 0 ? ` Warnings: ${uniqueWarnings.join(" ")}` : "";
-}
-
-function hasAdjacentReviewData(data: ProjectArchiveAdjacentData): boolean {
-  return (data.evidenceRecords?.length ?? 0) > 0
-    || (data.modelRecommendations?.length ?? 0) > 0
-    || (data.layoutDecisions?.length ?? 0) > 0;
-}
-
-function reviewDataSummary(data: ProjectArchiveAdjacentData): string {
-  const evidenceCount = data.evidenceRecords?.length ?? 0;
-  const recommendationCount = data.modelRecommendations?.length ?? 0;
-  const decisionCount = data.layoutDecisions?.length ?? 0;
-  return `${evidenceCount} evidence, ${recommendationCount} recommendation${recommendationCount === 1 ? "" : "s"}, ${decisionCount} decision${decisionCount === 1 ? "" : "s"}`;
 }
 
 function statusToneColor(tone: StatusTone): string {
@@ -656,27 +635,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "900",
   },
-  reviewBox: {
+  importPreviewBox: {
     borderColor: "#e0bf79",
     borderRadius: 8,
     borderWidth: 1,
     gap: 10,
     padding: 12,
   },
-  reviewText: {
+  importPreviewText: {
     color: "#26372c",
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18,
     marginTop: 4,
   },
-  reviewItemGrid: {
+  importPreviewItemGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
     marginTop: 10,
   },
-  reviewItem: {
+  importPreviewItem: {
     backgroundColor: "#f8faf4",
     borderColor: "#d4decf",
     borderRadius: 8,
@@ -686,29 +665,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
   },
-  reviewItemSelected: {
+  importPreviewItemSelected: {
     backgroundColor: "#254234",
     borderColor: "#254234",
   },
-  reviewItemTitle: {
+  importPreviewItemTitle: {
     color: "#26372c",
     fontSize: 13,
     fontWeight: "900",
   },
-  reviewItemTitleSelected: {
+  importPreviewItemTitleSelected: {
     color: "#ffffff",
   },
-  reviewItemMeta: {
+  importPreviewItemMeta: {
     color: "#53655a",
     fontSize: 12,
     fontWeight: "700",
     lineHeight: 16,
     marginTop: 3,
   },
-  reviewItemMetaSelected: {
+  importPreviewItemMetaSelected: {
     color: "#e9f1e7",
   },
-  reviewWarning: {
+  importPreviewWarning: {
     color: "#805116",
     fontSize: 12,
     fontWeight: "800",

@@ -7,8 +7,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-PROJECT_REVIEW_DATA_SCHEMA_VERSION = "cplayout-project-review-data-v1"
-MODEL_RECOMMENDATIONS_SCHEMA_VERSION = "cplayout-model-recommendations-v1"
+COMPANION_REPORT_PACKET_SCHEMA_VERSION = "cplayout-companion-report-packet-v1"
+COMPANION_CANDIDATES_GEOJSON_SCHEMA_VERSION = "cplayout-companion-candidate-reports-geojson-v1"
 COMPANION_PACKET_VERSION = "cplayout-companion-evidence-packet-v1"
 DEFAULT_CREATED_AT = "1970-01-01T00:00:00.000Z"
 LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost", "::1"}

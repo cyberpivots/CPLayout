@@ -211,50 +211,6 @@ const GOOGLE_EARTH_KML_STYLES: GoogleEarthStyleDefinition[] = [
     lineColor: "ff9b1c1c",
     lineWidth: "2.6",
   },
-  {
-    id: "cplayout-review-current-center",
-    iconColor: "ff151c2a",
-    iconScale: "1.1",
-    labelColor: "ff151c2a",
-    labelScale: "0.95",
-  },
-  {
-    id: "cplayout-review-candidate-center",
-    iconColor: "ff5f227d",
-    iconScale: "1.2",
-    labelColor: "ff5f227d",
-    labelScale: "0.95",
-  },
-  {
-    id: "cplayout-review-candidate-coverage",
-    labelColor: "ff5f227d",
-    labelScale: "0.72",
-    lineColor: "ff5f227d",
-    lineWidth: "2.2",
-    polygonColor: "265f227d",
-    polygonFill: "1",
-    polygonOutline: "1",
-  },
-  {
-    id: "cplayout-review-warning-coverage",
-    labelColor: "ff1c1c9b",
-    labelScale: "0.78",
-    lineColor: "ff1c1c9b",
-    lineWidth: "2.4",
-    polygonColor: "451c1c9b",
-    polygonFill: "1",
-    polygonOutline: "1",
-  },
-  {
-    id: "cplayout-review-advisory-boundary",
-    labelColor: "ff836717",
-    labelScale: "0.85",
-    lineColor: "ff836717",
-    lineWidth: "3",
-    polygonColor: "00000000",
-    polygonFill: "0",
-    polygonOutline: "1",
-  },
 ];
 
 export type GoogleEarthKmlImportClassification = "field_boundary" | "obstacle" | "survey_point" | "map_feature" | "skipped";
@@ -858,14 +814,8 @@ function styleIdForPlacemark(placemark: XmlElement): string | null {
   const role = normalizeStyleToken(data.role);
   const kind = normalizeStyleToken(data.kind);
   const featureType = normalizeStyleToken(data.cplayoutFeatureType);
-  const reviewRole = normalizeStyleToken(data.reviewRole);
   const isPoint = Boolean(firstElement(placemark.getElementsByTagName("Point")));
 
-  if (featureType === "model_recommendation" && reviewRole === "candidate_center") return "cplayout-review-candidate-center";
-  if (featureType === "model_recommendation" && reviewRole === "current_center") return "cplayout-review-current-center";
-  if (featureType === "model_recommendation" && reviewRole === "candidate_coverage") return "cplayout-review-candidate-coverage";
-  if (featureType === "model_recommendation" && reviewRole === "warning_coverage") return "cplayout-review-warning-coverage";
-  if (featureType === "layout_evidence" && reviewRole === "advisory_boundary") return "cplayout-review-advisory-boundary";
   if (layerType === "field_boundary") return "cplayout-field-boundary";
   if (role === "pivot_center" || layerType === "pivot_center") return "cplayout-point-pivot";
   if (role === "water_source" || layerType === "water_source") return "cplayout-point-water";

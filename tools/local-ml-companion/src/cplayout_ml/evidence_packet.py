@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from .companion_common import (
-COMPANION_PACKET_VERSION,
+    COMPANION_CANDIDATES_GEOJSON_SCHEMA_VERSION,
+    COMPANION_PACKET_VERSION,
+    COMPANION_REPORT_PACKET_SCHEMA_VERSION,
     DEFAULT_CREATED_AT,
-    MODEL_RECOMMENDATIONS_SCHEMA_VERSION,
-    PROJECT_REVIEW_DATA_SCHEMA_VERSION,
     closed_ring,
     file_artifact,
     load_json,
@@ -76,7 +76,7 @@ def build_evidence_packet(
             "canonicalGeometryMutation": False,
         },
     }
-    recommendations = [
+    candidate_reports = [
         candidate_recommendation(project_id, project_crs, evidence_id, candidate, index, created_at)
         for index, candidate in enumerate(candidates)
     ]
@@ -85,7 +85,7 @@ def build_evidence_packet(
         *vector_label_projected_features(input_payloads.get("vectorLabels", {})),
     ]
     packet = {
-        "schemaVersion": PROJECT_REVIEW_DATA_SCHEMA_VERSION,
+        "schemaVersion": COMPANION_REPORT_PACKET_SCHEMA_VERSION,
         "packetVersion": COMPANION_PACKET_VERSION,
         "projectId": project_id,
         "projectCrs": project_crs,
@@ -100,8 +100,8 @@ def build_evidence_packet(
             "writesProjectDatabase": False,
         },
         "evidenceRecords": [evidence_record],
-        "modelRecommendations": recommendations,
-        "layoutDecisions": [],
+        "candidateReports": candidate_reports,
+        "operatorDecisionNotes": [],
         "networkRequired": False,
         "keyedService": False,
         "hiddenKeysAllowed": False,
@@ -112,17 +112,17 @@ def build_evidence_packet(
             "No automatic canonical projected XY mutation from CV, raster, vector, dashboard, or API evidence.",
         ],
     }
-    review_json_path = output_dir / "companion-evidence-packet.json"
-    recommendations_geojson_path = output_dir / "companion-evidence-packet-recommendations.geojson"
+    report_json_path = output_dir / "companion-evidence-packet.json"
+    candidates_geojson_path = output_dir / "companion-evidence-packet-candidates.geojson"
     projected_geojson_path = output_dir / "companion-evidence-packet-projected-xy.geojson"
-    write_json(review_json_path, packet)
-    write_json(recommendations_geojson_path, recommendations_to_geojson(recommendations))
+    write_json(report_json_path, packet)
+    write_json(candidates_geojson_path, candidate_reports_to_geojson(candidate_reports))
     write_json(projected_geojson_path, projected_xy_geojson(project_id, project_crs, projected_features))
     print(json.dumps({
-        "packet": str(review_json_path),
-        "recommendationsGeoJson": str(recommendations_geojson_path),
+        "packet": str(report_json_path),
+        "candidateReportsGeoJson": str(candidates_geojson_path),
         "projectedXyGeoJson": str(projected_geojson_path),
-        "recommendationCount": len(recommendations),
+        "candidateReportCount": len(candidate_reports),
         "projectedFeatureCount": len(projected_features),
         "networkRequired": False,
         "canonicalGeometryMutation": False,
@@ -277,7 +277,7 @@ def real_pivot_fixture_candidate(
         "hardFailures": sorted(set(hard_failures)),
         "warnings": [
             *string_list(fixture.get("warnings")),
-            "Real-world pivot fixture output is advisory until Review Apply XY.",
+            "Real-world pivot fixture output is advisory and cannot mutate CPLayout project geometry.",
         ],
     }
     if valid_projected:
@@ -488,9 +488,9 @@ def vector_label_projected_features(payload: Any) -> list[dict[str, Any]]:
     return features
 
 
-def recommendations_to_geojson(recommendations: list[dict[str, Any]]) -> dict[str, Any]:
+def candidate_reports_to_geojson(candidate_reports: list[dict[str, Any]]) -> dict[str, Any]:
     features = []
-    for recommendation in recommendations:
+    for recommendation in candidate_reports:
         properties = {
             "id": recommendation["id"],
             "projectId": recommendation["projectId"],
@@ -523,8 +523,8 @@ def recommendations_to_geojson(recommendations: list[dict[str, Any]]) -> dict[st
             features.append({"type": "Feature", "geometry": None, "properties": properties | {"geometryRole": "metadata_only"}})
     return {
         "type": "FeatureCollection",
-        "schemaVersion": MODEL_RECOMMENDATIONS_SCHEMA_VERSION,
-        "name": "cplayout-model-recommendations",
+        "schemaVersion": COMPANION_CANDIDATES_GEOJSON_SCHEMA_VERSION,
+        "name": "cplayout-companion-candidate-reports",
         "coordinateReferenceSystem": "project_crs_xy",
         "canonicalGeometryMutation": False,
         "features": features,

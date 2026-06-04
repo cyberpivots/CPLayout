@@ -4,10 +4,10 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  ClipboardList,
   Calculator,
   Circle,
   CircleDot,
+  ClipboardList,
   Database,
   Download,
   FolderOpen,
@@ -50,7 +50,6 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 
 import { CoordinateFormatPanel } from "./src/components/CoordinateFormatPanel";
 import { BrowserRtkReceiverPanel } from "./src/components/BrowserRtkReceiverPanel";
-import { ExpertReviewPanel } from "./src/components/ExpertReviewPanel";
 import { MapSurface } from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
 import {
@@ -86,14 +85,13 @@ import {
   importGoogleEarthKmlToProject,
   importProjectedGeoJsonToProject,
   importSurveyCsvToProject,
-  improvedCenterPivotReviewProject,
+  improvedCenterPivotProofProject,
   realCenterPivotProofProject,
   sampleProject,
   type AppSettings,
   type GoogleEarthKmlImportResult,
   type LonLat,
   type MapPackageManifest,
-  type ModelRecommendation,
   type PivotMachine,
   type PivotProject,
   type ProjectEditorAction,
@@ -105,9 +103,9 @@ import {
 import { buildDesignScenarioPreview, evaluateLayout, exportScenarioGeoJson, machineRadiusMeters, type DesignScenarioPreview, type DrawingLayerType, type DrawingMode } from "@cplayout/geometry";
 import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFeetInches, parseDistanceInput } from "@cplayout/core";
 
-type WorkspaceView = "dashboard" | "map" | "survey" | "review" | "files" | "settings";
+type WorkspaceView = "dashboard" | "map" | "survey" | "files" | "settings" | "help";
 type Screen = "projects" | "workspace";
-type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "review" | "export";
+type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "validation" | "export";
 type DesignConsoleModal = DrawingToolPaletteModal;
 type InspectorPage = "metrics" | "layers" | "feature" | "rtk" | "validation";
 
@@ -173,7 +171,6 @@ function AppContent(): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings>(() => browserLocalSettings(sampleProject.settings));
   const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(sampleProject.id));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
-  const [advisoryRecommendationPreview, setAdvisoryRecommendationPreview] = useState<ModelRecommendation | null>(null);
   const [designScenarioPreview, setDesignScenarioPreview] = useState<DesignScenarioPreview[] | null>(null);
   const [guidedMapTool, setGuidedMapTool] = useState<{
     activeLayer: DrawingLayerType;
@@ -271,14 +268,6 @@ function AppContent(): React.JSX.Element {
     dispatchProject({ type: "place_pivot", point: coordinate, wgs84 });
   }
 
-  function applyModelRecommendation(recommendation: ModelRecommendation): string | null {
-    const nextEditor = reduceProjectEditorState(editor, { type: "apply_model_recommendation", recommendation });
-    if (nextEditor.lastError) return nextEditor.lastError;
-    dispatchProject({ type: "apply_model_recommendation", recommendation });
-    setAdvisoryRecommendationPreview(null);
-    return null;
-  }
-
   function dispatchProjectWithResult(action: ProjectEditorAction): boolean {
     const nextEditor = reduceProjectEditorState(editor, action);
     dispatchProject(action);
@@ -309,7 +298,6 @@ function AppContent(): React.JSX.Element {
     setSettings((current) => browserLocalSettings(nextProject.settings, current));
     setWalkthroughProgress(loadWalkthroughProgress(nextProject.id));
     setSelectedMapFeatureId(null);
-    setAdvisoryRecommendationPreview(null);
     setHomeMapView(false);
     setActiveView("map");
     setWorkflowMode("design");
@@ -738,7 +726,6 @@ function AppContent(): React.JSX.Element {
     setWorkflowMode("layout");
     setCatalogNotice(notice);
     setSelectedMapFeatureId(null);
-    setAdvisoryRecommendationPreview(null);
     setActiveCatalogContext((current) => ({ ...current, ...context }));
   }
 
@@ -782,7 +769,7 @@ function AppContent(): React.JSX.Element {
                 setScreen("workspace");
                 setActiveView("files");
               }}
-              onOpenImprovedProof={() => loadProjectDashboard(improvedCenterPivotReviewProject)}
+              onOpenImprovedProof={() => loadProjectDashboard(improvedCenterPivotProofProject)}
               onInspectMap={() => {
                 setWorkflowMode("layout");
                 setScreen("workspace");
@@ -793,10 +780,6 @@ function AppContent(): React.JSX.Element {
                 setActiveView("map");
               }}
               onOpenProject={openSavedProject}
-              onOpenReview={() => {
-                setScreen("workspace");
-                setActiveView("review");
-              }}
               onOpenRealProof={() => loadProjectDashboard(realCenterPivotProofProject)}
               onOpenSample={() => loadProjectDashboard(sampleProject)}
               project={project}
@@ -892,14 +875,13 @@ function AppContent(): React.JSX.Element {
               mode="workspace"
               onCreate={routeToCustomerSelection}
               onOpenFiles={() => setActiveView("files")}
-              onOpenImprovedProof={() => loadProjectDashboard(improvedCenterPivotReviewProject)}
+              onOpenImprovedProof={() => loadProjectDashboard(improvedCenterPivotProofProject)}
               onInspectMap={() => {
                 setWorkflowMode("layout");
                 setActiveView("map");
               }}
               onOpenMap={() => setActiveView("map")}
               onOpenProject={openSavedProject}
-              onOpenReview={() => setActiveView("review")}
               onOpenRealProof={() => loadProjectDashboard(realCenterPivotProofProject)}
               onOpenSample={() => loadProjectDashboard(sampleProject)}
               project={project}
@@ -925,7 +907,6 @@ function AppContent(): React.JSX.Element {
                   result={result}
                   settings={settings}
                   selectedMapFeatureId={selectedMapFeatureId}
-                  advisoryRecommendationPreview={advisoryRecommendationPreview}
                   onSettingsChange={commitSettings}
                   onMappingWorkflowModeChange={setWorkflowMode}
                   onCommitBoundaryDraft={(vertices) => dispatchProjectWithResult({ type: "commit_boundary_draft", vertices })}
@@ -941,23 +922,25 @@ function AppContent(): React.JSX.Element {
                   onSelectMapFeature={setSelectedMapFeatureId}
                 />
                 {!homeMapView ? (
-                  <DesignActionHud
-                    activeModal={designConsoleModal}
-                    activeTool={guidedMapTool}
-                    dirty={isDirty}
-                    onActivateTool={activateDesignConsoleTool}
-                    onCalculate={() => {
-                      calculateDesignScenarios();
-                      setDesignConsoleModal("calculate");
-                    }}
-                    onOpenFiles={() => {
-                      setDesignConsoleModal(null);
-                      setActiveView("files");
-                    }}
-                    onOpenModal={setDesignConsoleModal}
-                    onToggleLayers={() => setDesignConsoleModal((current) => current === "layers" ? null : "layers")}
-                    settings={settings}
-                  />
+                  <View pointerEvents="box-none" style={styles.mapBottomHudOverlay}>
+                    <DesignActionHud
+                      activeModal={designConsoleModal}
+                      activeTool={guidedMapTool}
+                      dirty={isDirty}
+                      onActivateTool={activateDesignConsoleTool}
+                      onCalculate={() => {
+                        calculateDesignScenarios();
+                        setDesignConsoleModal("calculate");
+                      }}
+                      onOpenFiles={() => {
+                        setDesignConsoleModal(null);
+                        setActiveView("files");
+                      }}
+                      onOpenModal={setDesignConsoleModal}
+                      onToggleLayers={() => setDesignConsoleModal((current) => current === "layers" ? null : "layers")}
+                      settings={settings}
+                    />
+                  </View>
                 ) : null}
               </View>
               <InspectorDrawer
@@ -1135,15 +1118,15 @@ function AppContent(): React.JSX.Element {
             <SettingsPanel mapPackages={runtimeProject.mapPackages ?? []} settings={settings} onChange={commitSettings} />
           )}
 
-          {activeView === "review" && (
-            <ExpertReviewPanel
-              onApplyRecommendation={applyModelRecommendation}
-              onPreviewRecommendation={setAdvisoryRecommendationPreview}
-              project={project}
-              result={result}
-              selectedPreviewRecommendationId={advisoryRecommendationPreview?.id ?? null}
-              settings={settings}
-            />
+          {activeView === "help" && (
+            <Section title="Help and Training" icon={<ListChecks size={20} color="#254234" />} testID="help-view">
+              <HelpTrainingPanel
+                onNavigate={setActiveView}
+                onResetWalkthrough={resetWalkthrough}
+                onToggleWalkthrough={updateWalkthrough}
+                progress={walkthroughProgress}
+              />
+            </Section>
           )}
 
           {activeView === "files" && (
@@ -1295,11 +1278,11 @@ const WALKTHROUGH_MODULES: Array<{
   checkpoint: string;
 }> = [
   { id: "imagery", title: "Setup Imagery", checkpoint: "Local aerial package or USGS preview selected with attribution." },
-  { id: "boundary", title: "Trace Boundary", checkpoint: "Field boundary draft is reviewed and committed as projected XY." },
+  { id: "boundary", title: "Trace Boundary", checkpoint: "Field boundary draft is inspected and committed as projected XY." },
   { id: "obstacles", title: "Add Obstacles", checkpoint: "Roads, ditches, buildings, and no-spray zones are marked." },
   { id: "pivot", title: "Place Pivot", checkpoint: "Pivot, water source, and power source are positioned." },
   { id: "survey", title: "Survey Points", checkpoint: "RTK or imported control points meet the configured quality gate." },
-  { id: "review", title: "Expert Review", checkpoint: "Review center findings and recommendations are resolved or deferred." },
+  { id: "validation", title: "Layout Validation", checkpoint: "Layout warnings are inspected on the Map before export." },
   { id: "export", title: "Export Package", checkpoint: "ZIP/KML/GeoJSON are exported after saving local edits." },
 ];
 
@@ -1437,13 +1420,13 @@ function designConsoleCopy(modal: NonNullable<DesignConsoleModal>): { icon: Reac
   const color = "#eef7f1";
   switch (modal) {
     case "point":
-      return { icon: <MapPin size={21} color={color} />, title: "Point Tools", meta: "Place pivot, water, power, control, and utility point records from map clicks." };
+      return { icon: <MapPin size={21} color={color} />, title: "Placemark Tools", meta: "Place pivot, water, power, control, and utility placemarks from map clicks." };
     case "line":
-      return { icon: <Route size={21} color={color} />, title: "Line And Path Tools", meta: "Draw projected XY line features from map clicks; decimal GPS stays the display layer." };
+      return { icon: <Route size={21} color={color} />, title: "Path Tools", meta: "Draw projected XY path features from map clicks; decimal GPS stays the display layer." };
     case "polygon":
-      return { icon: <Pentagon size={21} color={color} />, title: "Polygon Tools", meta: "Choose the feature type, then click vertices on the map and commit through validation." };
+      return { icon: <Pentagon size={21} color={color} />, title: "Polygon Tools", meta: "Choose the feature type, then click vertices on the map and commit through projected-XY validation." };
     case "circle":
-      return { icon: <Circle size={21} color={color} />, title: "Circle Tools", meta: "Use center plus radius-point clicks for advisory circular map features." };
+      return { icon: <Circle size={21} color={color} />, title: "Ruler And Measure Tools", meta: "Use center plus radius-point clicks for advisory circular map features." };
     case "pivot":
       return { icon: <CircleDot size={21} color={color} />, title: "Pivot GPS Entry", meta: "Default entry is WGS84 decimal degrees; projected XY remains internal." };
     case "obstacle":
@@ -1457,7 +1440,7 @@ function designConsoleCopy(modal: NonNullable<DesignConsoleModal>): { icon: Reac
     case "calculate":
       return { icon: <Calculator size={21} color={color} />, title: "Calculate", meta: "Preview scenarios and metrics without save/export side effects." };
     case "layers":
-      return { icon: <Layers size={21} color={color} />, title: "Layers", meta: "Reference and imagery settings remain no-key, local-first, and non-persistent unless stored in project settings." };
+      return { icon: <Layers size={21} color={color} />, title: "Places And Layers", meta: "Reference and imagery settings remain no-key, local-first, and separate from canonical projected XY." };
   }
 }
 
@@ -1685,7 +1668,7 @@ function EndGunSettingsForm({
         <MetricTile label="No-spray conflicts" value={`${result.metrics.noSprayConflictCount}`} tone={result.metrics.noSprayConflictCount > 0 ? "warn" : "good"} />
       </View>
       <Text style={styles.mapFeatureMeta}>
-        Use throw distance and optional shutoff arcs for end-gun review. Corner-arm footprints remain separate advisory map features.
+        Use throw distance and optional shutoff arcs for end-gun inspection. Corner-arm footprints remain separate advisory map features.
       </Text>
       {error ? <Text style={styles.formError}>{error}</Text> : null}
       <View style={styles.formGrid}>
@@ -1873,6 +1856,28 @@ function LayersSheet({
         <MetricTile label="Reference overlay" value={settings.referenceOverlay.mode === "off" ? "Off" : settings.referenceOverlay.mode} />
         <MetricTile label="Coordinate display" value={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
       </View>
+      <View style={styles.layerGroupGrid} testID="places-layers-summary">
+        <LayerGroupCard
+          title="Canonical Geometry"
+          detail={`${project.fieldBoundary.length} boundary vertices · ${project.obstacles.length} obstacle polygons · ${(project.mapFeatures ?? []).length} map features`}
+          meta={`${project.projectCrs} projected XY remains the editable project geometry.`}
+        />
+        <LayerGroupCard
+          title="Map Packages"
+          detail={mapPackages.length > 0 ? `${mapPackages.length} imported package${mapPackages.length === 1 ? "" : "s"}` : "No imported local package"}
+          meta="Logical package metadata can be saved; runtime file paths stay local to this install."
+        />
+        <LayerGroupCard
+          title="Live Preview Imagery"
+          detail={aerialMode}
+          meta={aerialStatus}
+        />
+        <LayerGroupCard
+          title="Reference Overlays"
+          detail={settings.referenceOverlay.mode === "off" ? "Roads, borders, labels off" : "Roads, borders, labels available"}
+          meta="Overlay toggles are reference display controls, not project geometry visibility state."
+        />
+      </View>
       <Text style={styles.mapFeatureMeta}>
         Auto uses a renderable local raster package first, then the no-key USGS ImageryOnly connected preview. USGS only turns local aerial off and remains a reference handoff outside project ZIPs.
       </Text>
@@ -1916,6 +1921,16 @@ function LayersSheet({
             : "Manual local aerial needs an imported raster package with local TileJSON or tile URL templates."}
         </Text>
       ) : null}
+    </View>
+  );
+}
+
+function LayerGroupCard({ detail, meta, title }: { detail: string; meta: string; title: string }): React.JSX.Element {
+  return (
+    <View style={styles.layerGroupCard}>
+      <Text style={styles.mapFeatureTitle}>{title}</Text>
+      <Text style={styles.mapFeatureMeta}>{detail}</Text>
+      <Text style={styles.dashboardMuted}>{meta}</Text>
     </View>
   );
 }
@@ -2031,7 +2046,7 @@ function DesignBuilderPanel({
         <View style={styles.inlineActions}>
           <SmallActionButton label="End Gun Circle" onPress={() => onActivateMapTool("measure", "control_point", "end_gun_arc")} />
         </View>
-        <Text style={styles.mapFeatureMeta}>End-gun throw and angle ranges live in the machine form. Use the End gun utility circle for advisory radius or shutoff review marks.</Text>
+      <Text style={styles.mapFeatureMeta}>End-gun throw and angle ranges live in the machine form. Use the End gun utility circle for advisory radius or shutoff inspection marks.</Text>
       </DesignStep>
 
       <DesignStep index={6} title="Corner Arm" meta={`${cornerArmFootprintCount} advisory footprints`}>
@@ -2102,7 +2117,7 @@ function PivotCoordinateForm({ onApply, point }: { onApply: (point: XY) => boole
         <FormField label="Pivot Y" value={y} onChangeText={setY} />
       </View>
       <View style={styles.inlineActions}>
-        <SmallActionButton label="Apply XY" onPress={apply} />
+        <SmallActionButton label="Apply Coordinates" onPress={apply} />
       </View>
     </View>
   );
@@ -2172,7 +2187,7 @@ function ProjectedPolygonEditor({ label, onApply, vertices }: { label: string; o
         <SmallActionButton label="Add Row" onPress={addRow} />
         <SmallActionButton label="Remove Last" onPress={removeLast} />
         <SmallActionButton label="Reorder" onPress={rotateFirst} />
-        <SmallActionButton label="Apply XY" onPress={apply} />
+        <SmallActionButton label="Apply Vertices" onPress={apply} />
       </View>
     </View>
   );
@@ -2188,7 +2203,7 @@ function ScenarioPreviewList({ preview, settings }: { preview: DesignScenarioPre
         <View key={scenario.id} style={[styles.scenarioRow, scenario.feasible ? styles.scenarioRowFeasible : styles.scenarioRowRejected]}>
           <View style={styles.scenarioRowHeader}>
             <Text style={styles.rowTitle}>{scenario.label}</Text>
-            <Text style={styles.scenarioScore}>{scenario.feasible ? scenario.score.toFixed(1) : "Review"}</Text>
+            <Text style={styles.scenarioScore}>{scenario.feasible ? scenario.score.toFixed(1) : "Check"}</Text>
           </View>
           <Text style={styles.rowMeta}>
             {formatAreaFromAcres(scenario.metrics.irrigatedAcres, settings.unitSystem)} · {scenario.metrics.coveragePercent.toFixed(1)}% · outside {formatAreaFromAcres(scenario.metrics.outsideFieldAcres, settings.unitSystem)}
@@ -2370,7 +2385,6 @@ function ProjectDashboard({
   onOpenMap,
   onOpenProject,
   onOpenRealProof,
-  onOpenReview,
   onOpenSample,
   onResetWalkthrough,
   onToggleWalkthrough,
@@ -2390,7 +2404,6 @@ function ProjectDashboard({
   onOpenMap: () => void;
   onOpenProject: (projectId: string) => void | Promise<void>;
   onOpenRealProof: () => void;
-  onOpenReview: () => void;
   onOpenSample: () => void;
   onResetWalkthrough: () => void;
   onToggleWalkthrough: (moduleId: WalkthroughModuleId, complete: boolean) => void;
@@ -2415,7 +2428,7 @@ function ProjectDashboard({
           </Text>
           <View style={styles.dashboardActions}>
             <SmallActionButton label="Continue Mapping" onPress={onOpenMap} />
-            <SmallActionButton label="Expert Review" onPress={onOpenReview} />
+            <SmallActionButton label="Inspect Map" onPress={onInspectMap} />
             <SmallActionButton label="Export Package" onPress={onOpenFiles} />
           </View>
         </View>
@@ -2423,7 +2436,7 @@ function ProjectDashboard({
           <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} tone="neutral" />
           <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
           <MetricTile label="Machine radius" value={formatDistance(machineRadiusMeters(project.machine), settings.unitSystem)} />
-          <MetricTile label="Review warnings" value={`${warningCount}`} tone={warningCount > 0 ? "warn" : "good"} />
+          <MetricTile label="Layout warnings" value={`${warningCount}`} tone={warningCount > 0 ? "warn" : "good"} />
         </View>
       </View>
 
@@ -2474,7 +2487,7 @@ function ProjectDashboard({
             <SmallActionButton label="Create New" onPress={onCreate} />
             <SmallActionButton label="Open Sample" onPress={onOpenSample} />
             <SmallActionButton label="Real Proof" onPress={onOpenRealProof} />
-            <SmallActionButton label="Improved Review" onPress={onOpenImprovedProof} />
+            <SmallActionButton label="Improved Pivot Proof" onPress={onOpenImprovedProof} />
           </View>
           {recentProjects.length === 0 ? (
             <Text style={styles.dashboardMuted}>No saved browser projects yet.</Text>
@@ -2496,13 +2509,12 @@ function ProjectDashboard({
           ))}
         </View>
 
-        <View style={styles.dashboardPanel} testID="dashboard-review-warnings">
+        <View style={styles.dashboardPanel} testID="dashboard-layout-warnings">
           <View style={styles.dashboardPanelHeader}>
             <AlertTriangle size={19} color="#173428" />
-            <Text style={styles.dashboardPanelTitle}>Review Warnings</Text>
+            <Text style={styles.dashboardPanelTitle}>Layout Warnings</Text>
           </View>
           <View style={styles.dashboardActions}>
-            <SmallActionButton label="Open Review" onPress={onOpenReview} />
             <SmallActionButton label="Inspect Map" onPress={onInspectMap} />
           </View>
           {editorWarningRows(result).length === 0 ? (
@@ -2571,6 +2583,172 @@ function WorkflowWalkthrough({
   );
 }
 
+function HelpTrainingPanel({
+  onNavigate,
+  onResetWalkthrough,
+  onToggleWalkthrough,
+  progress,
+}: {
+  onNavigate: (view: WorkspaceView) => void;
+  onResetWalkthrough: () => void;
+  onToggleWalkthrough: (moduleId: WalkthroughModuleId, complete: boolean) => void;
+  progress: Record<WalkthroughModuleId, boolean>;
+}): React.JSX.Element {
+  const modules: Array<{
+    boundary: string;
+    checkpoints: WalkthroughModuleId[];
+    detail: string;
+    icon: React.ReactNode;
+    route: WorkspaceView;
+    routeLabel: string;
+    testID: string;
+    title: string;
+  }> = [
+    {
+      boundary: "Start from a saved project, a sample, or a blank design; local progress stays outside project ZIPs.",
+      checkpoints: [],
+      detail: "Use the catalog, then move into Map for layout work.",
+      icon: <Home size={18} color="#254234" />,
+      route: "map",
+      routeLabel: "Go to Map",
+      testID: "help-module-start",
+      title: "Start",
+    },
+    {
+      boundary: "Polygon, Path, Placemark, and Ruler labels map to CPLayout projected-XY tools; viewport pan/zoom state is separate.",
+      checkpoints: ["boundary", "obstacles", "pivot"],
+      detail: "Trace field polygons, obstacle polygons, utility paths, placemarks, and measurement marks in Design mode.",
+      icon: <Pentagon size={18} color="#254234" />,
+      route: "map",
+      routeLabel: "Go to Map",
+      testID: "help-module-map-tools",
+      title: "Map Tools",
+    },
+    {
+      boundary: "Google Earth Pro is a local companion reference only; KML/KMZ styles, labels, LookAt, imagery, and screenshots are not canonical geometry.",
+      checkpoints: ["boundary", "obstacles"],
+      detail: "Use Search, Add Polygon, Add Path, Add Placemark, then import focused KML/KMZ through Files import selection cards.",
+      icon: <MapPinned size={18} color="#254234" />,
+      route: "files",
+      routeLabel: "Go to Files",
+      testID: "help-module-google-earth",
+      title: "Google Earth Companion",
+    },
+    {
+      boundary: "Local aerial packages and no-key USGS preview are reference layers; they are not stored as geometry.",
+      checkpoints: ["imagery"],
+      detail: "Choose offline local aerial packages first, use live preview only as capped reference imagery, and keep attribution visible.",
+      icon: <Satellite size={18} color="#254234" />,
+      route: "settings",
+      routeLabel: "Go to Settings",
+      testID: "help-module-imagery",
+      title: "Imagery",
+    },
+    {
+      boundary: "Validation warnings stay in the layout workflow; Files imports and map edits are operator-selected projected XY changes.",
+      checkpoints: ["validation"],
+      detail: "Inspect coverage warnings, obstacle conflicts, outside-field acres, and draft validation before export.",
+      icon: <ClipboardList size={18} color="#254234" />,
+      route: "map",
+      routeLabel: "Inspect Map",
+      testID: "help-module-layout-validation",
+      title: "Layout Validation",
+    },
+    {
+      boundary: "Android SQLite and ZIP behavior require device proof for each runtime claim; browser local storage remains the web MVP backend.",
+      checkpoints: ["export"],
+      detail: "Save Local before export, keep machine paths local-only, and treat native proof reports separately from browser checks.",
+      icon: <Database size={18} color="#254234" />,
+      route: "settings",
+      routeLabel: "Go to Settings",
+      testID: "help-module-android-storage",
+      title: "Android Storage",
+    },
+    {
+      boundary: "Project ZIP is canonical. KML/KMZ and GeoJSON are interchange outputs and do not prove Google Earth rendering.",
+      checkpoints: ["export"],
+      detail: "Export ZIP for backup/handoff, and export KML/KMZ or GeoJSON for visual interchange.",
+      icon: <PackageCheck size={18} color="#254234" />,
+      route: "files",
+      routeLabel: "Go to Files",
+      testID: "help-module-export",
+      title: "Export",
+    },
+  ];
+  const completedCount = WALKTHROUGH_MODULES.filter((module) => progress[module.id]).length;
+
+  return (
+    <View style={styles.helpPanel}>
+      <View style={styles.helpHeader} testID="help-training-panel">
+        <View style={styles.helpHeaderCopy}>
+          <Text style={styles.dashboardCardValue}>{completedCount}/{WALKTHROUGH_MODULES.length} workflow checkpoints</Text>
+          <Text style={styles.dashboardMuted}>Training progress uses the same local walkthrough store as the dashboard and stays out of project schemas and archives.</Text>
+        </View>
+        <View style={styles.helpQuickActions}>
+          <HelpActionButton label="Go to Map" onPress={() => onNavigate("map")} testID="help-action-map" />
+          <HelpActionButton label="Go to Files" onPress={() => onNavigate("files")} testID="help-action-files" />
+          <HelpActionButton label="Go to Settings" onPress={() => onNavigate("settings")} testID="help-action-settings" />
+          <HelpActionButton label="Reset" onPress={onResetWalkthrough} testID="help-reset-progress" />
+        </View>
+      </View>
+      <View style={styles.helpModuleGrid}>
+        {modules.map((module) => {
+          const complete = module.checkpoints.length > 0 && module.checkpoints.every((checkpoint) => progress[checkpoint]);
+          return (
+            <View key={module.title} style={styles.helpModuleCard} testID={module.testID}>
+              <View style={styles.dashboardPanelHeader}>
+                {module.icon}
+                <Text style={styles.dashboardCardTitle}>{module.title}</Text>
+              </View>
+              <Text style={styles.dashboardMuted}>{module.detail}</Text>
+              <Text style={styles.mapFeatureMeta}>{module.boundary}</Text>
+              {module.checkpoints.length > 0 ? (
+                <View style={styles.helpCheckpointRow}>
+                  {module.checkpoints.map((checkpoint) => (
+                    <Pressable
+                      accessibilityLabel={`${progress[checkpoint] ? "Clear" : "Complete"} ${walkthroughTitle(checkpoint)} walkthrough checkpoint`}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: progress[checkpoint] }}
+                      key={checkpoint}
+                      onPress={() => onToggleWalkthrough(checkpoint, !progress[checkpoint])}
+                      style={[styles.helpCheckpoint, progress[checkpoint] && styles.helpCheckpointComplete]}
+                      testID={`help-checkpoint-${checkpoint}`}
+                      {...webCheckboxProps(progress[checkpoint], () => onToggleWalkthrough(checkpoint, !progress[checkpoint]))}
+                    >
+                      {progress[checkpoint] ? <CheckCircle2 size={15} color="#0f5e3d" /> : <Upload size={15} color="#6b796f" />}
+                      <Text style={styles.helpCheckpointText}>{walkthroughTitle(checkpoint)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.helpCheckpointText}>Workflow entry point</Text>
+              )}
+              <View style={styles.inlineActions}>
+                <HelpActionButton label={module.routeLabel} onPress={() => onNavigate(module.route)} testID={`${module.testID}-route`} />
+                {module.checkpoints.length > 0 ? (
+                  <Text style={[styles.helpStatusBadge, complete && styles.helpCompleteBadge]}>{complete ? "Complete" : "In progress"}</Text>
+                ) : null}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function HelpActionButton({ label, onPress, testID }: { label: string; onPress: () => void; testID: string }): React.JSX.Element {
+  return (
+    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={styles.smallActionButton} testID={testID}>
+      <Text style={styles.smallActionText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function walkthroughTitle(moduleId: WalkthroughModuleId): string {
+  return WALKTHROUGH_MODULES.find((module) => module.id === moduleId)?.title ?? moduleId;
+}
+
 function webCheckboxProps(checked: boolean, onActivate: () => void): Record<string, unknown> {
   if (Platform.OS !== "web") return {};
   return {
@@ -2607,13 +2785,13 @@ function recommendedWorkflowStep(
   if (dirty) return "Next: save local edits and export a project package.";
   if (!settings.onlineImagery.enabled && !progress.imagery) return "Next: choose local aerial package or USGS preview in Settings.";
   if (!progress.imagery) return "Next: confirm imagery attribution and source status.";
-  if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or review the field boundary in Design mode.";
+  if (project.fieldBoundary.length < 3 || !progress.boundary) return "Next: trace or inspect the field boundary in Design mode.";
   if (project.obstacles.length === 0 || !progress.obstacles) return "Next: add visible obstacles and no-spray zones.";
   if (!progress.pivot) return "Next: place pivot, water source, and power source.";
   if (project.surveyPoints.length === 0 || !progress.survey) return "Next: capture or import survey/control points.";
-  if (result.warnings.length > 0 || result.metrics.obstacleConflictCount > 0 || !progress.review) return "Next: open Expert Review Center and resolve findings.";
+  if (result.warnings.length > 0 || result.metrics.obstacleConflictCount > 0 || !progress.validation) return "Next: inspect Map validation and resolve layout warnings.";
   if (!progress.export) return "Next: save local edits and export a project package.";
-  return "Project is ready for repeat review, export, or field handoff.";
+  return "Project is ready for repeat inspection, export, or field handoff.";
 }
 
 function editorWarningRows(result: ReturnType<typeof evaluateLayout>): string[] {
@@ -2658,7 +2836,7 @@ function emptyWalkthroughProgress(): Record<WalkthroughModuleId, boolean> {
     obstacles: false,
     pivot: false,
     survey: false,
-    review: false,
+    validation: false,
     export: false,
   };
 }
@@ -2676,7 +2854,7 @@ function loadWalkthroughProgress(projectId: string): Record<WalkthroughModuleId,
       obstacles: parsed.obstacles === true,
       pivot: parsed.pivot === true,
       survey: parsed.survey === true,
-      review: parsed.review === true,
+      validation: parsed.validation === true,
       export: parsed.export === true,
     };
   } catch {
@@ -2964,9 +3142,9 @@ function ProjectTreeRail({
       ) : null}
       <View style={[styles.projectTreeNav, compact && !consoleMode && styles.projectTreeNavCompact, consoleMode && styles.projectTreeNavConsole, consoleMode && !drawerOpen && styles.projectTreeNavCollapsed]}>
         <RailButton active={activeView === "dashboard"} collapsed={consoleMode} icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
+        <RailButton active={activeView === "help"} collapsed={consoleMode} icon={<ListChecks size={18} />} label="Help" onPress={() => onNavigate("help")} testID="workspace-nav-help" />
         <RailButton active={activeView === "map"} collapsed={consoleMode} icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
         <RailButton active={activeView === "survey"} collapsed={consoleMode} icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
-        <RailButton active={activeView === "review"} collapsed={consoleMode} icon={<ClipboardList size={18} />} label="Review" onPress={() => onNavigate("review")} testID="workspace-nav-review" />
         <RailButton active={activeView === "files"} collapsed={consoleMode} icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
         <RailButton active={activeView === "settings"} collapsed={consoleMode} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => onNavigate("settings")} testID="workspace-nav-settings" />
       </View>
@@ -3738,9 +3916,16 @@ const styles = StyleSheet.create({
   },
   mapConsoleFrame: {
     flex: 1,
-    gap: 10,
     minHeight: 0,
     minWidth: 0,
+    position: "relative",
+  },
+  mapBottomHudOverlay: {
+    bottom: 8,
+    left: 12,
+    position: "absolute",
+    right: 12,
+    zIndex: 8,
   },
   sidePanel: {
     backgroundColor: "#fbfcf8",
@@ -4000,6 +4185,112 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
     marginTop: 8,
+  },
+  layerGroupGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  layerGroupCard: {
+    backgroundColor: "#f8faf4",
+    borderColor: "#d8e0d4",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 156,
+    flexGrow: 1,
+    gap: 5,
+    minWidth: 0,
+    padding: 10,
+  },
+  helpPanel: {
+    gap: 14,
+  },
+  helpHeader: {
+    alignItems: "flex-start",
+    backgroundColor: "#fbfcf8",
+    borderColor: "#d8ded6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    justifyContent: "space-between",
+    padding: 14,
+  },
+  helpHeaderCopy: {
+    flexBasis: 320,
+    flexGrow: 1,
+    flexShrink: 1,
+    maxWidth: "100%",
+    minWidth: 0,
+  },
+  helpQuickActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    maxWidth: "100%",
+  },
+  helpModuleGrid: {
+    alignItems: "stretch",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  helpModuleCard: {
+    backgroundColor: "#fbfcf8",
+    borderColor: "#d8ded6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: 300,
+    flexGrow: 1,
+    gap: 9,
+    minWidth: 0,
+    padding: 14,
+  },
+  helpCheckpointRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+  },
+  helpCheckpoint: {
+    alignItems: "center",
+    backgroundColor: "#f6faf5",
+    borderColor: "#dce4da",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  helpCheckpointComplete: {
+    backgroundColor: "#edf7f0",
+    borderColor: "#9cc8ad",
+  },
+  helpCheckpointText: {
+    color: "#405146",
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 15,
+  },
+  helpStatusBadge: {
+    alignSelf: "center",
+    backgroundColor: "#eef4ef",
+    borderColor: "#b7c8bb",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#254234",
+    fontSize: 11,
+    fontWeight: "900",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    textTransform: "uppercase",
+  },
+  helpCompleteBadge: {
+    backgroundColor: "#edf8ef",
+    borderColor: "#a8d3b5",
+    color: "#1f5f39",
   },
   mapFeatureEditor: {
     borderColor: "#dce3da",

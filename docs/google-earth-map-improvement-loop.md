@@ -8,6 +8,7 @@ Status: Iteration 7 complete; local Google Earth Pro visual-fidelity proof passe
 - Iteration 1 is Map Editing First: browser-created `mapFeatures` can be selected on the SVG map, renamed, deleted, undone, redone, and exported through KML/KMZ.
 - KML/KMZ remains WGS84 interchange only. Project geometry remains projected/local `XY`.
 - Google Earth Pro is a companion validation surface for exported artifacts, not CPLayout app runtime behavior.
+- The 2026-06-03 Google Earth-inspired Help and Places/Layers UI update is an onboarding/process surface only. It does not create a new Google Earth render-proof claim, alter KML/KMZ contracts, or change canonical projected `XY`.
 - Publish method for this loop is direct `main` push after `origin/main...HEAD` is confirmed even and all release checks pass. No force push.
 
 ## Panel Roles
@@ -508,14 +509,14 @@ Remaining unverified claims:
 
 ## Design-Only CV Evidence Lane
 
-Status: implemented on 2026-05-29 as a local companion review workflow.
+Status: implemented on 2026-05-29 as a local companion report workflow.
 
 Scope:
 
-- `tools/local-ml-companion` now exposes `cplayout-ml design-vision-review` for advisory review of existing Google Earth Pro proof packets.
+- `tools/local-ml-companion` exposes `cplayout-ml design-vision-review` for advisory inspection of existing Google Earth Pro proof packets.
 - Inputs are exact local paths for a CPLayout KML, CPLayout KMZ, full-window Google Earth screenshot, map-canvas crop, and visual-fidelity manifest.
 - The command records SHA-256 hashes for every input artifact, verifies screenshot linkage against the manifest, verifies the local OpenCV build exposes `HoughCircles`, and writes `visual-layout-review.json` plus `visual-layout-review-annotated.png` under ignored `reports/google-earth-visual-fidelity/design-vision-review/`.
-- The report emits existing review-contract payloads: `LayoutEvidenceRecord`, `ModelRecommendation`, and a deferred `LayoutDecisionRecord`. Generated records use `reviewStatus: "unreviewed"` and `canonicalGeometryMutation: false`.
+- The report is standalone companion/workspace evidence. It is not a CPLayout project schema, archive payload, SQLite row, app import path, or geometry mutation request.
 
 Design-only boundaries:
 
@@ -545,7 +546,7 @@ Validation evidence:
 - Local OpenCV check: `cv2 4.13.0`, `HoughCircles` available.
 - `python3 tools/local-ml-companion/src/cplayout_ml/cli.py design-vision-review --help`: passed.
 - `python3 tools/local-ml-companion/src/cplayout_ml/cli.py design-vision-review ...`: passed and emitted JSON/PNG outputs.
-- `npx tsx -e "...parseLayoutEvidenceRecord...parseModelRecommendation...parseLayoutDecisionRecord..."`: passed for generated report records.
+- Standalone companion report JSON inspection: passed for the generated report records in this historical run. The current app no longer imports review-contract payloads.
 - `python3 .agents/skills/cplayout-google-earth-imagery-analysis/scripts/inventory_ge_artifacts.py reports/google-earth-visual-fidelity/design-vision-review/visual-layout-review.json reports/google-earth-visual-fidelity/design-vision-review/visual-layout-review-annotated.png`: passed.
 - `npm test -w @cplayout/geometry`: passed, including visual-review threshold tests.
 
@@ -557,14 +558,14 @@ Remaining unverified claims:
 
 ## Browser Advisory Candidate And Fixture Evaluation Slice
 
-Status: implementation slice added on 2026-05-29.
+Status: historical implementation slice added on 2026-05-29; retired from the application on 2026-06-03.
 
 Scope:
 
-- Browser Review can generate deterministic pivot-center candidates from the current project using the shared TypeScript optimizer. Recommendations stay adjacent review data with `reviewStatus: "unreviewed"` until an operator accepts/applies them.
-- The Layout map can preview one selected `ModelRecommendation` as advisory candidate coverage, pivot center, boundary, and obstacle overlays. Preview state is UI-only; geometry mutation still goes through the existing reducer action and projected-XY validation.
+- Browser Review candidate generation and map recommendation preview were removed from the application product surface. Companion analysis may still produce standalone workspace reports, but those reports are not app-importable recommendation contracts.
+- Layout map rendering now shows canonical project geometry, survey points, map features, imagery/reference overlays, and validation state only.
 - Pivot-center alternatives now carry score breakdown and feasibility metadata for coverage, outside-field area, obstacle conflicts, distance from current center, and feasibility.
-- Google Earth KML exports include review-only style definitions for current center, candidate center, candidate coverage, warning coverage, and advisory CV boundaries. These styles are visual interchange metadata only.
+- Google Earth KML exports no longer include review-only recommendation/evidence styles. KML/KMZ styles remain visual interchange metadata for canonical project geometry and map features only.
 - `cplayout-ml evaluate-vision-fixtures` evaluates local proof-packet fixture manifests and reports deterministic precision/recall/IoU-style metrics plus annotated PNGs.
 
 Non-goals and unverified claims:

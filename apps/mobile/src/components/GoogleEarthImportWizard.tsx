@@ -1,4 +1,4 @@
-import { Check, CheckSquare, Clipboard, Copy, FileDown, MapPinned, MousePointer2, Square, Upload } from "lucide-react-native";
+import { Check, CheckSquare, Clipboard, Copy, FileDown, MapPin, MapPinned, MousePointer2, Route, Search, Square, Upload } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
 
@@ -15,78 +15,80 @@ interface WizardStep {
 
 const WIZARD_STEPS: WizardStep[] = [
   {
-    title: "1. Pick importable features",
-    icon: <MapPinned size={17} color="#254234" />,
+    title: "1. Search and stage Places",
+    icon: <Search size={17} color="#254234" />,
     screenshot: mainWindowScreenshot,
     bullets: [
-      "CPLayout imports a field boundary, obstacle polygons, survey points, and utility point or line map features.",
-      "Use KML/KMZ as WGS84 exchange only; imported geometry is reviewed before it is projected into the project CRS.",
-      "Leave overlays, tours, 3D models, and style-only items out of the import package.",
+      "Use Search to find the field, then create a focused Places folder for CPLayout candidates.",
+      "Places can contain polygons, paths, and placemarks. Google Earth Layers are visual context only.",
+      "KML/KMZ is WGS84 exchange; CPLayout import previews project selected geometry into the project CRS before applying it.",
     ],
-    examples: ["field_boundary", "survey_point", "pump_location"],
+    examples: ["CPLayout import folder", "field_boundary", "survey_point"],
   },
   {
-    title: "2. Draw the field boundary",
+    title: "2. Add Polygon for boundaries",
     icon: <MousePointer2 size={17} color="#254234" />,
     screenshot: addMenuScreenshot,
     bullets: [
-      "In Google Earth Pro, use Add > Polygon for the field outline.",
-      "Click around the irrigated field edge, close the polygon, and save it with a boundary name.",
-      "Only one selected boundary is applied; a selected boundary replaces the current CPLayout field boundary.",
+      "In Google Earth Pro, use Add > Polygon for the field outline and obstacle/no-spray areas.",
+      "Name the field outline field_boundary or Boundary; name obstacle polygons by their CPLayout kind.",
+      "Only selected import-preview polygons are applied. A selected boundary replaces the current CPLayout field boundary after projection.",
     ],
-    examples: ["field_boundary", "Boundary"],
+    examples: ["field_boundary", "road", "building", "exclusion"],
   },
   {
-    title: "3. Draw obstacle polygons",
-    icon: <MousePointer2 size={17} color="#254234" />,
+    title: "3. Add Path for utilities",
+    icon: <Route size={17} color="#254234" />,
     screenshot: addMenuScreenshot,
     bullets: [
-      "Use Add > Polygon for areas the pivot must avoid or treat as a hard conflict.",
-      "Name each polygon with the obstacle kind CPLayout should assign.",
-      "Inner rings are ignored by the current importer, so draw separate polygons instead of holes.",
+      "Use Add > Path for lines such as pipelines, power lines, access lanes, ditches, canals, and service routes.",
+      "CPLayout keeps paths as selectable map features, separate from field and obstacle geometry.",
+      "Line styling and labels help Google Earth inspection, but they do not change projected XY geometry.",
     ],
-    examples: ["road", "ditch", "fence", "building", "canal", "tree", "exclusion"],
+    examples: ["underground_pipeline", "power_line", "access_lane", "ditch"],
   },
   {
-    title: "4. Mark utilities and limits",
-    icon: <MousePointer2 size={17} color="#254234" />,
+    title: "4. Add Placemark points",
+    icon: <MapPin size={17} color="#254234" />,
     screenshot: addMenuScreenshot,
     bullets: [
-      "Use Add > Path for lines such as pipelines, power lines, access lanes, arcs, and swing limits.",
-      "Use Add > Placemark for point features such as pump locations, power poles, and notes.",
-      "CPLayout keeps these as selectable map features separate from field and obstacle geometry.",
+      "Use Add > Placemark for pump locations, power poles, control points, survey points, and field notes.",
+      "Point placemarks can become survey points or utility map features when selected in CPLayout import preview.",
+      "LookAt, camera position, labels, icons, and screenshots remain display or evidence metadata only.",
     ],
-    examples: ["underground_pipeline", "power_line", "power_pole", "pump_location", "access_lane", "end_gun_arc", "corner_swing_limit"],
+    examples: ["pump_location", "power_pole", "survey_point", "note"],
   },
   {
     title: "5. Save KML or KMZ",
     icon: <FileDown size={17} color="#254234" />,
     screenshot: mainWindowScreenshot,
     bullets: [
-      "Save the folder or selected places from Google Earth Pro as KML or KMZ.",
+      "Save the focused Places folder or selected places from Google Earth Pro as KML or KMZ.",
       "Use KMZ when Google Earth creates an archive; CPLayout expects one KML document inside the KMZ.",
-      "Keep the import package focused on the field, obstacles, survey points, and utility features intended for CPLayout.",
+      "Keep overlays, tours, 3D models, screenshots, and style-only items out of the import package.",
     ],
     examples: ["project-field.kml", "project-field.kmz"],
   },
   {
-    title: "6. Review before applying",
+    title: "6. Select CPLayout Import Cards",
     icon: <Upload size={17} color="#254234" />,
     bullets: [
-      "Press Import KML/KMZ, inspect every review card, and deselect anything that should not change the project.",
-      "Apply only the intended cards; the review summary lists boundary, obstacle, survey point, map feature, and skipped counts.",
-      "Cancel the review to leave the current project unchanged.",
+      "Press Import KML/KMZ, inspect every import card, and deselect anything that should not change the project.",
+      "Apply only the intended cards; the import summary lists boundary, obstacle, survey point, map feature, and skipped counts.",
+      "Imported geometry is projected into the project CRS; styles, labels, LookAt, imagery, and screenshots are not canonical geometry.",
     ],
     examples: ["select Boundary", "select underground_pipeline", "deselect extra notes"],
   },
 ];
 
 const READY_CHECKLIST = [
+  "Search result is staged in a focused Places folder.",
   "Boundary polygon is named field_boundary or Boundary.",
-  "Obstacle polygons use road, ditch, fence, building, canal, tree, or exclusion.",
-  "Utility paths and placemarks use CPLayout names.",
+  "Obstacle polygons use road, ditch, fence, building, canal, tree, or exclusion names.",
+  "Paths and placemarks use CPLayout utility or survey names.",
   "KML/KMZ contains only intended field data.",
-  "Review cards will be selected one by one before Apply Import.",
+  "Layers, styling, labels, LookAt, imagery, and screenshots are treated as visual context only.",
+  "Import cards will be selected one by one before Apply Import.",
 ];
 
 export function GoogleEarthImportWizard(): React.JSX.Element {
@@ -122,7 +124,7 @@ export function GoogleEarthImportWizard(): React.JSX.Element {
   }
 
   return (
-    <View style={styles.panel}>
+    <View style={styles.panel} testID="google-earth-import-wizard">
       <View style={styles.headerRow}>
         <View style={styles.titleRow}>
           <Clipboard size={18} color="#254234" />
@@ -158,6 +160,11 @@ export function GoogleEarthImportWizard(): React.JSX.Element {
           </View>
 
           <View style={styles.stepBox}>
+            <View style={styles.contextBox} testID="google-earth-wizard-boundary-note">
+              <Text style={styles.contextText}>
+                Places are import candidates. Layers and KML/KMZ styling are visual context; CPLayout alters only selected, projected import-preview geometry.
+              </Text>
+            </View>
             <View style={styles.stepTitleRow}>
               {step.icon}
               <Text style={styles.stepTitle}>{step.title}</Text>
@@ -182,14 +189,14 @@ export function GoogleEarthImportWizard(): React.JSX.Element {
           </View>
 
           <View style={styles.navigationRow}>
-            <Pressable accessibilityRole="button" disabled={stepIndex === 0} onPress={() => goToStep(stepIndex - 1)} style={[styles.navButton, stepIndex === 0 && styles.navButtonDisabled]}>
+            <Pressable accessibilityRole="button" disabled={stepIndex === 0} onPress={() => goToStep(stepIndex - 1)} style={[styles.navButton, stepIndex === 0 && styles.navButtonDisabled]} testID="google-earth-wizard-back">
               <Text style={[styles.navButtonText, stepIndex === 0 && styles.navButtonTextDisabled]}>Back</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={toggleStepComplete} style={styles.doneButton}>
+            <Pressable accessibilityRole="button" onPress={toggleStepComplete} style={styles.doneButton} testID="google-earth-wizard-step-ready">
               {completedSteps.includes(stepIndex) ? <CheckSquare size={16} color="#ffffff" /> : <Square size={16} color="#ffffff" />}
               <Text style={styles.doneButtonText}>Step Ready</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" disabled={stepIndex === WIZARD_STEPS.length - 1} onPress={() => goToStep(stepIndex + 1)} style={[styles.navButton, stepIndex === WIZARD_STEPS.length - 1 && styles.navButtonDisabled]}>
+            <Pressable accessibilityRole="button" disabled={stepIndex === WIZARD_STEPS.length - 1} onPress={() => goToStep(stepIndex + 1)} style={[styles.navButton, stepIndex === WIZARD_STEPS.length - 1 && styles.navButtonDisabled]} testID="google-earth-wizard-next">
               <Text style={[styles.navButtonText, stepIndex === WIZARD_STEPS.length - 1 && styles.navButtonTextDisabled]}>Next</Text>
             </Pressable>
           </View>
@@ -205,7 +212,7 @@ export function GoogleEarthImportWizard(): React.JSX.Element {
           </View>
         </View>
       ) : (
-        <Text style={styles.closedText}>Guides Google Earth Pro drawing names, KML/KMZ export, and review-card selection.</Text>
+        <Text style={styles.closedText}>Guides Google Earth Pro drawing names, KML/KMZ export, and import-card selection.</Text>
       )}
     </View>
   );
@@ -301,6 +308,19 @@ const styles = StyleSheet.create({
   },
   stepBox: {
     gap: 8,
+  },
+  contextBox: {
+    backgroundColor: "#f8faf4",
+    borderColor: "#d8e0d4",
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 10,
+  },
+  contextText: {
+    color: "#405146",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
   },
   stepTitleRow: {
     alignItems: "center",

@@ -4,26 +4,20 @@ Date: 2026-05-28
 
 ## Decision
 
-ML is a companion workflow first. CPLayout should collect local evidence, export reviewable datasets, and rank recommendations deterministically before any on-device model runtime is added. Model output is advisory and must never mutate field boundaries, obstacles, or pivot geometry without explicit operator acceptance.
+ML is a companion workflow first. CPLayout should collect local evidence, export reviewable datasets, and rank candidates deterministically before any on-device model runtime is added. Model output is advisory and must never mutate field boundaries, obstacles, or pivot geometry.
 
 ## Data Contracts
 
-- `LayoutEvidenceRecord`: project-adjacent evidence from imagery, survey, imports, notes, model output, or layout scoring.
 - `ImageryProvenance`: source, attribution, license, access time, offline-copy policy, and `keyedService: false`.
-- `ModelRecommendation`: proposed project-CRS `XY` geometry plus confidence, score, warnings, and evidence links.
-- `LayoutDecisionRecord`: operator/import/test decision history for accepted, rejected, or deferred recommendations.
+- Companion report packets: standalone workspace/chat records for imagery, survey/import facts, model output, layout scoring, warnings, artifact hashes, and calibration status. These are not CPLayout project documents, archive entries, SQLite rows, or app-importable recommendation contracts.
 
 Archive exports:
 
-- `exports/layout-evidence.jsonl`
-- `exports/layout-decisions.jsonl`
-- `exports/model-recommendations.geojson`
+- Project ZIP exports no longer include model evidence, decisions, or recommendations. Legacy review archive filenames are ignored on import for compatibility and are never exported again.
 
 SQLite support:
 
-- `layout_evidence`
-- `model_recommendations`
-- `layout_decisions`
+- The legacy review tables are dropped by the v10 migration. Companion reports remain outside the CPLayout SQLite project store.
 
 ## Collection Plan
 
@@ -31,7 +25,7 @@ SQLite support:
 2. Keep display WGS84 optional and secondary; proposed geometry that can affect layout must be validated project-CRS `XY`.
 3. Export JSONL for repeatable local datasets. Keep local file paths out of project data unless explicitly user-owned export metadata.
 4. Use deterministic scoring to build a baseline before training: coverage percent, outside-field acres, obstacle conflicts, machine radius constraints, warnings, and confidence.
-5. Treat model recommendations as review queue entries. Accepted recommendations must become explicit reducer actions with validation and undo, not implicit model writes.
+5. Treat model output as standalone companion evidence. Any future product geometry change must be designed as a separate projected-XY edit/import path with validation and undo, not implicit model writes.
 
 ## Companion Tooling
 
@@ -48,9 +42,9 @@ SQLite support:
 
 ## Browser Candidate Generation
 
-- The Review tab can generate local deterministic pivot-center candidates from the current projected `XY` project with `gridDivisions: 13`, `maxAlternatives: 8`, and visual-center seeding enabled.
-- Generated recommendations are saved to adjacent browser review data with `reviewStatus: "unreviewed"`, score breakdown metadata, feasibility signals, and warnings. They are not applied automatically.
-- Preview overlays are advisory only. Apply requires an explicit before/after metrics confirmation and then uses the existing `apply_model_recommendation` reducer validation path.
+- Browser app candidate generation and recommendation preview are retired product features.
+- Deterministic pivot-center candidate generation may continue in local companion reports with `gridDivisions`, alternative counts, score breakdown metadata, feasibility signals, and warnings.
+- Companion outputs are not applied automatically and are not imported as project recommendation records.
 
 ## Vision Fixture Evaluation
 
@@ -80,10 +74,9 @@ Required candidate metrics:
 
 Output contract:
 
-- Emit a `LayoutEvidenceRecord` for every detector run, including artifact hashes, thresholds, calibration status, rejection audit, `keyedService: false`, and `reviewStatus: "unreviewed"`.
-- Emit a `ModelRecommendation` only when project id and project CRS are known and projected `XY` validation passes. Put `proposedGeometry.pivotCenter` in project CRS, keep `canonicalGeometryMutation: false`, and leave the recommendation unreviewed.
-- Store weighted-vote details in recommendation metadata or `scoreBreakdown`. The vote must preserve detector quality, calibration quality, layout impact, UI/review readiness, records quality, and offline/security vetoes.
-- Accept, Reject, and Defer decisions record `LayoutDecisionRecord` entries. Apply XY is the only geometry-changing operation and must keep the existing reducer confirmation and validation path.
+- Emit a standalone companion report for every detector run, including artifact hashes, thresholds, calibration status, rejection audit, `keyedService: false`, and `canonicalGeometryMutation: false`.
+- Include projected `XY` candidates only when project id and project CRS are known and calibration is valid; they remain report data until a separate operator edit/import workflow is designed.
+- Store weighted-vote details in report metadata or `scoreBreakdown`. The vote must preserve detector quality, calibration quality, layout impact, UI readiness, records quality, and offline/security vetoes.
 
 Current local fixture path:
 
@@ -91,15 +84,15 @@ Current local fixture path:
 - Manifest schema version: `cplayout-real-pivot-fixtures-v1`.
 - Fixture records must include local artifact paths, provenance with `keyedService: false`, project id, project CRS, operator approval, calibration status, truth labels, and optional rejection classes.
 - Artifact hashes are computed from local files; supplied `artifactHashes` must match or the packet build is rejected.
-- Calibrated `TRUE_PIVOT_CENTER.projectedPoint` may emit `ModelRecommendation.proposedGeometry.pivotCenter` only when the fixture is operator-approved, the calibration status is valid/project-CRS, and the fixture CRS matches the packet CRS.
-- Uncalibrated or metadata-only fixtures remain review records with hard failures such as missing projected truth or invalid calibration. They do not emit projected pivot geometry and remain advisory until Review Apply XY.
+- Calibrated `TRUE_PIVOT_CENTER.projectedPoint` may be recorded in companion output only when the fixture is operator-approved, the calibration status is valid/project-CRS, and the fixture CRS matches the packet CRS.
+- Uncalibrated or metadata-only fixtures remain standalone report records with hard failures such as missing projected truth or invalid calibration. They do not emit app-importable projected pivot geometry.
 
 Initial implementation targets:
 
 1. Add `detect-pivot-candidates` and `evaluate-pivot-fixtures` commands to the local companion.
 2. Add synthetic and proof-packet pivot fixtures with no hidden network calls.
-3. Add strict import validation for `canonicalGeometryMutation: false`, projected CRS, artifact hashes, and hard-failure warnings.
-4. Add Review UI grouping for CV pivot candidates and visible map preview layers before claiming operator workflow support.
+3. Add strict report validation for `canonicalGeometryMutation: false`, projected CRS, artifact hashes, and hard-failure warnings.
+4. Keep app UI changes out of scope until a new Files/Map import-edit workflow is explicitly designed.
 5. Keep ONNX/mobile inference deferred until development-build device evidence exists.
 
 ## Analogous Repositories To Study

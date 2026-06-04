@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import type { ObstacleZone, PivotMachine, PivotProject, XY } from "@cplayout/core";
 
-import { buildPivotCenterModelRecommendation, optimizePivotCenter } from "./pivotCenterOptimizer";
+import { optimizePivotCenter } from "./pivotCenterOptimizer";
 
 const square = [
   { x: 0, y: 0 },
@@ -79,20 +79,6 @@ const obstacleConflictAlternative = obstacleAlternatives.find((alternative) => a
 if (obstacleConflictAlternative) {
   assert.equal(obstacleConflictAlternative.feasible, false);
   assert.ok(obstacleConflictAlternative.disqualificationReasons.some((reason) => reason.includes("Obstacle conflicts")));
-}
-
-const recommendation = buildPivotCenterModelRecommendation(squareProject, squareAlternatives[0], "2026-05-29T00:00:00.000Z");
-assert.equal(recommendation.projectId, squareProject.id);
-assert.deepEqual(recommendation.proposedGeometry.pivotCenter, squareAlternatives[0].pivotCenter);
-assert.equal(recommendation.reviewStatus, "unreviewed");
-assert.deepEqual(recommendation.scoreBreakdown, squareAlternatives[0].scoreBreakdown);
-assert.equal((recommendation.metadata as { feasible?: boolean }).feasible, squareAlternatives[0].feasible);
-assert.ok(recommendation.warnings.some((warning) => warning.includes("Advisory optimizer output only")));
-
-if (obstacleConflictAlternative) {
-  const blockedRecommendation = buildPivotCenterModelRecommendation(squareProject, obstacleConflictAlternative, "2026-05-29T00:00:00.000Z");
-  assert.equal((blockedRecommendation.metadata as { feasible?: boolean }).feasible, false);
-  assert.ok(((blockedRecommendation.metadata as { hardFailures?: string[] }).hardFailures ?? []).length > 0);
 }
 
 console.log("pivot center optimizer tests passed");

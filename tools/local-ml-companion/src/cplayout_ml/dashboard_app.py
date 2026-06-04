@@ -12,11 +12,11 @@ except ImportError:
 
 
 def main() -> None:
-    packet_path = Path(os.environ.get("CPLAYOUT_REVIEW_PACKET", ""))
-    st.set_page_config(page_title="CPLayout Companion Review", layout="wide")
-    st.title("CPLayout Companion Review")
+    packet_path = Path(os.environ.get("CPLAYOUT_COMPANION_PACKET", ""))
+    st.set_page_config(page_title="CPLayout Companion Report", layout="wide")
+    st.title("CPLayout Companion Report")
     if not packet_path.exists():
-        st.error("Set CPLAYOUT_REVIEW_PACKET to a local companion evidence packet.")
+        st.error("Set CPLAYOUT_COMPANION_PACKET to a local companion evidence packet.")
         return
     model = dashboard_model(packet_path)
     health = model["packetHealth"]
@@ -25,9 +25,9 @@ def main() -> None:
 
     summary_cols = st.columns(5)
     summary_cols[0].metric("Evidence", health["evidenceCount"])
-    summary_cols[1].metric("Recommendations", health["recommendationCount"])
+    summary_cols[1].metric("Candidates", health["candidateReportCount"])
     summary_cols[2].metric("Projected XY", health["projectedFeatureCount"])
-    summary_cols[3].metric("Metadata Only", calibration["metadataOnlyRecommendationCount"])
+    summary_cols[3].metric("Metadata Only", calibration["metadataOnlyCandidateCount"])
     summary_cols[4].metric("Failures", health["failureCount"])
 
     st.subheader("Packet Health")
@@ -40,8 +40,8 @@ def main() -> None:
         "localProvenance": provenance,
     })
 
-    st.subheader("Model Recommendations")
-    st.dataframe(model["recommendationRows"], width="stretch")
+    st.subheader("Candidate Reports")
+    st.dataframe(model["candidateRows"], width="stretch")
     st.subheader("Hard Failures And Warnings")
     st.dataframe([{"warning": warning} for warning in model["warnings"]], width="stretch")
     st.subheader("Evidence Records")

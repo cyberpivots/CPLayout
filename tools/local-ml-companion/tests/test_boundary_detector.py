@@ -841,7 +841,7 @@ class BoundaryDetectorTests(unittest.TestCase):
             self.assertTrue((output_dir / "pivot-locator-annotated.png").exists())
             self.assertTrue((output_dir / "pivot-locator-synthetic-fixture.png").exists())
 
-    def test_detect_pivot_candidates_writes_importable_metadata_only_review_output(self) -> None:
+    def test_detect_pivot_candidates_writes_metadata_only_companion_report_output(self) -> None:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir) / "pivot-candidates"
 
@@ -861,11 +861,11 @@ class BoundaryDetectorTests(unittest.TestCase):
                 0,
             )
 
-            report = json.loads((output_dir / "pivot-candidates-review.json").read_text(encoding="utf-8"))
-            geojson = json.loads((output_dir / "pivot-candidates-recommendations.geojson").read_text(encoding="utf-8"))
+            report = json.loads((output_dir / "pivot-candidates-report.json").read_text(encoding="utf-8"))
+            geojson = json.loads((output_dir / "pivot-candidates-candidates.geojson").read_text(encoding="utf-8"))
             iterations = (output_dir / "pivot-candidates-iterations.jsonl").read_text(encoding="utf-8").strip().splitlines()
-            recommendation = report["modelRecommendations"][0]
-            evidence = report["layoutEvidenceRecords"][0]
+            recommendation = report["candidateReports"][0]
+            evidence = report["evidenceRecords"][0]
 
             self.assertEqual(report["schemaVersion"], "cplayout-pivot-candidates-v1")
             self.assertEqual(len(iterations), 100)

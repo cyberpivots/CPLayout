@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { improvedCenterPivotReviewProject, realCenterPivotProofProject } from "@cplayout/core";
+import { improvedCenterPivotProofProject, realCenterPivotProofProject } from "@cplayout/core";
 
 import { evaluateLayout } from "./geometry";
 import { validateCenterPivotProofGeometry } from "./layoutProof";
@@ -16,11 +16,11 @@ function assertValidProofFixture(project: typeof realCenterPivotProofProject): R
 }
 
 const result = assertValidProofFixture(realCenterPivotProofProject);
-const improvedResult = assertValidProofFixture(improvedCenterPivotReviewProject);
-assert.equal(improvedCenterPivotReviewProject.id, "public-adams-county-center-pivot-improved-review");
-assert.equal(improvedCenterPivotReviewProject.name, "Public Adams County Improved Pivot Review");
-assert.equal(improvedCenterPivotReviewProject.obstacles.length, 1);
-assert.equal(improvedCenterPivotReviewProject.obstacles[0].id, "south-county-road-setback");
+const improvedResult = assertValidProofFixture(improvedCenterPivotProofProject);
+assert.equal(improvedCenterPivotProofProject.id, "public-adams-county-center-pivot-improved-proof");
+assert.equal(improvedCenterPivotProofProject.name, "Public Adams County Improved Pivot Proof");
+assert.equal(improvedCenterPivotProofProject.obstacles.length, 1);
+assert.equal(improvedCenterPivotProofProject.obstacles[0].id, "south-county-road-setback");
 assert.equal(improvedResult.metrics.obstacleConflictCount, 1);
 assert.equal(improvedResult.metrics.outsideFieldAcres, 0);
 assert.ok(Math.abs(improvedResult.metrics.irrigatedAcres - 127.13) < 0.01);

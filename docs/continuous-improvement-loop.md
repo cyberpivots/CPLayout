@@ -2,7 +2,9 @@
 
 Loop id: `browser-mapping-2026-05-31`
 
-Scope: browser mapping, dashboard, review, files, settings, survey, map adapters, and supporting proof tooling. Raw screenshots, traces, and logs stay under ignored `reports/continuous-improvement/`; only curated milestone evidence is checked in.
+Scope: browser mapping, dashboard, files, settings, survey, map adapters, and supporting proof tooling. Raw screenshots, traces, and logs stay under ignored `reports/continuous-improvement/`; only curated milestone evidence is checked in.
+
+Current status note: rows below are historical browser proof records. On 2026-06-03 the Expert Review app route, Apply XY recommendation workflow, adjacent review archive payloads, review repository APIs, and review SQLite tables were retired from the product surface.
 
 Non-goals: no paid APIs, no hidden keys, no Google Maps/paid Mapbox/Esri services, no native MapLibre or raw PMTiles/MBTiles runtime proof claim, no native SQLite production claim, and no schema change that promotes WGS84 or imagery/CV evidence into canonical project geometry. Project geometry remains projected/local `XY`.
 

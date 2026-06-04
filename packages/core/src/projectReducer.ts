@@ -1,5 +1,4 @@
 import { importProjectedGeoJsonToProject, importSurveyCsvToProject } from "./projectImports";
-import { modelRecommendationHardFailures, type ModelRecommendation } from "./layoutEvidence";
 import { PivotProjectSchema, withWgs84Companion } from "./projectDocument";
 import { validateMapPackageManifest } from "./mapTilePackages";
 import type { ProjectSettings } from "./settings";
@@ -34,7 +33,6 @@ export type ProjectEditorAction =
   | { type: "delete_map_feature"; id: string }
   | { type: "promote_survey_point"; id: string; target: InfrastructurePoint }
   | { type: "update_machine"; machine: PivotMachine }
-  | { type: "apply_model_recommendation"; recommendation: ModelRecommendation }
   | { type: "upsert_map_package"; mapPackage: MapPackageManifest }
   | { type: "update_project_settings"; unitSystem: UnitSystem; settings: ProjectSettings }
   | { type: "import_projected_geojson"; geoJson: string | unknown }
@@ -103,8 +101,6 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
         return promoteSurveyPoint(state, action.id, action.target);
       case "update_machine":
         return applyProjectChange(state, { ...state.project, machine: action.machine });
-      case "apply_model_recommendation":
-        return applyModelRecommendation(state, action.recommendation);
       case "upsert_map_package":
         return upsertMapPackage(state, action.mapPackage);
       case "update_project_settings":
@@ -269,69 +265,6 @@ function promoteSurveyPoint(state: ProjectEditorState, id: string, target: Infra
   const surveyPoint = state.project.surveyPoints.find((candidate) => candidate.id === id);
   if (!surveyPoint) throw new Error(`Survey point ${id} was not found.`);
   return moveInfrastructurePoint(state, target, surveyPoint.projected, surveyPoint.wgs84);
-}
-
-function applyModelRecommendation(state: ProjectEditorState, recommendation: ModelRecommendation): ProjectEditorState {
-  const geometry = recommendation.proposedGeometry;
-  const hardFailures = modelRecommendationHardFailures(recommendation);
-  if (hardFailures.length > 0) {
-    throw new Error(`Recommendation ${recommendation.id} is hard infeasible: ${hardFailures.join("; ")}`);
-  }
-  if (recommendation.projectId !== state.project.id) {
-    throw new Error(`Recommendation ${recommendation.id} belongs to ${recommendation.projectId}, not ${state.project.id}.`);
-  }
-  if (recommendation.projectCrs !== state.project.projectCrs || geometry.projectCrs !== state.project.projectCrs) {
-    throw new Error(`Recommendation ${recommendation.id} does not match project CRS ${state.project.projectCrs}.`);
-  }
-
-  let changed = false;
-  let nextProject: PivotProject = state.project;
-  if (geometry.fieldBoundary) {
-    nextProject = {
-      ...nextProject,
-      fieldBoundary: validatedRing(geometry.fieldBoundary, "Recommendation boundary"),
-    };
-    changed = true;
-  }
-  if (geometry.pivotCenter) {
-    assertPointInsideRing(geometry.pivotCenter, nextProject.fieldBoundary, `Recommendation ${recommendation.id} pivot center`);
-    nextProject = {
-      ...nextProject,
-      pivotCenter: geometry.pivotCenter,
-      surveyPoints: nextProject.surveyPoints.map((surveyPoint) => surveyPoint.role === "pivot_center"
-        ? { ...surveyPoint, projected: geometry.pivotCenter as XY }
-        : surveyPoint),
-    };
-    changed = true;
-  }
-  if (geometry.fieldBoundary && !geometry.pivotCenter) {
-    assertPointInsideRing(nextProject.pivotCenter, nextProject.fieldBoundary, `Current pivot center after applying recommendation ${recommendation.id}`);
-  }
-  if (geometry.machine) {
-    nextProject = { ...nextProject, machine: geometry.machine };
-    changed = true;
-  }
-  if (geometry.obstaclePolygons) {
-    nextProject = {
-      ...nextProject,
-      obstacles: [
-        ...nextProject.obstacles,
-        ...geometry.obstaclePolygons.map((polygon, index) => obstacleFromDraft(
-          nextProject,
-          polygon,
-          "exclusion",
-          `Recommendation Obstacle ${nextProject.obstacles.length + index + 1}`,
-          `${recommendation.id.replace(/[^a-zA-Z0-9_-]/g, "-")}-obstacle-${index + 1}`,
-        )),
-      ],
-    };
-    changed = true;
-  }
-
-  if (!changed) {
-    throw new Error(`Recommendation ${recommendation.id} does not include projected geometry to apply.`);
-  }
-  return applyProjectChange(state, nextProject);
 }
 
 function moveBoundaryVertex(state: ProjectEditorState, vertexIndex: number, point: XY): ProjectEditorState {

@@ -23,7 +23,7 @@ This checklist defines the browser-only acceptance gates for the final continuou
 ## Browser Mapping Assertions
 
 - Edit Geometry can create projected `XY` draft vertices and enable the expected Commit or Save Feature actions.
-- Review Layout map clicks remain read-only, keep draft vertices at zero, keep Commit/Save Feature/Clear disabled, and leave the project Saved.
+- Layout mode map clicks remain read-only, keep draft vertices at zero, keep Commit/Save Feature/Clear disabled, and leave the project Saved.
 - Browser-local imagery settings, local package directories, custom source drafts, and walkthrough progress do not appear in exported `project.json`.
 - Survey evidence remains evidence until an explicit operator action promotes it into projected project geometry.
 - Settings guardrails continue to reject credentialed imagery templates and keep offline/no-key source boundaries visible.

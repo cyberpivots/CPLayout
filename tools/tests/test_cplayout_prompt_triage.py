@@ -49,7 +49,7 @@ class PromptTriageTests(unittest.TestCase):
         self.assertEqual(routes[0], "cplayout_center_pivot_designer")
 
     def test_broad_terms_do_not_overmatch(self) -> None:
-        for prompt in ("agent", "hook", "layout", "web"):
+        for prompt in ("agent", "hook", "layout", "web", "help"):
             with self.subTest(prompt=prompt):
                 self.assertEqual(self.route_ids(prompt), [])
 
@@ -77,6 +77,19 @@ class PromptTriageTests(unittest.TestCase):
     def test_negative_keywords_reduce_false_positives(self) -> None:
         routes = self.route_ids("Do database only work on SQLite schema; no imagery and no pivot design.")
         self.assertEqual(routes, ["cplayout_database_specialist"])
+
+    def test_google_earth_inspired_help_prompt_routes_specialists(self) -> None:
+        routes = self.route_ids(
+            "Implement Google Earth-inspired companion evidence map imagery organization onboarding help prompts."
+        )
+        self.assertEqual(
+            routes,
+            [
+                "cplayout_imagery_mapper",
+                "cplayout_kb_curator",
+                "cplayout_interface_developer",
+            ],
+        )
 
     def test_route_metadata_is_loaded(self) -> None:
         route_data = triage.load_route_data()

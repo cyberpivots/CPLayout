@@ -4,9 +4,9 @@ import { readFile } from "node:fs/promises";
 
 const routeScreens = [
   { nav: "workspace-nav-dashboard", screen: "dashboard-workspace" },
+  { nav: "workspace-nav-help", screen: "help-view" },
   { nav: "workspace-nav-map", screen: "map-view" },
   { nav: "workspace-nav-survey", screen: "survey-view" },
-  { nav: "workspace-nav-review", screen: "review-view" },
   { nav: "workspace-nav-files", screen: "files-view" },
   { nav: "workspace-nav-settings", screen: "settings-view" },
 ] as const;
@@ -35,6 +35,8 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
   await expect(page.getByText("CPLayout", { exact: true })).toBeVisible();
   await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByTestId("workspace-nav-review")).toHaveCount(0);
+  await expect(page.getByTestId("review-view")).toHaveCount(0);
   if (await page.getByRole("button", { name: "Open project drawer" }).count() > 0) {
     await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
   } else {
@@ -364,9 +366,13 @@ test("workspace rail exposes the selected view state", async ({ page }, testInfo
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("workspace-nav-dashboard")).toHaveAttribute("aria-selected", "false");
   await expect(page.getByTestId("workspace-nav-map")).toHaveAttribute("aria-selected", "true");
-  await page.getByTestId("workspace-nav-review").click();
+  await expect(page.getByTestId("workspace-nav-review")).toHaveCount(0);
+  await page.getByTestId("workspace-nav-files").click();
   await expect(page.getByTestId("workspace-nav-map")).toHaveAttribute("aria-selected", "false");
-  await expect(page.getByTestId("workspace-nav-review")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("workspace-nav-files")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("workspace-nav-help").click();
+  await expect(page.getByTestId("workspace-nav-files")).toHaveAttribute("aria-selected", "false");
+  await expect(page.getByTestId("workspace-nav-help")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "workspace-rail-selected-state");
 });
@@ -386,8 +392,46 @@ test("workspace compact rail stays within the viewport while switching routes", 
     await expect(page.getByTestId(routeScreen.screen)).toBeVisible();
     await expectNoHorizontalOverflow(page);
   }
+  await expectMinTargetSize(page, "workspace-nav-help", 48, 48);
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "workspace-compact-rail-overflow");
+});
+
+test("help training route links into the real workflow", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-help").click();
+  await expect(page.getByTestId("help-view")).toBeVisible();
+  await expect(page.getByTestId("help-training-panel")).toContainText("workflow checkpoints");
+  for (const moduleId of [
+    "help-module-start",
+    "help-module-map-tools",
+	    "help-module-google-earth",
+	    "help-module-imagery",
+	    "help-module-layout-validation",
+	    "help-module-android-storage",
+	    "help-module-export",
+  ]) {
+    await expect(page.getByTestId(moduleId)).toBeVisible();
+  }
+  await expect(page.getByText("Google Earth Pro is a local companion reference only")).toBeVisible();
+  await expect(page.getByText("Training progress uses the same local walkthrough store")).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByTestId("help-action-map").click();
+  await expect(page.getByTestId("map-view")).toBeVisible();
+  await page.getByTestId("workspace-nav-help").click();
+  await page.getByTestId("help-action-files").click();
+  await expect(page.getByTestId("files-view")).toBeVisible();
+  await page.getByTestId("workspace-nav-help").click();
+  await page.getByTestId("help-action-settings").click();
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await page.getByTestId("workspace-nav-help").click();
+  await page.getByTestId("help-module-layout-validation-route").click();
+  await expect(page.getByTestId("map-view")).toBeVisible();
+  await expect(page.getByTestId("review-view")).toHaveCount(0);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "help-training-route");
 });
 
 test("tablet portrait map console keeps drawers collapsed and HUD above the viewport floor", async ({ page }, testInfo) => {
@@ -399,14 +443,19 @@ test("tablet portrait map console keeps drawers collapsed and HUD above the view
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("right-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("design-action-hud")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud-toggle")).toBeVisible();
   await expectNoPageScroll(page);
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "left-drawer-handle", 56, 56);
   await expectMinTargetSize(page, "right-drawer-handle", 56, 56);
+  await expectInsideContainer(page, "design-action-hud", "map-bottom-hud");
+  await expectInsideViewport(page, "map-bottom-hud");
   await expectInsideViewport(page, "design-action-hud");
   const collapsedMap = await page.getByTestId("browser-map-frame").boundingBox();
   await page.getByTestId("right-drawer-handle").click();
   await expect(page.getByTestId("design-console-status")).toContainText("Use the bottom HUD");
+  await expectInsideViewport(page, "map-bottom-hud");
   await expectInsideViewport(page, "design-action-hud");
   await page.getByTestId("design-action-files").scrollIntoViewIfNeeded();
   await expect(page.getByTestId("design-action-files")).toBeVisible();
@@ -430,12 +479,14 @@ test("tablet landscape map console has fixed page bounds and drawer handles", as
   await expect(page.getByTestId("right-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByTestId("design-action-hud")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud")).toBeVisible();
   await expectNoPageScroll(page);
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "workspace-nav-map", 48, 48);
   await expectMinTargetSize(page, "left-drawer-handle", 56, 56);
   await expectMinTargetSize(page, "right-drawer-handle", 56, 56);
   await expectInsideViewport(page, "design-action-hud");
+  await expectInsideViewport(page, "map-bottom-hud");
   await saveScreen(page, testInfo, "tablet-landscape-map-console");
 });
 
@@ -623,7 +674,9 @@ test("grouped drawing HUD menus do not clear active drafts", async ({ page }, te
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await page.getByTestId("browser-tool-boundary").click();
+  await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "true");
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
 
@@ -718,11 +771,13 @@ test("browser map compact HUD actions stay inside the status panel", async ({ pa
   await expectInsideContainer(page, "browser-action-save-feature", "browser-map-hud-actions");
   await expectInsideContainer(page, "browser-action-clear", "browser-map-hud-actions");
   await expectNoOverlap(page, "browser-map-status-hud", "browser-map-attribution-hud");
+  await expectNoOverlap(page, "map-bottom-hud", "browser-map-attribution-hud");
+  await expectNoOverlap(page, "map-bottom-hud", "browser-map-status-hud");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "browser-map-compact-hud-actions");
 });
 
-test("review layout keeps map clicks read-only and actions disabled", async ({ page }, testInfo) => {
+test("layout mode keeps map clicks read-only and actions disabled", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();
   await page.getByTestId("workspace-nav-map").click();
@@ -737,7 +792,7 @@ test("review layout keeps map clicks read-only and actions disabled", async ({ p
   await expect(page.getByTestId("browser-action-save-feature")).toHaveAttribute("aria-disabled", "true");
   await expect(page.getByTestId("browser-action-clear")).toHaveAttribute("aria-disabled", "true");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await saveScreen(page, testInfo, "review-layout-actions-disabled");
+  await saveScreen(page, testInfo, "layout-mode-actions-disabled");
 });
 
 test("offline browser map workbench stays usable with external requests blocked", async ({ page }, testInfo) => {
@@ -1076,7 +1131,7 @@ test("dashboard offline imagery path advances after imagery walkthrough progress
   await page.getByTestId("workspace-nav-dashboard").click();
   await expect(page.getByText("Next: choose local aerial package or USGS preview in Settings.")).toBeVisible();
   await page.getByRole("checkbox", { name: "Complete Setup Imagery walkthrough checkpoint" }).click();
-  await expect(page.getByText("Next: trace or review the field boundary in Design mode.")).toBeVisible();
+  await expect(page.getByText("Next: trace or inspect the field boundary in Design mode.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-offline-imagery-progress");
 });
@@ -1086,7 +1141,7 @@ test("dashboard next step advances after imagery walkthrough progress", async ({
   await page.getByRole("button", { name: "Open Sample" }).click();
   await expect(page.getByText("Next: confirm imagery attribution and source status.")).toBeVisible();
   await page.getByTestId("walkthrough-module-imagery").click();
-  await expect(page.getByText("Next: trace or review the field boundary in Design mode.")).toBeVisible();
+  await expect(page.getByText("Next: trace or inspect the field boundary in Design mode.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-next-step-after-imagery-progress");
 });
@@ -1136,6 +1191,23 @@ test("files actions expose accessible browser buttons", async ({ page }, testInf
   await saveScreen(page, testInfo, "files-action-buttons");
 });
 
+test("google earth import wizard keeps companion boundaries visible", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Sample" }).click();
+  await page.getByTestId("workspace-nav-files").click();
+  const wizard = page.getByTestId("google-earth-import-wizard");
+  await expect(wizard).toContainText("Search and stage Places");
+  await expect(page.getByTestId("google-earth-wizard-boundary-note")).toContainText("Places are import candidates");
+  await expect(page.getByTestId("google-earth-wizard-boundary-note")).toContainText("projected import-preview geometry");
+  await page.getByTestId("google-earth-wizard-next").click();
+  await expect(wizard).toContainText("Add Polygon for boundaries");
+  await page.getByTestId("google-earth-wizard-step-ready").click();
+  await expect(wizard).toContainText("1/6 complete");
+  await expectNoHorizontalOverflow(page);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "files-google-earth-wizard-companion-boundary");
+});
+
 test("files map package import keeps web storage boundary explicit", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();
@@ -1160,17 +1232,9 @@ test("files export zip downloads the canonical project package", async ({ page }
   await saveScreen(page, testInfo, "files-export-zip-download");
 });
 
-test("files zip round trips adjacent review records without applying geometry", async ({ page }, testInfo) => {
+test("files zip export excludes retired review contract files", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-review").click();
-  await page.getByPlaceholder(/Paste boundary-improvement-loop JSON/).fill(JSON.stringify(reviewArchiveImportPayload()));
-  await page.getByRole("button", { name: "Import" }).click();
-  await expect(page.getByText(/Imported 1 model recommendation with 1 evidence record.*No projected XY geometry was applied/)).toBeVisible();
-  await page.getByRole("button", { name: /Accept recommendation Archive review pivot candidate/ }).click();
-  await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-
   await page.getByTestId("workspace-nav-files").click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export ZIP" }).click();
@@ -1178,43 +1242,18 @@ test("files zip round trips adjacent review records without applying geometry", 
   const archivePath = await download.path();
   expect(archivePath, "download path").not.toBeNull();
   if (!archivePath) return;
-  await expect(page.getByTestId("files-status")).toContainText("1 evidence, 1 recommendation, 1 decision exported as adjacent review records");
+  await expect(page.getByTestId("files-status")).toContainText("Downloaded");
 
   const archive = unzipSync(new Uint8Array(await readFile(archivePath)));
-  const evidenceJsonl = archive["exports/layout-evidence.jsonl"];
-  const decisionsJsonl = archive["exports/layout-decisions.jsonl"];
-  const recommendationsGeoJson = archive["exports/model-recommendations.geojson"];
-  expect(evidenceJsonl, "layout evidence adjacent file").toBeDefined();
-  expect(decisionsJsonl, "layout decisions adjacent file").toBeDefined();
-  expect(recommendationsGeoJson, "model recommendations adjacent file").toBeDefined();
-  if (!evidenceJsonl || !decisionsJsonl || !recommendationsGeoJson) return;
-  expect(strFromU8(evidenceJsonl)).toContain("archive-evidence-001");
-  expect(strFromU8(decisionsJsonl)).toContain("accepted");
-  const recommendations = JSON.parse(strFromU8(recommendationsGeoJson)) as {
-    canonicalGeometryMutation?: boolean;
-    coordinateReferenceSystem?: string;
-    features?: Array<{ properties?: { geometryRole?: string; projectId?: string } }>;
-  };
-  expect(recommendations.canonicalGeometryMutation).toBe(false);
-  expect(recommendations.coordinateReferenceSystem).toBe("project_crs_xy");
-  expect(recommendations.features?.[0]?.properties?.geometryRole).toBe("pivot_center");
-  expect(recommendations.features?.[0]?.properties?.projectId).toBe("sample-burgundy-quarter-section");
-
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-files").click();
-  const fileChooserPromise = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Import ZIP" }).click();
-  const fileChooser = await fileChooserPromise;
-  await fileChooser.setFiles(archivePath);
-  await expect(page.getByTestId("map-view")).toBeVisible();
-  await page.getByTestId("workspace-nav-review").click();
-  await expect(page.getByText("Archive review pivot candidate")).toBeVisible();
-  await expect(page.getByText("1 imported · 1 decisions saved")).toBeVisible();
+  expect(archive["exports/layout-evidence.jsonl"], "retired layout evidence file").toBeUndefined();
+  expect(archive["exports/layout-decisions.jsonl"], "retired layout decisions file").toBeUndefined();
+  expect(archive["exports/model-recommendations.geojson"], "retired model recommendations file").toBeUndefined();
+  const manifest = archive["manifest.json"] ? strFromU8(archive["manifest.json"]) : "";
+  expect(manifest).not.toContain("exports/layout-evidence.jsonl");
+  expect(manifest).not.toContain("exports/layout-decisions.jsonl");
+  expect(manifest).not.toContain("exports/model-recommendations.geojson");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
-  await saveScreen(page, testInfo, "files-review-archive-round-trip");
+  await saveScreen(page, testInfo, "files-zip-retired-review-files-excluded");
 });
 
 test("files export kml downloads visual interchange data without runtime claims", async ({ page }, testInfo) => {
@@ -1620,150 +1659,27 @@ test("dashboard walkthrough reset only clears the active project", async ({ page
   await saveScreen(page, testInfo, "dashboard-walkthrough-reset-project-scope");
 });
 
-test("dashboard review warnings expose actionable layout guidance", async ({ page }, testInfo) => {
+test("dashboard layout warnings expose actionable map guidance", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();
-  const warnings = page.getByTestId("dashboard-review-warnings");
-  await expect(warnings.getByText("Review Warnings")).toBeVisible();
+  const warnings = page.getByTestId("dashboard-layout-warnings");
+  await expect(warnings.getByText("Layout Warnings")).toBeVisible();
   await expect(warnings.getByText("1 no-spray obstacle or exclusion zone removes modeled wet coverage.")).toBeVisible();
   await expect(warnings.getByText("1 obstacle conflict detected.")).toBeVisible();
-  await saveScreen(page, testInfo, "dashboard-review-warning-guidance");
+  await expect(warnings.getByRole("button", { name: "Inspect Map" })).toBeVisible();
+  await expect(page.getByTestId("review-view")).toHaveCount(0);
+  await saveScreen(page, testInfo, "dashboard-layout-warning-guidance");
 });
 
-test("dashboard review warnings can open review without geometry mutation", async ({ page }, testInfo) => {
+test("dashboard layout warnings can inspect the map without geometry mutation", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("dashboard-review-warnings").getByRole("button", { name: "Open Review" }).click();
-  await expect(page.getByTestId("review-view")).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByText(/Saved online imagery in project: no/)).toBeVisible();
-  await saveScreen(page, testInfo, "dashboard-review-warning-open-review");
-});
-
-test("expert review findings label evidence gates and actions", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-review").click();
-  await expect(page.getByTestId("review-view")).toBeVisible();
-  await expect(page.getByText("Evidence").first()).toBeVisible();
-  await expect(page.getByText("Acceptance Gate").first()).toBeVisible();
-  await expect(page.getByText("Actions").first()).toBeVisible();
-  await expect(page.getByText(/Saved online imagery in project: no/)).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await saveScreen(page, testInfo, "expert-review-evidence-labels");
-});
-
-test("expert review recommendation preview does not dirty or apply geometry", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-review").click();
-  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await expect(page.getByText(/Generated .* pivot candidate.* No geometry was applied./)).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Preview recommendation/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Accept recommendation/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Apply projected XY geometry from recommendation/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Reject recommendation/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Defer recommendation/ }).first()).toBeVisible();
-  await page.getByRole("button", { name: /Preview recommendation/ }).first().click();
-  await expect(page.getByRole("button", { name: /Stop previewing recommendation/ })).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
-  await saveScreen(page, testInfo, "expert-review-preview-no-mutation");
-});
-
-test("expert review accept records a decision without geometry mutation", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-review").click();
-  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await page.getByRole("button", { name: /Accept recommendation/ }).first().click();
-  await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
-  await expect(page.getByText(/accepted/i).first()).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
-  await saveScreen(page, testInfo, "expert-review-accept-no-mutation");
-});
-
-test("expert review reject records a decision without geometry mutation", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-review").click();
-  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await page.getByRole("button", { name: /Reject recommendation/ }).first().click();
-  await expect(page.getByText(/Reject recorded .* projected XY geometry was not changed/)).toBeVisible();
-  await expect(page.getByText(/rejected/i).first()).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
-  await saveScreen(page, testInfo, "expert-review-reject-no-mutation");
-});
-
-test("expert review defer records a decision without geometry mutation", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-review").click();
-  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await page.getByRole("button", { name: /Defer recommendation/ }).first().click();
-  await expect(page.getByText(/Defer recorded .* projected XY geometry was not changed/)).toBeVisible();
-  await expect(page.getByText(/deferred/i).first()).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
-  await saveScreen(page, testInfo, "expert-review-defer-no-mutation");
-});
-
-test("expert review apply confirmation does not dirty before confirm", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-review").click();
-  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await page.getByRole("button", { name: /Accept recommendation/ }).first().click();
-  await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await page.getByRole("button", { name: /Apply projected XY geometry from recommendation/ }).first().click();
-  const confirm = page.getByTestId("review-apply-confirmation");
-  await expect(confirm).toBeVisible();
-  await expect(confirm).toHaveAttribute("role", "alert");
-  await expect(confirm).toHaveAttribute("aria-label", "Confirm projected XY apply");
-  await expect(confirm.getByText("Confirm Apply")).toBeVisible();
-  await expect(page.getByText(/Projected XY/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Apply XY" })).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(confirm).toHaveCount(0);
-  await expect(page.getByText(/Apply canceled .* projected XY geometry was not changed/)).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await saveScreen(page, testInfo, "expert-review-apply-confirm-no-mutation");
-});
-
-test("expert review apply xy marks the project dirty only after confirmation", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("workspace-nav-review").click();
-  await page.getByRole("button", { name: "Generate Pivot Candidates" }).click();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await page.getByRole("button", { name: /Accept recommendation/ }).first().click();
-  await expect(page.getByText(/Accept recorded .* projected XY geometry was not changed/)).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await page.getByRole("button", { name: /Apply projected XY geometry from recommendation/ }).first().click();
-  await expect(page.getByTestId("review-apply-confirmation")).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-  await page.getByRole("button", { name: "Apply XY" }).click();
-  await expect(page.getByText(/Applied projected XY geometry .* Save Local persists the edited project/)).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
-  await expect(page.getByTestId("review-apply-confirmation")).toHaveCount(0);
-  await saveScreen(page, testInfo, "expert-review-apply-xy-dirty");
-});
-
-test("dashboard review warnings can inspect the map without geometry mutation", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await page.getByTestId("dashboard-review-warnings").getByRole("button", { name: "Inspect Map" }).click();
+  await page.getByTestId("dashboard-layout-warnings").getByRole("button", { name: "Inspect Map" }).click();
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await expect(page.getByText("Layout mode: RTK-only geometry changes; pointer gestures inspect only.")).toBeVisible();
-  await saveScreen(page, testInfo, "dashboard-review-warning-inspect-map");
+  await saveScreen(page, testInfo, "dashboard-layout-warning-inspect-map");
 });
 
 test("dashboard recent-project empty state keeps start actions visible", async ({ page }, testInfo) => {
@@ -1775,7 +1691,7 @@ test("dashboard recent-project empty state keeps start actions visible", async (
   await expect(recentProjects.getByRole("button", { name: "Create New" })).toBeVisible();
   await expect(recentProjects.getByRole("button", { name: "Open Sample" })).toBeVisible();
   await expect(recentProjects.getByRole("button", { name: "Real Proof" })).toBeVisible();
-  await expect(recentProjects.getByRole("button", { name: "Improved Review" })).toBeVisible();
+  await expect(recentProjects.getByRole("button", { name: "Improved Pivot Proof" })).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-recent-project-empty-state");
 });
 
@@ -1995,51 +1911,6 @@ async function expectInsideViewport(page: Page, testId: string): Promise<void> {
   expect(box.y, `${testId} top edge`).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width, `${testId} right edge`).toBeLessThanOrEqual(viewport.width + 2);
   expect(box.y + box.height, `${testId} bottom edge`).toBeLessThanOrEqual(viewport.height + 2);
-}
-
-function reviewArchiveImportPayload(): object {
-  return {
-    schemaVersion: "cplayout-project-review-data-v1",
-    projectId: "sample-burgundy-quarter-section",
-    evidenceRecords: [{
-      id: "archive-evidence-001",
-      projectId: "sample-burgundy-quarter-section",
-      sourceKind: "model_output",
-      createdAt: "2026-06-02T12:00:00.000Z",
-      projectCrs: "EPSG:32613",
-      summary: "Archive review evidence stays adjacent to canonical project geometry.",
-      confidence: 0.82,
-      reviewStatus: "unreviewed",
-      metrics: {
-        calibrationStatus: "valid_projected_xy",
-        canonicalGeometryMutation: false,
-      },
-    }],
-    modelRecommendations: [{
-      id: "archive-review-recommendation-001",
-      projectId: "sample-burgundy-quarter-section",
-      modelName: "browser-archive-review-fixture",
-      modelVersion: "0.1.0",
-      createdAt: "2026-06-02T12:01:00.000Z",
-      projectCrs: "EPSG:32613",
-      summary: "Archive review pivot candidate",
-      proposedGeometry: {
-        projectCrs: "EPSG:32613",
-        pivotCenter: { x: 501420, y: 4506560 },
-      },
-      confidence: 0.76,
-      evidenceIds: ["archive-evidence-001"],
-      reviewStatus: "unreviewed",
-      score: 91.5,
-      metadata: {
-        canonicalGeometryMutation: false,
-        calibrationStatus: "valid_projected_xy",
-        feasible: true,
-      },
-      warnings: ["Operator review and Apply XY confirmation are required before geometry changes."],
-    }],
-    layoutDecisions: [],
-  };
 }
 
 function isAllowedNetworkRequest(url: string, strictOffline = false): boolean {

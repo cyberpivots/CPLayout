@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { ImageryProvenanceSchema } from "./layoutEvidence";
 import { REFERENCE_OVERLAY_SCHEMAS, resolveOnlineImageryProvider } from "./settings";
 import type { AerialImageryPreferences, OnlineImageryPreferences, OnlineImageryProvider, OnlineImageryProviderId } from "./settings";
 import type { MapPackageManifest, TileContentType } from "./types";
@@ -24,6 +23,23 @@ const VectorOverlayMetadataSchema = z.object({
     borders: z.string().trim().min(1),
     places: z.string().trim().min(1),
   }),
+});
+
+export const ImageryProvenanceSchema = z.object({
+  providerId: z.string().min(1),
+  providerName: z.string().min(1),
+  sourceUrl: z.string().url().optional(),
+  productId: z.string().min(1).optional(),
+  captureDate: z.string().min(1).optional(),
+  acquisitionYear: z.number().int().min(1900).max(2200).optional(),
+  sourceResolutionMeters: z.number().positive().optional(),
+  originalCrs: z.string().min(1).optional(),
+  preprocessingSummary: z.string().min(1).optional(),
+  accessedAt: z.string().min(1),
+  attribution: z.string().min(1),
+  licenseText: z.string().min(1),
+  offlineCopyAllowed: z.boolean(),
+  keyedService: z.literal(false),
 });
 
 export const MapPackageManifestSchema = z.object({

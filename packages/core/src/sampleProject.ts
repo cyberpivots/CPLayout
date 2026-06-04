@@ -263,10 +263,10 @@ export const realCenterPivotProofProject: PivotProject = {
   ],
 };
 
-export const improvedCenterPivotReviewProject: PivotProject = {
+export const improvedCenterPivotProofProject: PivotProject = {
   ...realCenterPivotProofProject,
-  id: "public-adams-county-center-pivot-improved-review",
-  name: "Public Adams County Improved Pivot Review",
+  id: "public-adams-county-center-pivot-improved-proof",
+  name: "Public Adams County Improved Pivot Proof",
   pivotCenter: improvedPublicProofCenter,
   obstacles: realCenterPivotProofProject.obstacles.filter((obstacle) => obstacle.id === "south-county-road-setback"),
   mapFeatures: (realCenterPivotProofProject.mapFeatures ?? []).map((feature) => {
@@ -286,7 +286,7 @@ export const improvedCenterPivotReviewProject: PivotProject = {
     return {
       ...point,
       projected: improvedPublicProofCenter,
-      notes: "Improved visual-review pivot center for Google Earth companion proof; projected XY remains canonical.",
+      notes: "Improved visual-inspection pivot center for Google Earth companion proof; projected XY remains canonical.",
     };
   }),
 };

@@ -1,4 +1,4 @@
-import type { AppSettings, InfrastructurePoint, LayoutResult, LonLat, MappingWorkflowMode, ModelRecommendation, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
+import type { AppSettings, InfrastructurePoint, LayoutResult, LonLat, MappingWorkflowMode, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 
 export interface MapSurfaceProps {
@@ -12,7 +12,6 @@ export interface MapSurfaceProps {
   draftVertices?: XY[];
   homeView?: boolean;
   selectedMapFeatureId?: string | null;
-  advisoryRecommendationPreview?: ModelRecommendation | null;
   onSettingsChange?: (settings: AppSettings) => void;
   onMappingWorkflowModeChange?: (mode: MappingWorkflowMode) => void;
   onCommitBoundaryDraft?: (vertices: XY[]) => boolean | void;

@@ -19,7 +19,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import Svg, { Circle, Image as SvgImage, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
-import { boundsForGeometry, createCirclePolygon, machineRadiusMeters, planOnlineImageryTiles, ringsToSvgPath, supportsSvgOnlineImageryOverlay } from "@cplayout/geometry";
+import { boundsForGeometry, createCirclePolygon, planOnlineImageryTiles, ringsToSvgPath, supportsSvgOnlineImageryOverlay } from "@cplayout/geometry";
 import {
   createDrawingMapState,
   createInitialViewport,
@@ -71,7 +71,6 @@ export function SvgMapSurface({
   result,
   settings,
   selectedMapFeatureId,
-  advisoryRecommendationPreview,
   onMappingWorkflowModeChange,
   onCommitBoundaryDraft,
   onCommitObstacleDraft,
@@ -91,18 +90,9 @@ export function SvgMapSurface({
   const designMode = settings.mappingWorkflowMode === "design" && !catalogHomeView;
   const showProjectGeometry = !catalogHomeView;
   const mapFeatures = project.mapFeatures ?? [];
-  const advisoryGeometry = advisoryRecommendationPreview?.proposedGeometry;
-  const advisoryPivot = advisoryGeometry?.pivotCenter;
-  const advisoryBoundary = advisoryGeometry?.fieldBoundary;
-  const advisoryObstacles = advisoryGeometry?.obstaclePolygons ?? [];
-  const advisoryRadius = advisoryGeometry?.machine ? machineRadiusMeters(advisoryGeometry.machine) : machineRadiusMeters(project.machine);
-  const advisoryCoverage = advisoryPivot ? createCirclePolygon(advisoryPivot, advisoryRadius, 144) : [];
   const allRings = showProjectGeometry
     ? [
       project.fieldBoundary,
-      ...(advisoryBoundary ? [advisoryBoundary] : []),
-      ...advisoryObstacles,
-      ...(advisoryCoverage.length > 0 ? [advisoryCoverage] : []),
       ...result.allowedCoverage.flat(),
       ...result.outsideFieldCoverage.flat(),
       ...result.endGunCoverage.flat(),
@@ -564,11 +554,6 @@ export function SvgMapSurface({
               <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} />
               <Path d={ringsToSvgPath(result.endGunCoverage)} fill={palette.endGun} opacity={0.25} />
               <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} />
-              {advisoryCoverage.length > 0 ? <Path d={ringsToSvgPath([[advisoryCoverage]])} fill={palette.advisoryFill} opacity={0.16} stroke={palette.advisory} strokeDasharray="14 10" strokeWidth={5} /> : null}
-              {advisoryBoundary ? <Path d={ringsToSvgPath([[advisoryBoundary]])} fill="none" stroke={palette.advisoryBoundary} strokeDasharray="18 9" strokeWidth={7} /> : null}
-              {advisoryObstacles.map((polygon, index) => (
-                <Path key={`advisory-obstacle-${index}`} d={ringsToSvgPath([[polygon]])} fill={palette.advisoryWarning} opacity={0.24} stroke={palette.advisoryWarning} strokeDasharray="10 8" strokeWidth={4} />
-              ))}
               <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
               <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
               <EditableRing
@@ -604,7 +589,6 @@ export function SvgMapSurface({
               <InfrastructureSymbol point={project.pivotCenter} color={palette.pivot} kind="pivot_center" label="Pivot" />
               <InfrastructureSymbol point={project.waterSource} color={palette.water} kind="water_source" label="Water" />
               <InfrastructureSymbol point={project.powerSource} color={palette.power} kind="power_source" label="Power" />
-              {advisoryPivot ? <AdvisoryPivotSymbol point={advisoryPivot} color={palette.advisory} /> : null}
               {project.surveyPoints.map((point) => (
                 <SurveyPointSymbol key={point.id} point={point} color={palette.survey} />
               ))}
@@ -763,7 +747,6 @@ export function SvgMapSurface({
           <LegendSwatch color="#c64f43" label="Obstacle/no-spray" />
           <LegendSwatch color={palette.survey} label="Survey/object point" />
           <LegendSwatch color={palette.utility} label="Utility map feature" />
-          <LegendSwatch color={palette.advisory} label="Advisory preview" />
         </View>
       ) : null}
     </View>
@@ -1106,19 +1089,6 @@ function DraftVertices({ vertices, color }: { vertices: XY[]; color: string }): 
   );
 }
 
-function AdvisoryPivotSymbol({ color, point }: { color: string; point: XY }): React.JSX.Element {
-  const y = -point.y;
-  return (
-    <>
-      <Circle cx={point.x} cy={y} r={23} fill="#fffef8" opacity={0.78} stroke={color} strokeDasharray="9 7" strokeWidth={5} />
-      <Circle cx={point.x} cy={y} r={7} fill={color} />
-      <SvgText x={point.x + 30} y={y - 10} fill={color} fontSize={23} fontWeight="900">
-        Candidate
-      </SvgText>
-    </>
-  );
-}
-
 function CatalogHomeOverlay({
   minX,
   maxX,
@@ -1331,10 +1301,6 @@ function paletteForMapStyle(style: MapStyle): {
   snap: string;
   survey: string;
   utility: string;
-  advisory: string;
-  advisoryBoundary: string;
-  advisoryFill: string;
-  advisoryWarning: string;
 } {
   if (style === "high_contrast") {
     return {
@@ -1355,10 +1321,6 @@ function paletteForMapStyle(style: MapStyle): {
       snap: "#005f52",
       survey: "#5f2e00",
       utility: "#4d276f",
-      advisory: "#7d225f",
-      advisoryBoundary: "#1a5c8f",
-      advisoryFill: "#7d225f",
-      advisoryWarning: "#9b1c1c",
     };
   }
 
@@ -1381,10 +1343,6 @@ function paletteForMapStyle(style: MapStyle): {
       snap: "#005f52",
       survey: "#6b3e00",
       utility: "#673f8f",
-      advisory: "#7d225f",
-      advisoryBoundary: "#176783",
-      advisoryFill: "#7d225f",
-      advisoryWarning: "#9b1c1c",
     };
   }
 
@@ -1407,10 +1365,6 @@ function paletteForMapStyle(style: MapStyle): {
       snap: "#005f52",
       survey: "#744200",
       utility: "#5b3b87",
-      advisory: "#7d225f",
-      advisoryBoundary: "#176783",
-      advisoryFill: "#7d225f",
-      advisoryWarning: "#9b1c1c",
     };
   }
 
@@ -1432,10 +1386,6 @@ function paletteForMapStyle(style: MapStyle): {
     snap: "#005f52",
     survey: "#6f3f00",
     utility: "#62418f",
-    advisory: "#7d225f",
-    advisoryBoundary: "#176783",
-    advisoryFill: "#7d225f",
-    advisoryWarning: "#9b1c1c",
   };
 }
 
@@ -1592,7 +1542,7 @@ const styles = StyleSheet.create({
     borderColor: "#b9c5b6",
     borderRadius: 8,
     borderWidth: 1,
-    bottom: 12,
+    bottom: 84,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,

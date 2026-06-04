@@ -104,7 +104,7 @@ export function runRoadmapCompletion(options: RoadmapCompletionOptions): Roadmap
     : notRunGate("web-proof", "Static web export and Playwright proof", "Fast mode skipped browser proof; run with --full to include it."));
 
   gates.push(androidNativeGate(options, generatedAt));
-  gates.push(nativeAdjacentReviewDataGate(options));
+  gates.push(retiredReviewContractsGate(options));
   gates.push(googleEarthVisualFidelityGate(options));
   gates.push(realPivotFixtureGate(options, generatedAt));
   gates.push(nativeMapLibreGate(options));
@@ -313,49 +313,58 @@ function androidNativeGate(options: RoadmapCompletionOptions, generatedAt: strin
   };
 }
 
-function nativeAdjacentReviewDataGate(options: RoadmapCompletionOptions): RoadmapGateResult {
+function retiredReviewContractsGate(options: RoadmapCompletionOptions): RoadmapGateResult {
   if (options.dryRun) {
     return notRunGate(
-      "native-adjacent-review-data-persistence",
-      "Native adjacent review-data persistence",
-      "Dry run: would inspect native adjacent review-data API/proof availability.",
+      "retired-review-contracts",
+      "Retired Expert Review product contracts",
+      "Dry run: would inspect removed review routes, contracts, archive exports, and SQLite migration.",
     );
   }
 
-  const sqliteRepositoryPath = "packages/project-store/src/sqliteProjectRepository.ts";
-  const reviewDataPath = "packages/project-store/src/projectReviewData.ts";
+  const appPath = "apps/mobile/App.tsx";
+  const archivePath = "packages/project-store/src/projectArchive.ts";
+  const schemaPath = "packages/project-store/src/persistenceSchema.ts";
   const repositoryTypesPath = "packages/project-store/src/projectRepositoryTypes.ts";
-  const sqliteRepositorySource = existsSync(sqliteRepositoryPath) ? readFileSync(sqliteRepositoryPath, "utf8") : "";
-  const reviewDataSource = existsSync(reviewDataPath) ? readFileSync(reviewDataPath, "utf8") : "";
+  const reducerPath = "packages/core/src/projectReducer.ts";
+  const appSource = existsSync(appPath) ? readFileSync(appPath, "utf8") : "";
+  const archiveSource = existsSync(archivePath) ? readFileSync(archivePath, "utf8") : "";
+  const schemaSource = existsSync(schemaPath) ? readFileSync(schemaPath, "utf8") : "";
   const repositoryTypesSource = existsSync(repositoryTypesPath) ? readFileSync(repositoryTypesPath, "utf8") : "";
-  const evidence = [sqliteRepositoryPath, reviewDataPath, repositoryTypesPath];
+  const reducerSource = existsSync(reducerPath) ? readFileSync(reducerPath, "utf8") : "";
+  const removedFiles = [
+    "apps/mobile/src/components/ExpertReviewPanel.tsx",
+    "packages/core/src/expertReview.ts",
+    "packages/core/src/layoutEvidence.ts",
+    "packages/project-store/src/projectReviewData.ts",
+  ];
+  const evidence = [appPath, archivePath, schemaPath, repositoryTypesPath, reducerPath, ...removedFiles];
   const missing = [
-    repositoryTypesSource.includes("loadProjectReviewDataAsync?") ? "" : "ProjectRepository loadProjectReviewDataAsync contract",
-    repositoryTypesSource.includes("saveProjectReviewDataAsync?") ? "" : "ProjectRepository saveProjectReviewDataAsync contract",
-    sqliteRepositorySource.includes("async loadProjectReviewDataAsync") ? "" : "SQLite loadProjectReviewDataAsync implementation",
-    sqliteRepositorySource.includes("async saveProjectReviewDataAsync") ? "" : "SQLite saveProjectReviewDataAsync implementation",
-    sqliteRepositorySource.includes("layout_evidence") ? "" : "layout_evidence persistence",
-    sqliteRepositorySource.includes("model_recommendations") ? "" : "model_recommendations persistence",
-    sqliteRepositorySource.includes("layout_decisions") ? "" : "layout_decisions persistence",
-    reviewDataSource.includes("projectRepository.loadProjectReviewDataAsync") ? "" : "public helper native load routing",
-    reviewDataSource.includes("projectRepository.saveProjectReviewDataAsync") ? "" : "public helper native save routing",
+    ...removedFiles.map((path) => existsSync(path) ? `removed file still exists: ${path}` : ""),
+    appSource.includes("\"review\"") || appSource.includes("workspace-nav-review") || appSource.includes("review-view") ? "mobile Review route/test IDs still present" : "",
+    reducerSource.includes("apply_model_recommendation") ? "project reducer still exposes apply_model_recommendation" : "",
+    repositoryTypesSource.includes("ProjectReviewData") || repositoryTypesSource.includes("loadProjectReviewDataAsync") || repositoryTypesSource.includes("saveProjectReviewDataAsync") ? "ProjectRepository still exposes review-data API" : "",
+    archiveSource.includes("LEGACY_PROJECT_ARCHIVE_IGNORED_FILENAMES") ? "" : "archive importer lacks legacy review filename ignore list",
+    archiveSource.includes("exports/layout-evidence.jsonl") && archiveSource.includes("exports/layout-decisions.jsonl") && archiveSource.includes("exports/model-recommendations.geojson") ? "" : "legacy review archive filenames are not explicitly ignored",
+    schemaSource.includes("SQLITE_SCHEMA_VERSION = 10") ? "" : "SQLite schema version was not incremented to 10",
+    schemaSource.includes("DROP TABLE IF EXISTS layout_evidence") && schemaSource.includes("DROP TABLE IF EXISTS model_recommendations") && schemaSource.includes("DROP TABLE IF EXISTS layout_decisions") ? "" : "SQLite drop-review-contracts migration is missing",
   ].filter((value) => value.length > 0);
 
   if (missing.length > 0) {
     return {
-      id: "native-adjacent-review-data-persistence",
-      label: "Native adjacent review-data persistence",
+      id: "retired-review-contracts",
+      label: "Retired Expert Review product contracts",
       status: "blocked",
-      reason: `Native adjacent review-data API/proof surface is incomplete: ${missing.join(", ")}.`,
+      reason: `Review product contract retirement is incomplete: ${missing.join(", ")}.`,
       evidence,
     };
   }
 
   return {
-    id: "native-adjacent-review-data-persistence",
-    label: "Native adjacent review-data persistence",
+    id: "retired-review-contracts",
+    label: "Retired Expert Review product contracts",
     status: "pass",
-    reason: "ProjectRepository exposes native adjacent review-data save/load and the SQLite adapter persists evidence, recommendations, and decisions. Runtime behavior remains covered by the Android native runtime gate.",
+    reason: "Review UI routes, core contracts, repository APIs, archive exports, and SQLite tables are retired; legacy ZIP filenames are ignored for compatibility.",
     evidence,
   };
 }
@@ -495,8 +504,8 @@ function realPivotFixtureGate(options: RoadmapCompletionOptions, generatedAt: st
     outputDirectory,
   ];
   const result = spawnSync(command[0], command.slice(1), {
-    stdio: "inherit",
     shell: process.platform === "win32",
+    encoding: "utf8",
     env: {
       ...process.env,
       PYTHONDONTWRITEBYTECODE: "1",
@@ -504,14 +513,19 @@ function realPivotFixtureGate(options: RoadmapCompletionOptions, generatedAt: st
     },
   });
   if (result.status !== 0) {
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    const missingLocalArtifact = output.includes("Companion artifact does not exist");
     return {
       id: "real-pivot-fixture-proof",
       label: "Operator-approved calibrated real pivot fixture proof",
-      status: "fail",
-      reason: `Fixture evidence packet build failed with exit code ${result.status ?? "unknown"}.`,
+      status: missingLocalArtifact ? "blocked" : "fail",
+      reason: missingLocalArtifact
+        ? `Fixture evidence packet is blocked by a missing local artifact: ${output}`
+        : `Fixture evidence packet build failed with exit code ${result.status ?? "unknown"}.`,
       command: command.join(" "),
       exitCode: result.status,
       evidence: [fixturePath, outputDirectory],
+      details: output ? { output } : undefined,
     };
   }
 
@@ -533,7 +547,7 @@ function realPivotFixtureGate(options: RoadmapCompletionOptions, generatedAt: st
     id: "real-pivot-fixture-proof",
     label: "Operator-approved calibrated real pivot fixture proof",
     status: "pass",
-    reason: "Calibrated operator-approved real pivot fixture produced a projected-XY pivot-center recommendation.",
+    reason: "Calibrated operator-approved real pivot fixture produced a standalone projected-XY pivot-center candidate report.",
     command: command.join(" "),
     exitCode: result.status,
     evidence: [fixturePath, packetPath, projectedGeoJsonPath],
@@ -877,12 +891,16 @@ function inferRealPivotContext(
 
 function firstProjectedPivotRecommendation(packetPath: string): { ok: true } | { ok: false; reason: string } {
   const packet = JSON.parse(readFileSync(packetPath, "utf8")) as {
+    candidateReports?: Array<{
+      proposedGeometry?: { pivotCenter?: unknown };
+      metadata?: { hardFailures?: unknown };
+    }>;
     modelRecommendations?: Array<{
       proposedGeometry?: { pivotCenter?: unknown };
       metadata?: { hardFailures?: unknown };
     }>;
   };
-  const recommendations = packet.modelRecommendations ?? [];
+  const recommendations = packet.candidateReports ?? packet.modelRecommendations ?? [];
   const projectedPivotRecommendation = recommendations.find((recommendation) => {
     const hardFailures = recommendation.metadata?.hardFailures;
     return Boolean(recommendation.proposedGeometry?.pivotCenter)
@@ -891,7 +909,7 @@ function firstProjectedPivotRecommendation(packetPath: string): { ok: true } | {
   if (projectedPivotRecommendation) return { ok: true };
   return {
     ok: false,
-    reason: "Fixture packet built, but no recommendation contains projectedGeometry.pivotCenter without hard failures. Treat as evidence-only until calibrated truth is supplied.",
+    reason: "Fixture packet built, but no candidate report contains projectedGeometry.pivotCenter without hard failures. Treat as evidence-only until calibrated truth is supplied.",
   };
 }
 

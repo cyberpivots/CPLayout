@@ -7,8 +7,8 @@ import {
   migrationSql,
 } from "./persistenceSchema";
 
-assert.equal(SQLITE_SCHEMA_VERSION, 9);
-assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+assert.equal(SQLITE_SCHEMA_VERSION, 10);
+assert.deepEqual(SQLITE_MIGRATIONS.map((migration) => migration.id), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
 const sql = migrationSql();
 assert.match(sql, /CREATE TABLE IF NOT EXISTS projects/);
@@ -28,6 +28,9 @@ assert.match(sql, /install_status TEXT NOT NULL DEFAULT 'metadata_only'/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_evidence/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS model_recommendations/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS layout_decisions/);
+assert.match(sql, /DROP TABLE IF EXISTS layout_decisions/);
+assert.match(sql, /DROP TABLE IF EXISTS model_recommendations/);
+assert.match(sql, /DROP TABLE IF EXISTS layout_evidence/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS customers/);
 assert.match(sql, /ALTER TABLE customers ADD COLUMN contact_name TEXT NOT NULL DEFAULT ''/);
 assert.match(sql, /ALTER TABLE customers ADD COLUMN email TEXT NOT NULL DEFAULT ''/);
@@ -42,9 +45,6 @@ assert.match(sql, /ALTER TABLE customers ADD COLUMN primary_contact_suffix TEXT 
 assert.match(sql, /CREATE TABLE IF NOT EXISTS project_records/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS field_maps/);
 assert.match(sql, /CREATE TABLE IF NOT EXISTS designs/);
-assert.match(sql, /record_json TEXT NOT NULL/);
-assert.match(sql, /recommendation_json TEXT NOT NULL/);
-assert.match(sql, /decision_json TEXT NOT NULL/);
 
 const indexes = listSchemaIndexNames();
 assert.ok(indexes.includes("idx_geometry_vertices_order"));
@@ -55,10 +55,10 @@ assert.ok(indexes.includes("idx_map_packages_project_type"));
 assert.ok(indexes.includes("idx_map_packages_bounds"));
 assert.ok(indexes.includes("idx_map_packages_status"));
 assert.ok(indexes.includes("idx_project_snapshots_updated"));
-assert.ok(indexes.includes("idx_layout_evidence_project_status"));
-assert.ok(indexes.includes("idx_layout_evidence_source"));
-assert.ok(indexes.includes("idx_model_recommendations_project_status"));
-assert.ok(indexes.includes("idx_layout_decisions_project_created"));
+assert.equal(indexes.includes("idx_layout_evidence_project_status"), false);
+assert.equal(indexes.includes("idx_layout_evidence_source"), false);
+assert.equal(indexes.includes("idx_model_recommendations_project_status"), false);
+assert.equal(indexes.includes("idx_layout_decisions_project_created"), false);
 assert.ok(indexes.includes("idx_customers_sort"));
 assert.ok(indexes.includes("idx_project_records_customer"));
 assert.ok(indexes.includes("idx_field_maps_project"));

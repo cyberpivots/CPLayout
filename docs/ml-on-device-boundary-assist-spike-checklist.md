@@ -47,8 +47,8 @@ small CPLayout boundary model on Android and iOS.
 5. Compare output parity against the local companion on the same fixed fixtures.
 6. Confirm no network access, hidden keys, telemetry, paid imagery, or hosted ML
    services are required.
-7. Import the output through existing `LayoutEvidenceRecord`,
-   `ModelRecommendation`, and `LayoutDecisionRecord` flows.
+7. Keep output as standalone companion report data unless a future projected-XY
+   Map/Files edit-import workflow is explicitly designed and validated.
 8. Prove Android and iOS export/import round trips still preserve projected
    project-CRS `XY` geometry.
 

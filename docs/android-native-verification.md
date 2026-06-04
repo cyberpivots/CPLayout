@@ -41,10 +41,10 @@ Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 
 
 ## Migration Evidence
 
-- `schema_migrations` contains ids `1` through `9`.
-- `PRAGMA user_version` returns `9`.
+- `schema_migrations` contains ids `1` through `10`.
+- `PRAGMA user_version` returns `10`.
 - `map_packages` has the tile metadata columns from migrations `3`, `8`, and `9`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `vector_overlay_json`, `imagery_provenance_json`, `checksum_sha256`, and `install_status`.
-- The v4 project-adjacent evidence tables exist: `layout_evidence`, `model_recommendations`, and `layout_decisions`.
+- The v10 migration has removed retired review tables: `layout_evidence`, `model_recommendations`, and `layout_decisions` are absent after migration.
 - Geometry rows and vertices are populated after save.
 
 ## Native MapLibre Vector Tile Template Proof

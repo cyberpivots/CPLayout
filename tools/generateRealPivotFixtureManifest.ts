@@ -132,7 +132,7 @@ export function generateDefaultRealPivotFixtureManifest(
         ],
         hardFailures: [],
         warnings: [
-          "Advisory real-world fixture proof only; Review Apply XY must remain explicit before canonical geometry mutation.",
+          "Advisory real-world fixture proof only; CPLayout geometry changes require explicit Files import or Map editing.",
         ],
       },
     ],

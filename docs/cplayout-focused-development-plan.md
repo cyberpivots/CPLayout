@@ -55,6 +55,7 @@ The consolidation pass used this evidence before changing records:
 | --- | --- | --- |
 | Core projected-XY geometry | Locally verified through current validation and browser proof ledgers. | Keep every new geometry write behind reducer validation and project CRS checks. |
 | Browser mapping/UI | Browser-proven through the completed 100-row ledger and final proof checklist. | Re-run `npm run proof:web` for visible browser changes. |
+| Command surface and sample menu | The workspace header now uses compact File/Reports/Tools/View/Connections/Settings/Help menus plus icon commands, while curated sample fixtures cover needs-review baseline, improved full-circle, partial sweep, end-gun shutoff, and advisory corner-arm examples. | Browser proof must pass for visible UI behavior; sample fixtures are advisory regression data, not engineering certification or broad real-world model-quality proof. |
 | Google Earth-inspired Help/onboarding | UI-only companion workflow added for Help route modules, Places/Layers organization, KML/KMZ import wizard guidance, and adjacent evidence summaries. | Browser proof must pass for the visible app change; this does not prove Google Earth rendering, Android/iOS runtime UI, imagery rights, or KML/KMZ contract changes. |
 | Expert Review product route/contracts | Retired from app UI, reducer actions, project archives, repository APIs, and SQLite final schema. Legacy ZIP review files are ignored on import and never exported. | Agent-only expert analysis may continue in chat/workspace records, but it must not become app routes, project schemas, archive payloads, or automatic geometry mutation. |
 | Project archive and web persistence | Browser/local paths are proven; local storage remains web MVP. Project ZIP exports canonical project/GIS/survey/metrics/map-package metadata only. Android ZIP sharing/picker export-import has device proof through the completed native report. | iOS ZIP sharing remains device-gated; large performance stress remains a separate scale gate. |
@@ -91,6 +92,13 @@ Completed 2026-06-03 follow-up:
 - Android native runtime proof: after USB cable replacement and WSL USBIPD/ADB reattachment, Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) completed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json`. Evidence covers Expo SQLite schema v8, migrations 1-8, 3 geometries, 14 geometry vertices, 2 survey points, save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and manifest/project id/CRS agreement.
 - Google Earth-inspired tooling/help update: the app route set now includes Help training modules for Start, Map Tools, Google Earth Companion, Imagery, Layout Validation, Android Storage, and Export. The update reuses local walkthrough progress, presents Places/Layers grouping and Files import-preview selection, and keeps KML/KMZ styles, labels, LookAt, imagery, screenshots, and companion output outside canonical projected `XY`.
 
+Completed 2026-06-04 follow-up:
+
+- Workspace command surface: top text-button clusters were replaced with compact menus and icon commands. The left rail remains primary route navigation, the bottom HUD remains the contextual drawing surface, and File/Reports/Tools/View/Connections/Settings/Help menu actions route to existing local/offline workflows.
+- Curated sample fixtures: core fixtures now export the needs-review baseline plus improved full-circle, partial sweep near road/structure, end-gun shutoff arc, and advisory corner-arm examples with geometry/scoring tests and no mutation from scenario scoring.
+- Companion evidence wording: local ML/CV companion packets and pivot-candidate reports explicitly remain standalone evidence with `canonicalGeometryMutation: false`, `evidenceOnly: true`, `appImportable: false`, and `writesProjectDatabase: false`.
+- Generated visual-proof artifacts: raw `reports/visual-proof/` outputs are ignored; durable proof claims still need curated summaries and hashes under `docs/evidence/...`.
+
 Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry mutation, model output without fixture metrics, projected-XY output without CRS calibration, native/mobile claims without the specific device proof for that platform/feature, and Google Earth visual-fidelity claims without visible rendered evidence plus cleanup status.
 
 ## Cleanup Policy
@@ -98,6 +106,7 @@ Hard vetoes remain: paid/keyed/cloud-only methods, automatic canonical geometry 
 - Do not delete evidence ledgers, screenshots summaries, or historical handoff records.
 - Mark superseded and completed plans clearly instead of reusing them as current execution truth.
 - Keep ignored raw reports under `reports/`; check in only curated summaries and hashes.
+- Treat ignored `reports/visual-proof/` screenshots and XML as local proof artifacts, not durable records. Revalidate or curate summaries before citing them as current evidence.
 - Treat hook and subagent documents as process aids. They do not replace direct preflight, validation, or source-backed status checks.
 
 ## Validation Matrix

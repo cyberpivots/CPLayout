@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     pivot_loop.add_argument("--truth-radius", type=float, help="Optional image-space truth radius for --map-canvas.")
     pivot_loop.add_argument("--created-at", default=DEFAULT_CREATED_AT)
 
-    pivot_candidates = subcommands.add_parser("detect-pivot-candidates", help="Write advisory local OpenCV pivot-center candidate evidence for browser review import.")
+    pivot_candidates = subcommands.add_parser("detect-pivot-candidates", help="Write advisory local OpenCV pivot-center candidate evidence as standalone companion reports.")
     pivot_candidates.add_argument("--map-canvas", type=Path, help="Optional local map-canvas screenshot to evaluate.")
     pivot_candidates.add_argument("--synthetic-fixture", action="store_true", help="Generate a deterministic local synthetic pivot fixture with known image-space truth.")
     pivot_candidates.add_argument("--output-dir", required=True, type=Path, help="Directory for pivot candidate review artifacts.")
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     vector_labels.add_argument("--project-crs", required=True)
     vector_labels.add_argument("--created-at", default=DEFAULT_CREATED_AT)
 
-    evidence_packet = subcommands.add_parser("build-evidence-packet", help="Combine local raster/vector/CV/scoring outputs into existing review import records.")
+    evidence_packet = subcommands.add_parser("build-evidence-packet", help="Combine local raster/vector/CV/scoring outputs into standalone companion evidence packets.")
     evidence_packet.add_argument("--project-id", required=True)
     evidence_packet.add_argument("--project-crs", required=True)
     evidence_packet.add_argument("--output-dir", required=True, type=Path)
@@ -849,7 +849,10 @@ def detect_pivot_candidates(
             "centerErrorPx": best.get("metrics", {}).get("centerErrorPx") if best is not None else None,
             "radiusMismatchRatio": best.get("metrics", {}).get("radiusMismatchRatio") if best is not None else None,
             "weightedVote": best.get("weightedVote") if best is not None else None,
+            "evidenceOnly": True,
+            "appImportable": False,
             "canonicalGeometryMutation": False,
+            "writesProjectDatabase": False,
             "networkRequired": False,
         },
     }
@@ -882,7 +885,10 @@ def detect_pivot_candidates(
             "detector": "opencv_hough_circle",
             "feasible": False,
             "hardFailures": hard_failures,
+            "evidenceOnly": True,
+            "appImportable": False,
             "canonicalGeometryMutation": False,
+            "writesProjectDatabase": False,
             "networkRequired": False,
             "hiddenKeysAllowed": False,
         },
@@ -901,7 +907,10 @@ def detect_pivot_candidates(
         "fixtureKind": fixture_kind,
         "advisoryOnly": True,
         "surveyGrade": False,
+        "evidenceOnly": True,
+        "appImportable": False,
         "canonicalGeometryMutation": False,
+        "writesProjectDatabase": False,
         "networkRequired": False,
         "hiddenKeysAllowed": False,
         "artifacts": artifacts,
@@ -2215,6 +2224,10 @@ def recommendations_to_geojson(recommendations: list[dict[str, Any]]) -> dict[st
           "metadata": recommendation.get("metadata"),
           "scoreBreakdown": recommendation.get("scoreBreakdown"),
           "displayWgs84": recommendation["proposedGeometry"].get("displayWgs84"),
+          "evidenceOnly": True,
+          "appImportable": False,
+          "writesProjectDatabase": False,
+          "canonicalGeometryMutation": False,
         }
         pivot = recommendation["proposedGeometry"].get("pivotCenter")
         if pivot is not None:
@@ -2248,6 +2261,9 @@ def recommendations_to_geojson(recommendations: list[dict[str, Any]]) -> dict[st
       "name": "cplayout-companion-candidate-reports",
       "coordinateReferenceSystem": "project_crs_xy",
       "canonicalGeometryMutation": False,
+      "evidenceOnly": True,
+      "appImportable": False,
+      "writesProjectDatabase": False,
       "features": features,
     }
 

@@ -14,6 +14,7 @@ reports/native-maplibre/
 reports/real-pivot-fixtures/
 reports/roadmap-completion/
 reports/runtime-logs/
+reports/visual-proof/
 tools/local-ml-companion/.dvc/cache/
 tools/local-ml-companion/.dvc/tmp/
 tools/local-ml-companion/mlruns/

@@ -50,6 +50,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 
 import { CoordinateFormatPanel } from "./src/components/CoordinateFormatPanel";
 import { BrowserRtkReceiverPanel } from "./src/components/BrowserRtkReceiverPanel";
+import { CommandBar, IconCommandButton, type CommandIconButtonConfig, type CommandMenuConfig } from "./src/components/CommandSurface";
 import { MapSurface } from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
 import {
@@ -87,6 +88,7 @@ import {
   importSurveyCsvToProject,
   improvedCenterPivotProofProject,
   realCenterPivotProofProject,
+  sampleDesignProjects,
   sampleProject,
   type AppSettings,
   type GoogleEarthKmlImportResult,
@@ -329,6 +331,12 @@ function AppContent(): React.JSX.Element {
       fieldMapId: null,
       designId: null,
     });
+  }
+
+  function openCatalogHome(): void {
+    setScreen("workspace");
+    setActiveView("map");
+    setHomeMapView(true);
   }
 
   async function saveCurrentProject(): Promise<void> {
@@ -822,19 +830,49 @@ function AppContent(): React.JSX.Element {
             <StatusPill icon={<SlidersHorizontal size={15} color="#254234" />} label={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
             <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
           </View>
-          <View style={[styles.projectActionRow, compactLayout && styles.statusRowCompact]}>
-            <SmallActionButton disabled={homeMapView} label={isDirty ? "Save *" : "Save"} onPress={saveCurrentProject} />
-            <SmallActionButton label="Catalog" onPress={() => {
-              setScreen("workspace");
+          <WorkspaceCommandSurface
+            activeView={activeView}
+            canRedo={editor.future.length > 0}
+            canUndo={editor.past.length > 0}
+            dirty={isDirty}
+            homeMapView={homeMapView}
+            leftDrawerOpen={leftDrawerOpen}
+            onCalculatePreview={() => {
+              calculateDesignScenarios();
+              setDesignConsoleModal("calculate");
               setActiveView("map");
-              setHomeMapView(true);
-            }} />
-            {activeView === "map" && !leftDrawerOpen ? <SmallActionButton label="Open Sample" onPress={() => loadProjectDashboard(sampleProject)} /> : null}
-            {activeView === "map" && homeMapView && !rightDrawerOpen ? <SmallActionButton label="Start Blank Design" onPress={startBlankDesign} /> : null}
-            <SmallActionButton label="Dashboard" onPress={() => setActiveView("dashboard")} />
-            <SmallActionButton label="Undo" disabled={editor.past.length === 0} onPress={() => dispatchProject({ type: "undo" })} />
-            <SmallActionButton label="Redo" disabled={editor.future.length === 0} onPress={() => dispatchProject({ type: "redo" })} />
-          </View>
+            }}
+            onFocusMapTools={() => {
+              setDesignConsoleModal(null);
+              setActiveView("map");
+            }}
+            onNavigate={setActiveView}
+            onOpenCatalog={openCatalogHome}
+            onOpenFiles={() => setActiveView("files")}
+            onOpenSample={(nextProject) => loadProjectDashboard(nextProject)}
+            onRedo={() => dispatchProject({ type: "redo" })}
+            onResetWalkthrough={resetWalkthrough}
+            onSave={saveCurrentProject}
+            onShowLayers={() => {
+              setDesignConsoleModal("layers");
+              setActiveView("map");
+            }}
+            onShowMetrics={() => {
+              setActiveInspectorPage("metrics");
+              setRightDrawerOpen(true);
+              setActiveView("map");
+            }}
+            onShowWarnings={() => {
+              setActiveInspectorPage("validation");
+              setRightDrawerOpen(true);
+              setActiveView("map");
+            }}
+            onStartBlankDesign={startBlankDesign}
+            onToggleLeftDrawer={() => setLeftDrawerOpen((open) => !open)}
+            onToggleRightDrawer={() => setRightDrawerOpen((open) => !open)}
+            onUndo={() => dispatchProject({ type: "undo" })}
+            rightDrawerOpen={rightDrawerOpen}
+          />
         </View>
 
         <View style={[styles.workspaceShell, activeView !== "map" && compactLayout && styles.workspaceShellCompact, activeView === "map" && styles.workspaceShellConsole]} testID="workspace-shell">
@@ -1285,6 +1323,164 @@ const WALKTHROUGH_MODULES: Array<{
   { id: "validation", title: "Layout Validation", checkpoint: "Layout warnings are inspected on the Map before export." },
   { id: "export", title: "Export Package", checkpoint: "ZIP/KML/GeoJSON are exported after saving local edits." },
 ];
+
+function WorkspaceCommandSurface({
+  activeView,
+  canRedo,
+  canUndo,
+  dirty,
+  homeMapView,
+  leftDrawerOpen,
+  onCalculatePreview,
+  onFocusMapTools,
+  onNavigate,
+  onOpenCatalog,
+  onOpenFiles,
+  onOpenSample,
+  onRedo,
+  onResetWalkthrough,
+  onSave,
+  onShowLayers,
+  onShowMetrics,
+  onShowWarnings,
+  onStartBlankDesign,
+  onToggleLeftDrawer,
+  onToggleRightDrawer,
+  onUndo,
+  rightDrawerOpen,
+}: {
+  activeView: WorkspaceView;
+  canRedo: boolean;
+  canUndo: boolean;
+  dirty: boolean;
+  homeMapView: boolean;
+  leftDrawerOpen: boolean;
+  onCalculatePreview: () => void;
+  onFocusMapTools: () => void;
+  onNavigate: (view: WorkspaceView) => void;
+  onOpenCatalog: () => void;
+  onOpenFiles: () => void;
+  onOpenSample: (project: PivotProject) => void;
+  onRedo: () => void;
+  onResetWalkthrough: () => void;
+  onSave: () => void | Promise<void>;
+  onShowLayers: () => void;
+  onShowMetrics: () => void;
+  onShowWarnings: () => void;
+  onStartBlankDesign: () => void;
+  onToggleLeftDrawer: () => void;
+  onToggleRightDrawer: () => void;
+  onUndo: () => void;
+  rightDrawerOpen: boolean;
+}): React.JSX.Element {
+  const sampleItems = sampleDesignProjects.map((entry) => ({
+    id: `sample-${entry.id}`,
+    label: `Open ${entry.label}`,
+    description: `${entry.description}${entry.reviewStatus === "needs_review" ? " - needs review baseline." : ""}`,
+    icon: entry.reviewStatus === "needs_review" ? <AlertTriangle /> : <MapPinned />,
+    onPress: () => onOpenSample(entry.project),
+    testID: `command-file-${entry.id}`,
+  }));
+  const menuIconColor = "#254234";
+  const menus: CommandMenuConfig[] = [
+    {
+      id: "file",
+      label: "File",
+      icon: <FolderOpen color={menuIconColor} />,
+      items: [
+        { id: "save", label: dirty ? "Save current design *" : "Save current design", description: "Persist the active project in local storage.", disabled: homeMapView, icon: <Save />, onPress: onSave, testID: "command-file-save" },
+        { id: "catalog", label: "Catalog home", description: "Return to the local project catalog map.", icon: <Home />, onPress: onOpenCatalog, testID: "command-file-catalog" },
+        ...sampleItems,
+        { id: "blank", label: "Start Blank Design", description: "Create an unsaved projected-XY concept layout.", icon: <Wrench />, onPress: onStartBlankDesign, testID: "command-file-blank-design" },
+        { id: "files", label: "Files / GIS Exchange", description: "Open ZIP, GeoJSON, KML/KMZ, CSV, and map package tools.", icon: <Download />, onPress: onOpenFiles, testID: "command-file-files" },
+      ],
+      testID: "command-menu-file",
+    },
+    {
+      id: "reports",
+      label: "Reports",
+      icon: <ClipboardList color={menuIconColor} />,
+      items: [
+        { id: "dashboard", label: "Dashboard", description: "Open workflow readiness, warnings, and recent projects.", icon: <Home />, onPress: () => onNavigate("dashboard"), testID: "command-reports-dashboard" },
+        { id: "metrics", label: "Metrics Inspector", description: "Show irrigated area, dry area, coverage, conflicts, and warnings.", disabled: homeMapView, icon: <Calculator />, onPress: onShowMetrics, testID: "command-reports-metrics" },
+        { id: "warnings", label: "Warnings", description: "Inspect validation warnings without mutating geometry.", disabled: homeMapView, icon: <AlertTriangle />, onPress: onShowWarnings, testID: "command-reports-warnings" },
+        { id: "export-readiness", label: "Export Readiness", description: "Review save and package readiness on the dashboard.", icon: <PackageCheck />, onPress: () => onNavigate("dashboard"), testID: "command-reports-export" },
+      ],
+      testID: "command-menu-reports",
+    },
+    {
+      id: "tools",
+      label: "Tools",
+      icon: <Wrench color={menuIconColor} />,
+      items: [
+        { id: "undo", label: "Undo", disabled: !canUndo, icon: <RotateCcw />, onPress: onUndo, testID: "command-tools-undo" },
+        { id: "redo", label: "Redo", disabled: !canRedo, icon: <RotateCcw />, onPress: onRedo, testID: "command-tools-redo" },
+        { id: "calculate", label: "Calculate Preview", description: "Open design scenario preview without saving or exporting.", disabled: homeMapView, icon: <Calculator />, onPress: onCalculatePreview, testID: "command-tools-calculate" },
+        { id: "focus-map", label: "Focus Map Tools", description: "Return to the contextual drawing HUD on the map.", disabled: homeMapView, icon: <MapPinned />, onPress: onFocusMapTools, testID: "command-tools-map-focus" },
+        { id: "layers", label: "Places And Layers", description: "Open reference layer controls for local-first display settings.", disabled: homeMapView, icon: <Layers />, onPress: onShowLayers, testID: "command-tools-layers" },
+      ],
+      testID: "command-menu-tools",
+    },
+    {
+      id: "view",
+      label: "View",
+      icon: <MapIcon color={menuIconColor} />,
+      items: [
+        { id: "map", label: "Map Workbench", icon: <MapPinned />, onPress: () => onNavigate("map"), testID: "command-view-map" },
+        { id: "dashboard", label: "Dashboard", icon: <Home />, onPress: () => onNavigate("dashboard"), testID: "command-view-dashboard" },
+        { id: "survey", label: "Survey", icon: <Satellite />, onPress: () => onNavigate("survey"), testID: "command-view-survey" },
+        { id: "files", label: "Files", icon: <Download />, onPress: () => onNavigate("files"), testID: "command-view-files" },
+        { id: "project-drawer", label: leftDrawerOpen ? "Collapse Project Drawer" : "Open Project Drawer", disabled: activeView !== "map", icon: <FolderOpen />, onPress: onToggleLeftDrawer, testID: "command-view-project-drawer" },
+        { id: "inspector", label: rightDrawerOpen ? "Collapse Inspector" : "Open Inspector", disabled: activeView !== "map", icon: <SlidersHorizontal />, onPress: onToggleRightDrawer, testID: "command-view-inspector" },
+      ],
+      testID: "command-menu-view",
+    },
+    {
+      id: "connections",
+      label: "Connections",
+      icon: <Satellite color={menuIconColor} />,
+      items: [
+        { id: "rtk", label: "RTK / Survey", description: "Open local browser receiver and survey capture readiness.", icon: <Satellite />, onPress: () => onNavigate("survey"), testID: "command-connections-rtk" },
+        { id: "imagery", label: "Imagery Status", description: "Review no-key imagery and local package settings.", icon: <WifiOff />, onPress: () => onNavigate("settings"), testID: "command-connections-imagery" },
+        { id: "handoff", label: "External Map Handoff", description: "Use Files for KML/KMZ companion exchange; rendering proof stays separate.", icon: <Upload />, onPress: onOpenFiles, testID: "command-connections-handoff" },
+      ],
+      testID: "command-menu-connections",
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: <SlidersHorizontal color={menuIconColor} />,
+      items: [
+        { id: "settings", label: "Settings", icon: <SlidersHorizontal />, onPress: () => onNavigate("settings"), testID: "command-settings-open" },
+        { id: "coordinates", label: "Coordinate Display", description: "Configure display formats; projected XY remains canonical.", icon: <Ruler />, onPress: () => onNavigate("settings"), testID: "command-settings-coordinates" },
+        { id: "imagery", label: "Imagery Setup", description: "Manage no-key previews and local package metadata.", icon: <Satellite />, onPress: () => onNavigate("settings"), testID: "command-settings-imagery" },
+      ],
+      testID: "command-menu-settings",
+    },
+    {
+      id: "help",
+      label: "Help",
+      icon: <ListChecks color={menuIconColor} />,
+      items: [
+        { id: "help", label: "Help And Training", icon: <ListChecks />, onPress: () => onNavigate("help"), testID: "command-help-open" },
+        { id: "reset", label: "Reset Walkthrough", description: "Clear local-only walkthrough progress for the active project.", icon: <RotateCcw />, onPress: onResetWalkthrough, testID: "command-help-reset" },
+      ],
+      testID: "command-menu-help",
+    },
+  ];
+  const iconButtons: CommandIconButtonConfig[] = [
+    { id: "save", label: dirty ? "Save *" : "Save", disabled: homeMapView, icon: <Save />, onPress: onSave, testID: "command-icon-save" },
+    { id: "catalog", label: "Catalog", icon: <Home />, onPress: onOpenCatalog, testID: "command-icon-catalog" },
+  ];
+  if (activeView === "map" && !leftDrawerOpen) {
+    iconButtons.push({ id: "sample", label: "Open Sample", icon: <MapPinned />, onPress: () => onOpenSample(sampleProject), testID: "command-icon-open-sample" });
+  }
+  if (activeView === "map" && homeMapView && !rightDrawerOpen) {
+    iconButtons.push({ id: "blank", label: "Start Blank Design", icon: <Wrench />, onPress: onStartBlankDesign, testID: "command-icon-start-blank-design" });
+  }
+
+  return <CommandBar iconButtons={iconButtons} menus={menus} testID="workspace-command-bar" />;
+}
 
 function DesignActionHud({
   activeModal,
@@ -2232,17 +2428,22 @@ function CatalogHomePanel({
   repository: ProjectWorkspaceStatus;
   settings: AppSettings;
 }): React.JSX.Element {
+  const hasCatalogRecords = catalog.customers.length > 0 || catalog.projects.length > 0 || catalog.fieldMaps.length > 0 || catalog.designs.length > 0;
+  const storageLabel = repository.backendInfo?.backendLabel ?? repository.backendLabel;
+  const nextAction = hasCatalogRecords ? "Open design" : "Add customer";
+  const imageryState = settings.onlineImagery.enabled ? "No-key preview" : "Off";
+
   return (
     <>
       <Text style={styles.sectionTitle}>Catalog Home</Text>
-      <View style={styles.metricGrid} testID="catalog-home-metrics">
-        <MetricTile label="Customers" value={`${catalog.customers.length}`} />
-        <MetricTile label="Projects" value={`${catalog.projects.length}`} />
-        <MetricTile label="Field maps" value={`${catalog.fieldMaps.length}`} />
-        <MetricTile label="Designs" value={`${catalog.designs.length}`} />
+      <View style={styles.metricGrid} testID="catalog-home-readiness">
+        <MetricTile label="Storage" value={storageLabel} />
+        <MetricTile label="Active context" value="Catalog" />
+        <MetricTile label="Next action" value={nextAction} tone={hasCatalogRecords ? "neutral" : "warn"} />
+        <MetricTile label="Imagery" value={imageryState} tone={settings.onlineImagery.enabled ? "neutral" : "good"} />
       </View>
       <View style={styles.mapFeatureEditor} testID="catalog-home-status">
-        <Text style={styles.mapFeatureTitle}>{repository.backendInfo?.backendLabel ?? repository.backendLabel}</Text>
+        <Text style={styles.mapFeatureTitle}>{storageLabel}</Text>
         <Text style={styles.mapFeatureMeta}>
           {repository.statusMessage} · {settings.onlineImagery.enabled ? "USGS live reference is enabled with attribution on the map." : "No external imagery is requested."}
         </Text>
@@ -3061,12 +3262,12 @@ function ProjectTreeRail({
             <Text style={styles.projectTreeTitle}>{activeProject ? activeProject.name : "Project Catalog"}</Text>
           </View>
           <View style={styles.projectTreeActions} testID="project-tree-actions">
-            <SmallActionButton label="Customer" onPress={onCreateCustomer} />
-            <SmallActionButton disabled={!activeContext.customerId} label="Project" onPress={onCreateProject} />
-            <SmallActionButton disabled={!activeContext.projectId} label="Field Map" onPress={onCreateFieldMap} />
-            <SmallActionButton disabled={!activeContext.fieldMapId} label="Design" onPress={onCreateDesign} />
-            <SmallActionButton label="Blank Design" onPress={onStartBlankDesign} />
-            <SmallActionButton label="Open Sample" onPress={onOpenSample} />
+            <IconCommandButton icon={<UserRound />} id="customer" label="Customer" onPress={onCreateCustomer} testID="project-tree-action-customer" />
+            <IconCommandButton disabled={!activeContext.customerId} icon={<Database />} id="project" label="Project" onPress={onCreateProject} testID="project-tree-action-project" />
+            <IconCommandButton disabled={!activeContext.projectId} icon={<MapIcon />} id="field-map" label="Field Map" onPress={onCreateFieldMap} testID="project-tree-action-field-map" />
+            <IconCommandButton disabled={!activeContext.fieldMapId} icon={<Layers />} id="design" label="Design" onPress={onCreateDesign} testID="project-tree-action-design" />
+            <IconCommandButton icon={<Wrench />} id="blank-design" label="Blank Design" onPress={onStartBlankDesign} testID="project-tree-action-blank-design" />
+            <IconCommandButton icon={<MapPinned />} id="open-sample" label="Open Sample" onPress={onOpenSample} testID="project-tree-action-open-sample" />
           </View>
           <ScrollView style={[styles.projectTreeScroll, compact && styles.projectTreeScrollCompact]} contentContainerStyle={styles.projectTreeContent} testID="project-tree-scroll">
             {catalog.customers.length === 0 ? (
@@ -3583,6 +3784,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 14,
+    position: "relative",
+    zIndex: 40,
   },
   appTitle: {
     color: "#132017",

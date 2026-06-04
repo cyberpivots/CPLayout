@@ -106,6 +106,206 @@ export const sampleProject: PivotProject = {
   ],
 };
 
+interface SampleVariantInput {
+  id: string;
+  name: string;
+  description: string;
+  pivotCenter: XY;
+  waterSource: XY;
+  powerSource: XY;
+  machine: PivotProject["machine"];
+  mapFeatures?: PivotProject["mapFeatures"];
+}
+
+export interface SampleDesignProject {
+  id: string;
+  label: string;
+  description: string;
+  reviewStatus: "needs_review" | "curated";
+  project: PivotProject;
+}
+
+function copyPoint(point: XY): XY {
+  return { x: point.x, y: point.y };
+}
+
+function cloneSampleSurveyPoints(pivotCenter: XY): PivotProject["surveyPoints"] {
+  return sampleProject.surveyPoints.map((point) => ({
+    ...point,
+    projected: point.role === "pivot_center" ? copyPoint(pivotCenter) : copyPoint(point.projected),
+    rtk: point.rtk ? { ...point.rtk } : undefined,
+    wgs84: point.wgs84 ? { ...point.wgs84 } : undefined,
+  }));
+}
+
+function curatedSampleVariant(input: SampleVariantInput): PivotProject {
+  return {
+    ...sampleProject,
+    id: input.id,
+    name: input.name,
+    settings: defaultProjectSettings(),
+    fieldBoundary: sampleProject.fieldBoundary.map(copyPoint),
+    pivotCenter: copyPoint(input.pivotCenter),
+    waterSource: copyPoint(input.waterSource),
+    powerSource: copyPoint(input.powerSource),
+    machine: {
+      ...input.machine,
+      endGunAngleRanges: input.machine.endGunAngleRanges?.map((range) => ({ ...range })),
+      spanLengthsMeters: [...input.machine.spanLengthsMeters],
+      sweep: { ...input.machine.sweep },
+    },
+    obstacles: sampleProject.obstacles.map((obstacle) => ({
+      ...obstacle,
+      polygon: obstacle.polygon.map(copyPoint),
+    })),
+    surveyPoints: cloneSampleSurveyPoints(input.pivotCenter),
+    mapPackages: [],
+    mapFeatures: input.mapFeatures?.map((feature) => ({
+      ...feature,
+      geometry: feature.geometry.type === "Point"
+        ? { type: "Point", point: copyPoint(feature.geometry.point) }
+        : feature.geometry.type === "Circle"
+          ? { type: "Circle", center: copyPoint(feature.geometry.center), radiusMeters: feature.geometry.radiusMeters }
+          : feature.geometry.type === "LineString"
+            ? { type: "LineString", vertices: feature.geometry.vertices.map(copyPoint) }
+            : { type: "Polygon", vertices: feature.geometry.vertices.map(copyPoint) },
+      properties: feature.properties ? { ...feature.properties } : undefined,
+    })),
+  };
+}
+
+export const improvedFullCircleSampleProject = curatedSampleVariant({
+  id: "sample-improved-full-circle",
+  name: "Improved Full-Circle Conflict Clear",
+  description: "A shorter full-circle concept shifted away from the access road and service pad to remove modeled hard conflicts.",
+  pivotCenter: p(360, 520),
+  waterSource: p(324, 484),
+  powerSource: p(142, 668),
+  machine: {
+    ...sampleProject.machine,
+    id: "sample-improved-full-circle-machine",
+    name: "Conflict-clear four-span concept pivot",
+    endGunAngleRanges: [],
+    endGunThrowMeters: 0,
+    sweep: { mode: "full_circle" },
+  },
+});
+
+export const partialSweepNearRoadSampleProject = curatedSampleVariant({
+  id: "sample-partial-sweep-road-structure",
+  name: "Partial Sweep Near Road And Pad",
+  description: "A part-circle concept near the road and pump pad that intentionally keeps warning surfaces visible for operator review.",
+  pivotCenter: p(545, 320),
+  waterSource: p(503, 282),
+  powerSource: p(325, 490),
+  machine: {
+    ...sampleProject.machine,
+    id: "sample-partial-sweep-road-machine",
+    name: "Road-adjacent partial-sweep pivot",
+    endGunAngleRanges: [],
+    endGunThrowMeters: 0,
+    sweep: {
+      mode: "partial_circle",
+      startAngleDegrees: 330,
+      stopAngleDegrees: 145,
+      direction: "counterclockwise",
+    },
+  },
+});
+
+export const endGunShutoffArcSampleProject = curatedSampleVariant({
+  id: "sample-end-gun-shutoff-arc",
+  name: "End-Gun Shutoff Arc",
+  description: "A conflict-clear full-circle concept with a limited end-gun arc for wetting only the reviewed sector.",
+  pivotCenter: p(470, 520),
+  waterSource: p(428, 482),
+  powerSource: p(250, 690),
+  machine: {
+    ...sampleProject.machine,
+    id: "sample-end-gun-shutoff-machine",
+    name: "Four-span pivot with end-gun shutoff arc",
+    spanLengthsMeters: [45, 45, 45, 45],
+    endGunThrowMeters: 26,
+    endGunAngleRanges: [
+      { startAngleDegrees: 30, stopAngleDegrees: 150, direction: "counterclockwise" },
+    ],
+    sweep: { mode: "full_circle" },
+  },
+});
+
+export const advisoryCornerArmSampleProject = curatedSampleVariant({
+  id: "sample-advisory-corner-arm-footprint",
+  name: "Advisory Corner-Arm Footprint",
+  description: "A field-edge concept with an operator/vendor corner-arm footprint recorded as evidence only.",
+  pivotCenter: p(430, 570),
+  waterSource: p(392, 530),
+  powerSource: p(214, 706),
+  machine: {
+    ...sampleProject.machine,
+    id: "sample-corner-arm-machine",
+    name: "Corner-arm advisory footprint pivot",
+    spanLengthsMeters: [45, 45, 45, 45],
+    endGunAngleRanges: [],
+    endGunThrowMeters: 0,
+    sweep: { mode: "full_circle" },
+  },
+  mapFeatures: [
+    {
+      id: "sample-corner-arm-footprint",
+      name: "Advisory corner-arm footprint",
+      kind: "corner_swing_limit",
+      geometry: {
+        type: "Polygon",
+        vertices: [p(612, 598), p(708, 632), p(682, 724), p(596, 706)],
+      },
+      confidence: "user_estimated",
+      notes: "Operator/vendor footprint evidence only; manufacturer kinematics are not modeled.",
+      properties: {
+        canonicalGeometryMutation: false,
+        evidenceOnly: true,
+      },
+    },
+  ],
+});
+
+export const sampleDesignProjects: SampleDesignProject[] = [
+  {
+    id: "sample-baseline-needs-review",
+    label: "Needs Review Baseline",
+    description: "Existing sample with road and service-pad warnings preserved for comparison.",
+    reviewStatus: "needs_review",
+    project: sampleProject,
+  },
+  {
+    id: "sample-improved-full-circle",
+    label: "Improved Full-Circle",
+    description: improvedFullCircleSampleProject.name,
+    reviewStatus: "curated",
+    project: improvedFullCircleSampleProject,
+  },
+  {
+    id: "sample-partial-sweep-road-structure",
+    label: "Partial Sweep Near Road",
+    description: partialSweepNearRoadSampleProject.name,
+    reviewStatus: "curated",
+    project: partialSweepNearRoadSampleProject,
+  },
+  {
+    id: "sample-end-gun-shutoff-arc",
+    label: "End-Gun Shutoff Arc",
+    description: endGunShutoffArcSampleProject.name,
+    reviewStatus: "curated",
+    project: endGunShutoffArcSampleProject,
+  },
+  {
+    id: "sample-advisory-corner-arm-footprint",
+    label: "Corner-Arm Footprint",
+    description: advisoryCornerArmSampleProject.name,
+    reviewStatus: "curated",
+    project: advisoryCornerArmSampleProject,
+  },
+];
+
 const publicProofObservedAt = "2026-05-29T00:00:00-06:00";
 const publicProofCrs = "EPSG:32613";
 const publicProofReference = {

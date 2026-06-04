@@ -102,6 +102,72 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   expect(disallowed).toEqual([]);
 });
 
+test("workspace command menus open without overflow across responsive viewports", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await expect(page.getByTestId("workspace-command-bar")).toBeVisible();
+  for (const menuId of ["file", "reports", "tools", "view", "connections", "settings", "help"]) {
+    await openCommandMenu(page, menuId);
+    await expect(page.getByTestId(`command-menu-${menuId}-panel`)).toBeVisible();
+    await expectInsideViewport(page, `command-menu-${menuId}-panel`);
+    await expectNoHorizontalOverflow(page);
+    await closeCommandMenu(page, menuId);
+  }
+  await saveScreen(page, testInfo, "workspace-command-menus-responsive");
+});
+
+test("workspace command menu routes preserve existing views and local boundaries", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-files").click();
+  await expect(page.getByTestId("files-view")).toBeVisible();
+  await openCommandMenu(page, "view");
+  await page.getByTestId("command-view-survey").click();
+  await expect(page.getByTestId("survey-view")).toBeVisible();
+  await openCommandMenu(page, "settings");
+  await page.getByTestId("command-settings-open").click();
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await openCommandMenu(page, "help");
+  await page.getByTestId("command-help-open").click();
+  await expect(page.getByTestId("help-view")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await saveScreen(page, testInfo, "workspace-command-menu-routes");
+});
+
+test("catalog home readiness replaces global count metrics", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await openInspectorIfCollapsed(page);
+  const readiness = page.getByTestId("catalog-home-readiness");
+  await expect(readiness).toContainText("Storage");
+  await expect(readiness).toContainText("Active context");
+  await expect(readiness).toContainText("Next action");
+  await expect(readiness).toContainText("Imagery");
+  await expect(readiness).not.toContainText("Customers");
+  await expect(readiness).not.toContainText("Projects");
+  await expect(readiness).not.toContainText("Field maps");
+  await expect(readiness).not.toContainText("Designs");
+  await saveScreen(page, testInfo, "catalog-home-readiness-no-counts");
+});
+
+test("file menu opens curated sample designs with projected xy status", async ({ page }, testInfo) => {
+  await page.goto("/");
+  const samples = [
+    { testId: "command-file-sample-baseline-needs-review", title: "North Quarter Concept Layout" },
+    { testId: "command-file-sample-improved-full-circle", title: "Improved Full-Circle Conflict Clear" },
+    { testId: "command-file-sample-partial-sweep-road-structure", title: "Partial Sweep Near Road And Pad" },
+    { testId: "command-file-sample-end-gun-shutoff-arc", title: "End-Gun Shutoff Arc" },
+    { testId: "command-file-sample-advisory-corner-arm-footprint", title: "Advisory Corner-Arm Footprint" },
+  ];
+
+  for (const sample of samples) {
+    await openCommandMenu(page, "file");
+    await page.getByTestId(sample.testId).click();
+    await expect(page.getByText(sample.title, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("EPSG:32613").first()).toBeVisible();
+    await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  }
+  await saveScreen(page, testInfo, "file-menu-curated-samples");
+});
+
 test("catalog blank design starts a drawable boundary workflow", async ({ page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByText("North America project catalog")).toBeVisible();
@@ -1771,6 +1837,26 @@ async function closeInspectorIfOpen(page: Page): Promise<void> {
   const closeButton = page.getByRole("button", { name: "Collapse map inspector" });
   if (await closeButton.count() === 0) return;
   if (await closeButton.first().isVisible()) await closeButton.first().click();
+}
+
+async function openCommandMenu(page: Page, menuId: string): Promise<void> {
+  const panel = page.getByTestId(`command-menu-${menuId}-panel`);
+  if (await panel.count() > 0 && await panel.first().isVisible()) {
+    await closeCommandMenu(page, menuId);
+  }
+  await page.getByTestId(`command-menu-${menuId}`).click();
+  await expect(panel).toBeVisible();
+}
+
+async function closeCommandMenu(page: Page, menuId: string): Promise<void> {
+  const closeButton = page.getByTestId(`command-menu-${menuId}-close`);
+  if (await closeButton.count() > 0 && await closeButton.first().isVisible()) {
+    await closeButton.first().click();
+    await expect(page.getByTestId(`command-menu-${menuId}-panel`)).toBeHidden();
+    return;
+  }
+  await page.getByTestId(`command-menu-${menuId}`).click();
+  await expect(page.getByTestId(`command-menu-${menuId}-panel`)).toBeHidden();
 }
 
 async function expectNoSavedProjectDocuments(page: Page): Promise<void> {

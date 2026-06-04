@@ -183,6 +183,8 @@ These commands are offline/local only. They reject hidden-key provenance, do not
 
 The companion can prepare local GIS/CV evidence packets without changing the CPLayout project schema. Projected/local `XY` remains canonical, and image-space detections, WGS84 display coordinates, screenshots, masks, and scores stay evidence unless a valid project-CRS calibration exists.
 
+Use these packets for sample/design evidence only. They are workspace artifacts for operator inspection, source hashes, CV candidates, local dashboards, and documentation summaries. They are not app-importable recommendation records, do not write the CPLayout project database, and must carry `canonicalGeometryMutation: false`, `evidenceOnly: true`, `appImportable: false`, and `writesProjectDatabase: false`.
+
 Hash and inspect local raster/proof artifacts:
 
 ```sh

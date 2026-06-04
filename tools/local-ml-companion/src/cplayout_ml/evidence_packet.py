@@ -73,7 +73,10 @@ def build_evidence_packet(
             "calibrationStatus": calibration_status,
             "networkRequired": False,
             "keyedService": False,
+            "evidenceOnly": True,
+            "appImportable": False,
             "canonicalGeometryMutation": False,
+            "writesProjectDatabase": False,
         },
     }
     candidate_reports = [
@@ -105,7 +108,10 @@ def build_evidence_packet(
         "networkRequired": False,
         "keyedService": False,
         "hiddenKeysAllowed": False,
+        "evidenceOnly": True,
+        "appImportable": False,
         "canonicalGeometryMutation": False,
+        "writesProjectDatabase": False,
         "nonGoals": [
             "No React Native Python/GDAL runtime dependency.",
             "No cloud backend, hidden key, hosted dashboard, or paid imagery service.",
@@ -378,12 +384,15 @@ def candidate_recommendation(
             "hardFailures": sorted(set(hard_failures)),
             "networkRequired": False,
             "keyedService": False,
+            "evidenceOnly": True,
+            "appImportable": False,
             "canonicalGeometryMutation": False,
+            "writesProjectDatabase": False,
         },
         "warnings": [
             *candidate_warnings(candidate),
             *hard_failures,
-            "Operator review and projected-XY apply confirmation are required before geometry changes.",
+            "Any future geometry change requires a separate CPLayout Files/Map projected-XY workflow and operator action.",
         ],
     }
 
@@ -508,6 +517,10 @@ def candidate_reports_to_geojson(candidate_reports: list[dict[str, Any]]) -> dic
             "metadata": recommendation.get("metadata"),
             "scoreBreakdown": recommendation.get("scoreBreakdown"),
             "displayWgs84": recommendation["proposedGeometry"].get("displayWgs84"),
+            "evidenceOnly": True,
+            "appImportable": False,
+            "writesProjectDatabase": False,
+            "canonicalGeometryMutation": False,
         }
         geometry = recommendation["proposedGeometry"]
         pivot = geometry.get("pivotCenter")
@@ -527,6 +540,9 @@ def candidate_reports_to_geojson(candidate_reports: list[dict[str, Any]]) -> dic
         "name": "cplayout-companion-candidate-reports",
         "coordinateReferenceSystem": "project_crs_xy",
         "canonicalGeometryMutation": False,
+        "evidenceOnly": True,
+        "appImportable": False,
+        "writesProjectDatabase": False,
         "features": features,
     }
 
@@ -539,5 +555,8 @@ def projected_xy_geojson(project_id: str, project_crs: str, features: list[dict[
         "projectId": project_id,
         "projectCrs": project_crs,
         "canonicalGeometryMutation": False,
+        "evidenceOnly": True,
+        "appImportable": False,
+        "writesProjectDatabase": False,
         "features": features,
     }

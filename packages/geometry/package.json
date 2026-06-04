@@ -6,7 +6,7 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "tsx src/geometry.test.ts && tsx src/designScenarios.test.ts && tsx src/layoutProof.test.ts && tsx src/layoutScoring.test.ts && tsx src/mapInteraction.test.ts && tsx src/pivotCenterOptimizer.test.ts && tsx src/visualLayoutReview.test.ts",
+    "test": "tsx src/geometry.test.ts && tsx src/designScenarios.test.ts && tsx src/layoutProof.test.ts && tsx src/layoutScoring.test.ts && tsx src/mapInteraction.test.ts && tsx src/pivotCenterOptimizer.test.ts && tsx src/sampleProjects.test.ts && tsx src/visualLayoutReview.test.ts",
     "validate": "npm run typecheck && npm test"
   },
   "dependencies": {

@@ -245,13 +245,13 @@ export function ProjectFilesPanel({
       </View>
       <Text style={styles.groupTitle}>Canonical Project Package</Text>
       <View style={styles.actionRow}>
-        <FileAction icon={<Save size={18} color="#ffffff" />} label={dirty ? "Save Local *" : "Save Local"} primary onPress={onSaveProject} />
-        <FileAction icon={<Download size={18} color="#254234" />} label="Export ZIP" onPress={exportZip} />
-        <FileAction icon={<Upload size={18} color="#254234" />} label="Import ZIP" onPress={importZip} />
-        <FileAction icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={onRefreshProjects} />
+        <FileAction accessibilityLabel="Save local project" icon={<Save size={18} color="#ffffff" />} label={dirty ? "Save Local *" : "Save Local"} primary onPress={onSaveProject} testID="files-action-save-local" />
+        <FileAction accessibilityLabel="Export project ZIP" icon={<Download size={18} color="#254234" />} label="Export ZIP" onPress={exportZip} testID="files-action-export-zip" />
+        <FileAction accessibilityLabel="Import project ZIP" icon={<Upload size={18} color="#254234" />} label="Import ZIP" onPress={importZip} testID="files-action-import-zip" />
+        <FileAction accessibilityLabel="Refresh local projects" icon={<RefreshCw size={18} color="#254234" />} label="Refresh" onPress={onRefreshProjects} testID="files-action-refresh" />
       </View>
       <View style={styles.destructiveActionRow}>
-        <FileAction icon={<Trash2 size={18} color="#8b1e18" />} label="Delete Local Project" danger onPress={() => void onDeleteProject(project.id)} />
+        <FileAction accessibilityLabel="Delete local project" icon={<Trash2 size={18} color="#8b1e18" />} label="Delete Local Project" danger onPress={() => void onDeleteProject(project.id)} testID="files-action-delete-local-project" />
       </View>
       <View style={[styles.statusBox, statusToneStyle(status.tone)]} testID="files-status" {...webStatusProps()}>
         <Database size={17} color={statusToneColor(status.tone)} />
@@ -271,7 +271,7 @@ export function ProjectFilesPanel({
 
       <Text style={styles.groupTitle}>Offline Map Packages</Text>
       <View style={styles.actionRow}>
-        <FileAction icon={<Upload size={18} color="#254234" />} label="Import Map Package" onPress={importMapPackageZip} />
+        <FileAction accessibilityLabel="Import map package ZIP" icon={<Upload size={18} color="#254234" />} label="Import Map Package" onPress={importMapPackageZip} testID="files-action-import-map-package" />
       </View>
       <Text style={styles.backendNote}>Map package ZIPs install generated local tiles. Project archives store logical package metadata and visible attribution, not tile binaries.</Text>
 
@@ -279,9 +279,9 @@ export function ProjectFilesPanel({
       <View style={styles.gisExchangeGrid}>
         <View style={styles.gisActionBox}>
           <View style={styles.actionRow}>
-            <FileAction icon={<Upload size={18} color="#254234" />} label="Import KML/KMZ" onPress={importKmlOrKmz} />
-            <FileAction icon={<Download size={18} color="#254234" />} label="Export KML" onPress={exportKml} />
-            <FileAction icon={<Download size={18} color="#254234" />} label="Export KMZ" onPress={exportKmz} />
+            <FileAction accessibilityLabel="Import KML or KMZ" icon={<Upload size={18} color="#254234" />} label="Import KML/KMZ" onPress={importKmlOrKmz} testID="files-action-import-kml-kmz" />
+            <FileAction accessibilityLabel="Export KML" icon={<Download size={18} color="#254234" />} label="Export KML" onPress={exportKml} testID="files-action-export-kml" />
+            <FileAction accessibilityLabel="Export KMZ" icon={<Download size={18} color="#254234" />} label="Export KMZ" onPress={exportKmz} testID="files-action-export-kmz" />
           </View>
         </View>
         <GoogleEarthImportWizard />
@@ -320,8 +320,8 @@ export function ProjectFilesPanel({
             ))}
           </View>
           <View style={styles.actionRow}>
-            <FileAction icon={<Upload size={18} color="#ffffff" />} label="Apply Import" primary onPress={applyPendingKmlImport} />
-            <FileAction icon={<Trash2 size={18} color="#254234" />} label="Cancel" onPress={cancelPendingKmlImport} />
+            <FileAction accessibilityLabel="Apply KML KMZ import" icon={<Upload size={18} color="#ffffff" />} label="Apply Import" primary onPress={applyPendingKmlImport} testID="files-action-apply-kml-kmz-import" />
+            <FileAction accessibilityLabel="Cancel KML KMZ import" icon={<Trash2 size={18} color="#254234" />} label="Cancel" onPress={cancelPendingKmlImport} testID="files-action-cancel-kml-kmz-import" />
           </View>
         </View>
       ) : null}
@@ -337,7 +337,7 @@ export function ProjectFilesPanel({
             testID="files-geojson-import-input"
             value={geoJsonImport}
           />
-          <FileAction icon={<Upload size={18} color="#254234" />} label="Import GeoJSON" onPress={applyGeoJsonImport} />
+          <FileAction accessibilityLabel="Import projected GeoJSON" icon={<Upload size={18} color="#254234" />} label="Import GeoJSON" onPress={applyGeoJsonImport} testID="files-action-import-geojson" />
         </View>
         <View style={styles.importBox}>
           <Text style={styles.importTitle}>Survey CSV Import</Text>
@@ -349,7 +349,7 @@ export function ProjectFilesPanel({
             testID="files-survey-csv-import-input"
             value={surveyCsvImport}
           />
-          <FileAction icon={<Upload size={18} color="#254234" />} label="Import CSV" onPress={applySurveyCsvImport} />
+          <FileAction accessibilityLabel="Import survey CSV" icon={<Upload size={18} color="#254234" />} label="Import CSV" onPress={applySurveyCsvImport} testID="files-action-import-csv" />
         </View>
       </View>
 
@@ -387,20 +387,31 @@ function BackendTile({ label, value }: { label: string; value: string }): React.
 }
 
 function FileAction({
+  accessibilityLabel,
   icon,
   label,
   onPress,
   primary = false,
   danger = false,
+  testID,
 }: {
+  accessibilityLabel?: string;
   icon: React.ReactNode;
   label: string;
   onPress: () => void | Promise<void>;
   primary?: boolean;
   danger?: boolean;
+  testID?: string;
 }): React.JSX.Element {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.actionButton, primary && styles.actionButtonPrimary, danger && styles.actionButtonDanger]}>
+    <Pressable
+      accessibilityHint={accessibilityLabel}
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[styles.actionButton, primary && styles.actionButtonPrimary, danger && styles.actionButtonDanger]}
+      testID={testID}
+    >
       {icon}
       <Text style={[styles.actionText, primary && styles.actionTextPrimary, danger && styles.actionTextDanger]}>{label}</Text>
     </Pressable>

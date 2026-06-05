@@ -36,11 +36,3 @@ command = "python3 /opt/cplayout-codex/hooks/cplayout_pre_tool_use.py"
 command_windows = 'py -3 C:\ProgramData\CPLayout\CodexHooks\cplayout_pre_tool_use.py'
 timeout = 20
 statusMessage = "Checking managed CPLayout tool guardrails"
-
-[[hooks.Stop]]
-[[hooks.Stop.hooks]]
-type = "command"
-command = "python3 /opt/cplayout-codex/hooks/cplayout_stop_multi_agent.py"
-command_windows = 'py -3 C:\ProgramData\CPLayout\CodexHooks\cplayout_stop_multi_agent.py'
-timeout = 20
-statusMessage = "Checking managed CPLayout multi-agent summary"

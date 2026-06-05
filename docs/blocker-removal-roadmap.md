@@ -5,7 +5,7 @@ Current status note, 2026-06-02: this is a historical completed-pass snapshot. U
 ## Completed In This Pass
 
 - Local Git is initialized with generated artifacts ignored, so future work can use `git status` and `git diff`.
-- Project-local Codex defaults request `gpt-5.5` with xhigh default and plan-mode reasoning.
+- Project-local Codex config requests `gpt-5.5`; reasoning effort is now selected per task through `AGENTS.md` instead of a repo-wide xhigh default.
 - Map package metadata now distinguishes archive type, tile content type, tile scheme, TileJSON URL, tile URL templates, checksum, install status, bounds, attribution, and license.
 - SQLite schema version `3` adds tile source metadata and package lookup indexes while preserving the project snapshot restore path.
 - Project ZIP archives validate manifest shape and project id/CRS consistency on import.

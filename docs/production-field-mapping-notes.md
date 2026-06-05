@@ -2,7 +2,7 @@
 
 ## Source-Backed Decisions
 
-- Codex guidance: OpenAI recommends durable repo instructions in `AGENTS.md`, planning for complex work, and asking Codex to run relevant tests/reviews before accepting changes. This repo keeps `gpt-5.5` with xhigh default and plan-mode reasoning in `.codex/config.toml`.
+- Codex guidance: OpenAI recommends durable repo instructions in `AGENTS.md`, planning for complex work, and asking Codex to run relevant tests/reviews before accepting changes. This repo sets the model in `.codex/config.toml`; reasoning effort is selected per task in `AGENTS.md` instead of pinned as a project-wide default.
   Sources: https://developers.openai.com/codex/learn/best-practices, https://developers.openai.com/codex/guides/agents-md, https://developers.openai.com/codex/config-reference
 - Expo SQLite: `expo-sqlite` provides a persistent SQLite API and Expo recommends installing SDK packages with `npx expo install`.
   Sources: https://docs.expo.dev/versions/latest/sdk/sqlite/, https://docs.expo.dev/versions/latest/
@@ -41,7 +41,7 @@
 - Production web SQLite, because Expo SQLite web support is alpha and needs WASM plus COOP/COEP headers.
 - Native large-file import workflows beyond user-picked ZIP packages.
 - Advanced Google Earth constructs including NetworkLinks, overlays, 3D models, tours, embedded KMZ assets, style fidelity, and altitude/extrusion semantics as engineering data.
-- iOS native SQLite/FileSystem/Sharing runtime acceptance; Android SQLite plus ZIP share/picker is proven by the completed 2026-06-03 Android report.
+- iOS native SQLite/FileSystem/Sharing runtime acceptance; current Android schema-v10 SQLite plus ZIP share/picker proof requires a newly completed report, while the completed 2026-06-03 Android report remains historical schema-v8 evidence.
 - Full geometry editor commit/undo flows from draft vertices into project field and obstacle entities.
 - R-tree/FTS/SQLCipher configuration gates after target platform builds are established.
 - Live GNSS receiver transports and RTK correction workflows.

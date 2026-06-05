@@ -75,6 +75,11 @@ assert.ok(plan.some((statement) => statement.sql.includes("INSERT INTO geometry_
 assert.ok(plan.some((statement) => statement.sql.includes("INSERT INTO survey_points")));
 assert.ok(plan.some((statement) => statement.sql.includes("INSERT INTO layout_scenarios")));
 assert.ok(plan.length > sampleProject.fieldBoundary.length);
+const deleteGeometryVerticesIndex = plan.findIndex((statement) => statement.sql.includes("DELETE FROM geometry_vertices"));
+const deleteGeometriesIndex = plan.findIndex((statement) => statement.sql.includes("DELETE FROM geometries"));
+assert.ok(deleteGeometryVerticesIndex >= 0);
+assert.ok(deleteGeometriesIndex >= 0);
+assert.ok(deleteGeometryVerticesIndex < deleteGeometriesIndex);
 
 const firstProjectStatement = plan.find((statement) => statement.sql.includes("INSERT INTO projects"));
 assert.ok(firstProjectStatement);

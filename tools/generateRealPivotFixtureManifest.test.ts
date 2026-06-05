@@ -75,6 +75,21 @@ try {
     createHash("sha256").update("fixture google-earth-visual-fidelity-map-canvas.png").digest("hex"),
   );
   assert.match(fixture?.artifacts?.mapCanvasCrop ?? "", /\.\.\/\.\.\/proof\/google-earth-visual-fidelity-map-canvas\.png/);
+
+  const fallbackOutputPath = join(root, "fixtures", "real-pivot", "fallback-manifest.json");
+  const fallback = generateDefaultRealPivotFixtureManifest({
+    outputPath: fallbackOutputPath,
+    proofDirectory,
+    projectReferencePath: join(root, "missing-project-reference.json"),
+    generatedAt: "2026-06-03T00:00:00.000Z",
+  });
+  assert.equal(fallback.projectId, "public-adams-county-center-pivot-proof");
+  assert.equal(fallback.artifactCount, 7);
+  const fallbackManifest = JSON.parse(readFileSync(fallbackOutputPath, "utf8")) as {
+    fixtures?: Array<{ artifacts?: Record<string, string>; artifactHashes?: Record<string, string> }>;
+  };
+  assert.equal(fallbackManifest.fixtures?.[0]?.artifacts?.projectReference, undefined);
+  assert.equal(fallbackManifest.fixtures?.[0]?.artifactHashes?.projectReference, undefined);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

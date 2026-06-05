@@ -18,29 +18,11 @@
     "packagePath": ""
   },
   "sqlite": {
-    "schemaVersion": 9,
+    "schemaVersion": 10,
     "pragmaUserVersion": 0,
-    "schemaMigrations": [
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9
-    ],
-    "mapPackageColumns": [
-      "tile_content_type",
-      "tile_scheme",
-      "tilejson_url",
-      "tile_url_templates_json",
-      "vector_overlay_json",
-      "imagery_provenance_json",
-      "checksum_sha256",
-      "install_status"
-    ],
+    "schemaMigrations": [],
+    "mapPackageColumns": [],
+    "absentTables": [],
     "geometryRowsPopulated": false
   },
   "projectRoundTrip": {
@@ -67,6 +49,19 @@
     "manifestProjectIdMatched": false,
     "manifestProjectCrsMatched": false,
     "savedImportedProject": false
+  },
+  "osFileUi": {
+    "shareSheetOpened": false,
+    "shareSheetEvidence": "",
+    "shareSheetScreenshotPath": "",
+    "shareSheetXmlPath": "",
+    "documentsPickerOpened": false,
+    "documentsPickerEvidence": "",
+    "documentsPickerScreenshotPath": "",
+    "documentsPickerXmlPath": "",
+    "pushedZipPath": "",
+    "selectedZipFilename": "",
+    "selectedZipBytes": 0
   },
   "checklist": {
     "cleanInstallOrUpgradePath": {

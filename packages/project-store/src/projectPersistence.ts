@@ -77,6 +77,11 @@ export function buildSaveProjectStatementPlan(project: PivotProject, result?: La
           updated_at = excluded.updated_at`,
       params: [project.id, serializeProjectDocument(project), now],
     },
+    {
+      sql: `DELETE FROM geometry_vertices
+        WHERE geometry_id IN (SELECT id FROM geometries WHERE project_id = ?)`,
+      params: [project.id],
+    },
     { sql: "DELETE FROM geometries WHERE project_id = ?", params: [project.id] },
     { sql: "DELETE FROM survey_points WHERE project_id = ?", params: [project.id] },
     { sql: "DELETE FROM map_packages WHERE project_id = ?", params: [project.id] },

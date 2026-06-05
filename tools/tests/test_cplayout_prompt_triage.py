@@ -156,7 +156,7 @@ class PromptTriageTests(unittest.TestCase):
         )
         return result.stdout
 
-    def test_stop_hook_flags_explicit_multi_agent_without_decision(self) -> None:
+    def test_stop_hook_is_disabled_for_explicit_multi_agent_without_decision(self) -> None:
         output = self.stop_hook_output(
             {
                 "hook_event_name": "Stop",
@@ -165,11 +165,9 @@ class PromptTriageTests(unittest.TestCase):
                 "last_assistant_message": "Implemented the change and ran tests.",
             }
         )
-        parsed = json.loads(output)
-        self.assertEqual(parsed["decision"], "block")
-        self.assertIn("subagent accounting", parsed["reason"])
+        self.assertEqual(output.strip(), "")
 
-    def test_stop_hook_flags_matched_specialist_without_decision(self) -> None:
+    def test_stop_hook_is_disabled_for_matched_specialist_without_decision(self) -> None:
         output = self.stop_hook_output(
             {
                 "hook_event_name": "Stop",
@@ -178,10 +176,9 @@ class PromptTriageTests(unittest.TestCase):
                 "last_assistant_message": "Validated the storage route.",
             }
         )
-        parsed = json.loads(output)
-        self.assertEqual(parsed["decision"], "block")
+        self.assertEqual(output.strip(), "")
 
-    def test_stop_hook_uses_official_last_assistant_message_and_loop_guard(self) -> None:
+    def test_stop_hook_disabled_state_is_silent_with_official_payload_and_loop_guard(self) -> None:
         output = self.stop_hook_output(
             {
                 "hook_event_name": "Stop",
@@ -190,7 +187,7 @@ class PromptTriageTests(unittest.TestCase):
                 "last_assistant_message": "Validated the storage route.",
             }
         )
-        self.assertEqual(json.loads(output)["decision"], "block")
+        self.assertEqual(output.strip(), "")
 
         guarded_output = self.stop_hook_output(
             {
@@ -201,6 +198,59 @@ class PromptTriageTests(unittest.TestCase):
             }
         )
         self.assertEqual(guarded_output.strip(), "")
+
+    def test_stop_hook_ignores_stale_transcript_route_when_latest_prompt_does_not_match(self) -> None:
+        output = self.stop_hook_output(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "messages": [
+                    {"role": "user", "content": "Use multi-agent expert panels for managed hook enforcement."},
+                    {"role": "assistant", "content": "Implemented the process change."},
+                    {"role": "user", "content": "what is causing repeated stream interruptions?"},
+                    {"role": "assistant", "content": "Those were client interrupt events, not stream failures."},
+                ],
+            }
+        )
+        self.assertEqual(output.strip(), "")
+
+    def test_stop_hook_stays_silent_when_latest_role_message_requires_accounting(self) -> None:
+        output = self.stop_hook_output(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "messages": [
+                    {"role": "user", "content": "Format this sentence."},
+                    {"role": "assistant", "content": "Done."},
+                    {
+                        "role": "user",
+                        "content": "Review Expo SQLite project archive persistence and ZIP schema migration.",
+                    },
+                    {"role": "assistant", "content": "Validated the storage route."},
+                ],
+            }
+        )
+        self.assertEqual(output.strip(), "")
+
+    def test_stop_hook_fails_open_for_unstructured_transcript_or_missing_final(self) -> None:
+        unstructured_output = self.stop_hook_output(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "transcript": "Old request: use multi-agent panels. Latest answer: done.",
+                "last_assistant_message": "Done.",
+            }
+        )
+        self.assertEqual(unstructured_output.strip(), "")
+
+        missing_final_output = self.stop_hook_output(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "prompt": "Use multi-agent expert panels to review managed hook enforcement.",
+            }
+        )
+        self.assertEqual(missing_final_output.strip(), "")
 
     def test_stop_hook_accepts_exact_subagent_decision_or_fallback_labels(self) -> None:
         for assistant_response in (

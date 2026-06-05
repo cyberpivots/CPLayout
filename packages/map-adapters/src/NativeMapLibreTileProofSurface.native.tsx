@@ -38,6 +38,7 @@ export function NativeMapLibreTileProofSurface(): React.JSX.Element {
   return (
     <View style={styles.shell} testID="native-maplibre-proof-panel">
       <MapLibreMap
+        androidView="surface"
         style={styles.map}
         mapStyle={proofMapStyle}
         attribution={false}
@@ -66,11 +67,11 @@ export function NativeMapLibreTileProofSurface(): React.JSX.Element {
             type="line"
             source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
             {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.borders }}
-            style={{
-              lineColor: "#f2d27a",
-              lineDasharray: [3, 2],
-              lineOpacity: 0.9,
-              lineWidth: 2,
+            paint={{
+              "line-color": "#f2d27a",
+              "line-dasharray": [3, 2],
+              "line-opacity": 0.9,
+              "line-width": 2,
             }}
           />
           <Layer
@@ -78,12 +79,14 @@ export function NativeMapLibreTileProofSurface(): React.JSX.Element {
             type="line"
             source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
             {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.roads }}
-            style={{
-              lineCap: "round",
-              lineColor: "#fffaf0",
-              lineJoin: "round",
-              lineOpacity: 0.95,
-              lineWidth: 7,
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+            paint={{
+              "line-color": "#fffaf0",
+              "line-opacity": 0.95,
+              "line-width": 7,
             }}
           />
           <Layer
@@ -91,39 +94,43 @@ export function NativeMapLibreTileProofSurface(): React.JSX.Element {
             type="line"
             source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
             {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.roads }}
-            style={{
-              lineCap: "round",
-              lineColor: "#d97832",
-              lineJoin: "round",
-              lineOpacity: 0.95,
-              lineWidth: 3,
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+            paint={{
+              "line-color": "#d97832",
+              "line-opacity": 0.95,
+              "line-width": 3,
             }}
           />
           <Layer
             id="cplayout-native-maplibre-proof-road-labels"
-            type="symbol"
+            type="line"
             source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
             {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.roadLabels }}
-            style={{
-              symbolPlacement: "line",
-              textColor: "#4d321d",
-              textField: ["coalesce", ["get", "name"], ""],
-              textHaloColor: "#fffef8",
-              textHaloWidth: 1.4,
-              textSize: 13,
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+            paint={{
+              "line-color": "#6b4a2f",
+              "line-dasharray": [1, 3],
+              "line-opacity": 0.82,
+              "line-width": 2,
             }}
           />
           <Layer
             id="cplayout-native-maplibre-proof-places"
-            type="symbol"
+            type="circle"
             source={NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.id}
             {...{ "source-layer": NATIVE_MAPLIBRE_PROOF_TILE_SOURCE.layers.places }}
-            style={{
-              textColor: "#dceee6",
-              textField: ["coalesce", ["get", "name"], ""],
-              textHaloColor: "#1a2630",
-              textHaloWidth: 1.4,
-              textSize: 14,
+            paint={{
+              "circle-color": "#dceee6",
+              "circle-opacity": 0.95,
+              "circle-radius": 7,
+              "circle-stroke-color": "#1a2630",
+              "circle-stroke-width": 2,
             }}
           />
         </VectorSource>
@@ -134,12 +141,12 @@ export function NativeMapLibreTileProofSurface(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   shell: {
-    height: 190,
-    minHeight: 190,
+    alignSelf: "stretch",
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
     overflow: "hidden",
     backgroundColor: "#1a2630",
-    borderBottomColor: "#2f4337",
-    borderBottomWidth: 1,
   },
   map: {
     flex: 1,

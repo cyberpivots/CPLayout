@@ -1,7 +1,7 @@
 # Google Earth Map Improvement Loop
 
-Date: 2026-05-28
-Status: Iteration 7 complete; local Google Earth Pro visual-fidelity proof passed for documented artifacts, with native/mobile claims still unverified.
+Date: 2026-06-05
+Status: Current strict Google Earth Pro visual-fidelity proof passed on 2026-06-04 for the local KML/KMZ packet, with native/mobile claims still unverified.
 
 ## Scope
 
@@ -9,6 +9,7 @@ Status: Iteration 7 complete; local Google Earth Pro visual-fidelity proof passe
 - KML/KMZ remains WGS84 interchange only. Project geometry remains projected/local `XY`.
 - Google Earth Pro is a companion validation surface for exported artifacts, not CPLayout app runtime behavior.
 - The 2026-06-03 Google Earth-inspired Help and Places/Layers UI update is an onboarding/process surface only. It does not create a new Google Earth render-proof claim, alter KML/KMZ contracts, or change canonical projected `XY`.
+- The earlier 2026-06-04 refresh attempt found an ambiguous already-running Google Earth Pro process and was correctly blocked to avoid contaminating an operator-owned session. A later strict run passed at `reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/visual-fidelity-manifest.json`: `proofPassed: true`, `overlayVisibleConfirmed: true`, KML integrity passed, cleanup was uncontaminated with `postflightProcessRemaining: false`, and the map-canvas capture `google-earth-visual-fidelity-map-canvas.png` had SHA-256 `990f7b789bf78e2252fb94d8ff35be05299a1d58353a45d25cf1e30ad4e84f23`, non-black ratio `0.9925660141582399`, and gray variance `2230.895`.
 - Publish method for this loop is direct `main` push after `origin/main...HEAD` is confirmed even and all release checks pass. No force push.
 
 ## Panel Roles
@@ -150,7 +151,7 @@ Next recommended slice:
 ## Remaining Unverified Claims
 
 - Android/iOS persistence, native file sharing, native MapLibre rendering, and raw PMTiles/MBTiles rendering remain unverified until the device/emulator checklist passes.
-- Google Earth visual fidelity remains unverified until styled KML/KMZ is opened in Google Earth Pro and non-black screenshots prove it.
+- Google Earth visual fidelity is proven only for the strict 2026-06-04 local artifact packet referenced above. New styled KML/KMZ exports still need their own Google Earth Pro run with non-black map-canvas evidence, overlay confirmation, artifact hashes, and uncontaminated cleanup before a new visual-fidelity claim is made.
 
 ## Google Earth Imagery Analysis Skill
 
@@ -572,4 +573,4 @@ Non-goals and unverified claims:
 
 - This slice does not make Google Earth evidence native/mobile proof and does not build a Google imagery dataset.
 - This slice does not add React Native Python, GDAL, SAM2, ONNX Runtime, cloud ML, hidden keys, or paid imagery.
-- Google Earth desktop render proof still requires full-window and map-canvas evidence when making visual-fidelity claims.
+- Google Earth desktop render proof remains artifact-specific; future visual-fidelity claims still require full-window and map-canvas evidence plus cleanup status.

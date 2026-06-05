@@ -37,18 +37,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/cplayout_stop_multi_agent.py\"",
-            "timeout": 20,
-            "statusMessage": "Checking CPLayout multi-agent summary"
-          }
-        ]
-      }
     ]
   }
 }

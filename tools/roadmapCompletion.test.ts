@@ -92,6 +92,9 @@ assert.equal(validateGoogleEarthManifest(googleEarthManifestPath).ok, true);
 const screenshotPath = join(proofRoot, "native-maplibre.png");
 writeFileSync(screenshotPath, "native maplibre screenshot fixture", "utf8");
 const screenshotSha256 = createHash("sha256").update("native maplibre screenshot fixture").digest("hex");
+const nativeMapLibreLogcatPath = join(proofRoot, "native-maplibre-logcat.txt");
+writeFileSync(nativeMapLibreLogcatPath, "MapLibre Native [INFO] [Mbgl-HttpRequest] local vector tile proof loaded\n", "utf8");
+const nativeMapLibreLogcatSha256 = createHash("sha256").update("MapLibre Native [INFO] [Mbgl-HttpRequest] local vector tile proof loaded\n").digest("hex");
 const nativeMapLibreReportPath = join(proofRoot, "native-maplibre-report.json");
 writeFileSync(nativeMapLibreReportPath, JSON.stringify({
   reportSchemaVersion: 1,
@@ -143,6 +146,16 @@ writeFileSync(nativeMapLibreReportPath, JSON.stringify({
     tileJsonRequests: 1,
     tileRequests: 4,
   },
+  logcat: {
+    path: "native-maplibre-logcat.txt",
+    sha256: nativeMapLibreLogcatSha256,
+    lineCount: 1,
+    mapLibreLineCount: 1,
+    mapLibreErrorLines: [],
+    resourceUrlErrorCount: 0,
+    resourceUrlErrorLines: [],
+    clearedBeforeLaunch: true,
+  },
 }), "utf8");
 assert.equal(validateNativeMapLibreReport(nativeMapLibreReportPath).ok, true);
 
@@ -153,5 +166,20 @@ writeFileSync(missingTileServerReportPath, JSON.stringify(missingTileServerRepor
 const missingTileServerValidation = validateNativeMapLibreReport(missingTileServerReportPath);
 assert.equal(missingTileServerValidation.ok, false);
 assert.match(missingTileServerValidation.errors.join("\n"), /tileServer\.tileRequests/);
+
+const resourceUrlErrorReportPath = join(proofRoot, "native-maplibre-resource-url-error-report.json");
+const resourceUrlErrorReport = JSON.parse(readFileSync(nativeMapLibreReportPath, "utf8")) as {
+  logcat?: { mapLibreErrorLines?: string[]; resourceUrlErrorCount?: number; resourceUrlErrorLines?: string[] };
+};
+resourceUrlErrorReport.logcat = {
+  ...resourceUrlErrorReport.logcat,
+  mapLibreErrorLines: ["MapLibre Native [ERROR] [Mbgl-HttpRequest] [HTTP] Unable to parse resourceURL"],
+  resourceUrlErrorCount: 1,
+  resourceUrlErrorLines: ["MapLibre Native [ERROR] [Mbgl-HttpRequest] [HTTP] Unable to parse resourceURL"],
+};
+writeFileSync(resourceUrlErrorReportPath, JSON.stringify(resourceUrlErrorReport), "utf8");
+const resourceUrlErrorValidation = validateNativeMapLibreReport(resourceUrlErrorReportPath);
+assert.equal(resourceUrlErrorValidation.ok, false);
+assert.match(resourceUrlErrorValidation.errors.join("\n"), /logcat\.resourceUrlErrorCount/);
 
 console.log("roadmap completion automation tests passed");

@@ -51,7 +51,7 @@ Subagent decision rules:
 
 ## Stop Hook
 
-The `Stop` hook uses the documented Stop continuation shape for missing subagent accounting: if an explicit multi-agent prompt or matched specialist prompt ends without `Subagent decision:` or `Accepted fallback:`, it returns `decision: "block"` with a one-more-pass reason. It must ignore repeat invocations when `stop_hook_active` is true.
+The project-local `Stop` continuation hook is disabled. `.codex/hooks.json` does not register `Stop`, and `.codex/hooks/cplayout_stop_multi_agent.py` is a compatibility no-op for already-loaded command references. Missing subagent accounting should be corrected through the normal coordinator contract, not by automatic Stop continuation prompts.
 
 ## Validation
 

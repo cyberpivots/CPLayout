@@ -31,7 +31,7 @@ Keep center-pivot layout work inside the current workspace split. Pure domain an
 
 - Web MVP persistence uses browser local storage until Expo SQLite web WASM and COOP/COEP hosting are configured.
 - Native SQLite and ZIP sharing may typecheck and compile without proving device behavior.
-- Android native MapLibre is proven only for the generated TileJSON/tile-template adapter path. Raw PMTiles/MBTiles rendering and iOS native rendering remain advanced lanes until local adapter work and platform verification pass.
+- Android native MapLibre has historical generated TileJSON/tile-template evidence only. The 2026-06-04 vector proof failed with zero local tile requests; the proof route now takes precedence over the default Android aerial workbench, but a fresh device report with tile requests greater than zero is still required. Raw PMTiles/MBTiles rendering and iOS native rendering remain advanced lanes until local adapter work and platform verification pass.
 - Full saveable geometry editing is incomplete until draft vertices can be committed to project field/obstacle entities with undo and validation.
 
 ## Acceptance Checks

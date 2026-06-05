@@ -55,6 +55,6 @@ The v1 built-in live provider remains USGS The National Map Imagery Only and is 
 - No Google, Bing, paid Mapbox, paid Esri/ArcGIS, hidden API keys, scraping, public OSM bulk tile use, or trial-only hosted imagery.
 - No bulk caching, repackaging, or offline downloading of public live tile endpoints through CPLayout.
 - No raw PMTiles/MBTiles Android production claim until a local protocol, conversion, or tile-serving adapter is implemented and device-proven.
-- No claim that raw PMTiles/MBTiles rendering, iOS MapLibre behavior, or iOS native ZIP sharing is production-verified before device/emulator evidence. Android generated-template MapLibre and Android canonical ZIP share/picker have separate completed reports.
+- No claim that raw PMTiles/MBTiles rendering, iOS MapLibre behavior, iOS native ZIP sharing, current Android schema-v10 SQLite/ZIP behavior, or Android vector MapLibre behavior is production-verified before device/emulator evidence. Android generated-template MapLibre and Android canonical ZIP share/picker have historical reports only until the current proof gates pass again.
 - No automatic geometry mutation from imagery. Imagery-derived vertices are planning evidence until field-verified and explicitly accepted.
 - No verified Google Earth headless screenshot API, no permission claim for bulk automated CV extraction from Earth imagery, and no product-facing Google Earth comparison dataset rights.

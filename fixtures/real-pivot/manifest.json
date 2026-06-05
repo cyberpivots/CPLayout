@@ -1,6 +1,6 @@
 {
   "schemaVersion": "cplayout-real-pivot-fixtures-v1",
-  "generatedAt": "2026-06-03T01:05:52.197Z",
+  "generatedAt": "2026-06-05T13:20:23.829Z",
   "generatedBy": "tools/generateRealPivotFixtureManifest.ts",
   "projectId": "public-adams-county-center-pivot-proof",
   "projectName": "Public Adams County Center Pivot Proof",
@@ -26,24 +26,22 @@
         "paidServiceRequired": false
       },
       "artifacts": {
-        "mapCanvasCrop": "../../reports/google-earth-visual-fidelity/20260530T134720Z/google-earth-visual-fidelity-map-canvas.png",
-        "fullWindowScreenshot": "../../reports/google-earth-visual-fidelity/20260530T134720Z/google-earth-visual-fidelity-full-window.png",
-        "placesSidebarScreenshot": "../../reports/google-earth-visual-fidelity/20260530T134720Z/google-earth-visual-fidelity-places-sidebar.png",
-        "visualFidelityManifest": "../../reports/google-earth-visual-fidelity/20260530T134720Z/visual-fidelity-manifest.json",
-        "projectReference": "../../reports/google-earth-visual-fidelity/public-adams-county-center-pivot-proof-project.json",
-        "kml": "../../reports/google-earth-visual-fidelity/20260530T134720Z/cplayout-google-earth-visual-fidelity.kml",
-        "kmz": "../../reports/google-earth-visual-fidelity/20260530T134720Z/cplayout-google-earth-visual-fidelity.kmz",
-        "generatedFixture": "../../reports/google-earth-visual-fidelity/20260530T134720Z/generated-fixture.json"
+        "mapCanvasCrop": "../../reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/google-earth-visual-fidelity-map-canvas.png",
+        "fullWindowScreenshot": "../../reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/google-earth-visual-fidelity-full-window.png",
+        "placesSidebarScreenshot": "../../reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/google-earth-visual-fidelity-places-sidebar.png",
+        "visualFidelityManifest": "../../reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/visual-fidelity-manifest.json",
+        "kml": "../../reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/cplayout-google-earth-visual-fidelity.kml",
+        "kmz": "../../reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/cplayout-google-earth-visual-fidelity.kmz",
+        "generatedFixture": "../../reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/generated-fixture.json"
       },
       "artifactHashes": {
-        "mapCanvasCrop": "d468bda66ef15e5a5a2be0c3f27a1d45a667ba378b679868a17cfa9cbc89499a",
-        "fullWindowScreenshot": "6d564c3e2f57d55c0c912cdc4f9d1ad0d97413e459d4b5dfc1842c1479640f26",
-        "placesSidebarScreenshot": "f233d1b1aa9fb5a70b36821ddd358e6843f1a7ac9c050c69ddfa6e63ae0dc8ab",
-        "visualFidelityManifest": "42ec4889afb61d8017cc8e2b9a4c21d23f80680ed46b79c7b589c46ca4771a02",
-        "projectReference": "7a29eeb1eeb284b9f4b6997888fd9fd9b685b44409e3f1c4e6b1840ce0611154",
-        "kml": "80aeda60c79bf3a08c4b4545b1d787a089bf9747fa0ac534e963d6dd427a4fba",
-        "kmz": "b9a7620b128173488d1a169fb774719a0ac335e6bbf693fe93563c675bdf5971",
-        "generatedFixture": "c5c56a5ad296a630163ee37a125cb0f7605f2728e5c846691171962d79024f8b"
+        "mapCanvasCrop": "990f7b789bf78e2252fb94d8ff35be05299a1d58353a45d25cf1e30ad4e84f23",
+        "fullWindowScreenshot": "44853cb3015672634c84688bc2244b89f6080b2affd999fd924eba3342ecaaf1",
+        "placesSidebarScreenshot": "27bb535a354c6c27dada99e84e2e4aa9c78ed1dc8968dc1b562ccb99d7ad926a",
+        "visualFidelityManifest": "b32c904410d973780921ad59dcac058861c76755de957b5984b7d2664a2640f9",
+        "kml": "c12acbf06f6a6142cf75555434ef3bd65de5ce3a2b5342a742dfc4277d9b3661",
+        "kmz": "c2443cee6f05216bd41ed3e337be8c57e240b1931e745031c069e400800e526f",
+        "generatedFixture": "fb097cfef8e9a4ba4f9f3919010ca1141bc15c2abec51c18f2ef2b02fff1bc23"
       },
       "truthLabels": {
         "TRUE_PIVOT_CENTER": {
@@ -70,7 +68,7 @@
       ],
       "hardFailures": [],
       "warnings": [
-        "Advisory real-world fixture proof only; Review Apply XY must remain explicit before canonical geometry mutation."
+        "Advisory real-world fixture proof only; CPLayout geometry changes require explicit Files import or Map editing."
       ]
     }
   ]

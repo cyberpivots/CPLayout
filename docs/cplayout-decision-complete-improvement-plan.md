@@ -2,7 +2,7 @@
 
 ## Summary
 
-CPLayout should keep canonical layout geometry in projected/local `XY` coordinates while making decimal degrees the default user-facing WGS84 entry/display mode. Offline imagery should remain free/no-cost and locally packaged, with Android MapLibre limited to the proven TileJSON/tile URL template path until raw PMTiles/MBTiles adapters are device-proven. Expert-agent review belongs in chat/workspace planning and validation records, not as an application route or project data contract. ML belongs in offline preprocessing or companion tooling unless a native on-device inference path is proven on Android/iOS.
+CPLayout should keep canonical layout geometry in projected/local `XY` coordinates while making decimal degrees the default user-facing WGS84 entry/display mode. Offline imagery should remain free/no-cost and locally packaged, with Android MapLibre kept behind current device proof gates until the TileJSON/tile URL template path passes again and raw PMTiles/MBTiles adapters are device-proven. Expert-agent review belongs in chat/workspace planning and validation records, not as an application route or project data contract. ML belongs in offline preprocessing or companion tooling unless a native on-device inference path is proven on Android/iOS.
 
 ## Key Implementation Changes
 

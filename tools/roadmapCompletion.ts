@@ -772,6 +772,16 @@ export function validateNativeMapLibreReport(reportPath: string): {
       tileJsonRequests?: unknown;
       tileRequests?: unknown;
     };
+    logcat?: {
+      path?: unknown;
+      sha256?: unknown;
+      lineCount?: unknown;
+      mapLibreLineCount?: unknown;
+      mapLibreErrorLines?: unknown;
+      resourceUrlErrorCount?: unknown;
+      resourceUrlErrorLines?: unknown;
+      clearedBeforeLaunch?: unknown;
+    };
   };
   if (report.reportSchemaVersion !== 1) errors.push("reportSchemaVersion must be 1");
   if (report.proofTarget !== "native-maplibre-render") errors.push("proofTarget must be native-maplibre-render");
@@ -854,17 +864,49 @@ export function validateNativeMapLibreReport(reportPath: string): {
     && (typeof report.tileServer.tileJsonRequests !== "number" || report.tileServer.tileJsonRequests < 0)) {
     errors.push("tileServer.tileJsonRequests must be a nonnegative number when present");
   }
+  const logcatPath = typeof report.logcat?.path === "string" && report.logcat.path.trim().length > 0
+    ? resolve(dirname(reportPath), report.logcat.path)
+    : "";
+  if (!logcatPath) {
+    errors.push("logcat.path is required");
+  } else if (!existsSync(logcatPath)) {
+    errors.push(`logcat evidence does not exist: ${logcatPath}`);
+  }
+  if (typeof report.logcat?.sha256 !== "string" || !/^[a-fA-F0-9]{64}$/.test(report.logcat.sha256)) {
+    errors.push("logcat.sha256 must be a SHA-256 hex digest");
+  } else if (logcatPath && existsSync(logcatPath)) {
+    const actualSha256 = sha256File(logcatPath);
+    if (actualSha256.toLowerCase() !== report.logcat.sha256.toLowerCase()) {
+      errors.push("logcat.sha256 does not match the logcat evidence file");
+    }
+  }
+  if (typeof report.logcat?.lineCount !== "number" || report.logcat.lineCount < 0) {
+    errors.push("logcat.lineCount must be a nonnegative number");
+  }
+  if (typeof report.logcat?.mapLibreLineCount !== "number" || report.logcat.mapLibreLineCount < 0) {
+    errors.push("logcat.mapLibreLineCount must be a nonnegative number");
+  }
+  if (!Array.isArray(report.logcat?.mapLibreErrorLines)) {
+    errors.push("logcat.mapLibreErrorLines must be an array");
+  }
+  if (typeof report.logcat?.resourceUrlErrorCount !== "number" || report.logcat.resourceUrlErrorCount !== 0) {
+    errors.push("logcat.resourceUrlErrorCount must be 0");
+  }
+  if (!Array.isArray(report.logcat?.resourceUrlErrorLines) || report.logcat.resourceUrlErrorLines.length !== 0) {
+    errors.push("logcat.resourceUrlErrorLines must be an empty array");
+  }
 
   return {
     ok: errors.length === 0,
     errors,
-    evidence: [reportPath, screenshotPath].filter((value) => value.length > 0),
+    evidence: [reportPath, screenshotPath, logcatPath].filter((value) => value.length > 0),
     details: {
       target: report.target,
       tileSource: report.tileSource,
       screenshot: report.screenshot,
       boundaries: report.boundaries,
       tileServer: report.tileServer,
+      logcat: report.logcat,
     },
   };
 }

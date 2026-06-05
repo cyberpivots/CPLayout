@@ -14,16 +14,37 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 - `npm run check:android-tools` detects `adb`, connected devices/emulators, whether `local.centerpivot.layout` is installed, and basic package/log evidence.
 - `npm run verify:android-native` writes a timestamped JSON report under `reports/android-native-verification/` and fails until a built app plus completed checklist evidence are available.
 - `npm run verify:android-native -- --report <report.json>` validates a completed report. Incomplete reports fail and must not be used to claim native runtime verification.
+- `npm run verify:android-layout` remains the narrow normal-workspace Android layout proof. It captures one screenshot, UIAutomator XML, MapLibre logcat evidence, PNG metrics, and writes `reports/android-layout/latest.json`.
+- `npm run review:android-app` runs the broader advisory Android app-review loop. It launches the installed package or dev-client URL unless `--no-launch` is supplied, drives the selected Android routes with ADB/UIAutomator, captures screenshots/XML/OCR/CV/logcat evidence for each scenario, and writes a timestamped report plus `reports/android-app-review/latest.json`. Supported options are `--serial`, `--dev-client-url`, `--wait-ms`, `--scenarios`, `--output-dir`, and `--no-launch`.
+- `EXPO_PUBLIC_CPLAYOUT_ANDROID_NATIVE_PROOF=1 npm run start -w @cplayout/mobile -- --dev-client --port 8082 --clear` serves a proof-only Android development-client bundle. With that server running, `npm run verify:android-native -- --collect --dev-client-url "exp+center-pivot-layout://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082" --wait-ms 30000` launches the app, collects the in-app SQLite/archive proof marker from logcat, drives Files ZIP export/import through Android UIAutomator, captures share-sheet/DocumentsUI screenshots/XML, and writes a completed or failed report.
+- Use `--serial <adb-serial>` when more than one device/emulator is visible. The report passes only when both in-app schema/archive evidence and OS share-sheet/DocumentsUI picker evidence are present.
 - `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run android` builds a development app with the native MapLibre tile-template proof panel enabled; after install, `npm run verify:native-maplibre` starts the local proof tile server, runs `adb reverse`, captures a device screenshot, computes pixel metrics, and writes `reports/native-maplibre/latest.json`.
 - For Expo development-client runs, start Metro with the same proof environment and pass the dev-client URL to the proof runner with `--dev-client-url` or `CPLAYOUT_EXPO_DEV_CLIENT_URL`. Redirect Metro logs during automation so ANSI progress output does not flood WSL sessions.
-- Use `docs/android-native-verification-report-template.json` as the checked-in report shape. Runtime reports are intentionally ignored by Git unless a specific report is promoted intentionally.
+- Use `docs/android-native-verification-report-template.json` as the checked-in report shape. The observed evidence arrays start empty; fill them only from device SQL/query evidence. Runtime reports are intentionally ignored by Git unless a specific report is promoted intentionally.
+- Generated Android layout/app-review reports are local evidence artifacts. Promote only curated summaries with hashes under `docs/evidence/` when a claim must survive report cleanup.
 
-Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) passed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` for Expo SQLite save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and schema migration evidence through schema v8. This is Android proof only; schema v9 imagery provenance, imported local aerial raster packages, iOS, Android vector MapLibre after the new `VectorSource` harness, and raw PMTiles/MBTiles native rendering still require their own reports.
+Historical Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) passed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` for Expo SQLite save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and schema migration evidence through schema v8. That report is historical evidence only and does not satisfy the current schema v10 native runtime gate.
+
+Current Android proof gate, 2026-06-04: SQLite schema v10, migrations 1-10, map-package imagery provenance, and retired review-table removal require a newly completed report. Locally generated incomplete schema-v10 templates under `reports/android-native-verification/` are blocker evidence, not production verification. Current Android native proof must pass `npm run verify:android-native -- --report <completed-report.json>` before native SQLite or ZIP sharing are reported as current.
+
+## Android App Review Loop
+
+Run this loop when reviewing Android tablet app workflow, route structure, drawer/HUD safety, Files controls, Settings, Help, and optional native MapLibre proof routing:
+
+```sh
+npm run review:android-app -- --serial R52W20BK7XH --dev-client-url "exp+center-pivot-layout://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082" --wait-ms 30000
+```
+
+The default scenarios are `map-workspace`, `map-drawers-open`, `map-drawers-closed`, `files-route`, `settings-route`, and `help-route`. Add `native-maplibre-proof` only when the installed build and Metro/dev-client server were both started with `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1`.
+
+The app-review report fails on blank or near-uniform screenshots, missing required UIAutomator route anchors, MapLibre `resourceURL` errors, or clickable controls overlapping Android system bars. It warns on dense edge/clutter metrics, duplicated labels, clipped OCR/text evidence, small touch targets, and overlapping click targets. UIAutomator XML is the primary source for labels, bounds, clickability, and route anchors; Tesseract OCR and OpenCV screenshot metrics are corroborating advisory evidence only.
+
+This loop does not satisfy Android native SQLite/ZIP proof, schema-v10 migrations, Android share-sheet/DocumentsUI proof, raw PMTiles/MBTiles rendering, iOS behavior, or production geometry correctness. Screenshots, XML, OCR, and CV evidence cannot populate or mutate canonical projected/local `XY`.
 
 ## SQLite Project Store
 
 1. Open the app and navigate to `Files`.
-2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v9`.
+2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v10`.
 3. Save the sample project.
 4. Close and relaunch the app.
 5. Refresh the project list and open the saved project.
@@ -38,6 +59,7 @@ Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 
 4. Import the same ZIP package through the app picker.
 5. Confirm the imported project opens and is saved back to SQLite.
 6. Confirm `manifest.json` and `project.json` are present and that `manifest.projectId` and `manifest.projectCrs` match `project.json`.
+7. Fill `osFileUi` with Android resolver/share-sheet and DocumentsUI picker evidence: `shareSheetOpened`, `shareSheetScreenshotPath`, `shareSheetXmlPath`, `documentsPickerOpened`, `documentsPickerScreenshotPath`, `documentsPickerXmlPath`, pushed ZIP path, selected filename, and selected byte count.
 
 ## Migration Evidence
 
@@ -45,6 +67,7 @@ Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 
 - `PRAGMA user_version` returns `10`.
 - `map_packages` has the tile metadata columns from migrations `3`, `8`, and `9`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `vector_overlay_json`, `imagery_provenance_json`, `checksum_sha256`, and `install_status`.
 - The v10 migration has removed retired review tables: `layout_evidence`, `model_recommendations`, and `layout_decisions` are absent after migration.
+- Fill `sqlite.absentTables` in the report with exactly the retired review tables confirmed absent by SQL evidence: `layout_evidence`, `model_recommendations`, and `layout_decisions`.
 - Geometry rows and vertices are populated after save.
 
 ## Native MapLibre Vector Tile Template Proof
@@ -54,8 +77,9 @@ Current Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 
 3. Start the Expo dev server with the proof environment, for example `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1 npm run start -w @cplayout/mobile -- --dev-client --port 8082 --clear`.
 4. Run `npm run verify:native-maplibre -- --dev-client-url "exp+center-pivot-layout://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082" --wait-ms 20000`.
 5. Validate that `reports/native-maplibre/latest.json` has `status: "pass"`, `tileSource.tileSourceKind: "tilejson_or_template"`, `tileSource.tileContentType: "vector"`, `tileSource.sourceComponent: "VectorSource"`, source layers for roads, borders, labels, and places, a local `127.0.0.1` `.pbf` tile URL template, `tileServer.tileRequests` greater than zero, screenshot SHA-256, positive dimensions, nonblank pixel ratio, and gray variance.
-6. Confirm the app screenshot shows nonblank rendered map content from the vector fixture and not only a launched app shell.
-7. Do not treat this as raw PMTiles/MBTiles native rendering proof; it proves the generated vector TileJSON/template adapter path only.
+6. If `tileServer.tileRequests` remains zero, first verify the app was built or served with `EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF=1`; that proof route must render before the default Android aerial workbench.
+7. Confirm the app screenshot shows nonblank rendered map content from the vector fixture and not only a launched app shell.
+8. Do not treat this as raw PMTiles/MBTiles native rendering proof; it proves the generated vector TileJSON/template adapter path only.
 
 ## Android Free Aerial Imagery Package Proof
 

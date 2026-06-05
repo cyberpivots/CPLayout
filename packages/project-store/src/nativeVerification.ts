@@ -4,6 +4,7 @@ import { SQLITE_MIGRATIONS, SQLITE_SCHEMA_VERSION } from "./persistenceSchema";
 
 export const ANDROID_NATIVE_REPORT_SCHEMA_VERSION = 1;
 export const ANDROID_NATIVE_PROOF_TARGET = "android-native-runtime";
+export const ANDROID_NATIVE_IN_APP_PROOF_LOG_MARKER = "CPLAYOUT_ANDROID_NATIVE_PROOF_REPORT";
 export const ANDROID_NATIVE_REQUIRED_SQLITE_VERSION = SQLITE_SCHEMA_VERSION;
 export const ANDROID_NATIVE_REQUIRED_MIGRATIONS = SQLITE_MIGRATIONS.map((migration) => migration.id);
 export const ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS = [
@@ -15,6 +16,11 @@ export const ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS = [
   "imagery_provenance_json",
   "checksum_sha256",
   "install_status",
+] as const;
+export const ANDROID_NATIVE_REQUIRED_ABSENT_TABLES = [
+  "layout_evidence",
+  "model_recommendations",
+  "layout_decisions",
 ] as const;
 
 const ReportStatusSchema = z.enum(["pass", "fail", "blocked", "incomplete"]);
@@ -50,6 +56,7 @@ export const AndroidNativeVerificationReportSchema = z.object({
     pragmaUserVersion: z.number().int(),
     schemaMigrations: z.array(z.number().int()),
     mapPackageColumns: z.array(z.string()),
+    absentTables: z.array(z.string()),
     geometryRowsPopulated: z.boolean(),
   }),
   projectRoundTrip: z.object({
@@ -76,6 +83,19 @@ export const AndroidNativeVerificationReportSchema = z.object({
     manifestProjectIdMatched: z.boolean(),
     manifestProjectCrsMatched: z.boolean(),
     savedImportedProject: z.boolean(),
+  }),
+  osFileUi: z.object({
+    shareSheetOpened: z.boolean(),
+    shareSheetEvidence: z.string(),
+    shareSheetScreenshotPath: z.string(),
+    shareSheetXmlPath: z.string(),
+    documentsPickerOpened: z.boolean(),
+    documentsPickerEvidence: z.string(),
+    documentsPickerScreenshotPath: z.string(),
+    documentsPickerXmlPath: z.string(),
+    pushedZipPath: z.string(),
+    selectedZipFilename: z.string(),
+    selectedZipBytes: z.number().int(),
   }),
   checklist: z.object({
     cleanInstallOrUpgradePath: ChecklistEvidenceSchema,
@@ -136,6 +156,7 @@ export function createAndroidNativeVerificationReportTemplate(input: {
       pragmaUserVersion: 0,
       schemaMigrations: [],
       mapPackageColumns: [],
+      absentTables: [],
       geometryRowsPopulated: false,
     },
     projectRoundTrip: {
@@ -162,6 +183,19 @@ export function createAndroidNativeVerificationReportTemplate(input: {
       manifestProjectIdMatched: false,
       manifestProjectCrsMatched: false,
       savedImportedProject: false,
+    },
+    osFileUi: {
+      shareSheetOpened: false,
+      shareSheetEvidence: "",
+      shareSheetScreenshotPath: "",
+      shareSheetXmlPath: "",
+      documentsPickerOpened: false,
+      documentsPickerEvidence: "",
+      documentsPickerScreenshotPath: "",
+      documentsPickerXmlPath: "",
+      pushedZipPath: "",
+      selectedZipFilename: "",
+      selectedZipBytes: 0,
     },
     checklist: {
       cleanInstallOrUpgradePath: emptyChecklistEvidence(),
@@ -214,6 +248,14 @@ export function androidNativeVerificationCompletionErrors(report: AndroidNativeV
     loadedProjectName: report.projectRoundTrip.loadedProjectName,
     exportedFilename: report.zipRoundTrip.exportedFilename,
     importedProjectId: report.zipRoundTrip.importedProjectId,
+    shareSheetEvidence: report.osFileUi.shareSheetEvidence,
+    shareSheetScreenshotPath: report.osFileUi.shareSheetScreenshotPath,
+    shareSheetXmlPath: report.osFileUi.shareSheetXmlPath,
+    documentsPickerEvidence: report.osFileUi.documentsPickerEvidence,
+    documentsPickerScreenshotPath: report.osFileUi.documentsPickerScreenshotPath,
+    documentsPickerXmlPath: report.osFileUi.documentsPickerXmlPath,
+    pushedZipPath: report.osFileUi.pushedZipPath,
+    selectedZipFilename: report.osFileUi.selectedZipFilename,
     checklistDocument: report.evidence.checklistDocument,
     adbDeviceLine: report.evidence.adbDeviceLine,
     logExcerptPath: report.evidence.logExcerptPath,
@@ -236,6 +278,9 @@ export function androidNativeVerificationCompletionErrors(report: AndroidNativeV
   for (const columnName of ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS) {
     if (!report.sqlite.mapPackageColumns.includes(columnName)) errors.push(`map_packages.${columnName} evidence is missing`);
   }
+  for (const tableName of ANDROID_NATIVE_REQUIRED_ABSENT_TABLES) {
+    if (!report.sqlite.absentTables.includes(tableName)) errors.push(`retired table ${tableName} absence evidence is missing`);
+  }
   if (!report.sqlite.geometryRowsPopulated) errors.push("geometry rows must be populated after save");
 
   for (const [label, value] of Object.entries(report.projectRoundTrip)) {
@@ -250,6 +295,10 @@ export function androidNativeVerificationCompletionErrors(report: AndroidNativeV
   for (const [label, value] of Object.entries(report.zipRoundTrip)) {
     if (typeof value === "boolean" && !value) errors.push(`zipRoundTrip.${label} must be true`);
   }
+
+  if (!report.osFileUi.shareSheetOpened) errors.push("osFileUi.shareSheetOpened must be true");
+  if (!report.osFileUi.documentsPickerOpened) errors.push("osFileUi.documentsPickerOpened must be true");
+  if (report.osFileUi.selectedZipBytes <= 0) errors.push("osFileUi.selectedZipBytes must be greater than zero");
 
   for (const [label, check] of Object.entries(report.checklist)) {
     if (check.status !== "pass") errors.push(`checklist.${label}.status must be pass`);

@@ -45,6 +45,7 @@ export interface AndroidToolSnapshot {
 export function collectAndroidToolSnapshot(options: {
   packageName: string;
   outputDirectory: string;
+  serial?: string;
 }): AndroidToolSnapshot {
   const generatedAt = new Date().toISOString();
   const commit = currentGitCommit();
@@ -84,12 +85,14 @@ export function collectAndroidToolSnapshot(options: {
       devices = windowsDevices;
     }
   }
-  const selectedDevice = devices.find((device) => device.state === "device") ?? null;
+  const selectedDevice = devices.find((device) => device.state === "device" && (!options.serial || device.serial === options.serial)) ?? null;
   if (!selectedDevice) {
     return {
       ...baseSnapshot,
       devices,
-      blocker: "blocked: Android SDK/device unavailable (no connected adb device or running emulator).",
+      blocker: options.serial
+        ? `blocked: Android SDK/device unavailable (requested serial ${options.serial} is not connected as a device).`
+        : "blocked: Android SDK/device unavailable (no connected adb device or running emulator).",
     };
   }
 

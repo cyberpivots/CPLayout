@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { realCenterPivotProofProject } from "@cplayout/core";
+
 interface GeneratedRealPivotFixtureManifestOptions {
   outputPath?: string;
   proofDirectory?: string;
@@ -34,7 +36,7 @@ interface XY {
 export const DEFAULT_REAL_PIVOT_FIXTURE_MANIFEST_PATH = "fixtures/real-pivot/manifest.json";
 export const DEFAULT_REAL_PIVOT_PROJECT_REFERENCE_PATH =
   "reports/google-earth-visual-fidelity/public-adams-county-center-pivot-proof-project.json";
-export const DEFAULT_REAL_PIVOT_GOOGLE_EARTH_PROOF_DIRECTORY = "reports/google-earth-visual-fidelity/20260530T134720Z";
+export const DEFAULT_REAL_PIVOT_GOOGLE_EARTH_PROOF_DIRECTORY = "reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict";
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const outputPath = valueFor(process.argv.slice(2), "--output")
@@ -52,7 +54,8 @@ export function generateDefaultRealPivotFixtureManifest(
   const projectReferencePath = options.projectReferencePath ?? DEFAULT_REAL_PIVOT_PROJECT_REFERENCE_PATH;
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const outputDirectory = dirname(outputPath);
-  const project = readProjectJson(projectReferencePath);
+  const projectReferenceExists = existsSync(projectReferencePath);
+  const project = projectReferenceExists ? readProjectJson(projectReferencePath) : projectToJson(realCenterPivotProofProject);
   const projectId = requiredString(project.id, "Project reference must include id.");
   const projectName = requiredString(project.name, "Project reference must include name.");
   const projectCrs = requiredString(project.projectCrs, "Project reference must include projectCrs.");
@@ -63,16 +66,16 @@ export function generateDefaultRealPivotFixtureManifest(
     throw new Error("Project pivotCenter and pivot-center survey point do not match.");
   }
 
-  const artifactPaths = {
+  const artifactPaths: Record<string, string> = {
     mapCanvasCrop: joinProof(proofDirectory, "google-earth-visual-fidelity-map-canvas.png"),
     fullWindowScreenshot: joinProof(proofDirectory, "google-earth-visual-fidelity-full-window.png"),
     placesSidebarScreenshot: joinProof(proofDirectory, "google-earth-visual-fidelity-places-sidebar.png"),
     visualFidelityManifest: joinProof(proofDirectory, "visual-fidelity-manifest.json"),
-    projectReference: projectReferencePath,
     kml: joinProof(proofDirectory, "cplayout-google-earth-visual-fidelity.kml"),
     kmz: joinProof(proofDirectory, "cplayout-google-earth-visual-fidelity.kmz"),
     generatedFixture: joinProof(proofDirectory, "generated-fixture.json"),
   };
+  if (projectReferenceExists) artifactPaths.projectReference = projectReferencePath;
   for (const [label, path] of Object.entries(artifactPaths)) {
     if (!existsSync(path)) throw new Error(`Default real-pivot fixture artifact is missing (${label}): ${path}`);
   }
@@ -149,6 +152,16 @@ function readProjectJson(path: string): PivotProjectJson {
     throw new Error(`Project reference is not an object: ${path}`);
   }
   return parsed as PivotProjectJson;
+}
+
+function projectToJson(project: typeof realCenterPivotProofProject): PivotProjectJson {
+  return {
+    id: project.id,
+    name: project.name,
+    projectCrs: project.projectCrs,
+    pivotCenter: project.pivotCenter,
+    surveyPoints: project.surveyPoints,
+  };
 }
 
 function xy(value: unknown, message: string): XY {

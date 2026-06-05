@@ -85,37 +85,14 @@ HOOK_SAMPLES = (
 )
 
 
-STOP_MULTI_AGENT_ADVISORY_SAMPLE = (
-    "Stop multi-agent advisory",
+STOP_DISABLED_SAMPLE = (
+    "Stop disabled compatibility",
     ".codex/hooks/cplayout_stop_multi_agent.py",
     {
         "hook_event_name": "Stop",
         "stop_hook_active": False,
         "prompt": "Use multi-agent expert panels to review managed hook enforcement.",
         "last_assistant_message": "Implemented the change and ran tests.",
-    },
-)
-
-STOP_ACCEPTED_FALLBACK_SAMPLE = (
-    "Stop accepted fallback",
-    ".codex/hooks/cplayout_stop_multi_agent.py",
-    {
-        "hook_event_name": "Stop",
-        "prompt": "Use multi-agent expert panels to review managed hook enforcement.",
-        "last_assistant_message": (
-            "Subagent decision: optional. Accepted fallback: local coordinator only because no subagent tool is available."
-        ),
-    },
-)
-
-STOP_MATCHED_SPECIALIST_ADVISORY_SAMPLE = (
-    "Stop matched specialist advisory",
-    ".codex/hooks/cplayout_stop_multi_agent.py",
-    {
-        "hook_event_name": "Stop",
-        "stop_hook_active": False,
-        "prompt": "Review Expo SQLite project archive persistence and ZIP schema migration.",
-        "last_assistant_message": "Validated the storage route.",
     },
 )
 
@@ -180,9 +157,11 @@ def validate_hooks() -> list[str]:
         errors.append(".codex/hooks.json: UserPromptSubmit command does not reference cplayout_prompt_triage.py")
     hook_config = hooks.get("hooks", {})
     configured_events = set(hook_config) if isinstance(hook_config, dict) else set()
-    for event_name in ("UserPromptSubmit", "SubagentStart", "PreToolUse", "Stop"):
+    for event_name in ("UserPromptSubmit", "SubagentStart", "PreToolUse"):
         if event_name not in configured_events:
             errors.append(f".codex/hooks.json: missing {event_name} hook")
+    if "Stop" in configured_events:
+        errors.append(".codex/hooks.json: Stop hook must stay disabled to avoid continuation loops")
 
     pre_tool_entries = hook_config.get("PreToolUse", []) if isinstance(hook_config, dict) else []
     matcher = pre_tool_entries[0].get("matcher", "") if pre_tool_entries and isinstance(pre_tool_entries[0], dict) else ""
@@ -235,7 +214,7 @@ def validate_hooks() -> list[str]:
             errors.append(f"{label} sample missing additionalContext")
         print(f"[hook] {label} sample: ok")
 
-    for label, rel_script, sample in (STOP_MULTI_AGENT_ADVISORY_SAMPLE, STOP_MATCHED_SPECIALIST_ADVISORY_SAMPLE):
+    for label, rel_script, sample in (STOP_DISABLED_SAMPLE,):
         proc = subprocess.run(
             [sys.executable, str(ROOT / rel_script)],
             cwd=ROOT,
@@ -247,34 +226,11 @@ def validate_hooks() -> list[str]:
         )
         if proc.returncode != 0:
             errors.append(f"{label} sample failed: {proc.stdout.strip()}")
+        elif proc.stdout.strip():
+            errors.append(f"{label} sample produced unexpected output: {proc.stdout.strip()}")
         else:
-            try:
-                parsed = json.loads(proc.stdout)
-            except Exception as exc:  # noqa: BLE001 - report parser detail.
-                errors.append(f"{label} sample output invalid: {exc}")
-            else:
-                if parsed.get("decision") != "block":
-                    errors.append(f"{label} sample did not request Stop continuation")
-                if not isinstance(parsed.get("reason"), str):
-                    errors.append(f"{label} sample missing continuation reason")
-                print(f"[hook] {label} sample: ok")
+            print(f"[hook] {label} sample: ok")
 
-    label, rel_script, sample = STOP_ACCEPTED_FALLBACK_SAMPLE
-    proc = subprocess.run(
-        [sys.executable, str(ROOT / rel_script)],
-        cwd=ROOT,
-        input=json.dumps(sample),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-    if proc.returncode != 0:
-        errors.append(f"{label} sample failed: {proc.stdout.strip()}")
-    elif proc.stdout.strip():
-        errors.append(f"{label} sample should not emit advisory output")
-    else:
-        print(f"[hook] {label} sample: ok")
     return errors
 
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Advisory Stop hook for CPLayout prompts that need subagent accounting.
+"""Compatibility no-op for the disabled CPLayout Stop hook.
 
-When a required subagent decision is missing, the hook asks Codex for one more
-turn via the documented Stop continuation shape. Repo-local execution still
-depends on trust and local hook configuration.
+The Stop continuation path was disabled because stale or ambiguous runtime
+payloads could produce repeated continuation prompts. Subagent accounting stays
+documented in AGENTS.md and prompt-triage context, but this script must not
+block or continue a turn.
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ DECISION_RE = re.compile(
     r"\b(?:Subagent decision|Accepted fallback)\s*:",
     re.IGNORECASE,
 )
+STOP_CONTINUATION_ENABLED = False
 
 
 def _read_payload() -> dict[str, Any]:
@@ -82,12 +84,72 @@ def _flatten_text(value: Any) -> list[str]:
     return []
 
 
-def _field_text(payload: dict[str, Any], field_names: tuple[str, ...]) -> str:
-    parts: list[str] = []
+def _field_text(payload: dict[str, Any], field_names: tuple[str, ...]) -> str | None:
     for field_name in field_names:
-        if field_name in payload:
-            parts.extend(_flatten_text(payload[field_name]))
-    return "\n".join(parts)
+        if field_name not in payload:
+            continue
+        text = "\n".join(_flatten_text(payload[field_name])).strip()
+        if text:
+            return text
+    return None
+
+
+def _message_role(message: dict[str, Any]) -> str:
+    role = message.get("role") or message.get("author") or message.get("sender")
+    if isinstance(role, dict):
+        role = role.get("role") or role.get("name")
+    return str(role).lower() if role is not None else ""
+
+
+def _message_text(message: dict[str, Any]) -> str:
+    for field_name in ("content", "text", "message"):
+        if field_name in message:
+            text = "\n".join(_flatten_text(message[field_name])).strip()
+            if text:
+                return text
+    return "\n".join(_flatten_text(message)).strip()
+
+
+def _iter_role_messages(payload: dict[str, Any]) -> list[tuple[str, str]]:
+    messages: list[tuple[str, str]] = []
+    for field_name in ("messages", "transcript", "conversation"):
+        value = payload.get(field_name)
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            role = _message_role(item)
+            if role not in {"user", "assistant"}:
+                continue
+            text = _message_text(item)
+            if text:
+                messages.append((role, text))
+    return messages
+
+
+def _latest_role_text(payload: dict[str, Any], role: str) -> str | None:
+    for message_role, text in reversed(_iter_role_messages(payload)):
+        if message_role == role:
+            return text
+    return None
+
+
+def _latest_user_prompt(payload: dict[str, Any]) -> str | None:
+    return _field_text(payload, ("prompt", "user_prompt", "last_user_message")) or _latest_role_text(payload, "user")
+
+
+def _latest_assistant_message(payload: dict[str, Any]) -> str | None:
+    return _field_text(
+        payload,
+        (
+            "last_assistant_message",
+            "response",
+            "assistant_response",
+            "final_response",
+            "last_agent_message",
+        ),
+    ) or _latest_role_text(payload, "assistant")
 
 
 def has_explicit_multi_agent_request(text: str) -> bool:
@@ -129,26 +191,17 @@ def main() -> int:
     payload = _read_payload()
     if payload.get("hook_event_name") not in (None, "Stop"):
         return 0
+    if not STOP_CONTINUATION_ENABLED:
+        return 0
     if payload.get("stop_hook_active") is True:
         return 0
 
-    prompt_text = _field_text(payload, ("prompt", "user_prompt", "messages", "transcript", "conversation"))
-    final_text = _field_text(
-        payload,
-        (
-            "last_assistant_message",
-            "response",
-            "assistant_response",
-            "final_response",
-            "messages",
-            "transcript",
-        ),
-    )
-    combined_text = "\n".join(part for part in (prompt_text, final_text) if part)
+    prompt_text = _latest_user_prompt(payload)
+    final_text = _latest_assistant_message(payload)
+    if not prompt_text or not final_text:
+        return 0
 
-    prompt_requires_decision = has_explicit_multi_agent_request(prompt_text or combined_text) or has_matched_cplayout_route(
-        prompt_text
-    )
+    prompt_requires_decision = has_explicit_multi_agent_request(prompt_text) or has_matched_cplayout_route(prompt_text)
     if prompt_requires_decision and not has_subagent_decision(final_text):
         print(
             json.dumps(

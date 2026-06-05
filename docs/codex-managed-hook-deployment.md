@@ -31,7 +31,7 @@ Install these scripts into an administrator-owned absolute directory on each mac
 | `cplayout_prompt_triage.py` | `.codex/hooks/cplayout_prompt_triage.py` | `UserPromptSubmit` |
 | `cplayout_subagent_start.py` | `.codex/hooks/cplayout_subagent_start.py` | `SubagentStart` |
 | `cplayout_pre_tool_use.py` | `.codex/hooks/cplayout_pre_tool_use.py` | `PreToolUse` |
-| `cplayout_stop_multi_agent.py` | `.codex/hooks/cplayout_stop_multi_agent.py` | `Stop` |
+| `cplayout_stop_multi_agent.py` | `.codex/hooks/cplayout_stop_multi_agent.py` | Disabled compatibility no-op |
 
 Also install or expose `.codex/hooks/cplayout_route_data.json`. `cplayout_prompt_triage.py` first searches upward from the current working directory for `.codex/hooks/cplayout_route_data.json`, then falls back to a route-data file next to the script. A managed endpoint should either run Codex from the CPLayout checkout or copy the route-data JSON beside the managed script.
 
@@ -49,7 +49,7 @@ Use `docs/examples/cplayout-managed-requirements.toml` as the starting point. It
 - `allow_managed_hooks_only = true`
 - `[features].hooks = true`
 - `[hooks].managed_dir` and `[hooks].windows_managed_dir`
-- managed `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, and `Stop` command hooks with absolute script paths
+- managed `UserPromptSubmit`, `SubagentStart`, and `PreToolUse` command hooks with absolute script paths. `Stop` is intentionally omitted to avoid continuation loops.
 
 Deploy it through one of the managed requirements channels documented by Codex:
 
@@ -79,12 +79,12 @@ Expected advisory behavior:
 - `UserPromptSubmit` emits a coordinator contract with matched specialists, complexity band, reasoning effort, subagent decision, optimized re-prompt, and validation expectations. If no route or clear complexity signal matches, it emits `complexity analysis required before mutation` instead of selecting a hidden default.
 - `SubagentStart` injects AGENTS markers plus the matching custom agent read-only scope.
 - `PreToolUse` advises or denies only within its documented command checks.
-- `Stop` returns `decision: "block"` with a continuation reason when an explicit multi-agent prompt or matched specialist prompt lacks either a `Subagent decision:` summary or an `Accepted fallback:` explanation; it must not continue again when `stop_hook_active` is true.
+- `Stop` is not registered. The compatibility script must emit no output even for explicit multi-agent or matched specialist prompts, so missing subagent accounting cannot create automatic continuation prompts.
 - A matched CPLayout specialist prompt emits `Subagent decision: required` under the owner's standing authorization.
 
 ## Non-Claims
 
-- This guide does not prove managed hooks loaded or that Stop continuation was honored on a target machine. That requires a restarted Codex session on the managed endpoint.
+- This guide does not prove managed hooks loaded on a target machine. That requires a restarted Codex session on the managed endpoint.
 - This guide does not prove subagents spawned. It only configures advisory context and custom agent files.
 - This guide does not prove Android/iOS native runtime behavior, native SQLite, ZIP sharing, raw PMTiles/MBTiles rendering, Google Earth rendering, imagery/CV truth, or canonical geometry mutation.
 - KML/KMZ styles remain visual interchange metadata only and must not alter projected/local `XY` project geometry.

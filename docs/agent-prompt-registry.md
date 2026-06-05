@@ -47,6 +47,8 @@ Google Earth-inspired companion workflow and onboarding prompts route through th
 
 Command-surface, UI parity, curated sample fixture, generated report, and companion evidence wording prompts route through the interface developer, imagery mapper, and KB curator when they include terms such as `command surface`, `menu bar`, `toolbar parity`, `sample designs`, `curated fixtures`, `visual-proof reports`, `generated reports`, `companion packet`, `appImportable`, or `evidenceOnly`. UI parity means the app exposes the same operator boundaries and local/offline decision rules; it does not mean every local companion CLI report gets an app apply/import path.
 
+Android app-review, layout-proof, ADB/UIAutomator, OCR, and screenshot-analysis prompts route through the interface developer and KB curator when they include terms such as `review:android-app`, `android app review harness`, `verify:android-layout`, `Android layout proof`, `ADB`, `UIAutomator`, `Tesseract`, `OCR`, `OpenCV screenshot analysis`, `touch target`, `drawer/HUD`, or `system navigation bounds`. Add the database specialist only when the prompt also asks for SQLite, ZIP, schema, migration, share-sheet, DocumentsUI, or project archive proof. These prompts are app workflow evidence tasks; screenshots/XML/OCR/CV must not mutate canonical projected/local `XY` or satisfy native persistence claims.
+
 Managed-hook and process-enforcement prompts route through `cplayout_kb_curator` when they include terms such as `requirements.toml`, `managed hook`, `hook enforcement`, `process enforcement`, `prompt triage`, `route classification`, `coordinator contract`, or `reasoning band`. These prompts are configured as `xhigh` because they affect Codex policy surfaces and multi-agent coordination.
 
 Whole-codebase 100-iteration improvement prompts currently route through `cplayout_kb_curator` keywords such as `100 iteration`, `weighted vote`, and `research improvement loop`; there is no separate executable route id named `whole-codebase-100-loop` in `.codex/hooks/cplayout_route_data.json`. Expected artifacts remain `docs/whole-codebase-improvement-loop-2026-06-01.md` plus milestone evidence summaries under `docs/evidence/continuous-improvement/`.
@@ -60,15 +62,15 @@ Detailed routing guidance lives in `.agents/skills/cplayout-expert-agent-panels/
 - `SubagentStart` through `.codex/hooks/cplayout_subagent_start.py`, which injects CPLayout boundaries into spawned subagents: read `AGENTS.md`, preserve projected/local `XY`, avoid paid APIs and hidden keys, keep KML/KMZ styling visual-only, and require evidence before runtime proof claims.
 - `PreToolUse` through `.codex/hooks/cplayout_pre_tool_use.py`, which narrowly denies clearly destructive commands such as `git reset --hard`, `git clean -fd`, force push, and `npm audit fix --force`. Other CPLayout-sensitive patterns receive advisory context rather than a block.
 
-The local hook set now also includes `Stop` through `.codex/hooks/cplayout_stop_multi_agent.py`. It uses the documented Stop continuation output (`decision: "block"` with a reason) when an explicit multi-agent prompt or matched CPLayout specialist prompt ends without `Subagent decision:` or `Accepted fallback:`. The script ignores repeat Stop continuations when `stop_hook_active` is true.
+The project-local `Stop` continuation hook is disabled. `.codex/hooks.json` no longer registers `Stop`, and `.codex/hooks/cplayout_stop_multi_agent.py` remains only as a compatibility no-op for already-loaded command references. Subagent accounting is still required by `AGENTS.md` and by the `UserPromptSubmit` coordinator contract, but missing accounting must not create automatic Stop continuation prompts.
 
-These hooks make missing decisions visible and can request one more turn where the runtime honors Stop continuation. They are not proof that subagents spawned, that process policy was fully enforced, or that a managed endpoint loaded the scripts.
+These hooks make missing decisions visible through prompt context, but they do not request another turn at Stop. They are not proof that subagents spawned, that process policy was fully enforced, or that a managed endpoint loaded the scripts.
 
 ## Managed Hook Deployment
 
 Project-local `.codex/hooks.json` is advisory because it depends on project trust, local hook feature settings, and hook review. Non-bypass deployment is documented in `docs/codex-managed-hook-deployment.md` with a parseable example in `docs/examples/cplayout-managed-requirements.toml`.
 
-The managed example pins `[features].hooks = true`, sets `allow_managed_hooks_only = true`, defines absolute managed hook directories, anchors the `PreToolUse` matcher, and registers `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, and `Stop` hooks. It still requires endpoint script deployment, Codex restart, and live `/hooks` verification before any enforcement claim.
+The managed example pins `[features].hooks = true`, sets `allow_managed_hooks_only = true`, defines absolute managed hook directories, anchors the `PreToolUse` matcher, and registers `UserPromptSubmit`, `SubagentStart`, and `PreToolUse` hooks. It intentionally omits `Stop` to avoid continuation loops. It still requires endpoint script deployment, Codex restart, and live `/hooks` verification before any enforcement claim.
 
 ## Session-Level Skill Snapshot
 

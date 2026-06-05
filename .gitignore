@@ -5,6 +5,8 @@ dist/
 dist-android/
 web-build/
 reports/android-native-verification/
+reports/android-layout/
+reports/android-app-review/
 reports/continuous-improvement/
 reports/google-earth-visual-fidelity/
 reports/ml-cv-pivot-locating/

@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { GeoJSONVT } from "@maplibre/geojson-vt";
 import { fromGeojsonVt } from "@maplibre/vt-pbf";
 
+import { captureMapLibreLogEvidence, clearAndroidLogcat } from "./androidMapLibreLogEvidence";
 import { readExpoAndroidPackageName, timestampForFilename, writeJsonFile } from "./androidNativeProof";
 import { analyzePngPixels } from "./pngMetrics";
 
@@ -108,6 +109,7 @@ export async function runNativeMapLibreProof(options: NativeMapLibreProofOptions
         runAdb(selected.adb.path, ["-s", selected.device.serial, "reverse", `tcp:${devServerPort}`, `tcp:${devServerPort}`], "text");
       }
     }
+    const logcatCleared = clearAndroidLogcat(selected.adb.path, selected.device.serial);
     if (options.launchApp) {
       launchPackage(selected.adb.path, selected.device.serial, options.packageName, options.devClientUrl);
       await wait(options.waitMs);
@@ -117,7 +119,20 @@ export async function runNativeMapLibreProof(options: NativeMapLibreProofOptions
     writeFileSync(screenshotPath, screenshot);
     const screenshotSha256 = sha256(screenshot);
     const metrics = analyzePngPixels(screenshot);
-    const status = metrics.nonBlankPixelRatio > 0.05 && metrics.grayVariance > 20 && tileServer.stats.tileRequests > 0 ? "pass" : "fail";
+    const logcat = captureMapLibreLogEvidence({
+      adbPath: selected.adb.path,
+      generatedAt,
+      outputDirectory: options.outputDirectory,
+      prefix: "native-maplibre",
+      serial: selected.device.serial,
+    });
+    const hasMapLibreResourceUrlErrors = logcat.resourceUrlErrorCount > 0;
+    const status = metrics.nonBlankPixelRatio > 0.05
+      && metrics.grayVariance > 20
+      && tileServer.stats.tileRequests > 0
+      && !hasMapLibreResourceUrlErrors
+      ? "pass"
+      : "fail";
     const report = {
       reportSchemaVersion: 1,
       proofTarget: "native-maplibre-render",
@@ -163,8 +178,14 @@ export async function runNativeMapLibreProof(options: NativeMapLibreProofOptions
       },
       notes: status === "pass"
         ? "Native app screenshot captured after rendering the local generated vector tile URL template through MapLibre React Native VectorSource."
-        : "Screenshot was captured but did not meet nonblank/variance thresholds or the local vector tile server did not receive tile requests.",
+        : hasMapLibreResourceUrlErrors
+          ? "Screenshot was captured but MapLibre emitted a resourceURL parse error while rendering the local vector tile proof."
+          : "Screenshot was captured but did not meet nonblank/variance thresholds or the local vector tile server did not receive tile requests.",
       tileServer: tileServer.stats,
+      logcat: {
+        ...logcat,
+        clearedBeforeLaunch: logcatCleared,
+      },
     };
     writeJsonFile(reportPath, report);
     return { status, reportPath };

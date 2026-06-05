@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  ANDROID_NATIVE_REQUIRED_ABSENT_TABLES,
   ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS,
   ANDROID_NATIVE_REQUIRED_MIGRATIONS,
   ANDROID_NATIVE_REQUIRED_SQLITE_VERSION,
@@ -45,6 +46,7 @@ const completed = {
     pragmaUserVersion: ANDROID_NATIVE_REQUIRED_SQLITE_VERSION,
     schemaMigrations: [...ANDROID_NATIVE_REQUIRED_MIGRATIONS],
     mapPackageColumns: [...ANDROID_NATIVE_REQUIRED_MAP_PACKAGE_COLUMNS],
+    absentTables: [...ANDROID_NATIVE_REQUIRED_ABSENT_TABLES],
     geometryRowsPopulated: true,
   },
   projectRoundTrip: {
@@ -71,6 +73,19 @@ const completed = {
     manifestProjectIdMatched: true,
     manifestProjectCrsMatched: true,
     savedImportedProject: true,
+  },
+  osFileUi: {
+    shareSheetOpened: true,
+    shareSheetEvidence: "Android resolver/share sheet displayed for project ZIP export.",
+    shareSheetScreenshotPath: "reports/android-native-verification/share-sheet.png",
+    shareSheetXmlPath: "reports/android-native-verification/share-sheet.xml",
+    documentsPickerOpened: true,
+    documentsPickerEvidence: "Android DocumentsUI picker displayed and selected the pushed project ZIP.",
+    documentsPickerScreenshotPath: "reports/android-native-verification/documents-picker.png",
+    documentsPickerXmlPath: "reports/android-native-verification/documents-picker.xml",
+    pushedZipPath: "/sdcard/Download/cplayout-android-native-proof.zip",
+    selectedZipFilename: "cplayout-android-native-proof.zip",
+    selectedZipBytes: 2048,
   },
   checklist: Object.fromEntries(
     Object.keys(baseReport.checklist).map((key) => [
@@ -117,6 +132,28 @@ assert.throws(
     },
   }),
   /imagery_provenance_json/,
+);
+
+assert.throws(
+  () => parseCompleteAndroidNativeVerificationReport({
+    ...completed,
+    sqlite: {
+      ...completed.sqlite,
+      absentTables: ANDROID_NATIVE_REQUIRED_ABSENT_TABLES.filter((tableName) => tableName !== "layout_evidence"),
+    },
+  }),
+  /layout_evidence/,
+);
+
+assert.throws(
+  () => parseCompleteAndroidNativeVerificationReport({
+    ...completed,
+    osFileUi: {
+      ...completed.osFileUi,
+      documentsPickerOpened: false,
+    },
+  }),
+  /documentsPickerOpened/,
 );
 
 console.log("native verification tests passed");

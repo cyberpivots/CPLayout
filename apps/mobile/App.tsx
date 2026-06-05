@@ -49,6 +49,7 @@ import {
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CoordinateFormatPanel } from "./src/components/CoordinateFormatPanel";
+import { AndroidNativeProofRunner } from "./src/components/AndroidNativeProofRunner";
 import { BrowserRtkReceiverPanel } from "./src/components/BrowserRtkReceiverPanel";
 import { CommandBar, IconCommandButton, type CommandIconButtonConfig, type CommandMenuConfig } from "./src/components/CommandSurface";
 import { MapSurface } from "@cplayout/map-adapters";
@@ -210,6 +211,8 @@ function AppContent(): React.JSX.Element {
   const [activeInspectorPage, setActiveInspectorPage] = useState<InspectorPage>("metrics");
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
+  const androidNativeProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_ANDROID_NATIVE_PROOF === "1";
+  const nativeMapLibreProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF === "1";
   const isDirty = editor.revision !== savedRevision;
   const selectedMapFeature = useMemo(
     () => (project.mapFeatures ?? []).find((feature) => feature.id === selectedMapFeatureId) ?? null,
@@ -754,6 +757,7 @@ function AppContent(): React.JSX.Element {
   if (screen === "projects") {
     return (
       <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea} testID="launcher-screen">
+        <AndroidNativeProofRunner enabled={androidNativeProofEnabled} />
         <StatusBar style="dark" />
         <View style={[styles.app, { paddingBottom: safeBottomGutter }]}>
           <View style={styles.topBar}>
@@ -814,6 +818,7 @@ function AppContent(): React.JSX.Element {
 
   return (
       <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea} testID="workspace-screen">
+      <AndroidNativeProofRunner enabled={androidNativeProofEnabled} />
       <StatusBar style="dark" />
       <View style={[styles.app, { paddingBottom: safeBottomGutter }]}>
         <View style={styles.topBar}>
@@ -933,7 +938,7 @@ function AppContent(): React.JSX.Element {
           )}
 
           {activeView === "map" && (
-            <WorkspaceConsoleShell compact={compactLayout} rightDrawerOpen={rightDrawerOpen} testID="map-view">
+            <WorkspaceConsoleShell compact={compactLayout} rightDrawerOpen={nativeMapLibreProofEnabled ? false : rightDrawerOpen} testID="map-view">
               <View style={styles.mapConsoleFrame}>
                 <MapSurface
                   activeLayer={guidedMapTool?.activeLayer}
@@ -959,7 +964,7 @@ function AppContent(): React.JSX.Element {
                   onAddMapFeature={addMapFeature}
                   onSelectMapFeature={setSelectedMapFeatureId}
                 />
-                {!homeMapView ? (
+                {!homeMapView && !nativeMapLibreProofEnabled ? (
                   <View pointerEvents="box-none" style={styles.mapBottomHudOverlay}>
                     <DesignActionHud
                       activeModal={designConsoleModal}
@@ -981,49 +986,50 @@ function AppContent(): React.JSX.Element {
                   </View>
                 ) : null}
               </View>
-              <InspectorDrawer
-                activePage={activeInspectorPage}
-                homeView={homeMapView}
-                onPageChange={setActiveInspectorPage}
-                onToggle={() => setRightDrawerOpen((open) => !open)}
-                open={rightDrawerOpen}
-              >
-                {homeMapView ? (
-                  selectedCustomer ? (
-                    <CustomerDetailPanel
-                      activeProjectId={activeCatalogContext.projectId}
-                      catalog={repository.catalog}
-                      customer={selectedCustomer}
-                      notice={catalogNotice}
-                      onCreateProject={() => openCatalogDialog("project")}
-                      onDeleteCustomer={(customerId) => setDeletingCustomerId(customerId)}
-                      onDeleteProject={(projectId) => setDeletingProjectId(projectId)}
-                      onEditCustomer={openCustomerEditDialog}
-                      onMoveProject={(projectId) => setMovingProjectId(projectId)}
-                      onOpenProject={selectProjectCatalogOnly}
-                      onRenameProject={(projectId) => setRenamingProjectId(projectId)}
-                      onSelectProject={(projectId) => {
-                        const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
-                        setActiveCatalogContext({
-                          customerId: record?.customerId ?? selectedCustomer.id,
-                          projectId,
-                          fieldMapId: null,
-                          designId: null,
-                        });
-                      }}
-                    />
+              {nativeMapLibreProofEnabled ? null : (
+                <InspectorDrawer
+                  activePage={activeInspectorPage}
+                  homeView={homeMapView}
+                  onPageChange={setActiveInspectorPage}
+                  onToggle={() => setRightDrawerOpen((open) => !open)}
+                  open={rightDrawerOpen}
+                >
+                  {homeMapView ? (
+                    selectedCustomer ? (
+                      <CustomerDetailPanel
+                        activeProjectId={activeCatalogContext.projectId}
+                        catalog={repository.catalog}
+                        customer={selectedCustomer}
+                        notice={catalogNotice}
+                        onCreateProject={() => openCatalogDialog("project")}
+                        onDeleteCustomer={(customerId) => setDeletingCustomerId(customerId)}
+                        onDeleteProject={(projectId) => setDeletingProjectId(projectId)}
+                        onEditCustomer={openCustomerEditDialog}
+                        onMoveProject={(projectId) => setMovingProjectId(projectId)}
+                        onOpenProject={selectProjectCatalogOnly}
+                        onRenameProject={(projectId) => setRenamingProjectId(projectId)}
+                        onSelectProject={(projectId) => {
+                          const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
+                          setActiveCatalogContext({
+                            customerId: record?.customerId ?? selectedCustomer.id,
+                            projectId,
+                            fieldMapId: null,
+                            designId: null,
+                          });
+                        }}
+                      />
+                    ) : (
+                      <CatalogHomePanel
+                        catalog={repository.catalog}
+                        notice={catalogNotice}
+                        onCreateCustomer={openCustomerCreateDialog}
+                        onStartBlankDesign={startBlankDesign}
+                        repository={repository}
+                        settings={settings}
+                      />
+                    )
                   ) : (
-                    <CatalogHomePanel
-                      catalog={repository.catalog}
-                      notice={catalogNotice}
-                      onCreateCustomer={openCustomerCreateDialog}
-                      onStartBlankDesign={startBlankDesign}
-                      repository={repository}
-                      settings={settings}
-                    />
-                  )
-                ) : (
-                  <>
+                    <>
                     {activeInspectorPage === "metrics" ? (
                       <>
                         <Text style={styles.sectionTitle}>Metrics</Text>
@@ -1116,6 +1122,7 @@ function AppContent(): React.JSX.Element {
                   </>
                 )}
               </InspectorDrawer>
+              )}
             </WorkspaceConsoleShell>
           )}
 

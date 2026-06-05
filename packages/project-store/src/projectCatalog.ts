@@ -1,18 +1,18 @@
 import type { PivotProject } from "@cplayout/core";
 import type {
   CatalogProjectRecord,
-  CustomerRecord,
+  ClientRecord,
   DesignRecord,
   FieldMapRecord,
   ProjectCatalog,
   ProjectSummary,
 } from "./projectRepositoryTypes";
 
-export const LEGACY_CUSTOMER_ID = "example-customer";
-export const LEGACY_CUSTOMER_NAME = "Example Customer";
+export const LEGACY_CLIENT_ID = "example-client";
+export const LEGACY_CLIENT_NAME = "Example Client";
 
-type CustomerProfileFields = Pick<
-  CustomerRecord,
+type ClientProfileFields = Pick<
+  ClientRecord,
   | "companyName"
   | "contactName"
   | "primaryContactFirstName"
@@ -27,14 +27,14 @@ type CustomerProfileFields = Pick<
 
 export function emptyProjectCatalog(): ProjectCatalog {
   return {
-    customers: [],
+    clients: [],
     projects: [],
     fieldMaps: [],
     designs: [],
   };
 }
 
-export function emptyCustomerProfileFields(): CustomerProfileFields {
+export function emptyClientProfileFields(): ClientProfileFields {
   return {
     companyName: "",
     contactName: "",
@@ -51,7 +51,7 @@ export function emptyCustomerProfileFields(): CustomerProfileFields {
 
 export function normalizeCatalogSortName(value: string): string {
   const normalized = value.trim().replace(/\s+/g, " ");
-  return normalized.length > 0 ? normalized : LEGACY_CUSTOMER_NAME;
+  return normalized.length > 0 ? normalized : LEGACY_CLIENT_NAME;
 }
 
 export function createCatalogId(prefix: string, seed = new Date().toISOString()): string {
@@ -60,7 +60,7 @@ export function createCatalogId(prefix: string, seed = new Date().toISOString())
   return `${prefix}-${cleanedSeed.slice(0, 14)}-${randomSuffix}`;
 }
 
-export function formatPrimaryContactName(source: Partial<CustomerProfileFields>): string {
+export function formatPrimaryContactName(source: Partial<ClientProfileFields>): string {
   const firstName = profileLineText(source.primaryContactFirstName);
   const middleInitial = normalizeMiddleInitial(source.primaryContactMiddleInitial);
   const lastName = profileLineText(source.primaryContactLastName);
@@ -70,19 +70,19 @@ export function formatPrimaryContactName(source: Partial<CustomerProfileFields>)
   return lastName || givenName;
 }
 
-export function resolveCustomerDisplayName(source: Partial<CustomerRecord>): string {
+export function resolveClientDisplayName(source: Partial<ClientRecord>): string {
   const companyName = profileLineText(source.companyName);
   if (companyName) return companyName;
   const primaryContact = formatPrimaryContactName(source);
   if (primaryContact) return primaryContact;
-  return profileLineText(source.displayName) || profileLineText(source.contactName) || LEGACY_CUSTOMER_NAME;
+  return profileLineText(source.displayName) || profileLineText(source.contactName) || LEGACY_CLIENT_NAME;
 }
 
-export function resolveCustomerSortName(source: Partial<CustomerRecord>): string {
-  return resolveCustomerDisplayName(source);
+export function resolveClientSortName(source: Partial<ClientRecord>): string {
+  return resolveClientDisplayName(source);
 }
 
-export function assertCustomerPrimaryContact(source: Partial<CustomerRecord>): void {
+export function assertClientPrimaryContact(source: Partial<ClientRecord>): void {
   if (!profileLineText(source.primaryContactFirstName) || !profileLineText(source.primaryContactLastName)) {
     throw new Error("Primary contact first and last name are required.");
   }
@@ -90,27 +90,60 @@ export function assertCustomerPrimaryContact(source: Partial<CustomerRecord>): v
 
 export function sortProjectCatalog(catalog: ProjectCatalog): ProjectCatalog {
   return {
-    customers: [...catalog.customers].sort((a, b) => compareByName(a.sortName, b.sortName)),
+    clients: [...catalog.clients].sort((a, b) => compareByName(a.sortName, b.sortName)),
     projects: [...catalog.projects].sort((a, b) => compareByName(a.name, b.name)),
     fieldMaps: [...catalog.fieldMaps].sort((a, b) => compareByName(a.name, b.name)),
     designs: [...catalog.designs].sort((a, b) => compareByName(a.name, b.name)),
   };
 }
 
+type LegacyProjectCatalog = Partial<ProjectCatalog> & {
+  customers?: unknown;
+};
+
+type LegacyCatalogProjectRecord = Partial<CatalogProjectRecord> & {
+  customerId?: unknown;
+};
+
 export function normalizeProjectCatalog(catalog: Partial<ProjectCatalog>): ProjectCatalog {
+  const legacyCatalog = catalog as LegacyProjectCatalog;
+  const rawClients = Array.isArray(catalog.clients)
+    ? catalog.clients
+    : Array.isArray(legacyCatalog.customers)
+      ? legacyCatalog.customers
+      : [];
   return sortProjectCatalog({
-    customers: Array.isArray(catalog.customers)
-      ? catalog.customers.map(normalizeCustomerRecord).filter((record): record is CustomerRecord => Boolean(record))
+    clients: rawClients.map(normalizeClientRecord).filter((record): record is ClientRecord => Boolean(record)),
+    projects: Array.isArray(catalog.projects)
+      ? catalog.projects.map(normalizeCatalogProjectRecord).filter((record): record is CatalogProjectRecord => Boolean(record))
       : [],
-    projects: Array.isArray(catalog.projects) ? catalog.projects.filter((record): record is CatalogProjectRecord => typeof record?.id === "string") : [],
     fieldMaps: Array.isArray(catalog.fieldMaps) ? catalog.fieldMaps.filter((record): record is FieldMapRecord => typeof record?.id === "string") : [],
     designs: Array.isArray(catalog.designs) ? catalog.designs.filter((record): record is DesignRecord => typeof record?.id === "string") : [],
   });
 }
 
-export function normalizeCustomerRecord(record: CustomerRecord): CustomerRecord;
-export function normalizeCustomerRecord(record: Partial<CustomerRecord>): CustomerRecord | null;
-export function normalizeCustomerRecord(record: Partial<CustomerRecord>): CustomerRecord | null {
+function normalizeCatalogProjectRecord(record: LegacyCatalogProjectRecord): CatalogProjectRecord | null {
+  if (typeof record.id !== "string" || record.id.length === 0) return null;
+  const legacyClientId = typeof record.customerId === "string" ? record.customerId : "";
+  const clientId = typeof record.clientId === "string" && record.clientId.length > 0
+    ? record.clientId
+    : legacyClientId;
+  if (clientId.length === 0) return null;
+  const now = new Date().toISOString();
+  return {
+    id: record.id,
+    clientId,
+    name: typeof record.name === "string" ? record.name : "Project",
+    projectCrs: typeof record.projectCrs === "string" ? record.projectCrs : "",
+    unitSystem: typeof record.unitSystem === "string" ? record.unitSystem : "",
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : now,
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : now,
+  };
+}
+
+export function normalizeClientRecord(record: ClientRecord): ClientRecord;
+export function normalizeClientRecord(record: Partial<ClientRecord>): ClientRecord | null;
+export function normalizeClientRecord(record: Partial<ClientRecord>): ClientRecord | null {
   if (typeof record.id !== "string" || record.id.length === 0) return null;
   const now = new Date().toISOString();
   const primaryContactFirstName = profileLineText(record.primaryContactFirstName);
@@ -132,7 +165,7 @@ export function normalizeCustomerRecord(record: Partial<CustomerRecord>): Custom
     primaryContactLastName,
     primaryContactSuffix,
   }) || profileLineText(record.contactName);
-  const displayName = normalizeCatalogSortName(resolveCustomerDisplayName({
+  const displayName = normalizeCatalogSortName(resolveClientDisplayName({
     ...record,
     companyName,
     contactName,
@@ -144,7 +177,7 @@ export function normalizeCustomerRecord(record: Partial<CustomerRecord>): Custom
   return {
     id: record.id,
     displayName,
-    sortName: normalizeCatalogSortName(resolveCustomerSortName({
+    sortName: normalizeCatalogSortName(resolveClientSortName({
       ...record,
       companyName,
       contactName,
@@ -170,19 +203,19 @@ export function normalizeCustomerRecord(record: Partial<CustomerRecord>): Custom
 }
 
 export function ensureLegacyCatalogForSummaries(catalog: ProjectCatalog, summaries: ProjectSummary[]): ProjectCatalog {
-  if (catalog.customers.length > 0 || summaries.length === 0) return sortProjectCatalog(catalog);
+  if (catalog.clients.length > 0 || summaries.length === 0) return sortProjectCatalog(catalog);
   const now = new Date().toISOString();
-  const customers: CustomerRecord[] = [{
-    id: LEGACY_CUSTOMER_ID,
-    displayName: LEGACY_CUSTOMER_NAME,
-    sortName: LEGACY_CUSTOMER_NAME,
-    ...emptyCustomerProfileFields(),
+  const clients: ClientRecord[] = [{
+    id: LEGACY_CLIENT_ID,
+    displayName: LEGACY_CLIENT_NAME,
+    sortName: LEGACY_CLIENT_NAME,
+    ...emptyClientProfileFields(),
     createdAt: now,
     updatedAt: now,
   }];
   const projects: CatalogProjectRecord[] = summaries.map((summary) => ({
     id: summary.id,
-    customerId: LEGACY_CUSTOMER_ID,
+    clientId: LEGACY_CLIENT_ID,
     name: summary.name,
     projectCrs: summary.projectCrs,
     unitSystem: summary.unitSystem,
@@ -205,23 +238,23 @@ export function ensureLegacyCatalogForSummaries(catalog: ProjectCatalog, summari
     createdAt: summary.updatedAt,
     updatedAt: summary.updatedAt,
   }));
-  return sortProjectCatalog({ customers, projects, fieldMaps, designs });
+  return sortProjectCatalog({ clients, projects, fieldMaps, designs });
 }
 
 export function ensureCatalogEntryForProject(catalog: ProjectCatalog, project: PivotProject): ProjectCatalog {
   const now = new Date().toISOString();
   const next = {
-    customers: [...catalog.customers],
+    clients: [...catalog.clients],
     projects: [...catalog.projects],
     fieldMaps: [...catalog.fieldMaps],
     designs: [...catalog.designs],
   };
-  if (!next.customers.some((customer) => customer.id === LEGACY_CUSTOMER_ID)) {
-    next.customers.push({
-      id: LEGACY_CUSTOMER_ID,
-      displayName: LEGACY_CUSTOMER_NAME,
-      sortName: LEGACY_CUSTOMER_NAME,
-      ...emptyCustomerProfileFields(),
+  if (!next.clients.some((client) => client.id === LEGACY_CLIENT_ID)) {
+    next.clients.push({
+      id: LEGACY_CLIENT_ID,
+      displayName: LEGACY_CLIENT_NAME,
+      sortName: LEGACY_CLIENT_NAME,
+      ...emptyClientProfileFields(),
       createdAt: now,
       updatedAt: now,
     });
@@ -229,7 +262,7 @@ export function ensureCatalogEntryForProject(catalog: ProjectCatalog, project: P
   if (!next.projects.some((record) => record.id === project.id)) {
     next.projects.push({
       id: project.id,
-      customerId: LEGACY_CUSTOMER_ID,
+      clientId: LEGACY_CLIENT_ID,
       name: project.name,
       projectCrs: project.projectCrs,
       unitSystem: project.unitSystem,

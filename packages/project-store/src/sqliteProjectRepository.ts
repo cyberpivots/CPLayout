@@ -5,11 +5,11 @@ import { LOAD_ACTIVE_PROJECT_BY_ID_SQL } from "./projectRepositorySql";
 import {
   defaultDesignId,
   defaultFieldMapId,
-  LEGACY_CUSTOMER_ID,
-  LEGACY_CUSTOMER_NAME,
-  assertCustomerPrimaryContact,
+  LEGACY_CLIENT_ID,
+  LEGACY_CLIENT_NAME,
+  assertClientPrimaryContact,
   normalizeCatalogSortName,
-  normalizeCustomerRecord,
+  normalizeClientRecord,
   createCatalogId,
 } from "./projectCatalog";
 import { openProjectDatabaseAsync } from "./sqliteProjectStore";
@@ -19,9 +19,9 @@ import type {
   CreatedProjectWorkspace,
   CreateProjectWithInitialFieldMapInput,
   CreateProjectWithInitialDesignInput,
-  CustomerRecord,
-  CustomerProfileInput,
-  CustomerProfileUpdateInput,
+  ClientRecord,
+  ClientProfileInput,
+  ClientProfileUpdateInput,
   DesignRecord,
   FieldMapRecord,
   ProjectCatalog,
@@ -60,8 +60,8 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       const count = await db.getFirstAsync<{ count: number }>(
         "SELECT COUNT(*) AS count FROM projects WHERE deleted_at IS NULL;",
       );
-      const customerCount = await db.getFirstAsync<{ count: number }>(
-        "SELECT COUNT(*) AS count FROM customers WHERE deleted_at IS NULL;",
+      const clientCount = await db.getFirstAsync<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM clients WHERE deleted_at IS NULL;",
       );
       return {
         backendLabel: repository.backendLabel,
@@ -75,7 +75,7 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
         supportsZipExport: true,
         notes: [
           ...options.notes,
-          `Catalog contains ${Number(customerCount?.count ?? 0)} customer folder${Number(customerCount?.count ?? 0) === 1 ? "" : "s"}.`,
+          `Catalog contains ${Number(clientCount?.count ?? 0)} client folder${Number(clientCount?.count ?? 0) === 1 ? "" : "s"}.`,
         ],
       };
     },
@@ -111,10 +111,10 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
         for (const statement of plan) {
           await transaction.runAsync(statement.sql, statement.params);
         }
-        const customerCount = await transaction.getFirstAsync<{ count: number }>(
-          "SELECT COUNT(*) AS count FROM customers WHERE deleted_at IS NULL;",
+        const clientCount = await transaction.getFirstAsync<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM clients WHERE deleted_at IS NULL;",
         );
-        if (Number(customerCount?.count ?? 0) === 0) {
+        if (Number(clientCount?.count ?? 0) === 0) {
           await ensureCatalogPathForProjectAsync(transaction, project);
         }
       });
@@ -187,19 +187,19 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       });
     },
 
-    async createCustomerAsync(input: CustomerProfileInput): Promise<CustomerRecord> {
+    async createClientAsync(input: ClientProfileInput): Promise<ClientRecord> {
       const db = await openProjectDatabaseAsync();
       const now = new Date().toISOString();
-      const record = normalizeCustomerRecord({
-        id: createCatalogId("customer", now),
+      const record = normalizeClientRecord({
+        id: createCatalogId("client", now),
         ...input,
         createdAt: now,
         updatedAt: now,
       });
-      if (!record) throw new Error("Customer folder could not be created.");
-      assertCustomerPrimaryContact(record);
+      if (!record) throw new Error("Client folder could not be created.");
+      assertClientPrimaryContact(record);
       await db.runAsync(
-        `INSERT INTO customers (
+        `INSERT INTO clients (
           id,
           display_name,
           sort_name,
@@ -236,7 +236,7 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       return record;
     },
 
-    async updateCustomerAsync(input: CustomerProfileUpdateInput): Promise<CustomerRecord> {
+    async updateClientAsync(input: ClientProfileUpdateInput): Promise<ClientRecord> {
       const db = await openProjectDatabaseAsync();
       const existing = await db.getFirstAsync<{
         id: string;
@@ -271,14 +271,14 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
           notes,
           created_at,
           updated_at
-        FROM customers
+        FROM clients
         WHERE id = ? AND deleted_at IS NULL;`,
         input.id,
       );
-      if (!existing) throw new Error("Customer folder was not found in the local catalog.");
+      if (!existing) throw new Error("Client folder was not found in the local catalog.");
       const now = new Date().toISOString();
       const { id: _inputId, ...profileInput } = input;
-      const record = normalizeCustomerRecord({
+      const record = normalizeClientRecord({
         id: existing.id,
         displayName: existing.display_name,
         sortName: existing.sort_name,
@@ -296,10 +296,10 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
         createdAt: existing.created_at,
         updatedAt: now,
       });
-      if (!record) throw new Error("Customer folder could not be updated.");
-      assertCustomerPrimaryContact(record);
+      if (!record) throw new Error("Client folder could not be updated.");
+      assertClientPrimaryContact(record);
       await db.runAsync(
-        `UPDATE customers
+        `UPDATE clients
         SET
           display_name = ?,
           sort_name = ?,
@@ -333,16 +333,16 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       return record;
     },
 
-    async deleteCustomerAsync(customerId: string): Promise<void> {
+    async deleteClientAsync(clientId: string): Promise<void> {
       const db = await openProjectDatabaseAsync();
       const projectCount = await db.getFirstAsync<{ count: number }>(
-        "SELECT COUNT(*) AS count FROM project_records WHERE customer_id = ? AND deleted_at IS NULL;",
-        customerId,
+        "SELECT COUNT(*) AS count FROM project_records WHERE client_id = ? AND deleted_at IS NULL;",
+        clientId,
       );
       if (Number(projectCount?.count ?? 0) > 0) {
-        throw new Error("Customer folder still contains projects. Move or delete those projects before deleting the customer.");
+        throw new Error("Client folder still contains projects. Move or delete those projects before deleting the client.");
       }
-      await db.runAsync("UPDATE customers SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL;", customerId);
+      await db.runAsync("UPDATE clients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL;", clientId);
     },
 
     async createProjectWithInitialDesignAsync(input: CreateProjectWithInitialDesignInput): Promise<CreatedProjectWorkspace> {
@@ -351,7 +351,7 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       const now = new Date().toISOString();
       const projectRecord: CatalogProjectRecord = {
         id: project.id,
-        customerId: input.customerId,
+        clientId: input.clientId,
         name: normalizeCatalogSortName(project.name),
         projectCrs: project.projectCrs,
         unitSystem: project.unitSystem,
@@ -375,25 +375,25 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
         updatedAt: now,
       };
       await withRepositoryTransactionAsync(db, async (transaction) => {
-        const customer = await transaction.getFirstAsync<{ id: string }>(
-          "SELECT id FROM customers WHERE id = ? AND deleted_at IS NULL;",
-          input.customerId,
+        const client = await transaction.getFirstAsync<{ id: string }>(
+          "SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL;",
+          input.clientId,
         );
-        if (!customer) throw new Error("Select or create a customer folder before creating a project.");
+        if (!client) throw new Error("Select or create a client folder before creating a project.");
         const plan = buildSaveProjectStatementPlan(project, input.result);
         for (const statement of plan) await transaction.runAsync(statement.sql, statement.params);
         await transaction.runAsync(
-          `INSERT INTO project_records (id, customer_id, name, project_crs, unit_system, created_at, updated_at)
+          `INSERT INTO project_records (id, client_id, name, project_crs, unit_system, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
-            customer_id = excluded.customer_id,
+            client_id = excluded.client_id,
             name = excluded.name,
             project_crs = excluded.project_crs,
             unit_system = excluded.unit_system,
             updated_at = excluded.updated_at,
             deleted_at = NULL`,
           projectRecord.id,
-          projectRecord.customerId,
+          projectRecord.clientId,
           projectRecord.name,
           projectRecord.projectCrs,
           projectRecord.unitSystem,
@@ -441,7 +441,7 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       const projectId = input.projectId ?? createCatalogId("project", now);
       const projectRecord: CatalogProjectRecord = {
         id: projectId,
-        customerId: input.customerId,
+        clientId: input.clientId,
         name: normalizeCatalogSortName(input.projectName),
         projectCrs: normalizeCatalogSortName(input.projectCrs),
         unitSystem: normalizeCatalogSortName(input.unitSystem),
@@ -456,23 +456,23 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
         updatedAt: now,
       };
       await withRepositoryTransactionAsync(db, async (transaction) => {
-        const customer = await transaction.getFirstAsync<{ id: string }>(
-          "SELECT id FROM customers WHERE id = ? AND deleted_at IS NULL;",
-          input.customerId,
+        const client = await transaction.getFirstAsync<{ id: string }>(
+          "SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL;",
+          input.clientId,
         );
-        if (!customer) throw new Error("Select or create a customer folder before creating a project.");
+        if (!client) throw new Error("Select or create a client folder before creating a project.");
         await transaction.runAsync(
-          `INSERT INTO project_records (id, customer_id, name, project_crs, unit_system, created_at, updated_at)
+          `INSERT INTO project_records (id, client_id, name, project_crs, unit_system, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
-            customer_id = excluded.customer_id,
+            client_id = excluded.client_id,
             name = excluded.name,
             project_crs = excluded.project_crs,
             unit_system = excluded.unit_system,
             updated_at = excluded.updated_at,
             deleted_at = NULL`,
           projectRecord.id,
-          projectRecord.customerId,
+          projectRecord.clientId,
           projectRecord.name,
           projectRecord.projectCrs,
           projectRecord.unitSystem,
@@ -497,12 +497,12 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       return { projectRecord, fieldMap };
     },
 
-    async createProjectRecordAsync(input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord> {
+    async createProjectRecordAsync(input: { id?: string; clientId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord> {
       const db = await openProjectDatabaseAsync();
       const now = new Date().toISOString();
       const record: CatalogProjectRecord = {
         id: input.id ?? createCatalogId("project", now),
-        customerId: input.customerId,
+        clientId: input.clientId,
         name: normalizeCatalogSortName(input.name),
         projectCrs: input.projectCrs,
         unitSystem: input.unitSystem,
@@ -510,17 +510,17 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
         updatedAt: now,
       };
       await db.runAsync(
-        `INSERT INTO project_records (id, customer_id, name, project_crs, unit_system, created_at, updated_at)
+        `INSERT INTO project_records (id, client_id, name, project_crs, unit_system, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-          customer_id = excluded.customer_id,
+          client_id = excluded.client_id,
           name = excluded.name,
           project_crs = excluded.project_crs,
           unit_system = excluded.unit_system,
           updated_at = excluded.updated_at,
           deleted_at = NULL`,
         record.id,
-        record.customerId,
+        record.clientId,
         record.name,
         record.projectCrs,
         record.unitSystem,
@@ -538,20 +538,20 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       await withRepositoryTransactionAsync(db, async (transaction) => {
         const projectRecord = await transaction.getFirstAsync<{
           id: string;
-          customer_id: string;
+          client_id: string;
           name: string;
           project_crs: string;
           unit_system: string;
           created_at: string;
           updated_at: string;
         }>(
-          "SELECT id, customer_id, name, project_crs, unit_system, created_at, updated_at FROM project_records WHERE id = ? AND deleted_at IS NULL;",
+          "SELECT id, client_id, name, project_crs, unit_system, created_at, updated_at FROM project_records WHERE id = ? AND deleted_at IS NULL;",
           projectId,
         );
         if (!projectRecord) throw new Error("Project folder was not found in the local catalog.");
         updatedRecord = {
           id: projectRecord.id,
-          customerId: projectRecord.customer_id,
+          clientId: projectRecord.client_id,
           name: trimmedName,
           projectCrs: projectRecord.project_crs,
           unitSystem: projectRecord.unit_system,
@@ -588,32 +588,32 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
       return updatedRecord;
     },
 
-    async moveProjectToCustomerAsync(projectId: string, customerId: string): Promise<CatalogProjectRecord> {
+    async moveProjectToClientAsync(projectId: string, clientId: string): Promise<CatalogProjectRecord> {
       const db = await openProjectDatabaseAsync();
       const now = new Date().toISOString();
       let moved: CatalogProjectRecord | null = null;
       await withRepositoryTransactionAsync(db, async (transaction) => {
-        const customer = await transaction.getFirstAsync<{ id: string }>(
-          "SELECT id FROM customers WHERE id = ? AND deleted_at IS NULL;",
-          customerId,
+        const client = await transaction.getFirstAsync<{ id: string }>(
+          "SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL;",
+          clientId,
         );
-        if (!customer) throw new Error("Target customer folder was not found in the local catalog.");
+        if (!client) throw new Error("Target client folder was not found in the local catalog.");
         const projectRecord = await transaction.getFirstAsync<{
           id: string;
-          customer_id: string;
+          client_id: string;
           name: string;
           project_crs: string;
           unit_system: string;
           created_at: string;
           updated_at: string;
         }>(
-          "SELECT id, customer_id, name, project_crs, unit_system, created_at, updated_at FROM project_records WHERE id = ? AND deleted_at IS NULL;",
+          "SELECT id, client_id, name, project_crs, unit_system, created_at, updated_at FROM project_records WHERE id = ? AND deleted_at IS NULL;",
           projectId,
         );
         if (!projectRecord) throw new Error("Project folder was not found in the local catalog.");
         moved = {
           id: projectRecord.id,
-          customerId,
+          clientId,
           name: projectRecord.name,
           projectCrs: projectRecord.project_crs,
           unitSystem: projectRecord.unit_system,
@@ -621,8 +621,8 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
           updatedAt: now,
         };
         await transaction.runAsync(
-          "UPDATE project_records SET customer_id = ?, updated_at = ?, deleted_at = NULL WHERE id = ?;",
-          customerId,
+          "UPDATE project_records SET client_id = ?, updated_at = ?, deleted_at = NULL WHERE id = ?;",
+          clientId,
           now,
           projectId,
         );
@@ -708,7 +708,7 @@ export function createSqliteProjectRepository(options: SqliteRepositoryOptions):
 }
 
 async function readCatalogAsync(db: SqliteAsyncExecutor): Promise<ProjectCatalog> {
-  const customers = await db.getAllAsync<{
+  const clients = await db.getAllAsync<{
     id: string;
     display_name: string;
     sort_name: string;
@@ -741,19 +741,19 @@ async function readCatalogAsync(db: SqliteAsyncExecutor): Promise<ProjectCatalog
       notes,
       created_at,
       updated_at
-    FROM customers
+    FROM clients
     WHERE deleted_at IS NULL
     ORDER BY sort_name COLLATE NOCASE, display_name COLLATE NOCASE;`,
   );
   const projects = await db.getAllAsync<{
     id: string;
-    customer_id: string;
+    client_id: string;
     name: string;
     project_crs: string;
     unit_system: string;
     created_at: string;
     updated_at: string;
-  }>("SELECT id, customer_id, name, project_crs, unit_system, created_at, updated_at FROM project_records WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE;");
+  }>("SELECT id, client_id, name, project_crs, unit_system, created_at, updated_at FROM project_records WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE;");
   const fieldMaps = await db.getAllAsync<{
     id: string;
     project_record_id: string;
@@ -771,8 +771,8 @@ async function readCatalogAsync(db: SqliteAsyncExecutor): Promise<ProjectCatalog
     updated_at: string;
   }>("SELECT id, field_map_id, name, pivot_project_id, is_active, created_at, updated_at FROM designs WHERE deleted_at IS NULL ORDER BY is_active DESC, name COLLATE NOCASE;");
   return {
-    customers: customers
-      .map((row) => normalizeCustomerRecord({
+    clients: clients
+      .map((row) => normalizeClientRecord({
         id: row.id,
         displayName: row.display_name,
         sortName: row.sort_name,
@@ -789,10 +789,10 @@ async function readCatalogAsync(db: SqliteAsyncExecutor): Promise<ProjectCatalog
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }))
-      .filter((customer): customer is CustomerRecord => Boolean(customer)),
+      .filter((client): client is ClientRecord => Boolean(client)),
     projects: projects.map((row) => ({
       id: row.id,
-      customerId: row.customer_id,
+      clientId: row.client_id,
       name: row.name,
       projectCrs: row.project_crs,
       unitSystem: row.unit_system,
@@ -820,7 +820,7 @@ async function readCatalogAsync(db: SqliteAsyncExecutor): Promise<ProjectCatalog
 
 async function ensureCatalogRowsAsync(db: SqliteProjectDatabase): Promise<void> {
   const existing = await db.getFirstAsync<{ count: number }>(
-    "SELECT COUNT(*) AS count FROM customers WHERE deleted_at IS NULL;",
+    "SELECT COUNT(*) AS count FROM clients WHERE deleted_at IS NULL;",
   );
   if (Number(existing?.count ?? 0) > 0) return;
   const summaries = await db.getAllAsync<{
@@ -834,13 +834,13 @@ async function ensureCatalogRowsAsync(db: SqliteProjectDatabase): Promise<void> 
   if (summaries.length === 0) return;
   const now = new Date().toISOString();
   await withRepositoryTransactionAsync(db, async (transaction) => {
-    await insertLegacyCustomerAsync(transaction, now);
+    await insertLegacyClientAsync(transaction, now);
     for (const summary of summaries) {
       await transaction.runAsync(
-        `INSERT OR IGNORE INTO project_records (id, customer_id, name, project_crs, unit_system, created_at, updated_at)
+        `INSERT OR IGNORE INTO project_records (id, client_id, name, project_crs, unit_system, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         summary.id,
-        LEGACY_CUSTOMER_ID,
+        LEGACY_CLIENT_ID,
         summary.name,
         summary.project_crs,
         summary.unit_system,
@@ -877,12 +877,12 @@ async function ensureCatalogPathForProjectAsync(db: SqliteAsyncExecutor, project
   );
   if (design) return;
   const now = new Date().toISOString();
-  await insertLegacyCustomerAsync(db, now);
+  await insertLegacyClientAsync(db, now);
   await db.runAsync(
-    `INSERT OR IGNORE INTO project_records (id, customer_id, name, project_crs, unit_system, created_at, updated_at)
+    `INSERT OR IGNORE INTO project_records (id, client_id, name, project_crs, unit_system, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     project.id,
-    LEGACY_CUSTOMER_ID,
+    LEGACY_CLIENT_ID,
     project.name,
     project.projectCrs,
     project.unitSystem,
@@ -910,9 +910,9 @@ async function ensureCatalogPathForProjectAsync(db: SqliteAsyncExecutor, project
   );
 }
 
-async function insertLegacyCustomerAsync(db: SqliteAsyncExecutor, now: string): Promise<void> {
+async function insertLegacyClientAsync(db: SqliteAsyncExecutor, now: string): Promise<void> {
   await db.runAsync(
-    `INSERT OR IGNORE INTO customers (
+    `INSERT OR IGNORE INTO clients (
       id,
       display_name,
       sort_name,
@@ -930,9 +930,9 @@ async function insertLegacyCustomerAsync(db: SqliteAsyncExecutor, now: string): 
       updated_at
     )
     VALUES (?, ?, ?, '', '', '', '', '', '', '', '', '', '', ?, ?)`,
-    LEGACY_CUSTOMER_ID,
-    LEGACY_CUSTOMER_NAME,
-    LEGACY_CUSTOMER_NAME,
+    LEGACY_CLIENT_ID,
+    LEGACY_CLIENT_NAME,
+    LEGACY_CLIENT_NAME,
     now,
     now,
   );

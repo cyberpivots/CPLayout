@@ -56,17 +56,17 @@ import { MapSurface } from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
 import {
   ConfirmActionDialog,
-  CustomerProfileDialog,
+  ClientProfileDialog,
   MoveProjectDialog,
   ProjectCatalogDialog,
-  type CustomerProfileDialogValue,
+  type ClientProfileDialogValue,
   type ProjectCatalogDialogMode,
 } from "./src/components/ProjectCatalogDialog";
 import { ProjectFilesPanel } from "./src/components/ProjectFilesPanel";
 import { SettingsPanel } from "./src/components/SettingsPanel";
 import { DrawingToolPalette, type DrawingToolPaletteModal } from "./src/components/DrawingToolPalette";
 import { useProjectRepository, type ProjectWorkspaceStatus } from "./src/hooks/useProjectRepository";
-import type { CustomerRecord } from "@cplayout/project-store";
+import type { ClientRecord } from "@cplayout/project-store";
 import { rehydrateInstalledMapPackageManifestsAsync } from "@cplayout/project-store";
 import {
   COORDINATE_FORMAT_LABELS,
@@ -124,7 +124,7 @@ type WorkspaceView = "dashboard" | "map" | "survey" | "files" | "settings" | "he
 type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "validation" | "export";
 type DesignConsoleModal = DrawingToolPaletteModal;
-type InspectorPage = "metrics" | "layers" | "feature" | "rtk" | "validation";
+type InspectorPage = "metrics" | "layers" | "feature" | "rtk" | "warnings";
 type PendingPlacementAction =
   | { kind: "pivot"; candidate: PivotPlacementCandidate }
   | { kind: "cornerArm"; config: AdvisoryCornerArmConfig };
@@ -204,19 +204,19 @@ function AppContent(): React.JSX.Element {
   const [designConsoleModal, setDesignConsoleModal] = useState<DesignConsoleModal>(null);
   const [homeMapView, setHomeMapView] = useState(true);
   const [activeCatalogContext, setActiveCatalogContext] = useState<{
-    customerId: string | null;
+    clientId: string | null;
     projectId: string | null;
     fieldMapId: string | null;
     designId: string | null;
-  }>({ customerId: null, projectId: null, fieldMapId: null, designId: null });
+  }>({ clientId: null, projectId: null, fieldMapId: null, designId: null });
   const [catalogDialogMode, setCatalogDialogMode] = useState<ProjectCatalogDialogMode | null>(null);
   const [catalogDialogDefaultName, setCatalogDialogDefaultName] = useState("");
-  const [customerProfileDialogMode, setCustomerProfileDialogMode] = useState<"create" | "edit" | null>(null);
-  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+  const [clientProfileDialogMode, setClientProfileDialogMode] = useState<"create" | "edit" | null>(null);
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
   const [movingProjectId, setMovingProjectId] = useState<string | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
-  const [deletingCustomerId, setDeletingCustomerId] = useState<string | null>(null);
+  const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
   const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
   const [catalogDialogSubmitting, setCatalogDialogSubmitting] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -239,11 +239,11 @@ function AppContent(): React.JSX.Element {
     () => (project.mapFeatures ?? []).find((feature) => feature.id === selectedMapFeatureId) ?? null,
     [project.mapFeatures, selectedMapFeatureId],
   );
-  const selectedCustomer = activeCatalogContext.customerId
-    ? repository.catalog.customers.find((customer) => customer.id === activeCatalogContext.customerId) ?? null
+  const selectedClient = activeCatalogContext.clientId
+    ? repository.catalog.clients.find((client) => client.id === activeCatalogContext.clientId) ?? null
     : null;
-  const editingCustomer = editingCustomerId
-    ? repository.catalog.customers.find((customer) => customer.id === editingCustomerId) ?? null
+  const editingClient = editingClientId
+    ? repository.catalog.clients.find((client) => client.id === editingClientId) ?? null
     : null;
   const renamingProject = renamingProjectId
     ? repository.catalog.projects.find((record) => record.id === renamingProjectId) ?? null
@@ -254,8 +254,8 @@ function AppContent(): React.JSX.Element {
   const deletingProject = deletingProjectId
     ? repository.catalog.projects.find((record) => record.id === deletingProjectId) ?? null
     : null;
-  const deletingCustomer = deletingCustomerId
-    ? repository.catalog.customers.find((customer) => customer.id === deletingCustomerId) ?? null
+  const deletingClient = deletingClientId
+    ? repository.catalog.clients.find((client) => client.id === deletingClientId) ?? null
     : null;
 
   useEffect(() => {
@@ -371,7 +371,7 @@ function AppContent(): React.JSX.Element {
 
   function startBlankDesign(): void {
     loadProject(createBlankDesignProject(settings), {
-      customerId: null,
+      clientId: null,
       projectId: null,
       fieldMapId: null,
       designId: null,
@@ -398,7 +398,7 @@ function AppContent(): React.JSX.Element {
     const fieldMap = design ? repository.catalog.fieldMaps.find((record) => record.id === design.fieldMapId) ?? null : null;
     const projectRecord = repository.catalog.projects.find((record) => record.id === (fieldMap?.projectId ?? projectId)) ?? null;
     loadProject(loaded, {
-      customerId: projectRecord?.customerId ?? activeCatalogContext.customerId,
+      clientId: projectRecord?.clientId ?? activeCatalogContext.clientId,
       projectId: fieldMap?.projectId ?? projectId,
       fieldMapId: fieldMap?.id ?? null,
       designId: design?.id ?? null,
@@ -412,7 +412,7 @@ function AppContent(): React.JSX.Element {
     const fieldMap = design ? repository.catalog.fieldMaps.find((record) => record.id === design.fieldMapId) ?? null : null;
     const projectRecord = fieldMap ? repository.catalog.projects.find((record) => record.id === fieldMap.projectId) ?? null : null;
     loadProject(loaded, {
-      customerId: projectRecord?.customerId ?? activeCatalogContext.customerId,
+      clientId: projectRecord?.clientId ?? activeCatalogContext.clientId,
       projectId: fieldMap?.projectId ?? null,
       fieldMapId: fieldMap?.id ?? null,
       designId,
@@ -485,36 +485,36 @@ function AppContent(): React.JSX.Element {
     setActiveView("map");
   }
 
-  function routeToCustomerSelection(): void {
+  function routeToClientSelection(): void {
     showCatalogMap(
-      { customerId: activeCatalogContext.customerId, projectId: null, fieldMapId: null, designId: null },
-      "Select or create a customer folder, then use New Project inside that customer.",
+      { clientId: activeCatalogContext.clientId, projectId: null, fieldMapId: null, designId: null },
+      "Select or create a client folder, then use New Project inside that client.",
     );
   }
 
   function openCatalogDialog(mode: ProjectCatalogDialogMode): void {
-    if (mode === "customer") {
-      openCustomerCreateDialog();
+    if (mode === "client") {
+      openClientCreateDialog();
       return;
     }
-    if (mode === "project" && !selectedCustomer) {
-      routeToCustomerSelection();
+    if (mode === "project" && !selectedClient) {
+      routeToClientSelection();
       return;
     }
     setCatalogDialogDefaultName(defaultCatalogDialogName(mode));
     setCatalogDialogMode(mode);
   }
 
-  function openCustomerCreateDialog(): void {
+  function openClientCreateDialog(): void {
     setCatalogNotice(null);
-    setEditingCustomerId(null);
-    setCustomerProfileDialogMode("create");
+    setEditingClientId(null);
+    setClientProfileDialogMode("create");
   }
 
-  function openCustomerEditDialog(customerId: string): void {
+  function openClientEditDialog(clientId: string): void {
     setCatalogNotice(null);
-    setEditingCustomerId(customerId);
-    setCustomerProfileDialogMode("edit");
+    setEditingClientId(clientId);
+    setClientProfileDialogMode("edit");
   }
 
   async function submitCatalogDialog(name: string): Promise<void> {
@@ -536,7 +536,7 @@ function AppContent(): React.JSX.Element {
   }
 
   function defaultCatalogDialogName(mode: ProjectCatalogDialogMode): string {
-    if (mode === "customer") return `Customer ${repository.catalog.customers.length + 1}`;
+    if (mode === "client") return `Client ${repository.catalog.clients.length + 1}`;
     if (mode === "project") return `Untitled Project ${repository.catalog.projects.length + 1}`;
     if (mode === "fieldMap") {
       const projectId = activeCatalogContext.projectId;
@@ -549,9 +549,9 @@ function AppContent(): React.JSX.Element {
   }
 
   function catalogDialogContextPreview(mode: ProjectCatalogDialogMode): string {
-    if (mode === "customer") return "Saved under: Project Catalog";
+    if (mode === "client") return "Saved under: Project Catalog";
     if (mode === "project") {
-      return selectedCustomer ? `Saved under: ${selectedCustomer.displayName}` : "Select a customer folder before creating a project.";
+      return selectedClient ? `Saved under: ${selectedClient.displayName}` : "Select a client folder before creating a project.";
     }
     if (mode === "fieldMap") {
       const projectRecord = activeCatalogContext.projectId
@@ -567,55 +567,55 @@ function AppContent(): React.JSX.Element {
 
   function catalogPathForProject(projectId: string): string[] {
     const projectRecord = repository.catalog.projects.find((record) => record.id === projectId) ?? null;
-    const customer = projectRecord
-      ? repository.catalog.customers.find((record) => record.id === projectRecord.customerId) ?? null
+    const client = projectRecord
+      ? repository.catalog.clients.find((record) => record.id === projectRecord.clientId) ?? null
       : null;
-    return [customer?.displayName, projectRecord?.name].filter((part): part is string => Boolean(part));
+    return [client?.displayName, projectRecord?.name].filter((part): part is string => Boolean(part));
   }
 
   function formatCatalogPath(parts: string[]): string {
     return `Saved under: ${parts.length > 0 ? parts.join(" > ") : "Project Catalog"}`;
   }
 
-  async function submitCustomerProfile(value: CustomerProfileDialogValue): Promise<void> {
-    if (!customerProfileDialogMode || catalogDialogSubmitting) return;
+  async function submitClientProfile(value: ClientProfileDialogValue): Promise<void> {
+    if (!clientProfileDialogMode || catalogDialogSubmitting) return;
     setCatalogDialogSubmitting(true);
     try {
-      if (customerProfileDialogMode === "create") {
-        const customer = await repository.createCustomer(value);
-        if (customer) {
-          showCatalogMap({ customerId: customer.id, projectId: null, fieldMapId: null, designId: null });
+      if (clientProfileDialogMode === "create") {
+        const client = await repository.createClient(value);
+        if (client) {
+          showCatalogMap({ clientId: client.id, projectId: null, fieldMapId: null, designId: null });
         }
-      } else if (editingCustomerId) {
-        const customer = await repository.updateCustomer({ id: editingCustomerId, ...value });
-        if (customer) setCatalogNotice(null);
+      } else if (editingClientId) {
+        const client = await repository.updateClient({ id: editingClientId, ...value });
+        if (client) setCatalogNotice(null);
       }
-      setCustomerProfileDialogMode(null);
-      setEditingCustomerId(null);
+      setClientProfileDialogMode(null);
+      setEditingClientId(null);
     } finally {
       setCatalogDialogSubmitting(false);
     }
   }
 
-  function closeCustomerProfileDialog(): void {
+  function closeClientProfileDialog(): void {
     if (catalogDialogSubmitting) return;
-    setCustomerProfileDialogMode(null);
-    setEditingCustomerId(null);
+    setClientProfileDialogMode(null);
+    setEditingClientId(null);
   }
 
   async function createProjectFolder(name: string): Promise<void> {
     const trimmedName = name.trim();
     if (!trimmedName) return;
-    const customer = selectedCustomer;
-    if (!customer) {
-      routeToCustomerSelection();
+    const client = selectedClient;
+    if (!client) {
+      routeToClientSelection();
       return;
     }
     const createdAt = new Date().toISOString();
     const projectId = `project-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
     const fieldMapId = `${projectId}:field-map:primary`;
     const created = await repository.createProjectWithInitialFieldMap({
-      customerId: customer.id,
+      clientId: client.id,
       projectId,
       projectName: trimmedName,
       projectCrs: project.projectCrs,
@@ -625,7 +625,7 @@ function AppContent(): React.JSX.Element {
     });
     if (created) {
       showCatalogMap({
-        customerId: customer.id,
+        clientId: client.id,
         projectId: created.projectRecord.id,
         fieldMapId: created.fieldMap.id,
         designId: null,
@@ -643,7 +643,7 @@ function AppContent(): React.JSX.Element {
     const fieldMap = await repository.createFieldMapRecord({ id: fieldMapId, projectId: projectRecord.id, name: fieldName });
     if (fieldMap) {
       showCatalogMap({
-        customerId: projectRecord.customerId,
+        clientId: projectRecord.clientId,
         projectId: projectRecord.id,
         fieldMapId: fieldMap.id,
         designId: null,
@@ -660,7 +660,7 @@ function AppContent(): React.JSX.Element {
     if (!projectRecord) return;
     showCatalogMap(
       {
-        customerId: projectRecord.customerId,
+        clientId: projectRecord.clientId,
         projectId: projectRecord.id,
         fieldMapId: fieldMap.id,
         designId: null,
@@ -693,14 +693,14 @@ function AppContent(): React.JSX.Element {
     }
   }
 
-  async function moveProjectFolder(projectId: string, customerId: string): Promise<void> {
+  async function moveProjectFolder(projectId: string, clientId: string): Promise<void> {
     if (catalogDialogSubmitting) return;
     setCatalogDialogSubmitting(true);
     try {
-      const moved = await repository.moveProjectToCustomer(projectId, customerId);
+      const moved = await repository.moveProjectToClient(projectId, clientId);
       if (!moved) return;
       if (activeCatalogContext.projectId === projectId) {
-        setActiveCatalogContext((current) => ({ ...current, customerId }));
+        setActiveCatalogContext((current) => ({ ...current, clientId }));
       }
       setMovingProjectId(null);
     } finally {
@@ -716,7 +716,7 @@ function AppContent(): React.JSX.Element {
       const deleted = await repository.deleteProject(projectId);
       if (deleted) {
         if (activeCatalogContext.projectId === projectId || project.id === projectId) {
-          showCatalogMap({ customerId: activeCatalogContext.customerId, projectId: null, fieldMapId: null, designId: null });
+          showCatalogMap({ clientId: activeCatalogContext.clientId, projectId: null, fieldMapId: null, designId: null });
         }
         setDeletingProjectId(null);
       }
@@ -725,31 +725,31 @@ function AppContent(): React.JSX.Element {
     }
   }
 
-  async function confirmDeleteCustomer(): Promise<void> {
-    if (!deletingCustomerId || catalogDialogSubmitting) return;
-    const customerId = deletingCustomerId;
+  async function confirmDeleteClient(): Promise<void> {
+    if (!deletingClientId || catalogDialogSubmitting) return;
+    const clientId = deletingClientId;
     setCatalogDialogSubmitting(true);
     try {
-      const deleted = await repository.deleteCustomer(customerId);
+      const deleted = await repository.deleteClient(clientId);
       if (deleted) {
-        if (activeCatalogContext.customerId === customerId) {
-          setActiveCatalogContext({ customerId: null, projectId: null, fieldMapId: null, designId: null });
+        if (activeCatalogContext.clientId === clientId) {
+          setActiveCatalogContext({ clientId: null, projectId: null, fieldMapId: null, designId: null });
         }
-        setDeletingCustomerId(null);
+        setDeletingClientId(null);
       }
     } finally {
       setCatalogDialogSubmitting(false);
     }
   }
 
-  function selectCustomerFolder(customerId: string): void {
-    showCatalogMap({ customerId, projectId: null, fieldMapId: null, designId: null });
+  function selectClientFolder(clientId: string): void {
+    showCatalogMap({ clientId, projectId: null, fieldMapId: null, designId: null });
   }
 
   function selectProjectCatalogOnly(projectId: string): void {
     const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
     showCatalogMap({
-      customerId: record?.customerId ?? activeCatalogContext.customerId,
+      clientId: record?.clientId ?? activeCatalogContext.clientId,
       projectId,
       fieldMapId: null,
       designId: null,
@@ -763,7 +763,7 @@ function AppContent(): React.JSX.Element {
       : null;
     showCatalogMap(
       {
-        customerId: projectRecord?.customerId ?? activeCatalogContext.customerId,
+        clientId: projectRecord?.clientId ?? activeCatalogContext.clientId,
         projectId: fieldMap?.projectId ?? activeCatalogContext.projectId,
         fieldMapId,
         designId: null,
@@ -818,7 +818,7 @@ function AppContent(): React.JSX.Element {
               compact={compactLayout}
               dirty={isDirty}
               mode="launcher"
-              onCreate={routeToCustomerSelection}
+              onCreate={routeToClientSelection}
               onOpenFiles={() => {
                 setScreen("workspace");
                 setActiveView("files");
@@ -885,7 +885,7 @@ function AppContent(): React.JSX.Element {
               setActiveView("map");
             }}
             onShowWarnings={() => {
-              setActiveInspectorPage("validation");
+              setActiveInspectorPage("warnings");
               setRightDrawerOpen(true);
               setActiveView("map");
             }}
@@ -905,7 +905,7 @@ function AppContent(): React.JSX.Element {
             compact={compactLayout}
             consoleMode={activeView === "map"}
             drawerOpen={activeView === "map" ? leftDrawerOpen : true}
-            onCreateCustomer={openCustomerCreateDialog}
+            onCreateClient={openClientCreateDialog}
             onCreateDesign={() => openCatalogDialog("design")}
             onCreateFieldMap={() => openCatalogDialog("fieldMap")}
             onCreateProject={() => openCatalogDialog("project")}
@@ -915,9 +915,9 @@ function AppContent(): React.JSX.Element {
             onOpenProject={(projectId) => {
               selectProjectCatalogOnly(projectId);
             }}
-            onOpenSample={() => loadProjectDashboard(sampleProject, { customerId: null, projectId: null, fieldMapId: null, designId: null })}
+            onOpenSample={() => loadProjectDashboard(sampleProject, { clientId: null, projectId: null, fieldMapId: null, designId: null })}
             onStartBlankDesign={startBlankDesign}
-            onSelectCustomer={selectCustomerFolder}
+            onSelectClient={selectClientFolder}
             onSelectProject={selectProjectCatalogOnly}
             onSelectFieldMap={selectFieldMapCatalogOnly}
             onToggleDrawer={() => setLeftDrawerOpen((open) => !open)}
@@ -933,7 +933,7 @@ function AppContent(): React.JSX.Element {
               compact={compactLayout}
               dirty={isDirty}
               mode="workspace"
-              onCreate={routeToCustomerSelection}
+              onCreate={routeToClientSelection}
               onOpenFiles={() => setActiveView("files")}
               onOpenImprovedProof={() => loadProjectDashboard(improvedCenterPivotProofProject)}
               onInspectMap={() => {
@@ -962,6 +962,20 @@ function AppContent(): React.JSX.Element {
                   activeMapFeatureKind={guidedMapTool?.featureKind}
                   activeToolMode={guidedMapTool?.mode}
                   activeToolRequestId={guidedMapTool?.requestId}
+                  bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled ? (
+                    <DesignActionHud
+                      activeModal={designConsoleModal}
+                      activeTool={guidedMapTool}
+                      onActivateTool={activateDesignConsoleTool}
+                      onCalculate={() => {
+                        calculateDesignScenarios();
+                        setDesignConsoleModal("calculate");
+                      }}
+                      onOpenModal={setDesignConsoleModal}
+                      onToggleLayers={() => setDesignConsoleModal((current) => current === "layers" ? null : "layers")}
+                      settings={settings}
+                    />
+                  ) : null}
                   homeView={homeMapView}
                   project={runtimeProject}
                   result={result}
@@ -981,22 +995,6 @@ function AppContent(): React.JSX.Element {
                   onAddMapFeature={addMapFeature}
                   onSelectMapFeature={setSelectedMapFeatureId}
                   />
-                  {!homeMapView && !nativeMapLibreProofEnabled ? (
-                    <View pointerEvents="box-none" style={styles.mapBottomHudOverlay}>
-                      <DesignActionHud
-                        activeModal={designConsoleModal}
-                        activeTool={guidedMapTool}
-                        onActivateTool={activateDesignConsoleTool}
-                        onCalculate={() => {
-                          calculateDesignScenarios();
-                          setDesignConsoleModal("calculate");
-                        }}
-                        onOpenModal={setDesignConsoleModal}
-                        onToggleLayers={() => setDesignConsoleModal((current) => current === "layers" ? null : "layers")}
-                        settings={settings}
-                      />
-                    </View>
-                  ) : null}
               </View>
               {nativeMapLibreProofEnabled ? null : (
                 <InspectorDrawer
@@ -1007,23 +1005,23 @@ function AppContent(): React.JSX.Element {
                   open={rightDrawerOpen}
                 >
                   {homeMapView ? (
-                    selectedCustomer ? (
-                      <CustomerDetailPanel
+                    selectedClient ? (
+                      <ClientDetailPanel
                         activeProjectId={activeCatalogContext.projectId}
                         catalog={repository.catalog}
-                        customer={selectedCustomer}
+                        client={selectedClient}
                         notice={catalogNotice}
                         onCreateProject={() => openCatalogDialog("project")}
-                        onDeleteCustomer={(customerId) => setDeletingCustomerId(customerId)}
+                        onDeleteClient={(clientId) => setDeletingClientId(clientId)}
                         onDeleteProject={(projectId) => setDeletingProjectId(projectId)}
-                        onEditCustomer={openCustomerEditDialog}
+                        onEditClient={openClientEditDialog}
                         onMoveProject={(projectId) => setMovingProjectId(projectId)}
                         onOpenProject={selectProjectCatalogOnly}
                         onRenameProject={(projectId) => setRenamingProjectId(projectId)}
                         onSelectProject={(projectId) => {
                           const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
                           setActiveCatalogContext({
-                            customerId: record?.customerId ?? selectedCustomer.id,
+                            clientId: record?.clientId ?? selectedClient.id,
                             projectId,
                             fieldMapId: null,
                             designId: null,
@@ -1034,7 +1032,7 @@ function AppContent(): React.JSX.Element {
                       <CatalogHomePanel
                         catalog={repository.catalog}
                         notice={catalogNotice}
-                        onCreateCustomer={openCustomerCreateDialog}
+                        onCreateClient={openClientCreateDialog}
                         onStartBlankDesign={startBlankDesign}
                         repository={repository}
                         settings={settings}
@@ -1113,9 +1111,9 @@ function AppContent(): React.JSX.Element {
                       </>
                     ) : null}
 
-                    {activeInspectorPage === "validation" ? (
+                    {activeInspectorPage === "warnings" ? (
                       <>
-                        <Text style={styles.sectionTitle}>Validation</Text>
+                        <Text style={styles.sectionTitle}>Warnings</Text>
                         <View style={styles.warningList}>
                           {editor.lastError ? (
                             <View style={styles.warningItem}>
@@ -1271,13 +1269,13 @@ function AppContent(): React.JSX.Element {
           visible
         />
       ) : null}
-      {customerProfileDialogMode ? (
-        <CustomerProfileDialog
-          defaultDisplayName={`Customer ${repository.catalog.customers.length + 1}`}
-          initialCustomer={customerProfileDialogMode === "edit" ? editingCustomer : null}
-          mode={customerProfileDialogMode}
-          onCancel={closeCustomerProfileDialog}
-          onSave={submitCustomerProfile}
+      {clientProfileDialogMode ? (
+        <ClientProfileDialog
+          defaultDisplayName={`Client ${repository.catalog.clients.length + 1}`}
+          initialClient={clientProfileDialogMode === "edit" ? editingClient : null}
+          mode={clientProfileDialogMode}
+          onCancel={closeClientProfileDialog}
+          onSave={submitClientProfile}
           submitting={catalogDialogSubmitting}
           visible
         />
@@ -1300,12 +1298,12 @@ function AppContent(): React.JSX.Element {
       ) : null}
       {movingProject ? (
         <MoveProjectDialog
-          currentCustomerId={movingProject.customerId}
-          customers={repository.catalog.customers}
+          currentClientId={movingProject.clientId}
+          clients={repository.catalog.clients}
           onCancel={() => {
             if (!catalogDialogSubmitting) setMovingProjectId(null);
           }}
-          onMove={(customerId) => moveProjectFolder(movingProject.id, customerId)}
+          onMove={(clientId) => moveProjectFolder(movingProject.id, clientId)}
           projectName={movingProject.name}
           submitting={catalogDialogSubmitting}
           visible
@@ -1325,17 +1323,17 @@ function AppContent(): React.JSX.Element {
           visible
         />
       ) : null}
-      {deletingCustomer ? (
+      {deletingClient ? (
         <ConfirmActionDialog
-          confirmLabel="Delete Customer"
-          message={`Delete the empty customer folder ${deletingCustomer.displayName}. This is blocked automatically if any projects remain inside it.`}
+          confirmLabel="Delete Client"
+          message={`Delete the empty client folder ${deletingClient.displayName}. This is blocked automatically if any projects remain inside it.`}
           onCancel={() => {
-            if (!catalogDialogSubmitting) setDeletingCustomerId(null);
+            if (!catalogDialogSubmitting) setDeletingClientId(null);
           }}
-          onConfirm={confirmDeleteCustomer}
+          onConfirm={confirmDeleteClient}
           submitting={catalogDialogSubmitting}
-          testID="delete-customer-dialog"
-          title="Delete Customer"
+          testID="delete-client-dialog"
+          title="Delete Client"
           visible
         />
       ) : null}
@@ -2707,21 +2705,21 @@ function formatPlacementScoreBreakdown(candidate: PivotPlacementCandidate): stri
 function CatalogHomePanel({
   catalog,
   notice,
-  onCreateCustomer,
+  onCreateClient,
   onStartBlankDesign,
   repository,
   settings,
 }: {
   catalog: ProjectWorkspaceStatus["catalog"];
   notice: string | null;
-  onCreateCustomer: () => void;
+  onCreateClient: () => void;
   onStartBlankDesign: () => void;
   repository: ProjectWorkspaceStatus;
   settings: AppSettings;
 }): React.JSX.Element {
-  const hasCatalogRecords = catalog.customers.length > 0 || catalog.projects.length > 0 || catalog.fieldMaps.length > 0 || catalog.designs.length > 0;
+  const hasCatalogRecords = catalog.clients.length > 0 || catalog.projects.length > 0 || catalog.fieldMaps.length > 0 || catalog.designs.length > 0;
   const storageLabel = repository.backendInfo?.backendLabel ?? repository.backendLabel;
-  const nextAction = hasCatalogRecords ? "Open design" : "Add customer";
+  const nextAction = hasCatalogRecords ? "Open design" : "Add client";
   const imageryState = settings.onlineImagery.enabled ? "No-key preview" : "Off";
 
   return (
@@ -2746,7 +2744,7 @@ function CatalogHomePanel({
         </View>
       ) : null}
       <View style={styles.inlineActions}>
-        <SmallActionButton label="Add Customer" onPress={onCreateCustomer} />
+        <SmallActionButton label="Add Client" onPress={onCreateClient} />
         <SmallActionButton label="Start Blank Design" onPress={onStartBlankDesign} />
       </View>
       <View style={styles.warningItem}>
@@ -2757,15 +2755,15 @@ function CatalogHomePanel({
   );
 }
 
-function CustomerDetailPanel({
+function ClientDetailPanel({
   activeProjectId,
   catalog,
-  customer,
+  client,
   notice,
   onCreateProject,
-  onDeleteCustomer,
+  onDeleteClient,
   onDeleteProject,
-  onEditCustomer,
+  onEditClient,
   onMoveProject,
   onOpenProject,
   onRenameProject,
@@ -2773,42 +2771,42 @@ function CustomerDetailPanel({
 }: {
   activeProjectId: string | null;
   catalog: ProjectWorkspaceStatus["catalog"];
-  customer: CustomerRecord;
+  client: ClientRecord;
   notice: string | null;
   onCreateProject: () => void;
-  onDeleteCustomer: (customerId: string) => void;
+  onDeleteClient: (clientId: string) => void;
   onDeleteProject: (projectId: string) => void;
-  onEditCustomer: (customerId: string) => void;
+  onEditClient: (clientId: string) => void;
   onMoveProject: (projectId: string) => void;
   onOpenProject: (projectId: string) => void | Promise<void>;
   onRenameProject: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
 }): React.JSX.Element {
-  const projects = catalog.projects.filter((projectRecord) => projectRecord.customerId === customer.id);
+  const projects = catalog.projects.filter((projectRecord) => projectRecord.clientId === client.id);
   const profileRows = [
-    ["Company", customer.companyName],
-    ["Primary Contact", customer.contactName],
-    ["Email", customer.email],
-    ["Phone", customer.phone],
-    ["Location", customer.location],
+    ["Company", client.companyName],
+    ["Primary Contact", client.contactName],
+    ["Email", client.email],
+    ["Phone", client.phone],
+    ["Location", client.location],
   ].filter(([, value]) => value);
-  const canDeleteCustomer = projects.length === 0;
+  const canDeleteClient = projects.length === 0;
 
   return (
     <>
-      <View style={styles.customerDetailHeader} testID="customer-detail-panel">
-        <View style={styles.customerIconBadge}>
+      <View style={styles.clientDetailHeader} testID="client-detail-panel">
+        <View style={styles.clientIconBadge}>
           <UserRound size={22} color="#eef7f1" />
         </View>
-        <View style={styles.customerDetailTitleBlock}>
-          <Text style={styles.sectionTitle}>{customer.displayName}</Text>
-          <Text style={styles.mapFeatureMeta}>{projects.length} project{projects.length === 1 ? "" : "s"} in this customer folder</Text>
+        <View style={styles.clientDetailTitleBlock}>
+          <Text style={styles.sectionTitle}>{client.displayName}</Text>
+          <Text style={styles.mapFeatureMeta}>{projects.length} project{projects.length === 1 ? "" : "s"} in this client folder</Text>
         </View>
       </View>
 
       <View style={styles.inlineActions}>
-        <SmallActionButton label="Edit Customer" onPress={() => onEditCustomer(customer.id)} />
-        <SmallActionButton disabled={!canDeleteCustomer} label="Delete Customer" onPress={() => onDeleteCustomer(customer.id)} />
+        <SmallActionButton label="Edit Client" onPress={() => onEditClient(client.id)} />
+        <SmallActionButton disabled={!canDeleteClient} label="Delete Client" onPress={() => onDeleteClient(client.id)} />
         <SmallActionButton label="New Project" onPress={onCreateProject} />
       </View>
 
@@ -2821,7 +2819,7 @@ function CustomerDetailPanel({
 
       <View style={styles.mapFeatureEditor}>
         <Text style={styles.mapFeatureTitle}>Profile</Text>
-        {profileRows.length === 0 && !customer.notes ? (
+        {profileRows.length === 0 && !client.notes ? (
           <Text style={styles.mapFeatureMeta}>No contact details saved yet.</Text>
         ) : profileRows.map(([label, value]) => (
           <View key={label} style={styles.profileRow}>
@@ -2829,13 +2827,13 @@ function CustomerDetailPanel({
             <Text style={styles.profileValue}>{value}</Text>
           </View>
         ))}
-        {customer.notes ? <Text style={styles.profileNotes}>{customer.notes}</Text> : null}
-        {!canDeleteCustomer ? <Text style={styles.mapFeatureMeta}>Delete is available after moving or deleting contained projects.</Text> : null}
+        {client.notes ? <Text style={styles.profileNotes}>{client.notes}</Text> : null}
+        {!canDeleteClient ? <Text style={styles.mapFeatureMeta}>Delete is available after moving or deleting contained projects.</Text> : null}
       </View>
 
-      <View style={styles.projectList} testID="customer-detail-projects">
+      <View style={styles.projectList} testID="client-detail-projects">
         {projects.length === 0 ? (
-          <Text style={styles.dashboardMuted}>No projects in this customer folder.</Text>
+          <Text style={styles.dashboardMuted}>No projects in this client folder.</Text>
         ) : projects.map((projectRecord) => {
           const fieldMaps = catalog.fieldMaps.filter((fieldMap) => fieldMap.projectId === projectRecord.id);
           const active = activeProjectId === projectRecord.id;
@@ -2845,10 +2843,10 @@ function CustomerDetailPanel({
               accessibilityRole="button"
               key={projectRecord.id}
               onPress={() => onSelectProject(projectRecord.id)}
-              style={[styles.customerProjectRow, active && styles.customerProjectRowActive]}
-              testID={`customer-project-row-${projectRecord.id}`}
+              style={[styles.clientProjectRow, active && styles.clientProjectRowActive]}
+              testID={`client-project-row-${projectRecord.id}`}
             >
-              <View style={styles.customerProjectText}>
+              <View style={styles.clientProjectText}>
                 <Text style={styles.rowTitle}>{projectRecord.name}</Text>
                 <Text style={styles.rowMeta}>{fieldMaps.length} field map{fieldMaps.length === 1 ? "" : "s"} · {projectRecord.projectCrs} · {projectRecord.unitSystem.replaceAll("_", " ")}</Text>
               </View>
@@ -3435,12 +3433,12 @@ function WorkspaceConsoleShell({
   );
 }
 
-const INSPECTOR_PAGES: Array<{ id: InspectorPage; label: string }> = [
-  { id: "metrics", label: "Metrics" },
-  { id: "layers", label: "Layers" },
-  { id: "feature", label: "Feature" },
-  { id: "rtk", label: "RTK" },
-  { id: "validation", label: "Validation" },
+const INSPECTOR_PAGES: Array<{ id: InspectorPage; label: string; shortLabel: string }> = [
+  { id: "metrics", label: "Metrics", shortLabel: "MET" },
+  { id: "layers", label: "Layers", shortLabel: "LAY" },
+  { id: "feature", label: "Feature", shortLabel: "FEAT" },
+  { id: "rtk", label: "RTK", shortLabel: "RTK" },
+  { id: "warnings", label: "Warnings", shortLabel: "WARN" },
 ];
 
 function InspectorDrawer({
@@ -3458,6 +3456,7 @@ function InspectorDrawer({
   onToggle: () => void;
   open: boolean;
 }): React.JSX.Element {
+  const activePageLabel = INSPECTOR_PAGES.find((page) => page.id === activePage)?.shortLabel ?? "MAP";
   return (
     <View style={[styles.inspectorDrawer, !open && styles.inspectorDrawerCollapsed]} testID="inspector-drawer">
       <Pressable
@@ -3469,6 +3468,11 @@ function InspectorDrawer({
       >
         {open ? <ChevronRight size={21} color="#d5e2db" /> : <ChevronLeft size={21} color="#d5e2db" />}
       </Pressable>
+      {!open && !homeView ? (
+        <View style={styles.inspectorCollapsedStatus} testID="inspector-collapsed-status">
+          <Text style={styles.inspectorCollapsedStatusText} numberOfLines={1}>{activePageLabel}</Text>
+        </View>
+      ) : null}
       {open ? (
         <View style={styles.inspectorDrawerBody}>
           {!homeView ? (
@@ -3504,7 +3508,7 @@ function ProjectTreeRail({
   compact,
   consoleMode,
   drawerOpen,
-  onCreateCustomer,
+  onCreateClient,
   onCreateDesign,
   onCreateFieldMap,
   onCreateProject,
@@ -3514,13 +3518,13 @@ function ProjectTreeRail({
   onOpenProject,
   onOpenSample,
   onStartBlankDesign,
-  onSelectCustomer,
+  onSelectClient,
   onSelectFieldMap,
   onSelectProject,
   onToggleDrawer,
 }: {
   activeContext: {
-    customerId: string | null;
+    clientId: string | null;
     projectId: string | null;
     fieldMapId: string | null;
     designId: string | null;
@@ -3530,7 +3534,7 @@ function ProjectTreeRail({
   compact: boolean;
   consoleMode: boolean;
   drawerOpen: boolean;
-  onCreateCustomer: () => void | Promise<void>;
+  onCreateClient: () => void | Promise<void>;
   onCreateDesign: () => void | Promise<void>;
   onCreateFieldMap: () => void | Promise<void>;
   onCreateProject: () => void | Promise<void>;
@@ -3540,17 +3544,18 @@ function ProjectTreeRail({
   onOpenProject: (projectId: string) => void | Promise<void>;
   onOpenSample: () => void;
   onStartBlankDesign: () => void;
-  onSelectCustomer: (customerId: string) => void;
+  onSelectClient: (clientId: string) => void;
   onSelectFieldMap: (fieldMapId: string) => void;
   onSelectProject: (projectId: string) => void;
   onToggleDrawer: () => void;
 }): React.JSX.Element {
-  const visibleCustomers = activeContext.projectId
-    ? catalog.customers.filter((customer) => customer.id === activeContext.customerId)
-    : catalog.customers;
+  const visibleClients = activeContext.projectId
+    ? catalog.clients.filter((client) => client.id === activeContext.clientId)
+    : catalog.clients;
   const activeProject = activeContext.projectId
     ? catalog.projects.find((project) => project.id === activeContext.projectId) ?? null
     : null;
+  const navCollapsed = consoleMode && !drawerOpen;
 
   return (
     <View style={[styles.leftRail, compact && !consoleMode && styles.leftRailCompact, consoleMode && styles.leftRailConsole, consoleMode && !drawerOpen && styles.leftRailConsoleCollapsed]} testID="workspace-rail">
@@ -3567,35 +3572,39 @@ function ProjectTreeRail({
       ) : null}
       {drawerOpen ? (
         <View style={styles.projectTreePanel} testID="project-tree-rail">
+          <View style={[styles.projectTreeNav, styles.projectTreeNavPrimary, compact && !consoleMode && styles.projectTreeNavCompact]} testID="project-tree-primary-nav">
+            <RailButton active={activeView === "map"} collapsed={navCollapsed} icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
+            <RailButton active={activeView === "dashboard"} collapsed={navCollapsed} icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
+            <RailButton active={activeView === "files"} collapsed={navCollapsed} icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
+            <RailButton active={activeView === "survey"} collapsed={navCollapsed} icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
+          </View>
           <View style={styles.projectTreeHeader}>
             <FolderOpen size={18} color="#d5e2db" />
             <Text style={styles.projectTreeTitle}>{activeProject ? activeProject.name : "Project Catalog"}</Text>
           </View>
           <View style={styles.projectTreeActions} testID="project-tree-actions">
-            <IconCommandButton icon={<UserRound />} id="customer" label="Customer" onPress={onCreateCustomer} testID="project-tree-action-customer" />
-            <IconCommandButton disabled={!activeContext.customerId} icon={<Database />} id="project" label="Project" onPress={onCreateProject} testID="project-tree-action-project" />
+            <IconCommandButton icon={<UserRound />} id="client" label="Client" onPress={onCreateClient} testID="project-tree-action-client" />
+            <IconCommandButton disabled={!activeContext.clientId} icon={<Database />} id="project" label="Project" onPress={onCreateProject} testID="project-tree-action-project" />
             <IconCommandButton disabled={!activeContext.projectId} icon={<MapIcon />} id="field-map" label="Field Map" onPress={onCreateFieldMap} testID="project-tree-action-field-map" />
             <IconCommandButton disabled={!activeContext.fieldMapId} icon={<Layers />} id="design" label="Design" onPress={onCreateDesign} testID="project-tree-action-design" />
-            <IconCommandButton icon={<Wrench />} id="blank-design" label="Blank Design" onPress={onStartBlankDesign} testID="project-tree-action-blank-design" />
-            <IconCommandButton icon={<MapPinned />} id="open-sample" label="Open Sample" onPress={onOpenSample} testID="project-tree-action-open-sample" />
           </View>
           <ScrollView style={[styles.projectTreeScroll, compact && styles.projectTreeScrollCompact]} contentContainerStyle={styles.projectTreeContent} testID="project-tree-scroll">
-            {catalog.customers.length === 0 ? (
-              <Text style={styles.projectTreeEmpty}>No customer folders yet.</Text>
+            {catalog.clients.length === 0 ? (
+              <Text style={styles.projectTreeEmpty}>No client folders yet.</Text>
             ) : null}
-            {visibleCustomers.map((customer) => {
-              const projects = catalog.projects.filter((project) => project.customerId === customer.id);
+            {visibleClients.map((client) => {
+              const projects = catalog.projects.filter((project) => project.clientId === client.id);
               return (
-                <View key={customer.id} style={styles.projectTreeGroup}>
+                <View key={client.id} style={styles.projectTreeGroup}>
                   <ProjectTreeNode
-                    active={activeContext.customerId === customer.id}
+                    active={activeContext.clientId === client.id}
                     depth={0}
                     icon={<FolderOpen size={15} color="#d5e2db" />}
-                    label={customer.displayName}
+                    label={client.displayName}
                     meta={`${projects.length} project${projects.length === 1 ? "" : "s"}`}
-                    onOpen={() => onSelectCustomer(customer.id)}
-                    onSelect={() => onSelectCustomer(customer.id)}
-                    testID={`catalog-customer-${customer.id}`}
+                    onOpen={() => onSelectClient(client.id)}
+                    onSelect={() => onSelectClient(client.id)}
+                    testID={`catalog-client-${client.id}`}
                   />
                   {projects.map((projectRecord) => {
                     const fieldMaps = catalog.fieldMaps.filter((fieldMap) => fieldMap.projectId === projectRecord.id);
@@ -3649,15 +3658,23 @@ function ProjectTreeRail({
               );
             })}
           </ScrollView>
+          <View style={styles.projectTreeUtilityActions} testID="project-tree-utility-actions">
+            <IconCommandButton icon={<Wrench />} id="blank-design" label="Blank Design" onPress={onStartBlankDesign} testID="project-tree-action-blank-design" />
+            <IconCommandButton icon={<MapPinned />} id="open-sample" label="Open Sample" onPress={onOpenSample} testID="project-tree-action-open-sample" />
+          </View>
         </View>
       ) : null}
-      <View style={[styles.projectTreeNav, compact && !consoleMode && styles.projectTreeNavCompact, consoleMode && styles.projectTreeNavConsole, consoleMode && !drawerOpen && styles.projectTreeNavCollapsed]}>
-        <RailButton active={activeView === "dashboard"} collapsed={consoleMode} icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
-        <RailButton active={activeView === "help"} collapsed={consoleMode} icon={<ListChecks size={18} />} label="Help" onPress={() => onNavigate("help")} testID="workspace-nav-help" />
-        <RailButton active={activeView === "map"} collapsed={consoleMode} icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
-        <RailButton active={activeView === "survey"} collapsed={consoleMode} icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
-        <RailButton active={activeView === "files"} collapsed={consoleMode} icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
-        <RailButton active={activeView === "settings"} collapsed={consoleMode} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => onNavigate("settings")} testID="workspace-nav-settings" />
+      <View style={[styles.projectTreeNav, compact && !consoleMode && styles.projectTreeNavCompact, consoleMode && !drawerOpen && styles.projectTreeNavConsole, consoleMode && !drawerOpen && styles.projectTreeNavCollapsed]}>
+        {!drawerOpen ? (
+          <>
+            <RailButton active={activeView === "map"} collapsed icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
+            <RailButton active={activeView === "dashboard"} collapsed icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
+            <RailButton active={activeView === "files"} collapsed icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
+            <RailButton active={activeView === "survey"} collapsed icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
+          </>
+        ) : null}
+        <RailButton active={activeView === "help"} collapsed={navCollapsed} icon={<ListChecks size={18} />} label="Help" onPress={() => onNavigate("help")} testID="workspace-nav-help" />
+        <RailButton active={activeView === "settings"} collapsed={navCollapsed} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => onNavigate("settings")} testID="workspace-nav-settings" />
       </View>
     </View>
   );
@@ -4251,6 +4268,14 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingBottom: 6,
   },
+  projectTreeUtilityActions: {
+    borderTopColor: "#26392f",
+    borderTopWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingTop: 8,
+  },
   projectTreeScroll: {
     flex: 1,
     minHeight: 0,
@@ -4311,6 +4336,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     gap: 5,
     paddingTop: 8,
+  },
+  projectTreeNavPrimary: {
+    borderBottomColor: "#26392f",
+    borderBottomWidth: 1,
+    borderTopWidth: 0,
+    paddingBottom: 8,
+    paddingTop: 0,
   },
   projectTreeNavCompact: {
     flexDirection: "row",
@@ -4525,13 +4557,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     position: "relative",
   },
-  mapBottomHudOverlay: {
-    bottom: 8,
-    left: 12,
-    position: "absolute",
-    right: 12,
-    zIndex: 8,
-  },
   sidePanel: {
     backgroundColor: "#fbfcf8",
     borderColor: "#d8ded6",
@@ -4571,6 +4596,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 56,
     width: 56,
+  },
+  inspectorCollapsedStatus: {
+    alignItems: "center",
+    backgroundColor: "#254234",
+    borderTopColor: "#365645",
+    borderTopWidth: 1,
+    bottom: 0,
+    justifyContent: "center",
+    minHeight: 42,
+    position: "absolute",
+    width: 56,
+  },
+  inspectorCollapsedStatusText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "900",
   },
   inspectorDrawerBody: {
     flex: 1,
@@ -5153,12 +5194,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 16,
   },
-  customerDetailHeader: {
+  clientDetailHeader: {
     alignItems: "center",
     flexDirection: "row",
     gap: 12,
   },
-  customerIconBadge: {
+  clientIconBadge: {
     alignItems: "center",
     backgroundColor: "#254234",
     borderRadius: 8,
@@ -5166,7 +5207,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 44,
   },
-  customerDetailTitleBlock: {
+  clientDetailTitleBlock: {
     flex: 1,
     minWidth: 0,
   },
@@ -5198,7 +5239,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 18,
   },
-  customerProjectRow: {
+  clientProjectRow: {
     backgroundColor: "#f7faf5",
     borderColor: "#dce3da",
     borderRadius: 8,
@@ -5206,11 +5247,11 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 12,
   },
-  customerProjectRowActive: {
+  clientProjectRowActive: {
     backgroundColor: "#edf7f0",
     borderColor: "#77aa8b",
   },
-  customerProjectText: {
+  clientProjectText: {
     gap: 3,
     minWidth: 0,
   },

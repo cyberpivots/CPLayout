@@ -176,7 +176,7 @@ test("catalog home readiness replaces global count metrics", async ({ page }, te
   await expect(readiness).toContainText("Active context");
   await expect(readiness).toContainText("Next action");
   await expect(readiness).toContainText("Imagery");
-  await expect(readiness).not.toContainText("Customers");
+  await expect(readiness).not.toContainText("Clients");
   await expect(readiness).not.toContainText("Projects");
   await expect(readiness).not.toContainText("Field maps");
   await expect(readiness).not.toContainText("Designs");
@@ -262,7 +262,7 @@ test("design console pivot entry defaults to decimal GPS with expert XY hidden",
   await saveScreen(page, testInfo, "design-console-pivot-gps-default");
 });
 
-test("map-first catalog tree creates customer projects and field maps without hidden sample designs", async ({ page }, testInfo) => {
+test("map-first catalog tree creates client projects and field maps without hidden sample designs", async ({ page }, testInfo) => {
   const nativeDialogs: string[] = [];
   page.on("dialog", async (dialog) => {
     nativeDialogs.push(dialog.message());
@@ -280,7 +280,7 @@ test("map-first catalog tree creates customer projects and field maps without hi
   await expect(page.getByTestId("catalog-dialog")).toBeHidden();
   await expect(page.getByRole("button", { name: "Adams North Unit" })).toBeHidden();
 
-  await createCustomerFolder(page, "Adams Farms");
+  await createClientFolder(page, "Adams Farms");
   await expect(page.getByRole("button", { name: "Adams Farms" })).toBeVisible();
   await expect(railProjectButton).toBeEnabled();
   await createProjectFromRail(page, "Adams North Unit", "Saved under: Adams Farms");
@@ -328,13 +328,13 @@ test("catalog creation modal cancel leaves the tree unchanged", async ({ page },
 
   await page.goto("/");
   await openProjectDrawerIfCollapsed(page);
-  await expect(page.getByText("No customer folders yet.")).toBeVisible();
-  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Customer" }).click();
-  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
-  await page.getByTestId("customer-profile-cancel").click();
-  await expect(page.getByTestId("customer-profile-dialog")).toBeHidden();
-  await expect(page.getByText("No customer folders yet.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Customer 1" })).toBeHidden();
+  await expect(page.getByText("No client folders yet.")).toBeVisible();
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Client" }).click();
+  await expect(page.getByTestId("client-profile-dialog")).toBeVisible();
+  await page.getByTestId("client-profile-cancel").click();
+  await expect(page.getByTestId("client-profile-dialog")).toBeHidden();
+  await expect(page.getByText("No client folders yet.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Client 1" })).toBeHidden();
   expect(nativeDialogs).toEqual([]);
   await saveScreen(page, testInfo, "catalog-modal-cancel-unchanged");
 });
@@ -342,22 +342,22 @@ test("catalog creation modal cancel leaves the tree unchanged", async ({ page },
 test("catalog creation modal validates blank names without creating records", async ({ page }, testInfo) => {
   await page.goto("/");
   await openProjectDrawerIfCollapsed(page);
-  await expect(page.getByText("No customer folders yet.")).toBeVisible();
-  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Customer" }).click();
-  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
+  await expect(page.getByText("No client folders yet.")).toBeVisible();
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Client" }).click();
+  await expect(page.getByTestId("client-profile-dialog")).toBeVisible();
   await page.getByLabel("Company name").fill("   ");
-  await page.getByTestId("customer-profile-save").click();
-  await expect(page.getByTestId("customer-profile-error")).toHaveText("Enter primary contact first and last name before saving.");
-  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
-  await expect(page.getByText("No customer folders yet.")).toBeVisible();
-  await page.getByTestId("customer-profile-cancel").click();
+  await page.getByTestId("client-profile-save").click();
+  await expect(page.getByTestId("client-profile-error")).toHaveText("Enter primary contact first and last name before saving.");
+  await expect(page.getByTestId("client-profile-dialog")).toBeVisible();
+  await expect(page.getByText("No client folders yet.")).toBeVisible();
+  await page.getByTestId("client-profile-cancel").click();
   await saveScreen(page, testInfo, "catalog-modal-blank-validation");
 });
 
 test("project creation modal stays reachable on a 390px mobile viewport", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await createCustomerFolder(page, "Mobile Farms");
+  await createClientFolder(page, "Mobile Farms");
   await openProjectDrawerIfCollapsed(page);
   await page.getByTestId("project-tree-actions").getByRole("button", { name: "Project", exact: true }).click();
   await expect(page.getByTestId("catalog-dialog")).toBeVisible();
@@ -369,7 +369,7 @@ test("project creation modal stays reachable on a 390px mobile viewport", async 
   await saveScreen(page, testInfo, "catalog-modal-mobile-390");
 });
 
-test("customer detail manages profile and contained project lifecycle", async ({ page }, testInfo) => {
+test("client detail manages profile and contained project lifecycle", async ({ page }, testInfo) => {
   const nativeDialogs: string[] = [];
   page.on("dialog", async (dialog) => {
     nativeDialogs.push(dialog.message());
@@ -377,7 +377,7 @@ test("customer detail manages profile and contained project lifecycle", async ({
   });
 
   await page.goto("/");
-  await createCustomerFolder(page, "Adams Farms", {
+  await createClientFolder(page, "Adams Farms", {
     firstName: "Ana",
     middleInitial: "J",
     lastName: "Operator",
@@ -387,30 +387,30 @@ test("customer detail manages profile and contained project lifecycle", async ({
     location: "Adams County",
   });
   await openInspectorIfCollapsed(page);
-  await expect(page.getByTestId("customer-detail-panel")).toContainText("Adams Farms");
+  await expect(page.getByTestId("client-detail-panel")).toContainText("Adams Farms");
   await expect(page.getByText("Operator, Ana J. Jr.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Edit Customer" }).click();
-  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Edit Client" }).click();
+  await expect(page.getByTestId("client-profile-dialog")).toBeVisible();
   await page.getByLabel("Location").fill("North Adams County");
-  await page.getByTestId("customer-profile-save").click();
-  await expect(page.getByTestId("customer-profile-dialog")).toBeHidden();
+  await page.getByTestId("client-profile-save").click();
+  await expect(page.getByTestId("client-profile-dialog")).toBeHidden();
   await expect(page.getByText("North Adams County")).toBeVisible();
 
-  await createProjectForSelectedCustomer(page, "North Unit", "Saved under: Adams Farms");
+  await createProjectForSelectedClient(page, "North Unit", "Saved under: Adams Farms");
   await openCatalogFromFile(page);
   await openInspectorIfCollapsed(page);
-  await expect(page.getByTestId("customer-detail-projects")).toContainText("North Unit");
-  await expect(page.getByRole("button", { name: "Delete Customer" })).toBeDisabled();
+  await expect(page.getByTestId("client-detail-projects")).toContainText("North Unit");
+  await expect(page.getByRole("button", { name: "Delete Client" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Rename" }).click();
   await expect(page.getByTestId("catalog-dialog")).toBeVisible();
   await page.getByLabel("Catalog item name").fill("North Unit Renamed");
   await page.getByTestId("catalog-dialog-create").click();
   await expect(page.getByTestId("catalog-dialog")).toBeHidden();
-  await expect(page.getByTestId("customer-detail-projects")).toContainText("North Unit Renamed");
+  await expect(page.getByTestId("client-detail-projects")).toContainText("North Unit Renamed");
 
-  await createCustomerFolder(page, "Beta Farms");
+  await createClientFolder(page, "Beta Farms");
   await page.getByRole("button", { name: "Adams Farms" }).click();
   await page.getByRole("button", { name: "Move" }).click();
   await expect(page.getByTestId("move-project-dialog")).toBeVisible();
@@ -419,20 +419,20 @@ test("customer detail manages profile and contained project lifecycle", async ({
   await expect(page.getByTestId("move-project-dialog")).toBeHidden();
   await page.getByRole("button", { name: "Beta Farms" }).click();
   await openInspectorIfCollapsed(page);
-  await expect(page.getByTestId("customer-detail-projects")).toContainText("North Unit Renamed");
+  await expect(page.getByTestId("client-detail-projects")).toContainText("North Unit Renamed");
 
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByTestId("delete-project-dialog")).toBeVisible();
   await page.getByTestId("delete-project-dialog-confirm").click();
   await expect(page.getByTestId("delete-project-dialog")).toBeHidden();
-  await expect(page.getByTestId("customer-detail-projects")).not.toContainText("North Unit Renamed");
+  await expect(page.getByTestId("client-detail-projects")).not.toContainText("North Unit Renamed");
 
-  await page.getByRole("button", { name: "Delete Customer" }).click();
-  await expect(page.getByTestId("delete-customer-dialog")).toBeVisible();
-  await page.getByTestId("delete-customer-dialog-confirm").click();
+  await page.getByRole("button", { name: "Delete Client" }).click();
+  await expect(page.getByTestId("delete-client-dialog")).toBeVisible();
+  await page.getByTestId("delete-client-dialog-confirm").click();
   await expect(page.getByRole("button", { name: "Beta Farms" })).toBeHidden();
   expect(nativeDialogs).toEqual([]);
-  await saveScreen(page, testInfo, "customer-detail-project-lifecycle");
+  await saveScreen(page, testInfo, "client-detail-project-lifecycle");
 });
 
 test("public proof map features can select the side-panel editor without geometry mutation", async ({ page }, testInfo) => {
@@ -550,7 +550,10 @@ test("tablet portrait map console keeps drawers collapsed and HUD above the view
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "left-drawer-handle", 56, 56);
   await expectMinTargetSize(page, "right-drawer-handle", 56, 56);
+  await expectInsideContainer(page, "browser-map-bottom-dock", "browser-map-frame");
+  await expectBottomGap(page, "browser-map-bottom-dock", "browser-map-frame", 4, 18);
   await expectInsideContainer(page, "design-action-hud", "map-bottom-hud");
+  await expectInsideContainer(page, "map-bottom-hud", "browser-map-frame");
   await expectInsideViewport(page, "map-bottom-hud");
   await expectInsideViewport(page, "design-action-hud");
   const collapsedMap = await page.getByTestId("browser-map-frame").boundingBox();
@@ -584,6 +587,9 @@ test("tablet landscape map console has fixed page bounds and drawer handles", as
   await expectMinTargetSize(page, "workspace-nav-map", 48, 48);
   await expectMinTargetSize(page, "left-drawer-handle", 56, 56);
   await expectMinTargetSize(page, "right-drawer-handle", 56, 56);
+  await expectInsideContainer(page, "browser-map-bottom-dock", "browser-map-frame");
+  await expectBottomGap(page, "browser-map-bottom-dock", "browser-map-frame", 4, 18);
+  await expectInsideContainer(page, "map-bottom-hud", "browser-map-frame");
   await expectInsideViewport(page, "design-action-hud");
   await expectInsideViewport(page, "map-bottom-hud");
   await saveScreen(page, testInfo, "tablet-landscape-map-console");
@@ -916,7 +922,10 @@ test("browser map compact HUD actions stay inside the status panel", async ({ pa
   await expect(page.getByTestId("browser-action-commit")).toBeEnabled();
   await expect(page.getByText(/draw boundary .* 3 draft pts/)).toBeVisible();
   await expectNoHorizontalOverflow(page);
+  await expectInsideContainer(page, "browser-map-bottom-dock", "browser-map-frame");
+  await expectBottomGap(page, "browser-map-bottom-dock", "browser-map-frame", 4, 18);
   await expectInsideContainer(page, "browser-map-status-hud", "browser-map-frame");
+  await expectInsideContainer(page, "map-bottom-hud", "browser-map-frame");
   await expectInsideContainer(page, "browser-map-hud-actions", "browser-map-status-hud");
   await expectInsideContainer(page, "browser-action-commit", "browser-map-hud-actions");
   await expectInsideContainer(page, "browser-action-save-feature", "browser-map-hud-actions");
@@ -1858,7 +1867,7 @@ test("dashboard recent-project row can reopen a saved browser project", async ({
   await expect(sampleRow).toBeVisible();
   await recentProjects.getByRole("button", { name: "Create New" }).click();
   await openInspectorIfCollapsed(page);
-  await expect(page.getByTestId("catalog-notice")).toContainText("Select or create a customer folder");
+  await expect(page.getByTestId("catalog-notice")).toContainText("Select or create a client folder");
   await expect(page.getByText("Untitled Field Layout", { exact: true })).toBeHidden();
   await page.getByTestId("workspace-nav-dashboard").click();
   await recentProjects.getByRole("button", { name: "Open recent project North Quarter Concept Layout" }).click();
@@ -2057,7 +2066,7 @@ async function expectNoSavedProjectDocuments(page: Page): Promise<void> {
   expect(storageShape.projectDocumentIds).toEqual([]);
 }
 
-async function createCustomerFolder(
+async function createClientFolder(
   page: Page,
   name: string,
   profile: Partial<{
@@ -2072,8 +2081,8 @@ async function createCustomerFolder(
   }> = {},
 ): Promise<void> {
   await openProjectDrawerIfCollapsed(page);
-  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Customer", exact: true }).click();
-  await expect(page.getByTestId("customer-profile-dialog")).toBeVisible();
+  await page.getByTestId("project-tree-actions").getByRole("button", { name: "Client", exact: true }).click();
+  await expect(page.getByTestId("client-profile-dialog")).toBeVisible();
   await page.getByLabel("Company name").fill(name);
   await page.getByLabel("Last name").fill(profile.lastName ?? "Contact");
   await page.getByLabel("First name").fill(profile.firstName ?? "Primary");
@@ -2083,11 +2092,11 @@ async function createCustomerFolder(
   if (profile.phone !== undefined) await page.getByLabel("Phone").fill(profile.phone);
   if (profile.location !== undefined) await page.getByLabel("Location").fill(profile.location);
   if (profile.notes !== undefined) await page.getByLabel("Notes").fill(profile.notes);
-  await page.getByTestId("customer-profile-save").click();
-  await expect(page.getByTestId("customer-profile-dialog")).toBeHidden();
+  await page.getByTestId("client-profile-save").click();
+  await expect(page.getByTestId("client-profile-dialog")).toBeHidden();
 }
 
-async function createProjectForSelectedCustomer(page: Page, itemName: string, contextText?: string | RegExp): Promise<void> {
+async function createProjectForSelectedClient(page: Page, itemName: string, contextText?: string | RegExp): Promise<void> {
   await openInspectorIfCollapsed(page);
   await page.getByRole("button", { name: "New Project", exact: true }).click();
   await expect(page.getByTestId("catalog-dialog")).toBeVisible();
@@ -2170,6 +2179,17 @@ async function expectInsideContainer(page: Page, childTestId: string, containerT
   expect(child.y, `${childTestId} top edge`).toBeGreaterThanOrEqual(container.y - 2);
   expect(child.x + child.width, `${childTestId} right edge`).toBeLessThanOrEqual(container.x + container.width + 2);
   expect(child.y + child.height, `${childTestId} bottom edge`).toBeLessThanOrEqual(container.y + container.height + 2);
+}
+
+async function expectBottomGap(page: Page, childTestId: string, containerTestId: string, minGap: number, maxGap: number): Promise<void> {
+  const child = await page.getByTestId(childTestId).boundingBox();
+  const container = await page.getByTestId(containerTestId).boundingBox();
+  expect(child, `${childTestId} bounding box`).not.toBeNull();
+  expect(container, `${containerTestId} bounding box`).not.toBeNull();
+  if (!child || !container) return;
+  const gap = (container.y + container.height) - (child.y + child.height);
+  expect(gap, `${childTestId} bottom gap`).toBeGreaterThanOrEqual(minGap);
+  expect(gap, `${childTestId} bottom gap`).toBeLessThanOrEqual(maxGap);
 }
 
 async function expectInsideViewport(page: Page, testId: string): Promise<void> {

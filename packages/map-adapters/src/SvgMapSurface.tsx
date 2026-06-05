@@ -66,6 +66,7 @@ export function SvgMapSurface({
   activeMapFeatureKind,
   activeToolMode,
   activeToolRequestId,
+  bottomOverlay,
   homeView = false,
   project,
   result,
@@ -695,6 +696,11 @@ export function SvgMapSurface({
           <View style={styles.referenceOverlayBadge} testID="svg-reference-overlay-unavailable">
             <Text style={styles.imageryBadgeText}>Reference overlays unavailable</Text>
             <Text style={styles.imageryBadgeSubtext}>{referenceOverlayNotice.reason}</Text>
+          </View>
+        ) : null}
+        {bottomOverlay ? (
+          <View pointerEvents="box-none" style={styles.bottomOverlaySlot}>
+            {bottomOverlay}
           </View>
         ) : null}
       </View>
@@ -1449,6 +1455,14 @@ const styles = StyleSheet.create({
   },
   mapClickLayerCompact: {
     bottom: 0,
+  },
+  bottomOverlaySlot: {
+    bottom: 8,
+    left: 12,
+    maxWidth: "100%",
+    position: "absolute",
+    right: 12,
+    zIndex: 3,
   },
   modeRow: {
     flexDirection: "row",

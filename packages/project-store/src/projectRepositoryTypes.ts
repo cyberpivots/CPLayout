@@ -1,6 +1,6 @@
 import type { LayoutResult, PivotProject } from "@cplayout/core";
 
-export interface CustomerRecord {
+export interface ClientRecord {
   id: string;
   displayName: string;
   sortName: string;
@@ -20,7 +20,7 @@ export interface CustomerRecord {
 
 export interface CatalogProjectRecord {
   id: string;
-  customerId: string;
+  clientId: string;
   name: string;
   projectCrs: string;
   unitSystem: string;
@@ -47,7 +47,7 @@ export interface DesignRecord {
 }
 
 export interface ProjectCatalog {
-  customers: CustomerRecord[];
+  clients: ClientRecord[];
   projects: CatalogProjectRecord[];
   fieldMaps: FieldMapRecord[];
   designs: DesignRecord[];
@@ -61,7 +61,7 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
-export interface CustomerProfileInput {
+export interface ClientProfileInput {
   companyName?: string;
   primaryContactFirstName: string;
   primaryContactLastName: string;
@@ -76,7 +76,7 @@ export interface CustomerProfileInput {
   notes?: string;
 }
 
-export interface CustomerProfileUpdateInput {
+export interface ClientProfileUpdateInput {
   id: string;
   companyName?: string;
   primaryContactFirstName?: string;
@@ -93,7 +93,7 @@ export interface CustomerProfileUpdateInput {
 }
 
 export interface CreateProjectWithInitialDesignInput {
-  customerId: string;
+  clientId: string;
   project: PivotProject;
   result?: LayoutResult;
   fieldMapId?: string;
@@ -103,7 +103,7 @@ export interface CreateProjectWithInitialDesignInput {
 }
 
 export interface CreateProjectWithInitialFieldMapInput {
-  customerId: string;
+  clientId: string;
   projectId?: string;
   projectName: string;
   projectCrs: string;
@@ -145,14 +145,14 @@ export interface ProjectRepository {
   loadProjectAsync(projectId: string): Promise<PivotProject | null>;
   loadDesignProjectAsync(designId: string): Promise<PivotProject | null>;
   deleteProjectAsync(projectId: string): Promise<void>;
-  createCustomerAsync(input: CustomerProfileInput): Promise<CustomerRecord>;
-  updateCustomerAsync(input: CustomerProfileUpdateInput): Promise<CustomerRecord>;
-  deleteCustomerAsync(customerId: string): Promise<void>;
+  createClientAsync(input: ClientProfileInput): Promise<ClientRecord>;
+  updateClientAsync(input: ClientProfileUpdateInput): Promise<ClientRecord>;
+  deleteClientAsync(clientId: string): Promise<void>;
   createProjectWithInitialDesignAsync(input: CreateProjectWithInitialDesignInput): Promise<CreatedProjectWorkspace>;
   createProjectWithInitialFieldMapAsync(input: CreateProjectWithInitialFieldMapInput): Promise<CreatedProjectFieldMapWorkspace>;
-  createProjectRecordAsync(input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord>;
+  createProjectRecordAsync(input: { id?: string; clientId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord>;
   renameProjectAsync(projectId: string, name: string): Promise<CatalogProjectRecord>;
-  moveProjectToCustomerAsync(projectId: string, customerId: string): Promise<CatalogProjectRecord>;
+  moveProjectToClientAsync(projectId: string, clientId: string): Promise<CatalogProjectRecord>;
   createFieldMapRecordAsync(input: { id?: string; projectId: string; name: string }): Promise<FieldMapRecord>;
   createDesignRecordAsync(input: { id?: string; fieldMapId: string; name: string; pivotProjectId: string; isActive?: boolean }): Promise<DesignRecord>;
   getBackendInfoAsync(): Promise<ProjectRepositoryBackendInfo>;

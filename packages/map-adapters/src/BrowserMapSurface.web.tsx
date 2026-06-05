@@ -66,6 +66,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     activeMapFeatureKind,
     activeToolMode,
     activeToolRequestId,
+    bottomOverlay,
     project,
     result,
     settings,
@@ -478,7 +479,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>{homeView ? "North America Map" : "Imagery Workbench"}</Text>
-          <Text style={styles.subtitle}>{homeView ? "Customer/project catalog view" : `${project.projectCrs} canonical geometry`} · {activeImagery?.name ?? "offline overlay"} </Text>
+          <Text style={styles.subtitle}>{homeView ? "Client/project catalog view" : `${project.projectCrs} canonical geometry`} · {activeImagery?.name ?? "offline overlay"} </Text>
         </View>
         <View style={styles.segmented}>
           <ModeSwitch
@@ -592,18 +593,6 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        <View pointerEvents={compactLayout && !canCommitDraft && !canSaveFeature ? "none" : "box-none"} style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
-          <View pointerEvents="none" style={styles.statusTextGroup}>
-            <Text style={styles.statusText}>{status}</Text>
-            <Text style={styles.statusMeta}>{statusMetaText}</Text>
-          </View>
-          <View pointerEvents="box-none" style={styles.hudActions} testID="browser-map-hud-actions">
-            <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="browser-action-commit" />
-            <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="browser-action-save-feature" />
-            <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="browser-action-clear" />
-          </View>
-        </View>
-
         {!canEditOnMap ? (
           <View style={[styles.layoutHud, compactLayout && styles.layoutHudCompact]} testID="browser-map-layout-hud">
             <MapPinned size={17} color="#173428" />
@@ -611,11 +600,29 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        <View style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]} testID="browser-map-attribution-hud">
-          <Satellite size={13} color="#173428" />
-          <Text numberOfLines={compactLayout ? 1 : undefined} style={styles.attributionText}>
-            {activeImagery ? `${activeImagery.attribution} · ${activeImagery.licenseText}` : aerialImagery.reason}
-          </Text>
+        <View pointerEvents="box-none" style={[styles.bottomDock, compactLayout && styles.bottomDockCompact]} testID="browser-map-bottom-dock">
+          <View pointerEvents="none" style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]} testID="browser-map-attribution-hud">
+            <Satellite size={13} color="#173428" />
+            <Text numberOfLines={compactLayout ? 1 : undefined} style={styles.attributionText}>
+              {activeImagery ? `${activeImagery.attribution} · ${activeImagery.licenseText}` : aerialImagery.reason}
+            </Text>
+          </View>
+          <View pointerEvents={compactLayout && !canCommitDraft && !canSaveFeature ? "none" : "box-none"} style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
+            <View pointerEvents="none" style={styles.statusTextGroup}>
+              <Text style={styles.statusText}>{status}</Text>
+              <Text style={styles.statusMeta}>{statusMetaText}</Text>
+            </View>
+            <View pointerEvents="box-none" style={styles.hudActions} testID="browser-map-hud-actions">
+              <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="browser-action-commit" />
+              <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="browser-action-save-feature" />
+              <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="browser-action-clear" />
+            </View>
+          </View>
+          {bottomOverlay ? (
+            <View pointerEvents="box-none" style={styles.bottomOverlaySlot}>
+              {bottomOverlay}
+            </View>
+          ) : null}
         </View>
         {runtimeError ? <Text style={styles.runtimeError}>{runtimeError}</Text> : null}
       </View>
@@ -986,27 +993,38 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: "#173428",
   },
+  bottomDock: {
+    bottom: 8,
+    gap: 8,
+    left: 12,
+    position: "absolute",
+    right: 12,
+    zIndex: 5,
+  },
+  bottomDockCompact: {
+    bottom: 8,
+    left: 8,
+    right: 8,
+  },
+  bottomOverlaySlot: {
+    maxWidth: "100%",
+    width: "100%",
+  },
   statusHud: {
     alignItems: "center",
     backgroundColor: "rgba(17,28,23,0.92)",
     borderRadius: 8,
-    bottom: 136,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
     justifyContent: "space-between",
-    left: 12,
     maxWidth: "92%",
     padding: 10,
-    position: "absolute",
-    right: 12,
-    zIndex: 4,
+    width: "100%",
   },
   statusHudCompact: {
     alignItems: "flex-start",
-    bottom: 78,
-    left: 74,
-    right: 8,
+    maxWidth: "100%",
   },
   statusTextGroup: {
     flex: 1,
@@ -1088,27 +1106,20 @@ const styles = StyleSheet.create({
   },
   attributionHud: {
     alignItems: "center",
+    alignSelf: "flex-start",
     backgroundColor: "rgba(251,253,249,0.95)",
     borderRadius: 8,
-    bottom: 84,
     flexDirection: "row",
     gap: 6,
-    left: 12,
     maxWidth: "92%",
     paddingHorizontal: 9,
     paddingVertical: 7,
-    position: "absolute",
-    zIndex: 1,
   },
   attributionHudCompact: {
-    bottom: "auto",
-    left: 74,
     maxHeight: 30,
-    maxWidth: "72%",
+    maxWidth: "100%",
     overflow: "hidden",
     paddingVertical: 5,
-    right: 8,
-    top: 64,
   },
   attributionText: {
     color: "#173428",

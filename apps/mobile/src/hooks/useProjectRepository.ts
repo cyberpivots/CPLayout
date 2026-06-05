@@ -8,9 +8,9 @@ import {
   type CreatedProjectWorkspace,
   type CreateProjectWithInitialFieldMapInput,
   type CreateProjectWithInitialDesignInput,
-  type CustomerRecord,
-  type CustomerProfileInput,
-  type CustomerProfileUpdateInput,
+  type ClientRecord,
+  type ClientProfileInput,
+  type ClientProfileUpdateInput,
   type DesignRecord,
   type FieldMapRecord,
   type ProjectCatalog,
@@ -24,14 +24,14 @@ export interface ProjectWorkspaceStatus {
   catalog: ProjectCatalog;
   projects: ProjectSummary[];
   statusMessage: string;
-  createCustomer: (input: CustomerProfileInput) => Promise<CustomerRecord | null>;
-  updateCustomer: (input: CustomerProfileUpdateInput) => Promise<CustomerRecord | null>;
-  deleteCustomer: (customerId: string) => Promise<boolean>;
+  createClient: (input: ClientProfileInput) => Promise<ClientRecord | null>;
+  updateClient: (input: ClientProfileUpdateInput) => Promise<ClientRecord | null>;
+  deleteClient: (clientId: string) => Promise<boolean>;
   createProjectWithInitialDesign: (input: CreateProjectWithInitialDesignInput) => Promise<CreatedProjectWorkspace | null>;
   createProjectWithInitialFieldMap: (input: CreateProjectWithInitialFieldMapInput) => Promise<CreatedProjectFieldMapWorkspace | null>;
-  createProjectRecord: (input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }) => Promise<CatalogProjectRecord | null>;
+  createProjectRecord: (input: { id?: string; clientId: string; name: string; projectCrs: string; unitSystem: string }) => Promise<CatalogProjectRecord | null>;
   renameProject: (projectId: string, name: string) => Promise<CatalogProjectRecord | null>;
-  moveProjectToCustomer: (projectId: string, customerId: string) => Promise<CatalogProjectRecord | null>;
+  moveProjectToClient: (projectId: string, clientId: string) => Promise<CatalogProjectRecord | null>;
   createFieldMapRecord: (input: { id?: string; projectId: string; name: string }) => Promise<FieldMapRecord | null>;
   createDesignRecord: (input: { id?: string; fieldMapId: string; name: string; pivotProjectId: string; isActive?: boolean }) => Promise<DesignRecord | null>;
   refreshProjects: () => Promise<void>;
@@ -43,7 +43,7 @@ export interface ProjectWorkspaceStatus {
 }
 
 export function useProjectRepository(): ProjectWorkspaceStatus {
-  const [catalog, setCatalog] = useState<ProjectCatalog>({ customers: [], projects: [], fieldMaps: [], designs: [] });
+  const [catalog, setCatalog] = useState<ProjectCatalog>({ clients: [], projects: [], fieldMaps: [], designs: [] });
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [statusMessage, setStatusMessage] = useState(`Storage: ${projectRepository.backendLabel}`);
   const [backendInfo, setBackendInfo] = useState<ProjectRepositoryBackendInfo | null>(null);
@@ -139,11 +139,11 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     }
   }, [refreshProjects]);
 
-  const createCustomer = useCallback(async (input: CustomerProfileInput): Promise<CustomerRecord | null> => {
+  const createClient = useCallback(async (input: ClientProfileInput): Promise<ClientRecord | null> => {
     try {
-      const record = await projectRepository.createCustomerAsync(input);
+      const record = await projectRepository.createClientAsync(input);
       await refreshProjects();
-      setStatusMessage(`Created customer folder ${record.displayName}.`);
+      setStatusMessage(`Created client folder ${record.displayName}.`);
       return record;
     } catch (error) {
       setStatusMessage(errorMessage(error));
@@ -151,11 +151,11 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     }
   }, [refreshProjects]);
 
-  const updateCustomer = useCallback(async (input: CustomerProfileUpdateInput): Promise<CustomerRecord | null> => {
+  const updateClient = useCallback(async (input: ClientProfileUpdateInput): Promise<ClientRecord | null> => {
     try {
-      const record = await projectRepository.updateCustomerAsync(input);
+      const record = await projectRepository.updateClientAsync(input);
       await refreshProjects();
-      setStatusMessage(`Updated customer folder ${record.displayName}.`);
+      setStatusMessage(`Updated client folder ${record.displayName}.`);
       return record;
     } catch (error) {
       setStatusMessage(errorMessage(error));
@@ -163,11 +163,11 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     }
   }, [refreshProjects]);
 
-  const deleteCustomer = useCallback(async (customerId: string): Promise<boolean> => {
+  const deleteClient = useCallback(async (clientId: string): Promise<boolean> => {
     try {
-      await projectRepository.deleteCustomerAsync(customerId);
+      await projectRepository.deleteClientAsync(clientId);
       await refreshProjects();
-      setStatusMessage("Deleted empty customer folder.");
+      setStatusMessage("Deleted empty client folder.");
       return true;
     } catch (error) {
       setStatusMessage(errorMessage(error));
@@ -199,7 +199,7 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     }
   }, [refreshProjects]);
 
-  const createProjectRecord = useCallback(async (input: { id?: string; customerId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord | null> => {
+  const createProjectRecord = useCallback(async (input: { id?: string; clientId: string; name: string; projectCrs: string; unitSystem: string }): Promise<CatalogProjectRecord | null> => {
     try {
       const record = await projectRepository.createProjectRecordAsync(input);
       await refreshProjects();
@@ -223,9 +223,9 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     }
   }, [refreshProjects]);
 
-  const moveProjectToCustomer = useCallback(async (projectId: string, customerId: string): Promise<CatalogProjectRecord | null> => {
+  const moveProjectToClient = useCallback(async (projectId: string, clientId: string): Promise<CatalogProjectRecord | null> => {
     try {
-      const record = await projectRepository.moveProjectToCustomerAsync(projectId, customerId);
+      const record = await projectRepository.moveProjectToClientAsync(projectId, clientId);
       await refreshProjects();
       setStatusMessage(`Moved project ${record.name}.`);
       return record;
@@ -263,14 +263,14 @@ export function useProjectRepository(): ProjectWorkspaceStatus {
     backendLabel: projectRepository.backendLabel,
     backendInfo,
     catalog,
-    createCustomer,
-    updateCustomer,
-    deleteCustomer,
+    createClient,
+    updateClient,
+    deleteClient,
     createProjectWithInitialDesign,
     createProjectWithInitialFieldMap,
     createProjectRecord,
     renameProject,
-    moveProjectToCustomer,
+    moveProjectToClient,
     createFieldMapRecord,
     createDesignRecord,
     projects,

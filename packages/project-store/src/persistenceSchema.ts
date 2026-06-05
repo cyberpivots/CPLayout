@@ -4,7 +4,7 @@ export interface SqlMigration {
   statements: string[];
 }
 
-export const SQLITE_SCHEMA_VERSION = 10;
+export const SQLITE_SCHEMA_VERSION = 11;
 
 export const SQLITE_MIGRATIONS: SqlMigration[] = [
   {
@@ -324,6 +324,18 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
       `DROP TABLE IF EXISTS layout_decisions`,
       `DROP TABLE IF EXISTS model_recommendations`,
       `DROP TABLE IF EXISTS layout_evidence`,
+    ],
+  },
+  {
+    id: 11,
+    name: "rename_client_catalog_schema",
+    statements: [
+      `DROP INDEX IF EXISTS idx_project_records_customer`,
+      `DROP INDEX IF EXISTS idx_customers_sort`,
+      `ALTER TABLE customers RENAME TO clients`,
+      `ALTER TABLE project_records RENAME COLUMN customer_id TO client_id`,
+      `CREATE INDEX IF NOT EXISTS idx_clients_sort ON clients(sort_name, display_name)`,
+      `CREATE INDEX IF NOT EXISTS idx_project_records_client ON project_records(client_id, name)`,
     ],
   },
 ];

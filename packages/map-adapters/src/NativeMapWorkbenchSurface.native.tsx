@@ -60,6 +60,7 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
     activeMapFeatureKind,
     activeToolMode,
     activeToolRequestId,
+    bottomOverlay,
     homeView = false,
     project,
     result,
@@ -384,21 +385,27 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
         </View>
       ) : null}
 
-      <View pointerEvents="box-none" style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="native-map-status-hud">
-        <View pointerEvents="none" style={styles.statusTextGroup}>
-          <Text style={styles.statusText}>{status}</Text>
-          <Text style={styles.statusMeta}>{statusMetaText}</Text>
+      <View pointerEvents="box-none" style={[styles.bottomDock, compactLayout && styles.bottomDockCompact]} testID="native-map-bottom-dock">
+        <View pointerEvents="none" style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]} testID="native-map-attribution-hud">
+          <Satellite size={13} color="#173428" />
+          <Text style={styles.attributionText}>{imageryStatus}</Text>
         </View>
-        <View pointerEvents="box-none" style={styles.hudActions} testID="native-map-hud-actions">
-          <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="native-action-commit" />
-          <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="native-action-save-feature" />
-          <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="native-action-clear" />
+        <View pointerEvents="box-none" style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="native-map-status-hud">
+          <View pointerEvents="none" style={styles.statusTextGroup}>
+            <Text style={styles.statusText}>{status}</Text>
+            <Text style={styles.statusMeta}>{statusMetaText}</Text>
+          </View>
+          <View pointerEvents="box-none" style={styles.hudActions} testID="native-map-hud-actions">
+            <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="native-action-commit" />
+            <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="native-action-save-feature" />
+            <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="native-action-clear" />
+          </View>
         </View>
-      </View>
-
-      <View pointerEvents="none" style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]} testID="native-map-attribution-hud">
-        <Satellite size={13} color="#173428" />
-        <Text style={styles.attributionText}>{imageryStatus}</Text>
+        {bottomOverlay ? (
+          <View pointerEvents="box-none" style={styles.bottomOverlaySlot}>
+            {bottomOverlay}
+          </View>
+        ) : null}
       </View>
       {runtimeError ? <Text style={styles.runtimeError}>{runtimeError}</Text> : null}
     </View>
@@ -452,27 +459,37 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
+  bottomDock: {
+    bottom: 8,
+    gap: 8,
+    left: 12,
+    position: "absolute",
+    right: 12,
+    zIndex: 5,
+  },
+  bottomDockCompact: {
+    left: 8,
+    right: 8,
+  },
+  bottomOverlaySlot: {
+    maxWidth: "100%",
+    width: "100%",
+  },
   statusHud: {
     alignItems: "center",
     backgroundColor: "rgba(17,28,23,0.92)",
     borderRadius: 8,
-    bottom: 116,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
     justifyContent: "space-between",
-    left: 12,
     maxWidth: "92%",
     padding: 10,
-    position: "absolute",
-    right: 12,
-    zIndex: 4,
+    width: "100%",
   },
   statusHudCompact: {
     alignItems: "flex-start",
-    bottom: 132,
-    left: 8,
-    right: 8,
+    maxWidth: "100%",
   },
   statusTextGroup: {
     flex: 1,
@@ -554,23 +571,17 @@ const styles = StyleSheet.create({
   },
   attributionHud: {
     alignItems: "center",
+    alignSelf: "flex-start",
     backgroundColor: "rgba(251,253,249,0.95)",
     borderRadius: 8,
-    bottom: 72,
     flexDirection: "row",
     gap: 6,
-    left: 12,
     maxWidth: "92%",
     paddingHorizontal: 9,
     paddingVertical: 7,
-    position: "absolute",
-    zIndex: 2,
   },
   attributionHudCompact: {
-    bottom: 82,
-    left: 8,
-    maxWidth: "94%",
-    right: 8,
+    maxWidth: "100%",
   },
   attributionText: {
     color: "#173428",

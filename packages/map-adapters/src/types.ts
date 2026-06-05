@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { AppSettings, InfrastructurePoint, LayoutResult, LonLat, MappingWorkflowMode, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 
@@ -9,6 +10,7 @@ export interface MapSurfaceProps {
   activeLayer?: DrawingLayerType;
   activeMapFeatureKind?: ProjectMapFeatureKind;
   activeToolRequestId?: number;
+  bottomOverlay?: ReactNode;
   draftVertices?: XY[];
   homeView?: boolean;
   selectedMapFeatureId?: string | null;

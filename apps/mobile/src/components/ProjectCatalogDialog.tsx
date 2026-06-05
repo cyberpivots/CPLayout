@@ -1,4 +1,4 @@
-import type { CustomerRecord } from "@cplayout/project-store";
+import type { ClientRecord } from "@cplayout/project-store";
 import { AlertTriangle, CheckCircle2, Database, FolderOpen, FolderPlus, Layers, Map as MapIcon, MoveRight, UserRound } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 
-export type ProjectCatalogDialogMode = "customer" | "project" | "fieldMap" | "design";
+export type ProjectCatalogDialogMode = "client" | "project" | "fieldMap" | "design";
 
 interface ProjectCatalogDialogProps {
   createButtonLabel?: string;
@@ -32,10 +32,10 @@ const dialogCopy: Record<ProjectCatalogDialogMode, {
   helper: string;
   title: string;
 }> = {
-  customer: {
-    createLabel: "customer folder",
-    helper: "Adds a customer folder for a farm, grower, or service account in the catalog rail.",
-    title: "Add Customer Folder",
+  client: {
+    createLabel: "client folder",
+    helper: "Adds a client folder for a farm, grower, or service account in the catalog rail.",
+    title: "Add Client Folder",
   },
   project: {
     createLabel: "project",
@@ -163,7 +163,7 @@ export function ProjectCatalogDialog({
   );
 }
 
-export interface CustomerProfileDialogValue {
+export interface ClientProfileDialogValue {
   companyName: string;
   primaryContactFirstName: string;
   primaryContactMiddleInitial: string;
@@ -175,9 +175,9 @@ export interface CustomerProfileDialogValue {
   notes: string;
 }
 
-export function CustomerProfileDialog({
+export function ClientProfileDialog({
   defaultDisplayName,
-  initialCustomer,
+  initialClient,
   mode,
   onCancel,
   onSave,
@@ -185,25 +185,25 @@ export function CustomerProfileDialog({
   visible,
 }: {
   defaultDisplayName: string;
-  initialCustomer?: CustomerRecord | null;
+  initialClient?: ClientRecord | null;
   mode: "create" | "edit";
   onCancel: () => void;
-  onSave: (value: CustomerProfileDialogValue) => void | Promise<void>;
+  onSave: (value: ClientProfileDialogValue) => void | Promise<void>;
   submitting?: boolean;
   visible: boolean;
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const compact = width < 520;
-  const [value, setValue] = useState<CustomerProfileDialogValue>(() => customerDialogValue(initialCustomer, defaultDisplayName));
+  const [value, setValue] = useState<ClientProfileDialogValue>(() => clientDialogValue(initialClient, defaultDisplayName));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
-    setValue(customerDialogValue(initialCustomer, defaultDisplayName));
+    setValue(clientDialogValue(initialClient, defaultDisplayName));
     setError(null);
-  }, [defaultDisplayName, initialCustomer, visible]);
+  }, [defaultDisplayName, initialClient, visible]);
 
-  function updateField(field: keyof CustomerProfileDialogValue, nextValue: string): void {
+  function updateField(field: keyof ClientProfileDialogValue, nextValue: string): void {
     setValue((current) => ({ ...current, [field]: nextValue }));
     if (error) setError(null);
   }
@@ -229,33 +229,33 @@ export function CustomerProfileDialog({
 
   return (
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
-      <View style={[styles.backdrop, compact && styles.backdropCompact]} testID="customer-profile-dialog-backdrop">
-        <View accessibilityViewIsModal style={[styles.dialog, compact && styles.dialogCompact]} testID="customer-profile-dialog">
+      <View style={[styles.backdrop, compact && styles.backdropCompact]} testID="client-profile-dialog-backdrop">
+        <View accessibilityViewIsModal style={[styles.dialog, compact && styles.dialogCompact]} testID="client-profile-dialog">
           <View style={styles.header}>
             <View style={styles.iconBadge}><UserRound size={22} color="#eef7f1" /></View>
             <View style={styles.headerText}>
-              <Text style={styles.title}>{mode === "create" ? "Add Customer" : "Edit Customer"}</Text>
-              <Text style={styles.helper}>Company is optional; primary contact first and last name are required. Customer profile details stay in the local catalog and are not written into project ZIP packages.</Text>
+              <Text style={styles.title}>{mode === "create" ? "Add Client" : "Edit Client"}</Text>
+              <Text style={styles.helper}>Company is optional; primary contact first and last name are required. Client profile details stay in the local catalog and are not written into project ZIP packages.</Text>
             </View>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.body} contentContainerStyle={styles.bodyContent} testID="customer-profile-dialog-body">
-            <DialogField label="Company name" value={value.companyName} onChangeText={(text) => updateField("companyName", text)} testID="customer-profile-company-input" />
-            <DialogField label="Last name" value={value.primaryContactLastName} onChangeText={(text) => updateField("primaryContactLastName", text)} error={error} testID="customer-profile-last-name-input" />
-            <DialogField label="First name" value={value.primaryContactFirstName} onChangeText={(text) => updateField("primaryContactFirstName", text)} testID="customer-profile-first-name-input" />
-            <DialogField label="M.I." value={value.primaryContactMiddleInitial} onChangeText={(text) => updateField("primaryContactMiddleInitial", text)} testID="customer-profile-middle-initial-input" />
-            <DialogField label="Suffix" value={value.primaryContactSuffix} onChangeText={(text) => updateField("primaryContactSuffix", text)} testID="customer-profile-suffix-input" />
-            <DialogField label="Email" value={value.email} onChangeText={(text) => updateField("email", text)} testID="customer-profile-email-input" />
-            <DialogField label="Phone" value={value.phone} onChangeText={(text) => updateField("phone", text)} testID="customer-profile-phone-input" />
-            <DialogField label="Location" value={value.location} onChangeText={(text) => updateField("location", text)} testID="customer-profile-location-input" />
-            <DialogField label="Notes" multiline value={value.notes} onChangeText={(text) => updateField("notes", text)} testID="customer-profile-notes-input" />
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.body} contentContainerStyle={styles.bodyContent} testID="client-profile-dialog-body">
+            <DialogField label="Company name" value={value.companyName} onChangeText={(text) => updateField("companyName", text)} testID="client-profile-company-input" />
+            <DialogField label="Last name" value={value.primaryContactLastName} onChangeText={(text) => updateField("primaryContactLastName", text)} error={error} testID="client-profile-last-name-input" />
+            <DialogField label="First name" value={value.primaryContactFirstName} onChangeText={(text) => updateField("primaryContactFirstName", text)} testID="client-profile-first-name-input" />
+            <DialogField label="M.I." value={value.primaryContactMiddleInitial} onChangeText={(text) => updateField("primaryContactMiddleInitial", text)} testID="client-profile-middle-initial-input" />
+            <DialogField label="Suffix" value={value.primaryContactSuffix} onChangeText={(text) => updateField("primaryContactSuffix", text)} testID="client-profile-suffix-input" />
+            <DialogField label="Email" value={value.email} onChangeText={(text) => updateField("email", text)} testID="client-profile-email-input" />
+            <DialogField label="Phone" value={value.phone} onChangeText={(text) => updateField("phone", text)} testID="client-profile-phone-input" />
+            <DialogField label="Location" value={value.location} onChangeText={(text) => updateField("location", text)} testID="client-profile-location-input" />
+            <DialogField label="Notes" multiline value={value.notes} onChangeText={(text) => updateField("notes", text)} testID="client-profile-notes-input" />
           </ScrollView>
 
           <View style={styles.footer}>
-            <Pressable accessibilityRole="button" disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]} testID="customer-profile-cancel">
+            <Pressable accessibilityRole="button" disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]} testID="client-profile-cancel">
               <Text style={styles.secondaryButtonText}>Cancel</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" disabled={submitting} onPress={() => void submit()} style={[styles.primaryButton, submitting && styles.disabledButton]} testID="customer-profile-save">
+            <Pressable accessibilityRole="button" disabled={submitting} onPress={() => void submit()} style={[styles.primaryButton, submitting && styles.disabledButton]} testID="client-profile-save">
               <Text style={styles.primaryButtonText}>{submitting ? "Saving" : "Save"}</Text>
             </Pressable>
           </View>
@@ -314,30 +314,30 @@ export function ConfirmActionDialog({
 }
 
 export function MoveProjectDialog({
-  currentCustomerId,
-  customers,
+  currentClientId,
+  clients,
   onCancel,
   onMove,
   projectName,
   submitting = false,
   visible,
 }: {
-  currentCustomerId: string;
-  customers: CustomerRecord[];
+  currentClientId: string;
+  clients: ClientRecord[];
   onCancel: () => void;
-  onMove: (customerId: string) => void | Promise<void>;
+  onMove: (clientId: string) => void | Promise<void>;
   projectName: string;
   submitting?: boolean;
   visible: boolean;
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const compact = width < 520;
-  const targets = useMemo(() => customers.filter((customer) => customer.id !== currentCustomerId), [currentCustomerId, customers]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState(targets[0]?.id ?? "");
+  const targets = useMemo(() => clients.filter((client) => client.id !== currentClientId), [currentClientId, clients]);
+  const [selectedClientId, setSelectedClientId] = useState(targets[0]?.id ?? "");
 
   useEffect(() => {
     if (!visible) return;
-    setSelectedCustomerId(targets[0]?.id ?? "");
+    setSelectedClientId(targets[0]?.id ?? "");
   }, [targets, visible]);
 
   return (
@@ -348,28 +348,28 @@ export function MoveProjectDialog({
             <View style={styles.iconBadge}><MoveRight size={22} color="#eef7f1" /></View>
             <View style={styles.headerText}>
               <Text style={styles.title}>Move Project</Text>
-              <Text style={styles.helper}>Move {projectName} to another customer folder. Project geometry and archive contents are unchanged.</Text>
+              <Text style={styles.helper}>Move {projectName} to another client folder. Project geometry and archive contents are unchanged.</Text>
             </View>
           </View>
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} testID="move-project-dialog-body">
             {targets.length === 0 ? (
-              <Text style={styles.errorText}>Create another customer folder before moving this project.</Text>
-            ) : targets.map((customer) => {
-              const selected = selectedCustomerId === customer.id;
+              <Text style={styles.errorText}>Create another client folder before moving this project.</Text>
+            ) : targets.map((client) => {
+              const selected = selectedClientId === client.id;
               return (
                 <Pressable
-                  accessibilityLabel={`Move to ${customer.displayName}`}
+                  accessibilityLabel={`Move to ${client.displayName}`}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected }}
-                  key={customer.id}
-                  onPress={() => setSelectedCustomerId(customer.id)}
+                  key={client.id}
+                  onPress={() => setSelectedClientId(client.id)}
                   style={[styles.choiceRow, selected && styles.choiceRowSelected]}
-                  testID={`move-project-target-${customer.id}`}
+                  testID={`move-project-target-${client.id}`}
                 >
                   {selected ? <CheckCircle2 size={18} color="#0f5e3d" /> : <FolderOpen size={18} color="#53645a" />}
                   <View style={styles.choiceText}>
-                    <Text style={styles.choiceTitle}>{customer.displayName}</Text>
-                    <Text style={styles.choiceMeta}>{customer.location || customer.contactName || "Customer folder"}</Text>
+                    <Text style={styles.choiceTitle}>{client.displayName}</Text>
+                    <Text style={styles.choiceMeta}>{client.location || client.contactName || "Client folder"}</Text>
                   </View>
                 </Pressable>
               );
@@ -381,9 +381,9 @@ export function MoveProjectDialog({
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              disabled={submitting || !selectedCustomerId}
-              onPress={() => selectedCustomerId ? void onMove(selectedCustomerId) : undefined}
-              style={[styles.primaryButton, (submitting || !selectedCustomerId) && styles.disabledButton]}
+              disabled={submitting || !selectedClientId}
+              onPress={() => selectedClientId ? void onMove(selectedClientId) : undefined}
+              style={[styles.primaryButton, (submitting || !selectedClientId) && styles.disabledButton]}
               testID="move-project-confirm"
             >
               <Text style={styles.primaryButtonText}>{submitting ? "Moving" : "Move"}</Text>
@@ -421,28 +421,28 @@ function DialogField({
         testID={testID}
         value={value}
       />
-      {error ? <Text style={styles.errorText} testID="customer-profile-error">{error}</Text> : null}
+      {error ? <Text style={styles.errorText} testID="client-profile-error">{error}</Text> : null}
     </View>
   );
 }
 
-function customerDialogValue(customer: CustomerRecord | null | undefined, defaultDisplayName: string): CustomerProfileDialogValue {
+function clientDialogValue(client: ClientRecord | null | undefined, defaultDisplayName: string): ClientProfileDialogValue {
   return {
-    companyName: customer?.companyName ?? defaultDisplayName,
-    primaryContactFirstName: customer?.primaryContactFirstName ?? "",
-    primaryContactMiddleInitial: customer?.primaryContactMiddleInitial ?? "",
-    primaryContactLastName: customer?.primaryContactLastName ?? "",
-    primaryContactSuffix: customer?.primaryContactSuffix ?? "",
-    email: customer?.email ?? "",
-    phone: customer?.phone ?? "",
-    location: customer?.location ?? "",
-    notes: customer?.notes ?? "",
+    companyName: client?.companyName ?? defaultDisplayName,
+    primaryContactFirstName: client?.primaryContactFirstName ?? "",
+    primaryContactMiddleInitial: client?.primaryContactMiddleInitial ?? "",
+    primaryContactLastName: client?.primaryContactLastName ?? "",
+    primaryContactSuffix: client?.primaryContactSuffix ?? "",
+    email: client?.email ?? "",
+    phone: client?.phone ?? "",
+    location: client?.location ?? "",
+    notes: client?.notes ?? "",
   };
 }
 
 function catalogDialogIcon(mode: ProjectCatalogDialogMode): React.ReactNode {
   switch (mode) {
-    case "customer":
+    case "client":
       return <FolderPlus size={22} color="#eef7f1" />;
     case "project":
       return <Database size={22} color="#eef7f1" />;

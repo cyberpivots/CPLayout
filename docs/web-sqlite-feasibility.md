@@ -1,6 +1,6 @@
 # Web SQLite Browser Catalog Gate
 
-The browser app keeps Expo SQLite web as a proof-gated path for the customer/project/field/design catalog and project snapshots. This is not the active browser store because Expo documents web support as alpha and dependent on WASM plus COOP/COEP headers, and local browser proof showed that partial SQLite web operation can split catalog state from localStorage fallback state.
+The browser app keeps Expo SQLite web as a proof-gated path for the client/project/field/design catalog and project snapshots. This is not the active browser store because Expo documents web support as alpha and dependent on WASM plus COOP/COEP headers, and local browser proof showed that partial SQLite web operation can split catalog state from localStorage fallback state.
 
 ## Current Decision
 

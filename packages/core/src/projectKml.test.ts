@@ -158,6 +158,35 @@ assert.match(exportedUtility.kml, /<styleUrl>#cplayout-map-line-water<\/styleUrl
 assert.match(exportedUtility.kml, /<Data name="cplayoutFeatureType"><value>map_feature<\/value><\/Data>/);
 assert.equal(exportedUtility.exportedFeatureCount, exported.exportedFeatureCount + 1);
 
+const exportedCornerArmMetadata = exportProjectGoogleEarthKml({
+  ...sampleProject,
+  machine: {
+    ...sampleProject.machine,
+    cornerArm: {
+      id: "corner-arm-kml",
+      name: "Corner arm KML",
+      advisoryOnly: true,
+      lengthMeters: 91,
+      guidanceType: "gps_guidance",
+      sequencingType: "electronic",
+      orientation: "operator_supplied",
+      confidence: "user_estimated",
+      sourceRefs: [{
+        sourceId: "SRC-VALLEY-VFLEX-CORNER",
+        title: "Valley VFlex Corner",
+        url: "https://www.valleyirrigation.com/vflex-corner",
+        checkedAt: "2026-06-05",
+        limit: "Manufacturer public feature/specification reference only; CPLayout does not certify compatibility or kinematics.",
+      }],
+    },
+  },
+});
+assert.match(exportedCornerArmMetadata.kml, /cornerArmAdvisoryOnly/);
+assert.match(exportedCornerArmMetadata.kml, /cornerArmCanonicalGeometryMutation/);
+assert.match(exportedCornerArmMetadata.kml, /SRC-VALLEY-VFLEX-CORNER/);
+assert.match(exportedCornerArmMetadata.kml, /Visual interchange metadata only/);
+assert.match(exportedCornerArmMetadata.kml, /<styleUrl>#cplayout-point-pivot<\/styleUrl>/);
+
 const styledMapPoints = exportProjectGoogleEarthKml({
   ...sampleProject,
   mapFeatures: [

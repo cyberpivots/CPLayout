@@ -195,7 +195,7 @@ The first production slice is a local companion pivot candidate exporter, not an
 | 068 | Network guardrail | Block any ML/CV UI external calls. | Add request interception proof. | Playwright test | Weighted vote planned | Planned |
 | 069 | Operator override | Allow operator notes without accepting geometry. | Add note evidence flow. | UI/core test | Weighted vote planned | Planned |
 | 070 | Milestone 7 | Review UI import and operator decision safety. | Curate browser evidence. | `npm run proof:web` | Weighted vote planned | Planned |
-| 071 | Archive round-trip | Verify pivot locator evidence in ZIP round trip. | Add archive fixture. | Project archive test | Weighted vote planned | Planned |
+| 071 | Archive exclusion | Verify pivot locator evidence is excluded from project ZIP round trip unless Phase 4 converts accepted projected `XY` drafts into canonical entities. | Add archive exclusion fixture. | Project archive test | Weighted vote planned | Planned |
 | 072 | SQLite web boundary | Keep browser MVP in local storage. | Document no web SQLite assumption. | Project-store test | Weighted vote planned | Planned |
 | 073 | Native persistence gate | Keep native SQLite claim unverified unless device test runs. | Add native verification note. | Existing verifier | Weighted vote planned | Planned |
 | 074 | File bridge hardening | Validate companion JSON before import. | Add strict parser. | Core test | Weighted vote planned | Planned |

@@ -153,6 +153,12 @@ function curatedSampleVariant(input: SampleVariantInput): PivotProject {
       endGunAngleRanges: input.machine.endGunAngleRanges?.map((range) => ({ ...range })),
       spanLengthsMeters: [...input.machine.spanLengthsMeters],
       sweep: { ...input.machine.sweep },
+      cornerArm: input.machine.cornerArm
+        ? {
+          ...input.machine.cornerArm,
+          sourceRefs: input.machine.cornerArm.sourceRefs.map((sourceRef) => ({ ...sourceRef })),
+        }
+        : undefined,
     },
     obstacles: sampleProject.obstacles.map((obstacle) => ({
       ...obstacle,
@@ -247,6 +253,27 @@ export const advisoryCornerArmSampleProject = curatedSampleVariant({
     spanLengthsMeters: [45, 45, 45, 45],
     endGunAngleRanges: [],
     endGunThrowMeters: 0,
+    cornerArm: {
+      id: "sample-vflex-advisory-corner-arm",
+      name: "Sample VFlex advisory corner arm",
+      advisoryOnly: true,
+      lengthMeters: 91,
+      guidanceType: "gps_guidance",
+      sequencingType: "electronic",
+      orientation: "operator_supplied",
+      confidence: "user_estimated",
+      operatorConfirmedAt: "2026-06-05T00:00:00.000Z",
+      notes: "Sample advisory configuration for UI review only; proprietary kinematics are not modeled.",
+      sourceRefs: [
+        {
+          sourceId: "SRC-VALLEY-VFLEX-CORNER",
+          title: "Valley VFlex Corner",
+          url: "https://www.valleyirrigation.com/vflex-corner",
+          checkedAt: "2026-06-05",
+          limit: "Manufacturer public feature/specification reference only; CPLayout does not certify compatibility or kinematics.",
+        },
+      ],
+    },
     sweep: { mode: "full_circle" },
   },
   mapFeatures: [

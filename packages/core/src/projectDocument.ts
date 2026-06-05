@@ -51,6 +51,31 @@ const PivotAngleRangeSchema = z.object({
   direction: z.enum(["clockwise", "counterclockwise"]),
 });
 
+const AdvisorySourceReferenceSchema = z.object({
+  sourceId: z.string().min(1),
+  title: z.string().min(1).optional(),
+  url: z.string().url().optional(),
+  guideId: z.string().min(1).optional(),
+  page: z.number().int().positive().optional(),
+  lineRange: z.string().min(1).optional(),
+  checkedAt: z.string().min(1).optional(),
+  limit: z.string().min(1),
+});
+
+const AdvisoryCornerArmConfigSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  advisoryOnly: z.literal(true),
+  lengthMeters: z.number().positive(),
+  guidanceType: z.enum(["gps_guidance", "below_ground_guidance", "operator_supplied", "unknown"]),
+  sequencingType: z.enum(["electronic", "mechanical", "operator_supplied", "unknown"]),
+  orientation: z.enum(["leading", "trailing", "operator_supplied", "unknown"]),
+  confidence: z.enum(["rtk_fixed", "rtk_float", "dgps", "autonomous_gps", "imagery_digitized", "imported_cad", "user_estimated", "optimized"]),
+  sourceRefs: z.array(AdvisorySourceReferenceSchema).min(1),
+  operatorConfirmedAt: z.string().min(1).optional(),
+  notes: z.string().optional(),
+});
+
 const PivotMachineSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -77,6 +102,7 @@ const PivotMachineSchema = z.object({
     sourceAccessedAt: z.string().min(1),
     advisoryOnly: z.literal(true),
   }).optional(),
+  cornerArm: AdvisoryCornerArmConfigSchema.optional(),
 });
 
 const ObstacleZoneSchema = z.object({

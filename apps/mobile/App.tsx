@@ -50,7 +50,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 
 import { CoordinateFormatPanel } from "./src/components/CoordinateFormatPanel";
 import { AndroidNativeProofRunner } from "./src/components/AndroidNativeProofRunner";
-import { BrowserRtkReceiverPanel } from "./src/components/BrowserRtkReceiverPanel";
+import { BrowserRtkReceiverPanel, type BrowserRtkReceiverStatus } from "./src/components/BrowserRtkReceiverPanel";
 import { CommandBar, IconCommandButton, type CommandIconButtonConfig, type CommandMenuConfig } from "./src/components/CommandSurface";
 import { MapSurface } from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
@@ -93,6 +93,7 @@ import {
   sampleProject,
   type AppSettings,
   type GoogleEarthKmlImportResult,
+  type AdvisoryCornerArmConfig,
   type LonLat,
   type MapPackageManifest,
   type PivotMachine,
@@ -103,7 +104,20 @@ import {
   type PivotSweep,
   type XY,
 } from "@cplayout/core";
-import { buildDesignScenarioPreview, evaluateLayout, exportScenarioGeoJson, machineRadiusMeters, type DesignScenarioPreview, type DrawingLayerType, type DrawingMode } from "@cplayout/geometry";
+import {
+  DEFAULT_CORNER_ARM_SOURCE_REFS,
+  buildDesignScenarioPreview,
+  buildPivotPlacementCandidates,
+  evaluateAdvisoryCornerArm,
+  evaluateLayout,
+  exportScenarioGeoJson,
+  machineRadiusMeters,
+  type AdvisoryCornerArmEvaluation,
+  type DesignScenarioPreview,
+  type DrawingLayerType,
+  type DrawingMode,
+  type PivotPlacementCandidate,
+} from "@cplayout/geometry";
 import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFeetInches, parseDistanceInput } from "@cplayout/core";
 
 type WorkspaceView = "dashboard" | "map" | "survey" | "files" | "settings" | "help";
@@ -111,6 +125,9 @@ type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "validation" | "export";
 type DesignConsoleModal = DrawingToolPaletteModal;
 type InspectorPage = "metrics" | "layers" | "feature" | "rtk" | "validation";
+type PendingPlacementAction =
+  | { kind: "pivot"; candidate: PivotPlacementCandidate }
+  | { kind: "cornerArm"; config: AdvisoryCornerArmConfig };
 
 function createBlankDesignProject(settings: AppSettings): PivotProject {
   const timestamp = new Date().toISOString();
@@ -172,9 +189,12 @@ function AppContent(): React.JSX.Element {
   }), [project, runtimeMapPackages]);
   const [savedRevision, setSavedRevision] = useState(0);
   const [settings, setSettings] = useState<AppSettings>(() => browserLocalSettings(sampleProject.settings));
+  const [rtkReceiverStatus, setRtkReceiverStatus] = useState<BrowserRtkReceiverStatus | null>(null);
   const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(sampleProject.id));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
   const [designScenarioPreview, setDesignScenarioPreview] = useState<DesignScenarioPreview[] | null>(null);
+  const [placementCandidates, setPlacementCandidates] = useState<PivotPlacementCandidate[] | null>(null);
+  const [pendingPlacementAction, setPendingPlacementAction] = useState<PendingPlacementAction | null>(null);
   const [guidedMapTool, setGuidedMapTool] = useState<{
     activeLayer: DrawingLayerType;
     featureKind?: ProjectMapFeatureKind;
@@ -211,6 +231,7 @@ function AppContent(): React.JSX.Element {
   const [activeInspectorPage, setActiveInspectorPage] = useState<InspectorPage>("metrics");
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
+  const cornerArmEvaluation = useMemo(() => evaluateAdvisoryCornerArm(project), [project]);
   const androidNativeProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_ANDROID_NATIVE_PROOF === "1";
   const nativeMapLibreProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF === "1";
   const isDirty = editor.revision !== savedRevision;
@@ -245,6 +266,7 @@ function AppContent(): React.JSX.Element {
 
   useEffect(() => {
     setDesignScenarioPreview(null);
+    setPlacementCandidates(null);
   }, [editor.revision]);
 
   useEffect(() => {
@@ -281,6 +303,26 @@ function AppContent(): React.JSX.Element {
 
   function calculateDesignScenarios(): void {
     setDesignScenarioPreview(buildDesignScenarioPreview(project, { maxOptimizedCandidates: 3 }));
+    setPlacementCandidates(buildPivotPlacementCandidates(project, { maxCandidates: 4 }));
+  }
+
+  async function confirmPlacementAction(): Promise<void> {
+    if (!pendingPlacementAction) return;
+    if (pendingPlacementAction.kind === "pivot") {
+      dispatchProjectWithResult({ type: "place_pivot", point: pendingPlacementAction.candidate.pivotCenter });
+    } else {
+      dispatchProjectWithResult({
+        type: "update_machine",
+        machine: {
+          ...project.machine,
+          cornerArm: {
+            ...pendingPlacementAction.config,
+            operatorConfirmedAt: new Date().toISOString(),
+          },
+        },
+      });
+    }
+    setPendingPlacementAction(null);
   }
 
   function commitSettings(nextSettings: AppSettings): void {
@@ -821,36 +863,15 @@ function AppContent(): React.JSX.Element {
       <AndroidNativeProofRunner enabled={androidNativeProofEnabled} />
       <StatusBar style="dark" />
       <View style={[styles.app, { paddingBottom: safeBottomGutter }]}>
-        <View style={styles.topBar}>
-          <View>
-            <Text style={styles.appTitle}>CPLayout</Text>
-            <Text style={styles.appSubtitle}>{homeMapView ? "North America project catalog" : project.name}</Text>
-          </View>
-          <View style={[styles.statusRow, compactLayout && styles.statusRowCompact]}>
-            <StatusPill icon={<WifiOff size={15} color="#254234" />} label="Offline storage" />
-            {settings.onlineImagery.enabled ? <StatusPill icon={<Satellite size={15} color="#254234" />} label="USGS imagery on" /> : null}
-            <StatusPill icon={<MapPinned size={15} color="#254234" />} label={homeMapView ? "Catalog" : workflowModeLabel(settings.mappingWorkflowMode)} />
-            <StatusPill icon={<Satellite size={15} color="#254234" />} label={`${settings.gpsQuality.minimumFixType.replaceAll("_", " ")} gate`} />
-            <StatusPill icon={<Ruler size={15} color="#254234" />} label={homeMapView ? "North America" : project.projectCrs} />
-            <StatusPill icon={<SlidersHorizontal size={15} color="#254234" />} label={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]} />
-            <StatusPill icon={<ClipboardList size={15} color="#254234" />} label={isDirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
-          </View>
+        <WorkspaceTopToolbar compact={compactLayout} currentLabel={homeMapView ? "Project Catalog" : project.name}>
           <WorkspaceCommandSurface
             activeView={activeView}
             canRedo={editor.future.length > 0}
             canUndo={editor.past.length > 0}
+            compactLayout={compactLayout}
             dirty={isDirty}
             homeMapView={homeMapView}
             leftDrawerOpen={leftDrawerOpen}
-            onCalculatePreview={() => {
-              calculateDesignScenarios();
-              setDesignConsoleModal("calculate");
-              setActiveView("map");
-            }}
-            onFocusMapTools={() => {
-              setDesignConsoleModal(null);
-              setActiveView("map");
-            }}
             onNavigate={setActiveView}
             onOpenCatalog={openCatalogHome}
             onOpenFiles={() => setActiveView("files")}
@@ -858,10 +879,6 @@ function AppContent(): React.JSX.Element {
             onRedo={() => dispatchProject({ type: "redo" })}
             onResetWalkthrough={resetWalkthrough}
             onSave={saveCurrentProject}
-            onShowLayers={() => {
-              setDesignConsoleModal("layers");
-              setActiveView("map");
-            }}
             onShowMetrics={() => {
               setActiveInspectorPage("metrics");
               setRightDrawerOpen(true);
@@ -878,7 +895,7 @@ function AppContent(): React.JSX.Element {
             onUndo={() => dispatchProject({ type: "undo" })}
             rightDrawerOpen={rightDrawerOpen}
           />
-        </View>
+        </WorkspaceTopToolbar>
 
         <View style={[styles.workspaceShell, activeView !== "map" && compactLayout && styles.workspaceShellCompact, activeView === "map" && styles.workspaceShellConsole]} testID="workspace-shell">
           <ProjectTreeRail
@@ -963,28 +980,23 @@ function AppContent(): React.JSX.Element {
                   onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
                   onAddMapFeature={addMapFeature}
                   onSelectMapFeature={setSelectedMapFeatureId}
-                />
-                {!homeMapView && !nativeMapLibreProofEnabled ? (
-                  <View pointerEvents="box-none" style={styles.mapBottomHudOverlay}>
-                    <DesignActionHud
-                      activeModal={designConsoleModal}
-                      activeTool={guidedMapTool}
-                      dirty={isDirty}
-                      onActivateTool={activateDesignConsoleTool}
-                      onCalculate={() => {
-                        calculateDesignScenarios();
-                        setDesignConsoleModal("calculate");
-                      }}
-                      onOpenFiles={() => {
-                        setDesignConsoleModal(null);
-                        setActiveView("files");
-                      }}
-                      onOpenModal={setDesignConsoleModal}
-                      onToggleLayers={() => setDesignConsoleModal((current) => current === "layers" ? null : "layers")}
-                      settings={settings}
-                    />
-                  </View>
-                ) : null}
+                  />
+                  {!homeMapView && !nativeMapLibreProofEnabled ? (
+                    <View pointerEvents="box-none" style={styles.mapBottomHudOverlay}>
+                      <DesignActionHud
+                        activeModal={designConsoleModal}
+                        activeTool={guidedMapTool}
+                        onActivateTool={activateDesignConsoleTool}
+                        onCalculate={() => {
+                          calculateDesignScenarios();
+                          setDesignConsoleModal("calculate");
+                        }}
+                        onOpenModal={setDesignConsoleModal}
+                        onToggleLayers={() => setDesignConsoleModal((current) => current === "layers" ? null : "layers")}
+                        settings={settings}
+                      />
+                    </View>
+                  ) : null}
               </View>
               {nativeMapLibreProofEnabled ? null : (
                 <InspectorDrawer
@@ -1065,19 +1077,20 @@ function AppContent(): React.JSX.Element {
                       </>
                     ) : null}
 
-                    {activeInspectorPage === "rtk" && settings.mappingWorkflowMode === "layout" ? (
-                      <>
-                        <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
-                        <BrowserRtkReceiverPanel
-                          onAddMapFeature={addMapFeature}
-                          onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
-                          onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
-                          onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
-                          project={project}
-                          settings={settings}
-                        />
-                      </>
-                    ) : null}
+                      {activeInspectorPage === "rtk" && settings.mappingWorkflowMode === "layout" ? (
+                        <>
+                          <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
+                          <BrowserRtkReceiverPanel
+                            onAddMapFeature={addMapFeature}
+                            onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
+                            onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
+                            onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
+                            onStatusChange={setRtkReceiverStatus}
+                            project={project}
+                            settings={settings}
+                          />
+                        </>
+                      ) : null}
                     {activeInspectorPage === "rtk" && settings.mappingWorkflowMode !== "layout" ? (
                       <>
                         <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
@@ -1126,16 +1139,17 @@ function AppContent(): React.JSX.Element {
             </WorkspaceConsoleShell>
           )}
 
-          {activeView === "survey" && (
-            <Section title="Survey Capture Readiness" icon={<Satellite size={20} color="#254234" />} testID="survey-view">
-              <BrowserRtkReceiverPanel
-                onAddMapFeature={addMapFeature}
-                onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
-                onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
-                onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
-                project={project}
-                settings={settings}
-              />
+            {activeView === "survey" && (
+              <Section title="Survey Capture Readiness" icon={<Satellite size={20} color="#254234" />} testID="survey-view">
+                <BrowserRtkReceiverPanel
+                  onAddMapFeature={addMapFeature}
+                  onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
+                  onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
+                  onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
+                  onStatusChange={setRtkReceiverStatus}
+                  project={project}
+                  settings={settings}
+                />
               <View style={styles.metricGrid}>
                 <MetricTile label="Survey points" testID="survey-metric-points" value={`${project.surveyPoints.length}`} />
                 <MetricTile label="RTK fixed points" testID="survey-metric-rtk-fixed" value={`${project.surveyPoints.filter((point) => point.confidence === "rtk_fixed").length}`} tone="good" />
@@ -1207,27 +1221,41 @@ function AppContent(): React.JSX.Element {
                 </Text>
               </View>
             </Section>
-          )}
-          </ScrollView>
+            )}
+            </ScrollView>
+          </View>
+          <WorkspaceBottomStatusBar
+            coordinateLabel={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]}
+            dirty={isDirty}
+            gpsGateLabel={`${fixTypeLabel(settings.gpsQuality.minimumFixType)} gate`}
+            imageryLabel={settings.onlineImagery.enabled ? "USGS preview on" : "Imagery off"}
+            regionLabel={homeMapView ? "North America" : project.projectCrs}
+            rtkStatus={rtkReceiverStatus}
+            warningCount={result.warnings.length + (editor.lastError ? 1 : 0)}
+            workflowLabel={homeMapView ? "Catalog" : workflowModeLabel(settings.mappingWorkflowMode)}
+          />
         </View>
-      </View>
       {!homeMapView ? (
-        <DesignConsoleDialog
-          activeModal={designConsoleModal}
-          editorError={editor.lastError}
-          onActivateTool={activateDesignConsoleTool}
-          onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
-          onCalculate={calculateDesignScenarios}
-          onClose={() => setDesignConsoleModal(null)}
+          <DesignConsoleDialog
+            activeModal={designConsoleModal}
+            cornerArmEvaluation={cornerArmEvaluation}
+            editorError={editor.lastError}
+            onActivateTool={activateDesignConsoleTool}
+            onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
+            onCalculate={calculateDesignScenarios}
+            onClose={() => setDesignConsoleModal(null)}
           onOpenFiles={() => {
             setDesignConsoleModal(null);
             setActiveView("files");
-          }}
-          onSettingsChange={commitSettings}
-          onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
-          preview={designScenarioPreview}
-          project={runtimeProject}
-          result={result}
+            }}
+            onRequestApplyPivotCandidate={(candidate) => setPendingPlacementAction({ kind: "pivot", candidate })}
+            onRequestSaveCornerArm={(config) => setPendingPlacementAction({ kind: "cornerArm", config })}
+            onSettingsChange={commitSettings}
+            onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
+            placementCandidates={placementCandidates}
+            preview={designScenarioPreview}
+            project={runtimeProject}
+            result={result}
           settings={settings}
           visible={designConsoleModal !== null}
         />
@@ -1311,6 +1339,18 @@ function AppContent(): React.JSX.Element {
           visible
         />
       ) : null}
+      {pendingPlacementAction ? (
+        <ConfirmActionDialog
+          confirmLabel={pendingPlacementAction.kind === "pivot" ? "Apply Pivot Center" : "Save Corner Arm Advisory"}
+          message={pendingPlacementMessage(pendingPlacementAction)}
+          onCancel={() => setPendingPlacementAction(null)}
+          onConfirm={confirmPlacementAction}
+          submitting={false}
+          testID="placement-confirm-dialog"
+          title={pendingPlacementAction.kind === "pivot" ? "Apply Advisory Pivot Center" : "Save Advisory Corner Arm"}
+          visible
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -1331,15 +1371,95 @@ const WALKTHROUGH_MODULES: Array<{
   { id: "export", title: "Export Package", checkpoint: "ZIP/KML/GeoJSON are exported after saving local edits." },
 ];
 
+function WorkspaceTopToolbar({
+  children,
+  compact,
+  currentLabel,
+}: {
+  children: React.ReactNode;
+  compact: boolean;
+  currentLabel: string;
+}): React.JSX.Element {
+  const commandSurface = compact ? (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.workspaceCommandScroller}
+      contentContainerStyle={styles.workspaceCommandScrollContent}
+    >
+      {children}
+    </ScrollView>
+  ) : (
+    <View style={styles.workspaceCommandSlot}>{children}</View>
+  );
+
+  return (
+    <View style={[styles.workspaceTopToolbar, compact && styles.workspaceTopToolbarCompact]} testID="workspace-top-toolbar">
+      <View style={[styles.workspaceBreadcrumb, compact && styles.workspaceBreadcrumbCompact]} testID="workspace-breadcrumb">
+        <Text numberOfLines={1} style={styles.workspaceBreadcrumbText} testID="workspace-breadcrumb-current">
+          <Text style={styles.workspaceBreadcrumbRoot}>CPLayout</Text>
+          <Text style={styles.workspaceBreadcrumbCurrent}> / {currentLabel}</Text>
+        </Text>
+      </View>
+      {commandSurface}
+    </View>
+  );
+}
+
+function WorkspaceBottomStatusBar({
+  coordinateLabel,
+  dirty,
+  gpsGateLabel,
+  imageryLabel,
+  regionLabel,
+  rtkStatus,
+  warningCount,
+  workflowLabel,
+}: {
+  coordinateLabel: string;
+  dirty: boolean;
+  gpsGateLabel: string;
+  imageryLabel: string;
+  regionLabel: string;
+  rtkStatus: BrowserRtkReceiverStatus | null;
+  warningCount: number;
+  workflowLabel: string;
+}): React.JSX.Element {
+  const liveRtkLabel = formatLiveRtkStatus(rtkStatus);
+  return (
+    <View style={styles.workspaceBottomStatusBar} testID="workspace-bottom-status-bar">
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bottomStatusScroll} contentContainerStyle={styles.bottomStatusContent}>
+        <BottomStatusChip icon={<ClipboardList size={12} color="#254234" />} label={dirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
+        <BottomStatusChip icon={<AlertTriangle size={12} color="#254234" />} label={warningCount === 0 ? "0 warnings" : `${warningCount} warnings`} />
+        <BottomStatusChip icon={<MapPinned size={12} color="#254234" />} label={workflowLabel} />
+        <BottomStatusChip icon={<Ruler size={12} color="#254234" />} label={regionLabel} />
+        <BottomStatusChip icon={<SlidersHorizontal size={12} color="#254234" />} label={coordinateLabel} />
+        <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={gpsGateLabel} />
+        {liveRtkLabel ? <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={liveRtkLabel} testID="workspace-live-rtk-status" /> : null}
+        <BottomStatusChip icon={<WifiOff size={12} color="#254234" />} label="Offline storage" />
+        <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={imageryLabel} />
+      </ScrollView>
+    </View>
+  );
+}
+
+function BottomStatusChip({ icon, label, testID }: { icon: React.ReactNode; label: string; testID?: string }): React.JSX.Element {
+  return (
+    <View style={styles.bottomStatusChip} testID={testID}>
+      {icon}
+      <Text numberOfLines={1} style={styles.bottomStatusText}>{label}</Text>
+    </View>
+  );
+}
+
 function WorkspaceCommandSurface({
   activeView,
   canRedo,
   canUndo,
+  compactLayout,
   dirty,
   homeMapView,
   leftDrawerOpen,
-  onCalculatePreview,
-  onFocusMapTools,
   onNavigate,
   onOpenCatalog,
   onOpenFiles,
@@ -1347,7 +1467,6 @@ function WorkspaceCommandSurface({
   onRedo,
   onResetWalkthrough,
   onSave,
-  onShowLayers,
   onShowMetrics,
   onShowWarnings,
   onStartBlankDesign,
@@ -1359,11 +1478,10 @@ function WorkspaceCommandSurface({
   activeView: WorkspaceView;
   canRedo: boolean;
   canUndo: boolean;
+  compactLayout: boolean;
   dirty: boolean;
   homeMapView: boolean;
   leftDrawerOpen: boolean;
-  onCalculatePreview: () => void;
-  onFocusMapTools: () => void;
   onNavigate: (view: WorkspaceView) => void;
   onOpenCatalog: () => void;
   onOpenFiles: () => void;
@@ -1371,7 +1489,6 @@ function WorkspaceCommandSurface({
   onRedo: () => void;
   onResetWalkthrough: () => void;
   onSave: () => void | Promise<void>;
-  onShowLayers: () => void;
   onShowMetrics: () => void;
   onShowWarnings: () => void;
   onStartBlankDesign: () => void;
@@ -1395,7 +1512,6 @@ function WorkspaceCommandSurface({
       label: "File",
       icon: <FolderOpen color={menuIconColor} />,
       items: [
-        { id: "save", label: dirty ? "Save current design *" : "Save current design", description: "Persist the active project in local storage.", disabled: homeMapView, icon: <Save />, onPress: onSave, testID: "command-file-save" },
         { id: "catalog", label: "Catalog home", description: "Return to the local project catalog map.", icon: <Home />, onPress: onOpenCatalog, testID: "command-file-catalog" },
         ...sampleItems,
         { id: "blank", label: "Start Blank Design", description: "Create an unsaved projected-XY concept layout.", icon: <Wrench />, onPress: onStartBlankDesign, testID: "command-file-blank-design" },
@@ -1404,54 +1520,15 @@ function WorkspaceCommandSurface({
       testID: "command-menu-file",
     },
     {
-      id: "reports",
-      label: "Reports",
+      id: "inspect",
+      label: "Inspect",
       icon: <ClipboardList color={menuIconColor} />,
       items: [
-        { id: "dashboard", label: "Dashboard", description: "Open workflow readiness, warnings, and recent projects.", icon: <Home />, onPress: () => onNavigate("dashboard"), testID: "command-reports-dashboard" },
-        { id: "metrics", label: "Metrics Inspector", description: "Show irrigated area, dry area, coverage, conflicts, and warnings.", disabled: homeMapView, icon: <Calculator />, onPress: onShowMetrics, testID: "command-reports-metrics" },
-        { id: "warnings", label: "Warnings", description: "Inspect validation warnings without mutating geometry.", disabled: homeMapView, icon: <AlertTriangle />, onPress: onShowWarnings, testID: "command-reports-warnings" },
-        { id: "export-readiness", label: "Export Readiness", description: "Review save and package readiness on the dashboard.", icon: <PackageCheck />, onPress: () => onNavigate("dashboard"), testID: "command-reports-export" },
+        { id: "dashboard", label: "Dashboard", description: "Open workflow readiness, export readiness, warnings, and recent projects.", icon: <Home />, onPress: () => onNavigate("dashboard"), testID: "command-inspect-dashboard" },
+        { id: "metrics", label: "Metrics Inspector", description: "Show irrigated area, dry area, coverage, conflicts, and warnings.", disabled: homeMapView, icon: <Calculator />, onPress: onShowMetrics, testID: "command-inspect-metrics" },
+        { id: "warnings", label: "Warnings", description: "Inspect validation warnings without mutating geometry.", disabled: homeMapView, icon: <AlertTriangle />, onPress: onShowWarnings, testID: "command-inspect-warnings" },
       ],
-      testID: "command-menu-reports",
-    },
-    {
-      id: "tools",
-      label: "Tools",
-      icon: <Wrench color={menuIconColor} />,
-      items: [
-        { id: "undo", label: "Undo", disabled: !canUndo, icon: <RotateCcw />, onPress: onUndo, testID: "command-tools-undo" },
-        { id: "redo", label: "Redo", disabled: !canRedo, icon: <RotateCcw />, onPress: onRedo, testID: "command-tools-redo" },
-        { id: "calculate", label: "Calculate Preview", description: "Open design scenario preview without saving or exporting.", disabled: homeMapView, icon: <Calculator />, onPress: onCalculatePreview, testID: "command-tools-calculate" },
-        { id: "focus-map", label: "Focus Map Tools", description: "Return to the contextual drawing HUD on the map.", disabled: homeMapView, icon: <MapPinned />, onPress: onFocusMapTools, testID: "command-tools-map-focus" },
-        { id: "layers", label: "Places And Layers", description: "Open reference layer controls for local-first display settings.", disabled: homeMapView, icon: <Layers />, onPress: onShowLayers, testID: "command-tools-layers" },
-      ],
-      testID: "command-menu-tools",
-    },
-    {
-      id: "view",
-      label: "View",
-      icon: <MapIcon color={menuIconColor} />,
-      items: [
-        { id: "map", label: "Map Workbench", icon: <MapPinned />, onPress: () => onNavigate("map"), testID: "command-view-map" },
-        { id: "dashboard", label: "Dashboard", icon: <Home />, onPress: () => onNavigate("dashboard"), testID: "command-view-dashboard" },
-        { id: "survey", label: "Survey", icon: <Satellite />, onPress: () => onNavigate("survey"), testID: "command-view-survey" },
-        { id: "files", label: "Files", icon: <Download />, onPress: () => onNavigate("files"), testID: "command-view-files" },
-        { id: "project-drawer", label: leftDrawerOpen ? "Collapse Project Drawer" : "Open Project Drawer", disabled: activeView !== "map", icon: <FolderOpen />, onPress: onToggleLeftDrawer, testID: "command-view-project-drawer" },
-        { id: "inspector", label: rightDrawerOpen ? "Collapse Inspector" : "Open Inspector", disabled: activeView !== "map", icon: <SlidersHorizontal />, onPress: onToggleRightDrawer, testID: "command-view-inspector" },
-      ],
-      testID: "command-menu-view",
-    },
-    {
-      id: "connections",
-      label: "Connections",
-      icon: <Satellite color={menuIconColor} />,
-      items: [
-        { id: "rtk", label: "RTK / Survey", description: "Open local browser receiver and survey capture readiness.", icon: <Satellite />, onPress: () => onNavigate("survey"), testID: "command-connections-rtk" },
-        { id: "imagery", label: "Imagery Status", description: "Review no-key imagery and local package settings.", icon: <WifiOff />, onPress: () => onNavigate("settings"), testID: "command-connections-imagery" },
-        { id: "handoff", label: "External Map Handoff", description: "Use Files for KML/KMZ companion exchange; rendering proof stays separate.", icon: <Upload />, onPress: onOpenFiles, testID: "command-connections-handoff" },
-      ],
-      testID: "command-menu-connections",
+      testID: "command-menu-inspect",
     },
     {
       id: "settings",
@@ -1475,16 +1552,27 @@ function WorkspaceCommandSurface({
       testID: "command-menu-help",
     },
   ];
+  if (compactLayout) {
+    menus.splice(2, 0, {
+      id: "view",
+      label: "View",
+      icon: <MapIcon color={menuIconColor} />,
+      items: [
+        { id: "map", label: "Map Workbench", icon: <MapPinned />, onPress: () => onNavigate("map"), testID: "command-view-map" },
+        { id: "dashboard", label: "Dashboard", icon: <Home />, onPress: () => onNavigate("dashboard"), testID: "command-view-dashboard" },
+        { id: "survey", label: "Survey", description: "Open local browser RTK receiver and survey capture readiness.", icon: <Satellite />, onPress: () => onNavigate("survey"), testID: "command-view-survey" },
+        { id: "files", label: "Files / GIS Exchange", icon: <Download />, onPress: () => onNavigate("files"), testID: "command-view-files" },
+        { id: "project-drawer", label: leftDrawerOpen ? "Collapse Project Drawer" : "Open Project Drawer", disabled: activeView !== "map", icon: <FolderOpen />, onPress: onToggleLeftDrawer, testID: "command-view-project-drawer" },
+        { id: "inspector", label: rightDrawerOpen ? "Collapse Inspector" : "Open Inspector", disabled: activeView !== "map", icon: <SlidersHorizontal />, onPress: onToggleRightDrawer, testID: "command-view-inspector" },
+      ],
+      testID: "command-menu-view",
+    });
+  }
   const iconButtons: CommandIconButtonConfig[] = [
     { id: "save", label: dirty ? "Save *" : "Save", disabled: homeMapView, icon: <Save />, onPress: onSave, testID: "command-icon-save" },
-    { id: "catalog", label: "Catalog", icon: <Home />, onPress: onOpenCatalog, testID: "command-icon-catalog" },
+    { id: "undo", label: "Undo", disabled: !canUndo, icon: <RotateCcw />, onPress: onUndo, testID: "command-icon-undo" },
+    { id: "redo", label: "Redo", disabled: !canRedo, icon: <RotateCcw />, onPress: onRedo, testID: "command-icon-redo" },
   ];
-  if (activeView === "map" && !leftDrawerOpen) {
-    iconButtons.push({ id: "sample", label: "Open Sample", icon: <MapPinned />, onPress: () => onOpenSample(sampleProject), testID: "command-icon-open-sample" });
-  }
-  if (activeView === "map" && homeMapView && !rightDrawerOpen) {
-    iconButtons.push({ id: "blank", label: "Start Blank Design", icon: <Wrench />, onPress: onStartBlankDesign, testID: "command-icon-start-blank-design" });
-  }
 
   return <CommandBar iconButtons={iconButtons} menus={menus} testID="workspace-command-bar" />;
 }
@@ -1492,20 +1580,16 @@ function WorkspaceCommandSurface({
 function DesignActionHud({
   activeModal,
   activeTool,
-  dirty,
   onActivateTool,
   onCalculate,
-  onOpenFiles,
   onOpenModal,
   onToggleLayers,
   settings,
 }: {
   activeModal: DesignConsoleModal;
   activeTool: { activeLayer: DrawingLayerType; featureKind?: ProjectMapFeatureKind; mode: DrawingMode; requestId: number } | null;
-  dirty: boolean;
   onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
   onCalculate: () => void;
-  onOpenFiles: () => void;
   onOpenModal: (modal: DesignConsoleModal) => void;
   onToggleLayers: () => void;
   settings: AppSettings;
@@ -1514,10 +1598,8 @@ function DesignActionHud({
     <DrawingToolPalette
       activeModal={activeModal}
       activeTool={activeTool}
-      dirty={dirty}
       onActivateTool={onActivateTool}
       onCalculate={onCalculate}
-      onOpenFiles={onOpenFiles}
       onOpenModal={onOpenModal}
       onToggleLayers={onToggleLayers}
       settings={settings}
@@ -1527,14 +1609,18 @@ function DesignActionHud({
 
 function DesignConsoleDialog({
   activeModal,
+  cornerArmEvaluation,
   editorError,
   onActivateTool,
   onApplyPivot,
   onCalculate,
   onClose,
   onOpenFiles,
+  onRequestApplyPivotCandidate,
+  onRequestSaveCornerArm,
   onSettingsChange,
   onUpdateMachine,
+  placementCandidates,
   preview,
   project,
   result,
@@ -1542,14 +1628,18 @@ function DesignConsoleDialog({
   visible,
 }: {
   activeModal: DesignConsoleModal;
+  cornerArmEvaluation: AdvisoryCornerArmEvaluation;
   editorError: string | null;
   onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
   onApplyPivot: (point: XY, wgs84?: LonLat) => boolean;
   onCalculate: () => void;
   onClose: () => void;
   onOpenFiles: () => void;
+  onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
+  onRequestSaveCornerArm: (config: AdvisoryCornerArmConfig) => void;
   onSettingsChange: (settings: AppSettings) => void;
   onUpdateMachine: (machine: PivotMachine) => boolean;
+  placementCandidates: PivotPlacementCandidate[] | null;
   preview: DesignScenarioPreview[] | null;
   project: PivotProject;
   result: ReturnType<typeof evaluateLayout>;
@@ -1588,16 +1678,21 @@ function DesignConsoleDialog({
             ) : null}
             {activeModal === "cornerArm" ? (
               <CornerArmSheet
+                evaluation={cornerArmEvaluation}
                 footprintCount={(project.mapFeatures ?? []).filter((feature) => feature.kind === "corner_swing_limit").length}
                 machine={project.machine}
                 onActivateTool={onActivateTool}
+                onRequestSave={onRequestSaveCornerArm}
                 result={result}
+                unitSystem={settings.unitSystem}
               />
             ) : null}
             {activeModal === "calculate" ? (
               <CalculateSheet
                 editorError={editorError}
                 onCalculate={onCalculate}
+                onRequestApplyPivotCandidate={onRequestApplyPivotCandidate}
+                placementCandidates={placementCandidates}
                 preview={preview}
                 result={result}
                 settings={settings}
@@ -1905,31 +2000,119 @@ function EndGunSettingsForm({
 }
 
 function CornerArmSheet({
+  evaluation,
   footprintCount,
   machine,
   onActivateTool,
+  onRequestSave,
   result,
+  unitSystem,
 }: {
+  evaluation: AdvisoryCornerArmEvaluation;
   footprintCount: number;
   machine: PivotMachine;
   onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
+  onRequestSave: (config: AdvisoryCornerArmConfig) => void;
   result: ReturnType<typeof evaluateLayout>;
+  unitSystem: PivotProject["unitSystem"];
 }): React.JSX.Element {
+  const [name, setName] = useState(machine.cornerArm?.name ?? "Operator corner-arm advisory");
+  const [length, setLength] = useState(formatDistanceInputValue(machine.cornerArm?.lengthMeters ?? 91, unitSystem));
+  const [guidanceType, setGuidanceType] = useState<AdvisoryCornerArmConfig["guidanceType"]>(machine.cornerArm?.guidanceType ?? "operator_supplied");
+  const [sequencingType, setSequencingType] = useState<AdvisoryCornerArmConfig["sequencingType"]>(machine.cornerArm?.sequencingType ?? "operator_supplied");
+  const [orientation, setOrientation] = useState<AdvisoryCornerArmConfig["orientation"]>(machine.cornerArm?.orientation ?? "operator_supplied");
+  const [confidence, setConfidence] = useState<AdvisoryCornerArmConfig["confidence"]>(machine.cornerArm?.confidence ?? "user_estimated");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setName(machine.cornerArm?.name ?? "Operator corner-arm advisory");
+    setLength(formatDistanceInputValue(machine.cornerArm?.lengthMeters ?? 91, unitSystem));
+    setGuidanceType(machine.cornerArm?.guidanceType ?? "operator_supplied");
+    setSequencingType(machine.cornerArm?.sequencingType ?? "operator_supplied");
+    setOrientation(machine.cornerArm?.orientation ?? "operator_supplied");
+    setConfidence(machine.cornerArm?.confidence ?? "user_estimated");
+    setError(null);
+  }, [machine.cornerArm, unitSystem]);
+
+  function requestSave(): void {
+    try {
+      const trimmedName = name.trim();
+      const config: AdvisoryCornerArmConfig = {
+        id: machine.cornerArm?.id ?? "operator-corner-arm-advisory",
+        name: trimmedName.length > 0 ? trimmedName : "Operator corner-arm advisory",
+        advisoryOnly: true,
+        lengthMeters: requiredPositiveDistanceInput(length, unitSystem, "Corner-arm length"),
+        guidanceType,
+        sequencingType,
+        orientation,
+        confidence,
+        sourceRefs: machine.cornerArm?.sourceRefs?.length ? machine.cornerArm.sourceRefs : DEFAULT_CORNER_ARM_SOURCE_REFS,
+      };
+      setError(null);
+      onRequestSave(config);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   return (
     <View style={styles.machineForm}>
       <View style={styles.metricGrid}>
         <MetricTile label="Advisory footprints" value={`${footprintCount}`} />
         <MetricTile label="Tower track conflicts" value={`${result.metrics.towerTrackConflictCount}`} tone={result.metrics.towerTrackConflictCount > 0 ? "danger" : "good"} />
+        <MetricTile label="Added candidate" value={formatAreaFromAcres(evaluation.estimatedAddedCoverageAcres, unitSystem)} />
       </View>
+      <AdvisoryBadgeRow badges={["advisory", "source-backed", "unverified kinematics", "qualified review required"]} testID="corner-arm-advisory-badges" />
       <Text style={styles.mapFeatureMeta}>
         Corner-arm support is advisory only. Store vendor/operator supplied footprint, track, and coverage evidence as map features; CPLayout does not model manufacturer-specific corner-arm kinematics without source-backed geometry data.
       </Text>
       <Text style={styles.mapFeatureMeta}>
         Catalog compatibility: {machine.catalogSelection ? `${machine.catalogSelection.manufacturer} ${machine.catalogSelection.model} is selected as an advisory snapshot.` : "No catalog preset selected; verify compatibility from operator/vendor sources."}
       </Text>
+      <View style={styles.formGrid} testID="corner-arm-advisory-form">
+        <FormField label="Advisory name" value={name} onChangeText={setName} />
+        <FormField label={`Length (${unitSystem === "metric" ? "m" : "ft/in"})`} value={length} onChangeText={setLength} />
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Guidance</Text>
+          <View style={styles.controlRow}>
+            {(["operator_supplied", "gps_guidance", "below_ground_guidance", "unknown"] as const).map((value) => (
+              <ActionButton key={value} label={advisoryOptionLabel(value)} selected={guidanceType === value} onPress={() => setGuidanceType(value)} />
+            ))}
+          </View>
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Sequencing</Text>
+          <View style={styles.controlRow}>
+            {(["operator_supplied", "electronic", "mechanical", "unknown"] as const).map((value) => (
+              <ActionButton key={value} label={advisoryOptionLabel(value)} selected={sequencingType === value} onPress={() => setSequencingType(value)} />
+            ))}
+          </View>
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Orientation</Text>
+          <View style={styles.controlRow}>
+            {(["operator_supplied", "leading", "trailing", "unknown"] as const).map((value) => (
+              <ActionButton key={value} label={advisoryOptionLabel(value)} selected={orientation === value} onPress={() => setOrientation(value)} />
+            ))}
+          </View>
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Source confidence</Text>
+          <View style={styles.controlRow}>
+            {(["user_estimated", "imagery_digitized", "imported_cad", "optimized"] as const).map((value) => (
+              <ActionButton key={value} label={advisoryOptionLabel(value)} selected={confidence === value} onPress={() => setConfidence(value)} />
+            ))}
+          </View>
+        </View>
+      </View>
+      {error ? <Text style={styles.formError}>{error}</Text> : null}
+      <CornerArmEvaluationPanel evaluation={evaluation} unitSystem={unitSystem} />
       <View style={styles.consoleChoiceGrid}>
         <ConsoleChoiceButton label="Draw Footprint Polygon" meta="Click vertices for an advisory corner-arm swing or coverage footprint." onPress={() => onActivateTool("measure", "control_point", "corner_swing_limit")} />
         <ConsoleChoiceButton label="Draw Track Evidence" meta="Trace track or operator-supplied evidence as a utility line." onPress={() => onActivateTool("measure", "control_point", "access_lane")} />
+      </View>
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Save Corner Arm Advisory" onPress={requestSave} testID="corner-arm-save-advisory" />
       </View>
     </View>
   );
@@ -1938,12 +2121,16 @@ function CornerArmSheet({
 function CalculateSheet({
   editorError,
   onCalculate,
+  onRequestApplyPivotCandidate,
+  placementCandidates,
   preview,
   result,
   settings,
 }: {
   editorError: string | null;
   onCalculate: () => void;
+  onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
+  placementCandidates: PivotPlacementCandidate[] | null;
   preview: DesignScenarioPreview[] | null;
   result: ReturnType<typeof evaluateLayout>;
   settings: AppSettings;
@@ -1961,6 +2148,7 @@ function CalculateSheet({
       </Pressable>
       {editorError ? <Text style={styles.formError}>{editorError}</Text> : null}
       <ScenarioPreviewList preview={preview} settings={settings} />
+      <PlacementReviewPanel candidates={placementCandidates} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
     </View>
   );
 }
@@ -2418,6 +2606,102 @@ function ScenarioPreviewList({ preview, settings }: { preview: DesignScenarioPre
       ))}
     </View>
   );
+}
+
+function PlacementReviewPanel({
+  candidates,
+  onRequestApplyPivotCandidate,
+  settings,
+}: {
+  candidates: PivotPlacementCandidate[] | null;
+  onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
+  settings: AppSettings;
+}): React.JSX.Element {
+  return (
+    <View style={styles.placementReviewPanel} testID="placement-review-panel">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Placement Review</Text>
+        <Text style={styles.scenarioScore}>{candidates ? `${candidates.length}` : "0"}</Text>
+      </View>
+      <AdvisoryBadgeRow badges={["advisory", "source-backed", "qualified review required"]} />
+      {!candidates ? (
+        <Text style={styles.mapFeatureMeta}>Candidate review updates after Calculate Preview.</Text>
+      ) : null}
+      {candidates?.map((candidate, index) => (
+        <View key={candidate.id} style={[styles.placementCandidateRow, candidate.feasible ? styles.scenarioRowFeasible : styles.scenarioRowRejected]} testID={`placement-candidate-${index}`}>
+          <View style={styles.scenarioRowHeader}>
+            <Text style={styles.rowTitle}>Candidate {index + 1}</Text>
+            <Text style={styles.scenarioScore}>{candidate.score.toFixed(1)}</Text>
+          </View>
+          <Text style={styles.rowMeta}>
+            XY {candidate.pivotCenter.x.toFixed(2)}, {candidate.pivotCenter.y.toFixed(2)} · {candidate.sourceSeed.replaceAll("_", " ")}
+          </Text>
+          <Text style={styles.rowMeta}>
+            {formatAreaFromAcres(candidate.metrics.irrigatedAcres, settings.unitSystem)} · outside {formatAreaFromAcres(candidate.metrics.outsideFieldAcres, settings.unitSystem)} · dry corners {formatAreaFromAcres(candidate.dryCornerAcres, settings.unitSystem)}
+          </Text>
+          <Text style={styles.scoreBreakdown}>{formatPlacementScoreBreakdown(candidate)}</Text>
+          {candidate.disqualificationReasons[0] ? <Text style={styles.formError}>{candidate.disqualificationReasons[0]}</Text> : null}
+          {candidate.warnings[0] ? <Text style={styles.mapFeatureMeta}>{candidate.warnings[0]}</Text> : null}
+          <View style={styles.inlineActions}>
+            <SmallActionButton label="Apply Pivot Center" onPress={() => onRequestApplyPivotCandidate(candidate)} testID={`placement-candidate-apply-${index}`} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function CornerArmEvaluationPanel({ evaluation, unitSystem }: { evaluation: AdvisoryCornerArmEvaluation; unitSystem: PivotProject["unitSystem"] }): React.JSX.Element {
+  const badges = [
+    "advisory",
+    "source-backed",
+    ...(evaluation.config?.operatorConfirmedAt ? ["operator-confirmed"] : []),
+    ...(evaluation.unverifiedKinematics ? ["unverified kinematics"] : []),
+    ...(evaluation.qualifiedReviewRequired ? ["qualified review required"] : []),
+  ];
+  return (
+    <View style={styles.placementReviewPanel} testID="corner-arm-evaluation-panel">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Corner-Arm Review</Text>
+        <Text style={styles.scenarioScore}>{evaluation.status.replaceAll("_", " ")}</Text>
+      </View>
+      <AdvisoryBadgeRow badges={badges} />
+      <Text style={styles.rowMeta}>
+        Base allowed {formatAreaFromAcres(evaluation.baseAllowedCoverageAcres, unitSystem)} · candidate add {formatAreaFromAcres(evaluation.estimatedAddedCoverageAcres, unitSystem)} · evidence {evaluation.evidenceFeatureIds.length}
+      </Text>
+      {evaluation.warnings.slice(0, 3).map((warning) => (
+        <Text key={warning} style={styles.mapFeatureMeta}>{warning}</Text>
+      ))}
+    </View>
+  );
+}
+
+function AdvisoryBadgeRow({ badges, testID }: { badges: string[]; testID?: string }): React.JSX.Element {
+  return (
+    <View style={styles.advisoryBadgeRow} testID={testID}>
+      {badges.map((badge) => (
+        <Text key={badge} style={styles.advisoryBadge}>{badge}</Text>
+      ))}
+    </View>
+  );
+}
+
+function advisoryOptionLabel(value: string): string {
+  return value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function formatPlacementScoreBreakdown(candidate: PivotPlacementCandidate): string {
+  const breakdown = candidate.scoreBreakdown;
+  return [
+    `coverage ${breakdown.coverage.toFixed(1)}`,
+    `boundary ${breakdown.boundaryFit.toFixed(1)}`,
+    `obstacle ${breakdown.obstacleClearance.toFixed(1)}`,
+    `water ${breakdown.waterSourceProximity.toFixed(1)}`,
+    `power ${breakdown.powerSourceProximity.toFixed(1)}`,
+    `access ${breakdown.accessProximity.toFixed(1)}`,
+    `dry ${breakdown.dryCornerPenalty.toFixed(1)}`,
+    `feasibility ${breakdown.feasibility.toFixed(1)}`,
+  ].join(" · ");
 }
 
 function CatalogHomePanel({
@@ -3087,6 +3371,25 @@ function workflowModeLabel(mode: AppSettings["mappingWorkflowMode"]): string {
   return mode === "design" ? "Design" : "Layout RTK";
 }
 
+function pendingPlacementMessage(action: PendingPlacementAction): string {
+  if (action.kind === "pivot") {
+    const center = action.candidate.pivotCenter;
+    return `Apply advisory candidate ${action.candidate.id} as the project pivot center at projected XY ${center.x.toFixed(2)}, ${center.y.toFixed(2)}. This uses the existing reducer path and makes the project dirty.`;
+  }
+  return `Save ${action.config.name} as advisory corner-arm config on the machine. It remains separate from allowed coverage and requires qualified review.`;
+}
+
+function fixTypeLabel(fixType: string): string {
+  return fixType.replaceAll("_", " ");
+}
+
+function formatLiveRtkStatus(status: BrowserRtkReceiverStatus | null): string | null {
+  if (!status || (!status.connected && status.sentenceCount === 0)) return null;
+  const satellites = status.quality.satellites === null ? "sat unknown" : `${status.quality.satellites} sat`;
+  const hdop = status.quality.hdop === null ? "HDOP unknown" : `HDOP ${status.quality.hdop.toFixed(2)}`;
+  return `RTK ${fixTypeLabel(status.quality.fixType)} - ${satellites} - ${hdop}`;
+}
+
 function aerialProviderLabel(autoFallback: boolean, aerialMode: AppSettings["aerialImagery"]["mode"], providerId: string): string {
   if (providerId === "usgs_imagery_only" && (autoFallback || aerialMode === "auto")) return "USGS fallback";
   if (providerId === "usgs_imagery_only") return "USGS only";
@@ -3434,14 +3737,16 @@ function SmallActionButton({
   disabled = false,
   label,
   onPress,
+  testID,
 }: {
   accessibilityLabel?: string;
   disabled?: boolean;
   label: string;
   onPress: () => void | Promise<void>;
+  testID?: string;
 }): React.JSX.Element {
   return (
-    <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.smallActionButton, disabled && styles.smallActionButtonDisabled]}>
+    <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.smallActionButton, disabled && styles.smallActionButtonDisabled]} testID={testID}>
       {label.startsWith("Save") ? <Save size={14} color={disabled ? "#68766d" : "#254234"} /> : null}
       <Text style={[styles.smallActionText, disabled && styles.smallActionTextDisabled]}>{label}</Text>
     </Pressable>
@@ -3804,6 +4109,56 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
+  workspaceTopToolbar: {
+    alignItems: "center",
+    backgroundColor: "#f9fbf6",
+    borderBottomColor: "#d6ded3",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    gap: 12,
+    height: 60,
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    position: "relative",
+    zIndex: 40,
+  },
+  workspaceTopToolbarCompact: {
+    gap: 8,
+    paddingHorizontal: 10,
+  },
+  workspaceBreadcrumb: {
+    flex: 1,
+    minWidth: 0,
+  },
+  workspaceBreadcrumbCompact: {
+    flexBasis: 118,
+    flexGrow: 0,
+  },
+  workspaceBreadcrumbText: {
+    color: "#526257",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  workspaceBreadcrumbRoot: {
+    color: "#132017",
+  },
+  workspaceBreadcrumbCurrent: {
+    color: "#526257",
+  },
+  workspaceCommandSlot: {
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  workspaceCommandScroller: {
+    flex: 1,
+    minWidth: 0,
+  },
+  workspaceCommandScrollContent: {
+    alignItems: "center",
+    flexGrow: 0,
+  },
   statusRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -4053,6 +4408,46 @@ const styles = StyleSheet.create({
     color: "#254234",
     fontSize: 12,
     fontWeight: "800",
+  },
+  workspaceBottomStatusBar: {
+    alignItems: "center",
+    backgroundColor: "#f9fbf6",
+    borderTopColor: "#d6ded3",
+    borderTopWidth: 1,
+    flexDirection: "row",
+    height: 34,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    zIndex: 12,
+  },
+  bottomStatusScroll: {
+    flex: 1,
+    minWidth: 0,
+  },
+  bottomStatusContent: {
+    alignItems: "center",
+    gap: 6,
+    minHeight: 33,
+    paddingRight: 8,
+  },
+  bottomStatusChip: {
+    alignItems: "center",
+    backgroundColor: "#e6eee5",
+    borderColor: "#c9d7ca",
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexShrink: 0,
+    gap: 4,
+    height: 24,
+    maxWidth: 220,
+    paddingHorizontal: 7,
+  },
+  bottomStatusText: {
+    color: "#254234",
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: "900",
   },
   nav: {
     backgroundColor: "#f9fbf6",
@@ -4720,6 +5115,43 @@ const styles = StyleSheet.create({
     color: "#254234",
     fontSize: 13,
     fontWeight: "900",
+  },
+  placementReviewPanel: {
+    backgroundColor: "#f7faf5",
+    borderColor: "#d8e0d4",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 9,
+    padding: 10,
+  },
+  placementCandidateRow: {
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    padding: 10,
+  },
+  advisoryBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  advisoryBadge: {
+    backgroundColor: "#eef4ef",
+    borderColor: "#b7c8bb",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#254234",
+    fontSize: 11,
+    fontWeight: "900",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    textTransform: "uppercase",
+  },
+  scoreBreakdown: {
+    color: "#405146",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 16,
   },
   customerDetailHeader: {
     alignItems: "center",

@@ -59,8 +59,9 @@ export function CommandBar({
   return (
     <View style={styles.commandBar} testID={testID}>
       <View style={styles.menuCluster}>
-        {menus.map((menu) => (
+        {menus.map((menu, index) => (
           <CommandMenu
+            alignPanelEnd={index === menus.length - 1}
             key={menu.id}
             menu={menu}
             onClose={() => setOpenMenuId(null)}
@@ -86,6 +87,7 @@ export function CommandBar({
 }
 
 export function CommandMenu({
+  alignPanelEnd = false,
   menu,
   onClose,
   onOpen,
@@ -96,6 +98,7 @@ export function CommandMenu({
   sheetScrollMaxHeight,
   sheetWidth,
 }: {
+  alignPanelEnd?: boolean;
   menu: CommandMenuConfig;
   onClose: () => void;
   onOpen: () => void;
@@ -147,7 +150,7 @@ export function CommandMenu({
           </View>
         </Modal>
       ) : open ? (
-        <View style={styles.desktopPanel} testID={`command-menu-${menu.id}-panel`}>
+        <View style={[styles.desktopPanel, alignPanelEnd && styles.desktopPanelEnd]} testID={`command-menu-${menu.id}-panel`}>
           {panel}
         </View>
       ) : null}
@@ -241,12 +244,12 @@ const styles = StyleSheet.create({
   commandBar: {
     alignItems: "center",
     flexDirection: "row",
-    flexWrap: "wrap",
-    flexShrink: 1,
+    flexWrap: "nowrap",
+    flexShrink: 0,
     gap: 8,
     justifyContent: "flex-start",
     maxWidth: "100%",
-    width: "100%",
+    width: "auto",
     zIndex: 20,
   },
   closeButton: {
@@ -276,6 +279,10 @@ const styles = StyleSheet.create({
     top: 44,
     width: 318,
     zIndex: 30,
+  },
+  desktopPanelEnd: {
+    left: "auto",
+    right: 0,
   },
   iconButton: {
     alignItems: "center",
@@ -313,7 +320,8 @@ const styles = StyleSheet.create({
   },
   iconCluster: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    flexShrink: 0,
+    flexWrap: "nowrap",
     gap: 6,
   },
   menuAnchor: {
@@ -345,9 +353,9 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   menuCluster: {
-    flexShrink: 1,
     flexDirection: "row",
-    flexWrap: "wrap",
+    flexShrink: 0,
+    flexWrap: "nowrap",
     gap: 6,
     maxWidth: "100%",
     minWidth: 0,

@@ -24,6 +24,14 @@ import {
   type ParsedNmeaSample,
 } from "@cplayout/gnss";
 
+export interface BrowserRtkReceiverStatus {
+  connected: boolean;
+  gateAccepted: boolean;
+  quality: RtkQuality;
+  sentenceCount: number;
+  status: string;
+}
+
 interface BrowserRtkReceiverPanelProps {
   project: PivotProject;
   settings: AppSettings;
@@ -31,6 +39,7 @@ interface BrowserRtkReceiverPanelProps {
   onCommitBoundaryDraft: (vertices: XY[]) => void;
   onCommitObstacleDraft: (vertices: XY[], kind: ObstacleZone["kind"], confidence?: SourceConfidence) => void;
   onAddMapFeature: (feature: Omit<ProjectMapFeature, "id"> & { id?: string }) => void;
+  onStatusChange?: (status: BrowserRtkReceiverStatus | null) => void;
 }
 
 type WebSerialPort = {
@@ -86,6 +95,7 @@ export function BrowserRtkReceiverPanel({
   onCommitBoundaryDraft,
   onCommitObstacleDraft,
   onAddMapFeature,
+  onStatusChange,
 }: BrowserRtkReceiverPanelProps): React.JSX.Element {
   const serial = getWebSerial();
   const serialSupported = Boolean(serial);
@@ -119,6 +129,22 @@ export function BrowserRtkReceiverPanel({
       void portRef.current?.close().catch(() => undefined);
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      onStatusChange?.(null);
+    };
+  }, [onStatusChange]);
+
+  useEffect(() => {
+    onStatusChange?.({
+      connected,
+      gateAccepted: gate.accepted,
+      quality,
+      sentenceCount,
+      status,
+    });
+  }, [connected, gate.accepted, onStatusChange, quality, sentenceCount, status]);
 
   async function connect(): Promise<void> {
     if (!serial) {

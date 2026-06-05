@@ -27,6 +27,7 @@ This checklist defines the browser-only acceptance gates for the final continuou
 - Browser-local imagery settings, local package directories, custom source drafts, and walkthrough progress do not appear in exported `project.json`.
 - Survey evidence remains evidence until an explicit operator action promotes it into projected project geometry.
 - Settings guardrails continue to reject credentialed imagery templates and keep offline/no-key source boundaries visible.
+- Any future Evidence Review surface imports companion reports into session state only, preserves Saved project state on preview/cancel, keeps evidence payloads out of project ZIP exports and browser project storage, rejects invalid CRS/calibration/hash inputs, and makes no external network requests.
 
 ## Evidence Policy
 

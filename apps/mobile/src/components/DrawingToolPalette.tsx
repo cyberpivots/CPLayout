@@ -2,7 +2,6 @@ import {
   Calculator,
   ChevronDown,
   ChevronUp,
-  Download,
   Layers,
   MapPin,
   MousePointer2,
@@ -51,10 +50,8 @@ type PaletteOption =
 interface DrawingToolPaletteProps {
   activeModal: DrawingToolPaletteModal;
   activeTool: ActiveTool;
-  dirty: boolean;
   onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
   onCalculate: () => void;
-  onOpenFiles: () => void;
   onOpenModal: (modal: DrawingToolPaletteModal) => void;
   onToggleLayers: () => void;
   settings: AppSettings;
@@ -63,10 +60,8 @@ interface DrawingToolPaletteProps {
 export function DrawingToolPalette({
   activeModal,
   activeTool,
-  dirty,
   onActivateTool,
   onCalculate,
-  onOpenFiles,
   onOpenModal,
   onToggleLayers,
   settings,
@@ -208,15 +203,6 @@ export function DrawingToolPalette({
             label="Calculate"
             legacyTestID="design-action-calculate"
             onPress={() => runDirect(onCalculate)}
-            showLabel={expandedHud}
-          />
-          <PaletteGroupButton
-            active={false}
-            groupTestID="drawing-tool-group-files"
-            icon={(color) => <Download size={19} color={color} />}
-            label={dirty ? "Files *" : "Files"}
-            legacyTestID="design-action-files"
-            onPress={() => runDirect(onOpenFiles)}
             showLabel={expandedHud}
           />
         </ScrollView>

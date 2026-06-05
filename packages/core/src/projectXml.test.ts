@@ -40,6 +40,25 @@ const projectWithFeatures = {
       sourceAccessedAt: "2026-06-02",
       advisoryOnly: true as const,
     },
+    cornerArm: {
+      id: "corner-arm-a",
+      name: "Corner arm A",
+      advisoryOnly: true as const,
+      lengthMeters: 91,
+      guidanceType: "gps_guidance" as const,
+      sequencingType: "electronic" as const,
+      orientation: "operator_supplied" as const,
+      confidence: "user_estimated" as const,
+      operatorConfirmedAt: "2026-06-05T00:00:00.000Z",
+      notes: "Operator confirmed advisory config.",
+      sourceRefs: [{
+        sourceId: "SRC-VALLEY-VFLEX-CORNER",
+        title: "Valley VFlex Corner",
+        url: "https://www.valleyirrigation.com/vflex-corner",
+        checkedAt: "2026-06-05",
+        limit: "Manufacturer public feature/specification reference only; CPLayout does not certify compatibility or kinematics.",
+      }],
+    },
   },
 };
 
@@ -50,6 +69,8 @@ assert.match(xml, /gpsCoordinateSystem="decimal_degrees"/);
 assert.match(xml, /<mapFeature id="corner-footprint-a"/);
 assert.match(xml, /<geometry type="Circle" radiusMeters="24">/);
 assert.match(xml, /catalogId="valley-8000-public-preset"/);
+assert.match(xml, /<cornerArm id="corner-arm-a"/);
+assert.match(xml, /sourceId="SRC-VALLEY-VFLEX-CORNER"/);
 assert.doesNotMatch(xml, /tileUrlTemplate|packageDirectory|hidden/i);
 
 const imported = importProjectMapXmlToProject(xml);
@@ -60,6 +81,8 @@ assert.equal(imported.project.mapFeatures?.length, 2);
 assert.equal(imported.project.mapFeatures?.[0].geometry.type, "Polygon");
 assert.equal(imported.project.mapFeatures?.[1].geometry.type, "Circle");
 assert.equal(imported.project.machine.catalogSelection?.catalogId, "valley-8000-public-preset");
+assert.equal(imported.project.machine.cornerArm?.id, "corner-arm-a");
+assert.equal(imported.project.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");
 assert.equal(imported.project.wgs84Companion?.status, "projected");
 assert.equal(imported.project.wgs84Companion?.coordinateSystem, "decimal_degrees");
 assert.match(imported.warnings.join("\n"), /projected XY as canonical/);

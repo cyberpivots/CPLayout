@@ -108,6 +108,49 @@ export interface MachineCatalogSelection {
   advisoryOnly: true;
 }
 
+export interface AdvisorySourceReference {
+  sourceId: string;
+  title?: string;
+  url?: string;
+  guideId?: string;
+  page?: number;
+  lineRange?: string;
+  checkedAt?: string;
+  limit: string;
+}
+
+export type AdvisoryCornerArmGuidanceType =
+  | "gps_guidance"
+  | "below_ground_guidance"
+  | "operator_supplied"
+  | "unknown";
+
+export type AdvisoryCornerArmSequencingType =
+  | "electronic"
+  | "mechanical"
+  | "operator_supplied"
+  | "unknown";
+
+export type AdvisoryCornerArmOrientation =
+  | "leading"
+  | "trailing"
+  | "operator_supplied"
+  | "unknown";
+
+export interface AdvisoryCornerArmConfig {
+  id: string;
+  name: string;
+  advisoryOnly: true;
+  lengthMeters: number;
+  guidanceType: AdvisoryCornerArmGuidanceType;
+  sequencingType: AdvisoryCornerArmSequencingType;
+  orientation: AdvisoryCornerArmOrientation;
+  confidence: SourceConfidence;
+  sourceRefs: AdvisorySourceReference[];
+  operatorConfirmedAt?: string;
+  notes?: string;
+}
+
 export interface PivotMachine {
   id: string;
   name: string;
@@ -119,6 +162,7 @@ export interface PivotMachine {
   machineClearanceBufferMeters: number;
   sweep: PivotSweep;
   catalogSelection?: MachineCatalogSelection;
+  cornerArm?: AdvisoryCornerArmConfig;
 }
 
 export interface ObstacleZone {

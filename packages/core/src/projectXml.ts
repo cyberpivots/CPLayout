@@ -4,6 +4,8 @@ import { projectLonLatToXy } from "./coordinates";
 import { defaultProjectSettings } from "./settings";
 import { PivotProjectSchema, withWgs84Companion } from "./projectDocument";
 import type {
+  AdvisoryCornerArmConfig,
+  AdvisorySourceReference,
   LonLat,
   ObstacleZone,
   PivotAngleRange,
@@ -150,8 +152,31 @@ function machineXml(machine: PivotMachine): string[] {
     `    <endGunAngleRanges>`,
     ...(machine.endGunAngleRanges ?? []).map((range, index) => `      <angleRange index="${index}" startAngleDegrees="${range.startAngleDegrees}" stopAngleDegrees="${range.stopAngleDegrees}" direction="${range.direction}"/>`),
     `    </endGunAngleRanges>`,
+    ...cornerArmXml(machine.cornerArm),
     `  </machine>`,
   ];
+}
+
+function cornerArmXml(cornerArm: AdvisoryCornerArmConfig | undefined): string[] {
+  if (!cornerArm) return [];
+  return [
+    `    <cornerArm id="${escapeXml(cornerArm.id)}" name="${escapeXml(cornerArm.name)}" advisoryOnly="true" lengthMeters="${cornerArm.lengthMeters}" guidanceType="${cornerArm.guidanceType}" sequencingType="${cornerArm.sequencingType}" orientation="${cornerArm.orientation}" confidence="${cornerArm.confidence}"${cornerArm.operatorConfirmedAt ? ` operatorConfirmedAt="${escapeXml(cornerArm.operatorConfirmedAt)}"` : ""}${cornerArm.notes ? ` notes="${escapeXml(cornerArm.notes)}"` : ""}>`,
+    ...cornerArm.sourceRefs.map(sourceRefXml),
+    `    </cornerArm>`,
+  ];
+}
+
+function sourceRefXml(sourceRef: AdvisorySourceReference): string {
+  return [
+    `      <sourceRef sourceId="${escapeXml(sourceRef.sourceId)}"`,
+    sourceRef.title ? ` title="${escapeXml(sourceRef.title)}"` : "",
+    sourceRef.url ? ` url="${escapeXml(sourceRef.url)}"` : "",
+    sourceRef.guideId ? ` guideId="${escapeXml(sourceRef.guideId)}"` : "",
+    sourceRef.page ? ` page="${sourceRef.page}"` : "",
+    sourceRef.lineRange ? ` lineRange="${escapeXml(sourceRef.lineRange)}"` : "",
+    sourceRef.checkedAt ? ` checkedAt="${escapeXml(sourceRef.checkedAt)}"` : "",
+    ` limit="${escapeXml(sourceRef.limit)}"/>`,
+  ].join("");
 }
 
 function obstacleXml(obstacle: ObstacleZone, wgs84Ring: LonLat[] | undefined): string[] {
@@ -247,7 +272,40 @@ function machineFrom(element: XmlElement): PivotMachine {
       advisoryOnly: true,
     };
   }
+  const cornerArmElement = optionalChild(element, "cornerArm");
+  if (cornerArmElement) {
+    machine.cornerArm = cornerArmFrom(cornerArmElement);
+  }
   return machine;
+}
+
+function cornerArmFrom(element: XmlElement): AdvisoryCornerArmConfig {
+  return {
+    id: requiredAttr(element, "id"),
+    name: requiredAttr(element, "name"),
+    advisoryOnly: true,
+    lengthMeters: positiveNumberAttr(element, "lengthMeters"),
+    guidanceType: enumAttr(element, "guidanceType", ["gps_guidance", "below_ground_guidance", "operator_supplied", "unknown"]),
+    sequencingType: enumAttr(element, "sequencingType", ["electronic", "mechanical", "operator_supplied", "unknown"]),
+    orientation: enumAttr(element, "orientation", ["leading", "trailing", "operator_supplied", "unknown"]),
+    confidence: enumAttr(element, "confidence", SOURCE_CONFIDENCES),
+    sourceRefs: children(element, "sourceRef").map(sourceRefFrom),
+    operatorConfirmedAt: attr(element, "operatorConfirmedAt") || undefined,
+    notes: attr(element, "notes") || undefined,
+  };
+}
+
+function sourceRefFrom(element: XmlElement): AdvisorySourceReference {
+  return {
+    sourceId: requiredAttr(element, "sourceId"),
+    title: attr(element, "title") || undefined,
+    url: attr(element, "url") || undefined,
+    guideId: attr(element, "guideId") || undefined,
+    page: attr(element, "page") ? positiveNumberAttr(element, "page") : undefined,
+    lineRange: attr(element, "lineRange") || undefined,
+    checkedAt: attr(element, "checkedAt") || undefined,
+    limit: requiredAttr(element, "limit"),
+  };
 }
 
 function angleRangeFrom(element: XmlElement): PivotAngleRange {

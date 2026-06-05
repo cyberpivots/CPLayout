@@ -222,6 +222,42 @@ assert.equal(importedMapFeatureProject.mapFeatures?.[1].geometry.type, "LineStri
 assert.equal(importedMapFeatureProject.mapFeatures?.[2].geometry.type, "Polygon");
 assert.equal(importedMapFeatureProject.mapFeatures?.[3].geometry.type, "Circle");
 
+const projectWithCornerArm = {
+  ...sampleProject,
+  machine: {
+    ...sampleProject.machine,
+    cornerArm: {
+      id: "corner-arm-archive",
+      name: "Corner arm archive",
+      advisoryOnly: true as const,
+      lengthMeters: 91,
+      guidanceType: "gps_guidance" as const,
+      sequencingType: "electronic" as const,
+      orientation: "operator_supplied" as const,
+      confidence: "user_estimated" as const,
+      sourceRefs: [{
+        sourceId: "SRC-VALLEY-VFLEX-CORNER",
+        title: "Valley VFlex Corner",
+        url: "https://www.valleyirrigation.com/vflex-corner",
+        checkedAt: "2026-06-05",
+        limit: "Manufacturer public feature/specification reference only; CPLayout does not certify compatibility or kinematics.",
+      }],
+    },
+  },
+};
+const cornerArmBundle = buildProjectArchiveBundle(
+  projectWithCornerArm,
+  evaluateLayout(projectWithCornerArm),
+  exportScenarioGeoJson(projectWithCornerArm, evaluateLayout(projectWithCornerArm)),
+  "2026-06-05T12:00:00.000Z",
+);
+assert.match(cornerArmBundle.files[PROJECT_JSON_FILENAME], /corner-arm-archive/);
+assert.match(cornerArmBundle.files[PROJECT_MAP_XML_FILENAME], /<cornerArm id="corner-arm-archive"/);
+assert.match(cornerArmBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /cornerArmCanonicalGeometryMutation/);
+const importedCornerArmProject = importProjectArchiveZip(exportProjectArchiveZip(cornerArmBundle));
+assert.equal(importedCornerArmProject.machine.cornerArm?.id, "corner-arm-archive");
+assert.equal(importedCornerArmProject.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");
+
 const zipped = exportProjectArchiveZip(bundle);
 assert.ok(zipped.byteLength > 500);
 

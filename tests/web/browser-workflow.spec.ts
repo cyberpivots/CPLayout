@@ -33,8 +33,10 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
 
   await page.goto("/");
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
-  await expect(page.getByText("CPLayout", { exact: true })).toBeVisible();
-  await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("CPLayout");
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
+  await expectTopToolbarSingleRow(page);
+  await expectPassiveBottomStatusBar(page);
   await expect(page.getByTestId("workspace-nav-review")).toHaveCount(0);
   await expect(page.getByTestId("review-view")).toHaveCount(0);
   if (await page.getByRole("button", { name: "Open project drawer" }).count() > 0) {
@@ -44,7 +46,7 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   }
   await saveScreen(page, testInfo, "map-first-launcher");
 
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
 
   for (const routeScreen of routeScreens) {
@@ -87,6 +89,9 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   if (testInfo.project.name === "mobile-390") {
     await expect(page.getByText("Saved")).toBeVisible();
+    await expectNoOverlap(page, "workspace-bottom-status-bar", "map-bottom-hud");
+    await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-status-hud");
+    await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-attribution-hud");
     await saveScreen(page, testInfo, "mobile-map-route-sweep-compact");
     return;
   }
@@ -97,6 +102,9 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await expect(page.getByText("Layout mode is RTK-only; switch to Design for pointer-based geometry edits.")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
   await expectNoOverlap(page, "browser-map-status-hud", "browser-map-attribution-hud");
+  await expectNoOverlap(page, "workspace-bottom-status-bar", "map-bottom-hud");
+  await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-status-hud");
+  await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-attribution-hud");
 
   const disallowed = networkLog.filter((url) => !isAllowedExternalProofRequest(url));
   expect(disallowed).toEqual([]);
@@ -104,10 +112,38 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
 
 test("workspace command menus open without overflow across responsive viewports", async ({ page }, testInfo) => {
   await page.goto("/");
+  const compact = page.viewportSize()!.width < 760;
+  const expectedMenus = compact ? ["file", "inspect", "view", "settings", "help"] : ["file", "inspect", "settings", "help"];
+  await expect(page.getByTestId("workspace-top-toolbar")).toBeVisible();
   await expect(page.getByTestId("workspace-command-bar")).toBeVisible();
-  for (const menuId of ["file", "reports", "tools", "view", "connections", "settings", "help"]) {
+  await expectTopToolbarSingleRow(page);
+  await expectBreadcrumbLongTextTruncates(page);
+  await expectPassiveBottomStatusBar(page);
+  await expect(page.getByTestId("command-menu-reports")).toHaveCount(0);
+  await expect(page.getByTestId("command-menu-tools")).toHaveCount(0);
+  await expect(page.getByTestId("command-menu-connections")).toHaveCount(0);
+  if (compact) {
+    await expect(page.getByTestId("command-menu-view")).toBeVisible();
+  } else {
+    await expect(page.getByTestId("command-menu-view")).toHaveCount(0);
+  }
+  await expect(page.getByTestId("command-icon-save")).toBeVisible();
+  await expect(page.getByTestId("command-icon-undo")).toBeVisible();
+  await expect(page.getByTestId("command-icon-redo")).toBeVisible();
+  await expect(page.getByTestId("command-file-save")).toHaveCount(0);
+  await expect(page.getByTestId("command-tools-undo")).toHaveCount(0);
+  await expect(page.getByTestId("command-tools-redo")).toHaveCount(0);
+  await expect(page.getByTestId("command-tools-calculate")).toHaveCount(0);
+  await expect(page.getByTestId("command-tools-layers")).toHaveCount(0);
+  for (const menuId of expectedMenus) {
     await openCommandMenu(page, menuId);
     await expect(page.getByTestId(`command-menu-${menuId}-panel`)).toBeVisible();
+    if (menuId === "file") {
+      await expect(page.getByTestId("command-file-save")).toHaveCount(0);
+    }
+    if (menuId === "inspect") {
+      await expect(page.getByTestId("command-reports-export")).toHaveCount(0);
+    }
     await expectInsideViewport(page, `command-menu-${menuId}-panel`);
     await expectNoHorizontalOverflow(page);
     await closeCommandMenu(page, menuId);
@@ -120,8 +156,7 @@ test("workspace command menu routes preserve existing views and local boundaries
   await openCommandMenu(page, "file");
   await page.getByTestId("command-file-files").click();
   await expect(page.getByTestId("files-view")).toBeVisible();
-  await openCommandMenu(page, "view");
-  await page.getByTestId("command-view-survey").click();
+  await navigateToSurvey(page);
   await expect(page.getByTestId("survey-view")).toBeVisible();
   await openCommandMenu(page, "settings");
   await page.getByTestId("command-settings-open").click();
@@ -161,7 +196,7 @@ test("file menu opens curated sample designs with projected xy status", async ({
   for (const sample of samples) {
     await openCommandMenu(page, "file");
     await page.getByTestId(sample.testId).click();
-    await expect(page.getByText(sample.title, { exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText(sample.title);
     await expect(page.getByText("EPSG:32613").first()).toBeVisible();
     await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   }
@@ -170,14 +205,14 @@ test("file menu opens curated sample designs with projected xy status", async ({
 
 test("catalog blank design starts a drawable boundary workflow", async ({ page }, testInfo) => {
   await page.goto("/");
-  await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
   await openInspectorIfCollapsed(page);
   await expect(page.getByText("Use Start Blank Design or open a saved design from the tree to enable drawing. Catalog maps are navigation-only.")).toBeVisible();
   await closeInspectorIfOpen(page);
   await expect(page.getByTestId("browser-tool-boundary")).toBeHidden();
 
-  await page.getByRole("button", { name: "Start Blank Design" }).click();
-  await expect(page.getByText("Blank Field Design", { exact: true }).first()).toBeVisible();
+  await startBlankDesignFromFile(page);
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Blank Field Design");
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByTestId("design-action-hud")).toBeVisible();
   await expect(page.getByTestId("design-builder-panel")).toHaveCount(0);
@@ -211,7 +246,7 @@ test("catalog blank design starts a drawable boundary workflow", async ({ page }
 
 test("design console pivot entry defaults to decimal GPS with expert XY hidden", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("design-action-hud")).toBeVisible();
   await page.getByTestId("drawing-tool-group-points").click();
@@ -235,7 +270,7 @@ test("map-first catalog tree creates customer projects and field maps without hi
   });
 
   await page.goto("/");
-  await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
   await openInspectorIfCollapsed(page);
   await expect(page.getByTestId("catalog-home-status")).toContainText(/Browser local storage/);
   await openProjectDrawerIfCollapsed(page);
@@ -251,7 +286,7 @@ test("map-first catalog tree creates customer projects and field maps without hi
   await createProjectFromRail(page, "Adams North Unit", "Saved under: Adams Farms");
   const railProject = page.getByTestId("project-tree-rail").getByRole("button", { name: "Adams North Unit" });
   await expect(railProject).toBeVisible();
-  await expect(page.getByText("North America project catalog")).toBeVisible();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
   await expect(page.getByText("North America Map")).toBeVisible();
   await expect(page.getByTestId("browser-workflow-layout")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("browser-tool-boundary")).toBeHidden();
@@ -276,8 +311,8 @@ test("map-first catalog tree creates customer projects and field maps without hi
   await expect(page.getByTestId("project-tree-rail")).toContainText("North Quarter");
   await expect(page.getByText("Saved")).toBeVisible();
   await closeProjectDrawerIfOpen(page);
-  await page.getByRole("button", { name: "Open Sample" }).click();
-  await expect(page.getByText("North Quarter Concept Layout", { exact: true }).first()).toBeVisible();
+  await openBaselineSample(page);
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-tool-boundary")).toBeVisible();
   expect(nativeDialogs).toEqual([]);
@@ -363,7 +398,7 @@ test("customer detail manages profile and contained project lifecycle", async ({
   await expect(page.getByText("North Adams County")).toBeVisible();
 
   await createProjectForSelectedCustomer(page, "North Unit", "Saved under: Adams Farms");
-  await page.getByRole("button", { name: "Catalog" }).click();
+  await openCatalogFromFile(page);
   await openInspectorIfCollapsed(page);
   await expect(page.getByTestId("customer-detail-projects")).toContainText("North Unit");
   await expect(page.getByRole("button", { name: "Delete Customer" })).toBeDisabled();
@@ -427,7 +462,7 @@ test("public proof map features can select the side-panel editor without geometr
 
 test("workspace rail exposes the selected view state", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await expect(page.getByTestId("workspace-nav-dashboard")).toHaveAttribute("aria-selected", "true");
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("workspace-nav-dashboard")).toHaveAttribute("aria-selected", "false");
@@ -445,7 +480,7 @@ test("workspace rail exposes the selected view state", async ({ page }, testInfo
 
 test("workspace compact rail stays within the viewport while switching routes", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   const viewport = page.viewportSize();
   expect(viewport, "viewport").not.toBeNull();
   const railBox = await page.getByTestId("workspace-rail").boundingBox();
@@ -465,7 +500,7 @@ test("workspace compact rail stays within the viewport while switching routes", 
 
 test("help training route links into the real workflow", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-help").click();
   await expect(page.getByTestId("help-view")).toBeVisible();
   await expect(page.getByTestId("help-training-panel")).toContainText("workflow checkpoints");
@@ -503,7 +538,7 @@ test("help training route links into the real workflow", async ({ page }, testIn
 test("tablet portrait map console keeps drawers collapsed and HUD above the viewport floor", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
@@ -523,9 +558,7 @@ test("tablet portrait map console keeps drawers collapsed and HUD above the view
   await expect(page.getByTestId("design-console-status")).toContainText("Use the bottom HUD");
   await expectInsideViewport(page, "map-bottom-hud");
   await expectInsideViewport(page, "design-action-hud");
-  await page.getByTestId("design-action-files").scrollIntoViewIfNeeded();
-  await expect(page.getByTestId("design-action-files")).toBeVisible();
-  await expectInsideContainer(page, "design-action-files", "design-action-hud");
+  await expect(page.getByTestId("design-action-files")).toHaveCount(0);
   const expandedMap = await page.getByTestId("browser-map-frame").boundingBox();
   expect(collapsedMap, "collapsed map bounding box").not.toBeNull();
   expect(expandedMap, "expanded map bounding box").not.toBeNull();
@@ -538,7 +571,7 @@ test("tablet portrait map console keeps drawers collapsed and HUD above the view
 test("tablet landscape map console has fixed page bounds and drawer handles", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
@@ -558,7 +591,7 @@ test("tablet landscape map console has fixed page bounds and drawer handles", as
 
 test("survey rtk receiver starts closed without mutating the project", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-survey").click();
   await expect(page.getByTestId("survey-view")).toBeVisible();
   await expect(page.getByTestId("rtk-gate-badge").getByText("Gate closed")).toBeVisible();
@@ -571,7 +604,7 @@ test("survey rtk receiver starts closed without mutating the project", async ({ 
 
 test("survey rtk closed gate disables geometry capture controls", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-survey").click();
   await expect(page.getByTestId("rtk-gate-badge").getByText("Gate closed")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add Boundary (0)" })).toBeDisabled();
@@ -586,7 +619,7 @@ test("survey rtk closed gate disables geometry capture controls", async ({ page 
 
 test("survey rtk role selection stays local while gate is closed", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-survey").click();
   await page.getByRole("button", { name: "Pivot", exact: true }).click();
   await page.getByRole("button", { name: "Water", exact: true }).click();
@@ -600,7 +633,7 @@ test("survey rtk role selection stays local while gate is closed", async ({ page
 
 test("survey rtk map feature selection stays local while gate is closed", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-survey").click();
   await page.getByRole("button", { name: "Pump point" }).click();
   await expect(page.getByRole("button", { name: "Save Point Feature" })).toBeDisabled();
@@ -615,7 +648,7 @@ test("survey rtk map feature selection stays local while gate is closed", async 
 
 test("browser boundary commit keeps projected geometry status explicit", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await page.getByTestId("browser-tool-boundary").click();
@@ -632,7 +665,7 @@ test("browser boundary commit keeps projected geometry status explicit", async (
 
 test("browser utility line save keeps projected feature status explicit", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await page.getByTestId("browser-tool-utility").click();
@@ -653,7 +686,7 @@ test("browser utility line save keeps projected feature status explicit", async 
 
 test("browser utility point save keeps projected feature status explicit", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await page.getByTestId("browser-tool-utility").click();
@@ -671,7 +704,7 @@ test("browser utility point save keeps projected feature status explicit", async
 
 test("design console selects end-gun circle and corner footprint utility tools", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
 
@@ -720,9 +753,61 @@ test("design console selects end-gun circle and corner footprint utility tools",
   await saveScreen(page, testInfo, "design-console-feature-kind-tools");
 });
 
+test("placement review applies advisory pivot candidates only after confirmation", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("design-action-calculate").click();
+  await expect(page.getByTestId("design-console-dialog")).toBeVisible();
+  await page.getByTestId("design-console-calculate").click();
+  await expect(page.getByTestId("placement-review-panel")).toContainText("Placement Review");
+  await expect(page.getByTestId("placement-review-panel")).toContainText("advisory");
+  await expect(page.getByTestId("placement-review-panel")).toContainText("source-backed");
+  await expect(page.getByTestId("placement-candidate-0")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("placement-candidate-apply-0").click();
+  await expect(page.getByTestId("placement-confirm-dialog")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await page.getByTestId("placement-confirm-dialog-cancel").click();
+  await expect(page.getByTestId("placement-confirm-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("placement-candidate-apply-0").click();
+  await page.getByTestId("placement-confirm-dialog-confirm").click();
+  await expect(page.getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "placement-review-confirmed-apply");
+});
+
+test("corner arm advisory save requires confirmation and remains advisory", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("drawing-tool-group-coverage").click();
+  await page.getByTestId("drawing-tool-option-corner-panel").click();
+  await expect(page.getByTestId("design-console-dialog")).toBeVisible();
+  await expect(page.getByTestId("corner-arm-advisory-badges")).toContainText("advisory");
+  await expect(page.getByTestId("corner-arm-advisory-badges")).toContainText("unverified kinematics");
+  await expect(page.getByTestId("corner-arm-evaluation-panel")).toContainText("Corner-Arm Review");
+  await expect(page.getByTestId("corner-arm-evaluation-panel")).toContainText("missing config");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("corner-arm-save-advisory").click();
+  await expect(page.getByTestId("placement-confirm-dialog")).toBeVisible();
+  await page.getByTestId("placement-confirm-dialog-cancel").click();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("corner-arm-save-advisory").click();
+  await page.getByTestId("placement-confirm-dialog-confirm").click();
+  await expect(page.getByText("Unsaved edits")).toBeVisible();
+  await expect(page.getByTestId("corner-arm-evaluation-panel")).toContainText("operator-confirmed");
+  await expect(page.getByTestId("corner-arm-evaluation-panel")).toContainText("unverified kinematics");
+  await saveScreen(page, testInfo, "corner-arm-advisory-confirmed-save");
+});
+
 test("browser map tool buttons expose active state", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-tool-pan")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "false");
@@ -738,7 +823,7 @@ test("browser map tool buttons expose active state", async ({ page }, testInfo) 
 
 test("grouped drawing HUD menus do not clear active drafts", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await page.getByTestId("browser-tool-boundary").click();
@@ -758,7 +843,7 @@ test("grouped drawing HUD menus do not clear active drafts", async ({ page }, te
 
 test("browser map workflow modes expose active state", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-workflow-design")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("browser-workflow-layout")).toHaveAttribute("aria-pressed", "false");
@@ -772,7 +857,7 @@ test("browser map workflow modes expose active state", async ({ page }, testInfo
 
 test("browser map utility option chips expose active state", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await page.getByTestId("browser-tool-utility").click();
   const pipe = page.getByRole("button", { name: "Pipe", exact: true });
@@ -789,7 +874,7 @@ test("browser map utility option chips expose active state", async ({ page }, te
 
 test("browser map HUD actions expose disabled state", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   const commit = page.getByTestId("browser-action-commit");
   const saveFeature = page.getByTestId("browser-action-save-feature");
@@ -822,7 +907,7 @@ test("browser map HUD actions expose disabled state", async ({ page }, testInfo)
 
 test("browser map compact HUD actions stay inside the status panel", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await page.getByTestId("browser-tool-boundary").click();
   await clickWorkbenchMap(page, { x: 160, y: 180 });
@@ -839,13 +924,16 @@ test("browser map compact HUD actions stay inside the status panel", async ({ pa
   await expectNoOverlap(page, "browser-map-status-hud", "browser-map-attribution-hud");
   await expectNoOverlap(page, "map-bottom-hud", "browser-map-attribution-hud");
   await expectNoOverlap(page, "map-bottom-hud", "browser-map-status-hud");
+  await expectNoOverlap(page, "workspace-bottom-status-bar", "map-bottom-hud");
+  await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-status-hud");
+  await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-attribution-hud");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "browser-map-compact-hud-actions");
 });
 
 test("layout mode keeps map clicks read-only and actions disabled", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await page.getByTestId("browser-workflow-layout").click();
   await expect(page.getByText("Layout mode: RTK-only geometry changes; pointer gestures inspect only.")).toBeVisible();
@@ -871,7 +959,7 @@ test("offline browser map workbench stays usable with external requests blocked"
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
@@ -890,7 +978,7 @@ test("offline browser map workbench stays usable with external requests blocked"
 
 test("settings custom imagery guidance blocks hidden-key assumptions", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Custom open" }).click();
   await expect(page.getByText(/Custom sources must be open, no-key/)).toBeVisible();
@@ -901,7 +989,7 @@ test("settings custom imagery guidance blocks hidden-key assumptions", async ({ 
 
 test("settings custom imagery rejects credentialed tile templates", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/Live imagery disabled/);
@@ -924,7 +1012,7 @@ test("settings rejected credentialed imagery never reaches map requests", async 
     requestedUrls.push(request.url());
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await page.getByRole("button", { name: "Custom open" }).click();
@@ -954,7 +1042,7 @@ test("network allowlist blocks credential query strings on allowed imagery hosts
 
 test("settings custom imagery applies no-key local tile templates", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await page.getByRole("button", { name: "Custom open" }).click();
@@ -982,7 +1070,7 @@ test("settings offline imagery guardrail exposes local-only export boundary", as
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/no external tile source is requested/);
@@ -995,7 +1083,7 @@ test("settings offline imagery guardrail exposes local-only export boundary", as
 
 test("settings aerial workflow exposes local package and USGS preview modes", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await expect(page.getByTestId("settings-aerial-mode-off")).toBeVisible();
   await expect(page.getByTestId("settings-aerial-mode-auto")).toBeVisible();
@@ -1022,7 +1110,7 @@ test("settings aerial workflow exposes local package and USGS preview modes", as
 
 test("settings tile cap stepper clamps interactive preview budget", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   const tileCap = page.getByTestId("settings-tile-cap-stepper");
   await expect(tileCap.getByTestId("settings-tile-cap-stepper-value")).toHaveText("64");
@@ -1044,7 +1132,7 @@ test("settings tile cap stepper clamps interactive preview budget", async ({ pag
 
 test("settings offline package guardrail keeps network tiles disabled", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   const packageSummary = page.getByTestId("settings-offline-package-summary");
   await expect(packageSummary).toHaveText(/Network tiles: disabled/);
@@ -1059,7 +1147,7 @@ test("settings offline package guardrail keeps network tiles disabled", async ({
 
 test("settings offline package type changes keep local-only guardrails", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   const packageSummary = page.getByTestId("settings-offline-package-summary");
   await page.getByRole("button", { name: "MBTILES" }).click();
@@ -1074,7 +1162,7 @@ test("settings offline package type changes keep local-only guardrails", async (
 
 test("settings map style changes do not enable online imagery", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/Live imagery disabled/);
@@ -1098,7 +1186,7 @@ test("settings offline imagery off blocks map tile requests after live source is
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await expect(page.getByTestId("settings-imagery-source-summary")).toHaveText(/live preview only/);
   await page.getByRole("button", { name: "Aerial Off" }).click();
@@ -1113,7 +1201,7 @@ test("settings offline imagery off blocks map tile requests after live source is
 
 test("settings browser-local imagery settings stay out of project zip", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "MBTILES" }).click();
   await page.getByRole("button", { name: "Custom open" }).click();
@@ -1147,7 +1235,7 @@ test("settings browser-local imagery settings stay out of project zip", async ({
 
 test("dashboard walkthrough progress stays out of project zip", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("walkthrough-module-imagery").click();
   await page.getByTestId("walkthrough-module-export").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
@@ -1174,7 +1262,7 @@ test("dashboard walkthrough progress stays out of project zip", async ({ page },
 
 test("dashboard next step separates imagery-off from live-source confirmation", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
@@ -1188,7 +1276,7 @@ test("dashboard next step separates imagery-off from live-source confirmation", 
 
 test("dashboard offline imagery path advances after imagery walkthrough progress", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
@@ -1204,7 +1292,7 @@ test("dashboard offline imagery path advances after imagery walkthrough progress
 
 test("dashboard next step advances after imagery walkthrough progress", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await expect(page.getByText("Next: confirm imagery attribution and source status.")).toBeVisible();
   await page.getByTestId("walkthrough-module-imagery").click();
   await expect(page.getByText("Next: trace or inspect the field boundary in Design mode.")).toBeVisible();
@@ -1214,7 +1302,7 @@ test("dashboard next step advances after imagery walkthrough progress", async ({
 
 test("dashboard export readiness reflects unsaved browser geometry edits", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await page.getByTestId("browser-tool-boundary").click();
   await clickWorkbenchMap(page, { x: 160, y: 180 });
@@ -1230,7 +1318,7 @@ test("dashboard export readiness reflects unsaved browser geometry edits", async
 
 test("files status keeps the canonical archive message visible", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const status = page.getByTestId("files-status");
   await expect(status).toHaveAttribute("role", "status");
@@ -1243,7 +1331,7 @@ test("files status keeps the canonical archive message visible", async ({ page }
 
 test("files actions expose accessible browser buttons", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await expect(page.getByRole("button", { name: "Save Local" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export ZIP" })).toBeVisible();
@@ -1259,7 +1347,7 @@ test("files actions expose accessible browser buttons", async ({ page }, testInf
 
 test("google earth import wizard keeps companion boundaries visible", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const wizard = page.getByTestId("google-earth-import-wizard");
   await expect(wizard).toContainText("Search and stage Places");
@@ -1276,7 +1364,7 @@ test("google earth import wizard keeps companion boundaries visible", async ({ p
 
 test("files map package import keeps web storage boundary explicit", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByRole("button", { name: "Import Map Package" }).click();
   await expect(page.getByTestId("files-status")).toContainText("Map package ZIP install is native-only until web package storage is configured.");
@@ -1286,7 +1374,7 @@ test("files map package import keeps web storage boundary explicit", async ({ pa
 
 test("files export zip downloads the canonical project package", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export ZIP" }).click();
@@ -1300,7 +1388,7 @@ test("files export zip downloads the canonical project package", async ({ page }
 
 test("files zip export excludes retired review contract files", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export ZIP" }).click();
@@ -1324,7 +1412,7 @@ test("files zip export excludes retired review contract files", async ({ page },
 
 test("files export kml downloads visual interchange data without runtime claims", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export KML" }).click();
@@ -1339,7 +1427,7 @@ test("files export kml downloads visual interchange data without runtime claims"
 
 test("files export kmz downloads a doc-kml archive without runtime claims", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export KMZ" }).click();
@@ -1354,7 +1442,7 @@ test("files export kmz downloads a doc-kml archive without runtime claims", asyn
 
 test("files projected geojson import dirties the project with projected xy status", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-geojson-import-input").fill(JSON.stringify({
     type: "FeatureCollection",
@@ -1382,7 +1470,7 @@ test("files projected geojson import dirties the project with projected xy statu
 
 test("files projected geojson import can be saved locally", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-geojson-import-input").fill(JSON.stringify({
     type: "FeatureCollection",
@@ -1412,7 +1500,7 @@ test("files projected geojson import can be saved locally", async ({ page }, tes
 
 test("files projected geojson import clears the paste field after success", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const input = page.getByTestId("files-geojson-import-input");
   await input.fill(JSON.stringify({
@@ -1441,7 +1529,7 @@ test("files projected geojson import clears the paste field after success", asyn
 
 test("files geojson import rejects wgs84 as canonical geometry", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-geojson-import-input").fill(JSON.stringify({
     type: "FeatureCollection",
@@ -1469,7 +1557,7 @@ test("files geojson import rejects wgs84 as canonical geometry", async ({ page }
 
 test("files rejected geojson import preserves the paste field for correction", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const input = page.getByTestId("files-geojson-import-input");
   const rejectedGeoJson = JSON.stringify({
@@ -1500,7 +1588,7 @@ test("files rejected geojson import preserves the paste field for correction", a
 
 test("files survey csv import dirties the project with projected point status", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\np1,Point 1,control,501010,4506010,imported,rtk_fixed\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1511,7 +1599,7 @@ test("files survey csv import dirties the project with projected point status", 
 
 test("files survey csv import can be saved locally", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\np1,Point 1,control,501010,4506010,imported,rtk_fixed\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1524,7 +1612,7 @@ test("files survey csv import can be saved locally", async ({ page }, testInfo) 
 
 test("files survey csv import clears the paste field after success", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   const input = page.getByTestId("files-survey-csv-import-input");
   await input.fill("id,label,role,x,y,source,confidence\np1,Point 1,control,501010,4506010,imported,rtk_fixed\n");
@@ -1536,7 +1624,7 @@ test("files survey csv import clears the paste field after success", async ({ pa
 
 test("files survey csv import rejects missing projected xy columns", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,longitude,latitude\np1,No XY,-104,40\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1547,7 +1635,7 @@ test("files survey csv import rejects missing projected xy columns", async ({ pa
 
 test("survey view reflects imported projected survey csv evidence", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nsurvey-import-rtk-float,Imported Float,water_source,501030,4506030,imported,rtk_float\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1564,7 +1652,7 @@ test("survey view reflects imported projected survey csv evidence", async ({ pag
 
 test("survey point promotion writes projected water source after explicit action", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nsurvey-water-promote,Imported Water,water_source,501030,4506030,imported,rtk_fixed\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1593,7 +1681,7 @@ test("survey point promotion writes projected water source after explicit action
 
 test("survey point delete removes imported evidence from canonical export", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nsurvey-delete-me,Delete Me,note,501050,4506050,imported,rtk_float\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1625,7 +1713,7 @@ test("survey point delete removes imported evidence from canonical export", asyn
 
 test("survey rtk float import counts as draft input", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-files").click();
   await page.getByTestId("files-survey-csv-import-input").fill("id,label,role,x,y,source,confidence\nfloat-only,Float Only,control,501010,4506010,imported,rtk_float\n");
   await page.getByRole("button", { name: "Import CSV" }).click();
@@ -1640,7 +1728,7 @@ test("survey rtk float import counts as draft input", async ({ page }, testInfo)
 
 test("survey point row actions expose point-specific accessible names", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-survey").click();
   await expect(page.getByRole("button", { name: "Set Pivot from Pivot center repeated shot" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete survey point Pivot center repeated shot" })).toBeVisible();
@@ -1651,7 +1739,7 @@ test("survey point row actions expose point-specific accessible names", async ({
 
 test("dashboard dirty geometry priority outranks imagery-off guidance", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await page.getByTestId("workspace-nav-map").click();
@@ -1668,7 +1756,7 @@ test("dashboard dirty geometry priority outranks imagery-off guidance", async ({
 
 test("dashboard walkthrough progress stays local and export-ready", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("0/7 modules")).toBeVisible();
   await page.getByTestId("walkthrough-module-imagery").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
@@ -1680,7 +1768,7 @@ test("dashboard walkthrough progress stays local and export-ready", async ({ pag
 
 test("dashboard walkthrough modules expose checkbox state and keyboard activation", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   const imagery = page.getByRole("checkbox", { name: "Complete Setup Imagery walkthrough checkpoint" });
   await expect(imagery).toBeVisible();
   await expect(imagery).not.toBeChecked();
@@ -1698,7 +1786,7 @@ test("dashboard walkthrough modules expose checkbox state and keyboard activatio
 
 test("dashboard walkthrough progress is scoped to the active project", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("walkthrough-module-imagery").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
   await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Real Proof" }).click();
@@ -1711,7 +1799,7 @@ test("dashboard walkthrough progress is scoped to the active project", async ({ 
 
 test("dashboard walkthrough reset only clears the active project", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("walkthrough-module-imagery").click();
   await page.getByTestId("walkthrough-module-boundary").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
@@ -1727,7 +1815,7 @@ test("dashboard walkthrough reset only clears the active project", async ({ page
 
 test("dashboard layout warnings expose actionable map guidance", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   const warnings = page.getByTestId("dashboard-layout-warnings");
   await expect(warnings.getByText("Layout Warnings")).toBeVisible();
   await expect(warnings.getByText("1 no-spray obstacle or exclusion zone removes modeled wet coverage.")).toBeVisible();
@@ -1739,7 +1827,7 @@ test("dashboard layout warnings expose actionable map guidance", async ({ page }
 
 test("dashboard layout warnings can inspect the map without geometry mutation", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByTestId("dashboard-layout-warnings").getByRole("button", { name: "Inspect Map" }).click();
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
@@ -1750,7 +1838,7 @@ test("dashboard layout warnings can inspect the map without geometry mutation", 
 
 test("dashboard recent-project empty state keeps start actions visible", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   const recentProjects = page.getByTestId("dashboard-recent-projects");
   await expect(recentProjects.getByText("Recent Projects")).toBeVisible();
   await expect(recentProjects.getByText("No saved browser projects yet.")).toBeVisible();
@@ -1763,7 +1851,7 @@ test("dashboard recent-project empty state keeps start actions visible", async (
 
 test("dashboard recent-project row can reopen a saved browser project", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Sample" }).click();
+  await openBaselineSample(page);
   await page.getByRole("button", { name: /^Save$/ }).click();
   const recentProjects = page.getByTestId("dashboard-recent-projects");
   const sampleRow = recentProjects.getByRole("button", { name: "Open recent project North Quarter Concept Layout" });
@@ -1773,8 +1861,8 @@ test("dashboard recent-project row can reopen a saved browser project", async ({
   await expect(page.getByTestId("catalog-notice")).toContainText("Select or create a customer folder");
   await expect(page.getByText("Untitled Field Layout", { exact: true })).toBeHidden();
   await page.getByTestId("workspace-nav-dashboard").click();
-  await sampleRow.click();
-  await expect(page.getByText("North Quarter Concept Layout", { exact: true }).first()).toBeVisible();
+  await recentProjects.getByRole("button", { name: "Open recent project North Quarter Concept Layout" }).click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-recent-project-reopen");
 });
@@ -1857,6 +1945,103 @@ async function closeCommandMenu(page: Page, menuId: string): Promise<void> {
   }
   await page.getByTestId(`command-menu-${menuId}`).click();
   await expect(page.getByTestId(`command-menu-${menuId}-panel`)).toBeHidden();
+}
+
+async function openBaselineSample(page: Page): Promise<void> {
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-sample-baseline-needs-review").click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
+}
+
+async function openCatalogFromFile(page: Page): Promise<void> {
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-catalog").click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
+}
+
+async function startBlankDesignFromFile(page: Page): Promise<void> {
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-blank-design").click();
+  await expect(page.getByTestId("map-view")).toBeVisible();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Blank Field Design");
+}
+
+async function navigateToSurvey(page: Page): Promise<void> {
+  if (await page.getByTestId("command-menu-view").count() > 0) {
+    await openCommandMenu(page, "view");
+    await page.getByTestId("command-view-survey").click();
+    return;
+  }
+  await page.getByTestId("workspace-nav-survey").click();
+}
+
+async function expectTopToolbarSingleRow(page: Page): Promise<void> {
+  const metrics = await page.getByTestId("workspace-top-toolbar").evaluate((node) => {
+    const toolbar = node as HTMLElement;
+    const commandBar = toolbar.querySelector("[data-testid='workspace-command-bar']") as HTMLElement | null;
+    const rect = toolbar.getBoundingClientRect();
+    const buttonTops = Array.from(commandBar?.querySelectorAll("[role='button']") ?? []).map((button) => Math.round((button as HTMLElement).getBoundingClientRect().top));
+    return {
+      buttonCount: buttonTops.length,
+      buttonTopSpread: buttonTops.length > 1 ? Math.max(...buttonTops) - Math.min(...buttonTops) : 0,
+      commandBarFlexWrap: commandBar ? getComputedStyle(commandBar).flexWrap : null,
+      height: rect.height,
+      toolbarFlexWrap: getComputedStyle(toolbar).flexWrap,
+    };
+  });
+  expect(metrics.height, "toolbar height").toBeLessThanOrEqual(64);
+  expect(metrics.toolbarFlexWrap, "toolbar flex-wrap").toBe("nowrap");
+  expect(metrics.commandBarFlexWrap, "command bar flex-wrap").toBe("nowrap");
+  expect(metrics.buttonTopSpread, "toolbar command button row spread").toBeLessThanOrEqual(3);
+}
+
+async function expectBreadcrumbLongTextTruncates(page: Page): Promise<void> {
+  const metrics = await page.evaluate(() => {
+    const toolbar = document.querySelector("[data-testid='workspace-top-toolbar']") as HTMLElement | null;
+    const breadcrumb = document.querySelector("[data-testid='workspace-breadcrumb-current']") as HTMLElement | null;
+    if (!toolbar || !breadcrumb) return null;
+    const original = breadcrumb.textContent;
+    const before = toolbar.getBoundingClientRect().height;
+    try {
+      breadcrumb.textContent = `CPLayout / ${"Very Long Project Name ".repeat(24)}`;
+      const after = toolbar.getBoundingClientRect().height;
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const breadcrumbRect = breadcrumb.getBoundingClientRect();
+      return {
+        after,
+        before,
+        breadcrumbRight: breadcrumbRect.right,
+        toolbarRight: toolbarRect.right,
+      };
+    } finally {
+      breadcrumb.textContent = original;
+    }
+  });
+  expect(metrics, "breadcrumb metrics").not.toBeNull();
+  if (!metrics) return;
+  expect(metrics.after, "toolbar height after long breadcrumb").toBeLessThanOrEqual(metrics.before + 1);
+  expect(metrics.after, "toolbar long-name height cap").toBeLessThanOrEqual(64);
+  expect(metrics.breadcrumbRight, "breadcrumb stays inside toolbar").toBeLessThanOrEqual(metrics.toolbarRight + 2);
+}
+
+async function expectPassiveBottomStatusBar(page: Page): Promise<void> {
+  await expect(page.getByTestId("workspace-bottom-status-bar")).toBeVisible();
+  const metrics = await page.getByTestId("workspace-bottom-status-bar").evaluate((node) => {
+    const statusBar = node as HTMLElement;
+    const commandBar = document.querySelector("[data-testid='workspace-command-bar']") as HTMLElement | null;
+    const rect = statusBar.getBoundingClientRect();
+    return {
+      buttonCount: statusBar.querySelectorAll("[role='button'],button").length,
+      commandBarHasSaveState: Boolean(commandBar?.querySelector("[data-testid='project-save-state']")),
+      hasSaveState: Boolean(statusBar.querySelector("[data-testid='project-save-state']")),
+      height: rect.height,
+    };
+  });
+  expect(metrics.height, "bottom status bar height").toBeGreaterThanOrEqual(28);
+  expect(metrics.height, "bottom status bar height").toBeLessThanOrEqual(36);
+  expect(metrics.buttonCount, "bottom status bar command buttons").toBe(0);
+  expect(metrics.hasSaveState, "save state moved to bottom status bar").toBe(true);
+  expect(metrics.commandBarHasSaveState, "save state absent from top command bar").toBe(false);
 }
 
 async function expectNoSavedProjectDocuments(page: Page): Promise<void> {

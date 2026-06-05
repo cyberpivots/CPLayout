@@ -1,3 +1,4 @@
+export * from "./advisoryPivotPlacement";
 export * from "./designScenarios";
 export * from "./geometry";
 export * from "./layoutProof";

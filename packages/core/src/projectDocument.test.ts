@@ -118,6 +118,56 @@ const parsedExtendedMapFeatures = parseProjectDocument({
 assert.equal(parsedExtendedMapFeatures.mapFeatures?.[0].geometry.type, "Polygon");
 assert.equal(parsedExtendedMapFeatures.mapFeatures?.[1].geometry.type, "Circle");
 
+const cornerArmSourceRef = {
+  sourceId: "SRC-VALLEY-VFLEX-CORNER",
+  title: "Valley VFlex Corner",
+  url: "https://www.valleyirrigation.com/vflex-corner",
+  checkedAt: "2026-06-05",
+  limit: "Manufacturer public feature/specification reference only; CPLayout does not certify compatibility or kinematics.",
+};
+const parsedCornerArmProject = parseProjectDocument({
+  ...sampleProject,
+  machine: {
+    ...sampleProject.machine,
+    cornerArm: {
+      id: "corner-arm-a",
+      name: "Corner arm A",
+      advisoryOnly: true,
+      lengthMeters: 91,
+      guidanceType: "gps_guidance",
+      sequencingType: "electronic",
+      orientation: "operator_supplied",
+      confidence: "user_estimated",
+      sourceRefs: [cornerArmSourceRef],
+      operatorConfirmedAt: "2026-06-05T00:00:00.000Z",
+      notes: "Operator confirmed advisory config.",
+    },
+  },
+});
+assert.equal(parsedCornerArmProject.machine.cornerArm?.advisoryOnly, true);
+assert.equal(parsedCornerArmProject.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");
+assert.equal(parseProjectDocument(sampleProject).machine.cornerArm, undefined);
+assert.throws(
+  () => parseProjectDocument({
+    ...sampleProject,
+    machine: {
+      ...sampleProject.machine,
+      cornerArm: {
+        id: "bad-corner-arm",
+        name: "Bad corner arm",
+        advisoryOnly: true,
+        lengthMeters: 91,
+        guidanceType: "gps_guidance",
+        sequencingType: "electronic",
+        orientation: "operator_supplied",
+        confidence: "user_estimated",
+        sourceRefs: [],
+      },
+    },
+  }),
+  /sourceRefs|too_small|at least/,
+);
+
 const parsedLegacySettings = parseProjectDocument({
   ...sampleProject,
   settings: {

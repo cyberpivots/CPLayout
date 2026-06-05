@@ -570,7 +570,11 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
     }));
   }
 
-  features.push(pointFeature("Pivot center", "pivot_center", project.pivotCenter, project.projectCrs, { projectId: project.id, projectCrs: project.projectCrs }));
+  features.push(pointFeature("Pivot center", "pivot_center", project.pivotCenter, project.projectCrs, {
+    projectId: project.id,
+    projectCrs: project.projectCrs,
+    ...cornerArmKmlProperties(project),
+  }));
   features.push(pointFeature("Water source", "water_source", project.waterSource, project.projectCrs, { projectId: project.id, projectCrs: project.projectCrs }));
   features.push(pointFeature("Power source", "power_source", project.powerSource, project.projectCrs, { projectId: project.id, projectCrs: project.projectCrs }));
 
@@ -630,6 +634,24 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
     kml,
     exportedFeatureCount: features.length,
     warnings,
+  };
+}
+
+function cornerArmKmlProperties(project: PivotProject): Record<string, string> {
+  const cornerArm = project.machine.cornerArm;
+  if (!cornerArm) return {};
+  return {
+    cornerArmAdvisoryOnly: "true",
+    cornerArmCanonicalGeometryMutation: "false",
+    cornerArmId: cornerArm.id,
+    cornerArmName: cornerArm.name,
+    cornerArmLengthMeters: String(cornerArm.lengthMeters),
+    cornerArmGuidanceType: cornerArm.guidanceType,
+    cornerArmSequencingType: cornerArm.sequencingType,
+    cornerArmOrientation: cornerArm.orientation,
+    cornerArmConfidence: cornerArm.confidence,
+    cornerArmSourceIds: cornerArm.sourceRefs.map((sourceRef) => sourceRef.sourceId).join(","),
+    cornerArmLimit: "Visual interchange metadata only; advisory corner-arm config does not alter projected XY or layout coverage metrics.",
   };
 }
 

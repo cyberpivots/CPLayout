@@ -10,6 +10,7 @@ ML is a companion workflow first. CPLayout should collect local evidence, export
 
 - `ImageryProvenance`: source, attribution, license, access time, offline-copy policy, and `keyedService: false`.
 - Companion report packets: standalone workspace/chat records for imagery, survey/import facts, model output, layout scoring, warnings, artifact hashes, and calibration status. These are not CPLayout project documents, archive entries, SQLite rows, or app-importable recommendation contracts.
+- Roadmap target packet: `cplayout-imagery-evidence-v2` is companion-owned, local-only evidence with `canonicalGeometryMutation: false`, `networkRequired: false`, `hiddenKeysAllowed: false`, `evidenceOnly: true`, `appImportable: false`, and `writesProjectDatabase: false`. It may contain screenshots, offline NAIP/local raster references, calibration metadata, operator labels, artifact hashes, false-positive classes, and advisory scores, but it must not be written into `PivotProject`, project ZIP exports, SQLite project tables, KML/KMZ exports, or browser MVP project storage.
 
 Archive exports:
 
@@ -89,7 +90,7 @@ Current local fixture path:
 
 Initial implementation targets:
 
-1. Add `detect-pivot-candidates` and `evaluate-pivot-fixtures` commands to the local companion.
+1. Maintain the existing `detect-pivot-candidates`, `evaluate-vision-fixtures`, and `build-evidence-packet --real-pivot-fixtures` companion paths; add a dedicated `evaluate-pivot-fixtures` command only after the current evidence paths need a narrower pivot-only evaluator.
 2. Add synthetic and proof-packet pivot fixtures with no hidden network calls.
 3. Add strict report validation for `canonicalGeometryMutation: false`, projected CRS, artifact hashes, and hard-failure warnings.
 4. Keep app UI changes out of scope until a new Files/Map import-edit workflow is explicitly designed.

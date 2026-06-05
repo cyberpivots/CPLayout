@@ -165,7 +165,7 @@ Current branch observed during preflight: `codex/cplayout-agent-specialists`, tr
 
 2026-06-04 schema-v10 proof-gate note: the SM-P613 schema-v8 Android report remains useful history, but current Android native SQLite and ZIP share/picker claims require a completed schema-v10 report with migrations 1-10, map-package provenance columns, and retired review-table removal validated by `npm run verify:android-native -- --report <completed-report.json>`.
 
-2026-06-04 Google Earth proof-gate note: the historical Google Earth visual-fidelity packet is not present under the ignored local `reports/google-earth-visual-fidelity/` directory. A fresh proof must rerun with non-black map-canvas evidence, overlay confirmation, and uncontaminated cleanup before current Google Earth render claims are made.
+2026-06-05 Google Earth proof-gate note: the earlier missing-packet blocker was superseded by the strict packet at `reports/google-earth-visual-fidelity/20260604T-render-proof-kml-strict/visual-fidelity-manifest.json`, which records passed artifact-specific Google Earth Pro evidence with non-black map-canvas metrics, overlay confirmation, artifact hashes, and uncontaminated cleanup. This does not transfer to future exports, native/mobile behavior, raw tile archives, or canonical projected `XY`; each new Google Earth render claim still needs direct rendered evidence and cleanup status for the target artifact.
 
 ## Validation Commands
 

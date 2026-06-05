@@ -39,6 +39,7 @@ Date verified: 2026-05-28
 - Supported import geometry: `Placemark` `Polygon`, `Point`, supported `MultiGeometry`, and closed `LineString` rings.
 - Deferred import constructs: `NetworkLink`, remote resources, `GroundOverlay`, `PhotoOverlay`, `ScreenOverlay`, 3D `Model`, tours, animation, gx time tracks, embedded image semantics, and style fidelity.
 - Exported KML includes field boundary, obstacles, infrastructure points, survey points, optional tower points, and CPLayout `ExtendedData`.
+- Exported KML may include machine-level corner-arm advisory `ExtendedData` on the pivot placemark. Those fields are visual interchange metadata only and do not round-trip into machine geometry through KML import.
 - Exported KML may include deterministic shared styles for Google Earth visual clarity. These styles are not imported as authoritative project data and do not affect CPLayout validation, geometry, persistence, or archive schemas.
 - KML/KMZ is a GIS exchange format only. Project backup/restore remains the CPLayout ZIP package.
 - Android native file picker/share behavior has historical schema-v8 evidence for the canonical project ZIP package; current schema-v10 Android behavior, iOS behavior, and any KML/KMZ-specific native picker/share regression still need their own checklist evidence.

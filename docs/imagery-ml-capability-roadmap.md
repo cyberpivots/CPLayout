@@ -17,7 +17,7 @@ This roadmap sets the long-range direction for imagery-assisted mapping, local C
 
 Prioritize Imagery/ML capability over the next several years, but keep every claim behind a matching proof class. Imagery, CV, ML, KML/KMZ, and Google Earth evidence may advise decisions. Canonical geometry changes must remain projected/local `XY`, operator-confirmed, reducer-validated, undoable, and never automatic.
 
-The current baseline already includes local companion evidence flags, the `cplayout-real-pivot-fixtures-v1` manifest gate, a curated single real-pivot fixture path, retired app recommendation contracts, and schema-v10 removal of retired review tables. This roadmap organizes the next capability layers without weakening those boundaries.
+The current baseline already includes local companion evidence flags, the `cplayout-real-pivot-fixtures-v1` manifest gate, a curated single real-pivot fixture path, retired app recommendation contracts, schema-v10 removal of retired review tables, current Android schema-v10 SQLite/ZIP proof, and current Android vector TileJSON/template MapLibre proof. This roadmap organizes the next capability layers without weakening those boundaries.
 
 ## Phase Roadmap
 
@@ -78,7 +78,7 @@ Official sources checked on 2026-06-05:
 - MapLibre React Native documents Expo setup and says the package cannot be used with Expo Go: https://maplibre.org/maplibre-react-native/docs/setup/expo/
 - USGS EROS documents NAIP as U.S. agricultural-season aerial imagery, distributed as georeferenced raster products such as GeoTIFF and JPEG2000: https://www.usgs.gov/centers/eros/science/usgs-eros-archive-aerial-photography-national-agriculture-imagery-program-naip
 
-These sources support candidate methods and proof gates. They do not prove CPLayout runtime behavior, real-world model quality, native MapLibre rendering, on-device ML performance, or engineering certification.
+These sources support candidate methods and proof gates. They do not prove CPLayout runtime behavior, real-world model quality, native MapLibre rendering, on-device ML performance, or engineering certification by themselves; runtime claims require the dedicated CPLayout reports named in the focused plan and source ledger.
 
 ## Validation Matrix
 

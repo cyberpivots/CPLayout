@@ -1,6 +1,6 @@
 # Native Map Tile Adapter Design
 
-MapLibre React Native is installed/configured in the workspace, including the mobile Expo plugin and package dependencies. The generated TileJSON/tile-template adapter path is the supported native descriptor shape. A prior local Android run recorded raster TileJSON/template proof-panel evidence, but the ignored `reports/native-maplibre/latest.json` artifact is mutable and is no longer a stable raster proof reference after the vector harness replaced it. The current harness expects a vector TileJSON/template rendered through `VectorSource` and must pass on device before claiming Android vector runtime proof. Neither path proves raw PMTiles/MBTiles archive rendering or iOS behavior.
+MapLibre React Native is installed/configured in the workspace, including the mobile Expo plugin and package dependencies. The generated TileJSON/tile-template adapter path is the supported native descriptor shape. A prior local Android run recorded raster TileJSON/template proof-panel evidence, but the ignored `reports/native-maplibre/latest.json` artifact is mutable and is no longer a stable raster proof reference after the vector harness replaced it. The current `reports/native-maplibre/latest.json` validates Android vector TileJSON/template rendering through `VectorSource` on Samsung SM-P613 with positive tile requests. Neither path proves raw PMTiles/MBTiles archive rendering, imported raster/aerial package rendering, or iOS behavior.
 
 Current installed state:
 
@@ -37,7 +37,7 @@ The offline aerial package lane is `cplayout-map-package-v1.zip`:
 
 Exported project metadata must use logical `app://map-packages/<id>/...` URLs rather than absolute machine paths. Android import through the Files panel extracts those files into Expo FileSystem document storage, stores logical metadata in `project.mapPackages`, and keeps rewritten file-URI manifests in runtime state before passing them to MapLibre RN `RasterSource`. The SVG editor remains the geometry mutation surface; the MapLibre aerial surface is a reference display until camera/edit synchronization is independently proved.
 
-Use `docs/native-maplibre-render-report-template.json` for a completed native MapLibre render report. The roadmap runner now validates a vector proof report only when it includes device/build identity, `tileContentType: "vector"`, `sourceComponent: "VectorSource"`, source layers for roads/borders/labels/place data, a local TileJSON or tile URL template source, positive tile-server request evidence, screenshot hash and pixel metrics, and the explicit boundary that raw PMTiles/MBTiles native rendering was not proved.
+Use `docs/native-maplibre-render-report-template.json` for a completed native MapLibre render report. The roadmap runner validates a vector proof report only when it includes device/build identity, `tileContentType: "vector"`, `sourceComponent: "VectorSource"`, source layers for roads/borders/labels/place data, a local TileJSON or tile URL template source, positive tile-server request evidence, screenshot hash and pixel metrics, and the explicit boundary that raw PMTiles/MBTiles native rendering was not proved. The 2026-06-05 SM-P613 vector report satisfies that vector proof shape for the generated local proof source.
 
 ## Accepted Future Adapter Options
 
@@ -47,7 +47,7 @@ Use `docs/native-maplibre-render-report-template.json` for a completed native Ma
 
 ## Deferred Dependencies
 
-MapLibre React Native is not part of Expo Go and requires a native app build or development build. The dependency is already present, and the generated TileJSON/template descriptor path exists. The deferred work is a fresh Android vector-source proof run, raw local archive rendering, iOS proof, and any broader production-map evidence beyond the local proof source.
+MapLibre React Native is not part of Expo Go and requires a native app build or development build. The dependency is already present, and the generated TileJSON/template descriptor path exists. Android vector-source proof for the generated local proof source is current through the 2026-06-05 SM-P613 report. The deferred work is raw local archive rendering, imported raster/aerial package rendering, iOS proof, and any broader production-map evidence beyond the local proof source.
 
 ## Primary Sources
 

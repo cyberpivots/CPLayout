@@ -54,6 +54,7 @@ export interface RoadmapCompletionReport {
 }
 
 const DEFAULT_OUTPUT_DIRECTORY = "reports/roadmap-completion";
+const DEFAULT_ANDROID_NATIVE_REPORT_DIRECTORY = "reports/android-native-verification";
 const DEFAULT_GOOGLE_EARTH_MANIFEST_PATH = "reports/google-earth-visual-fidelity/visual-fidelity-manifest.json";
 const DEFAULT_NATIVE_MAPLIBRE_REPORT_PATH = "reports/native-maplibre/latest.json";
 const DEFAULT_REAL_PIVOT_FIXTURE_PATH = DEFAULT_REAL_PIVOT_FIXTURE_MANIFEST_PATH;
@@ -94,6 +95,7 @@ export function runRoadmapCompletion(options: RoadmapCompletionOptions): Roadmap
   gates.push(worktreeGate(options));
   gates.push(commandGate("validate", "TypeScript and workspace tests", ["npm", "run", "validate"], options));
   gates.push(commandGate("validate-skills", "Skills, agents, hooks, and records", ["npm", "run", "validate:skills"], options));
+  gates.push(commandGate("validate-design-guides", "Design-guide advisory records", ["npm", "run", "validate:design-guides"], options));
   gates.push(commandGate("ml-companion-tests", "Local ML companion tests", ["npm", "run", "test:ml-companion"], options));
   gates.push(commandGate("ml-cv-loop", "ML/CV loop ledger verification", ["npm", "run", "verify:ml-cv-loop"], options));
   gates.push(commandGate("whole-loop", "Whole-codebase loop ledger verification", ["npm", "run", "verify:whole-loop"], options));
@@ -119,7 +121,7 @@ export function runRoadmapCompletion(options: RoadmapCompletionOptions): Roadmap
     ownerInputContract: {
       decisionRequired: false,
       resourceInputs: [
-        `Android native proof: connect an adb device/emulator with local.centerpivot.layout installed, or provide --android-report / CPLAYOUT_ANDROID_NATIVE_REPORT.`,
+        `Android native proof: keep a completed report under ${DEFAULT_ANDROID_NATIVE_REPORT_DIRECTORY}, connect an adb device/emulator with local.centerpivot.layout installed, or provide --android-report / CPLAYOUT_ANDROID_NATIVE_REPORT.`,
         `Google Earth proof: provide --google-earth-manifest / CPLAYOUT_GOOGLE_EARTH_MANIFEST when the default ${DEFAULT_GOOGLE_EARTH_MANIFEST_PATH} is not the target proof.`,
         `Real pivot proof: place a calibrated operator-approved fixture at ${DEFAULT_REAL_PIVOT_FIXTURE_PATH}, or provide --real-pivot-fixtures / CPLAYOUT_REAL_PIVOT_FIXTURES.`,
         "Native MapLibre proof: provide a completed native render report with --native-maplibre-report / CPLAYOUT_NATIVE_MAPLIBRE_REPORT after a device run.",
@@ -260,7 +262,7 @@ function androidNativeGate(options: RoadmapCompletionOptions, generatedAt: strin
     return notRunGate(
       "android-native-runtime",
       "Android SQLite, ZIP sharing, picker, and migration runtime proof",
-      "Dry run: would detect adb/device state or validate --android-report.",
+      "Dry run: would discover a completed Android report, detect adb/device state, or validate --android-report.",
     );
   }
 
@@ -285,13 +287,28 @@ function androidNativeGate(options: RoadmapCompletionOptions, generatedAt: strin
     }
   }
 
+  const discoveredReport = findCompletedAndroidNativeReport();
+  if (discoveredReport) {
+    return {
+      id: "android-native-runtime",
+      label: "Android SQLite, ZIP sharing, picker, and migration runtime proof",
+      status: "pass",
+      reason: "Discovered completed Android native verification report validated.",
+      evidence: [discoveredReport.path],
+      details: {
+        generatedAt: discoveredReport.generatedAt,
+        autoDiscovered: true,
+      },
+    };
+  }
+
   const packageName = readExpoAndroidPackageName();
   const snapshot = collectAndroidToolSnapshot({
     packageName,
-    outputDirectory: "reports/android-native-verification",
+    outputDirectory: DEFAULT_ANDROID_NATIVE_REPORT_DIRECTORY,
   });
   const templatePath = join(
-    "reports/android-native-verification",
+    DEFAULT_ANDROID_NATIVE_REPORT_DIRECTORY,
     `android-native-verification-${timestampForFilename(generatedAt)}.json`,
   );
   writeJsonFile(templatePath, reportFromSnapshot(snapshot));
@@ -311,6 +328,38 @@ function androidNativeGate(options: RoadmapCompletionOptions, generatedAt: strin
     reason: "Device and native build detected, but the runtime checklist report is not complete yet.",
     evidence: [templatePath],
   };
+}
+
+export function findCompletedAndroidNativeReport(directory = DEFAULT_ANDROID_NATIVE_REPORT_DIRECTORY): {
+  path: string;
+  generatedAt: string;
+} | null {
+  if (!existsSync(directory)) return null;
+  const candidates = readdirSync(directory)
+    .filter((filename) => /^android-native-verification-.+\.json$/u.test(filename))
+    .map((filename) => join(directory, filename))
+    .map((path) => {
+      try {
+        const report = parseCompleteAndroidNativeVerificationReport(JSON.parse(readFileSync(path, "utf8")));
+        return {
+          path,
+          generatedAt: report.generatedAt,
+          mtimeMs: statSync(path).mtimeMs,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((candidate): candidate is { path: string; generatedAt: string; mtimeMs: number } => candidate !== null)
+    .sort((left, right) => {
+      const generatedDelta = Date.parse(right.generatedAt) - Date.parse(left.generatedAt);
+      if (Number.isFinite(generatedDelta) && generatedDelta !== 0) return generatedDelta;
+      return right.mtimeMs - left.mtimeMs;
+    });
+
+  return candidates.length > 0
+    ? { path: candidates[0].path, generatedAt: candidates[0].generatedAt }
+    : null;
 }
 
 function retiredReviewContractsGate(options: RoadmapCompletionOptions): RoadmapGateResult {

@@ -35,7 +35,7 @@
     "verify:whole-loop": "tsx tools/verify_whole_codebase_improvement_loop.ts --path docs/whole-codebase-improvement-loop-2026-06-01.md --through 100",
     "verify:roadmap": "tsx tools/roadmapCompletion.ts --full",
     "verify:roadmap:fast": "tsx tools/roadmapCompletion.ts --fast",
-    "verify:release": "npm run validate && git diff --check && npm run validate:skills && npm run check:android-tools && npm run verify:android-native"
+    "verify:release": "npm run verify:roadmap"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

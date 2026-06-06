@@ -66,6 +66,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     activeMapFeatureKind,
     activeToolMode,
     activeToolRequestId,
+    advisoryFieldPivotPlan,
     bottomOverlay,
     project,
     result,
@@ -135,7 +136,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     }
     try {
       return {
-        featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices),
+        featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices, advisoryFieldPivotPlan),
         error: null as string | null,
       };
     } catch (error) {
@@ -144,7 +145,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [draftVertices, homeView, project, result]);
+  }, [advisoryFieldPivotPlan, draftVertices, homeView, project, result]);
   const projectionError = projectionFrame.error ?? overlayState.error;
   const aerialImagery = useMemo(
     () => resolveAerialReferenceImagerySource({
@@ -473,6 +474,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     && draftVertices.length >= featureDraftMinimumVertices(mapFeatureOption.geometry);
   const canToggleReferenceOverlay = Boolean(onSettingsChange && referenceOverlay.canRender);
   const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${utilitySaveHint(mode, mapFeatureOption.geometry)}`;
+  const advisoryFieldPivotPlanVisible = !homeView && (advisoryFieldPivotPlan?.selectedMachineCount ?? 0) > 0;
 
   return (
     <View style={styles.shell} testID="browser-map-workbench">
@@ -601,6 +603,14 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         ) : null}
 
         <View pointerEvents="box-none" style={[styles.bottomDock, compactLayout && styles.bottomDockCompact]} testID="browser-map-bottom-dock">
+          {advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan ? (
+            <View pointerEvents="none" style={[styles.advisoryPlanHud, compactLayout && styles.advisoryPlanHudCompact]} testID="browser-advisory-generated-field-pivot-layer">
+              <MapPinned size={13} color="#5b21b6" />
+              <Text numberOfLines={compactLayout ? 1 : undefined} style={styles.advisoryPlanText}>
+                Generated advisory plan · {advisoryFieldPivotPlan.selectedMachineCount}/{advisoryFieldPivotPlan.requestedMachineCount} centers · review only
+              </Text>
+            </View>
+          ) : null}
           <View pointerEvents="none" style={[styles.attributionHud, compactLayout && styles.attributionHudCompact]} testID="browser-map-attribution-hud">
             <Satellite size={13} color="#173428" />
             <Text numberOfLines={compactLayout ? 1 : undefined} style={styles.attributionText}>
@@ -1009,6 +1019,31 @@ const styles = StyleSheet.create({
   bottomOverlaySlot: {
     maxWidth: "100%",
     width: "100%",
+  },
+  advisoryPlanHud: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(250,245,255,0.96)",
+    borderColor: "#c4b5fd",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    maxWidth: "92%",
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  advisoryPlanHudCompact: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    paddingVertical: 5,
+  },
+  advisoryPlanText: {
+    color: "#4c1d95",
+    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 14,
   },
   statusHud: {
     alignItems: "center",

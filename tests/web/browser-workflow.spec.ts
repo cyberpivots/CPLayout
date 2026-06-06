@@ -764,6 +764,8 @@ test("placement review applies advisory pivot candidates only after confirmation
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-advisory-generated-field-pivot-layer")).toContainText("Generated advisory plan");
+  await expect(page.getByTestId("browser-advisory-generated-field-pivot-layer")).toContainText("review only");
   await page.getByTestId("design-action-calculate").click();
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await page.getByTestId("design-console-calculate").click();

@@ -1,4 +1,5 @@
 import { projectXyToLonLat, type LayoutResult, type PivotProject, type XY } from "@cplayout/core";
+import type { AdvisoryFieldPivotPlan } from "@cplayout/geometry";
 
 type GeoJsonFeature = {
   type: "Feature";
@@ -15,7 +16,31 @@ export function projectLayoutToWgs84FeatureCollection(
   project: PivotProject,
   result: LayoutResult,
   draftVertices: XY[] = [],
+  advisoryFieldPivotPlan?: AdvisoryFieldPivotPlan,
 ): { type: "FeatureCollection"; features: GeoJsonFeature[] } {
+  const advisoryFieldPivotFeatures = advisoryFieldPivotPlan && advisoryFieldPivotPlan.selectedMachineCount > 0
+    ? [
+      polygonFeature(project, "advisory_generated_field_pivot_coverage", advisoryFieldPivotPlan.modeledCoverageUnion, {
+        advisoryOnly: true,
+        canonicalGeometryMutation: false,
+        qualifiedReviewRequired: true,
+        requestedMachineCount: advisoryFieldPivotPlan.requestedMachineCount,
+        selectedMachineCount: advisoryFieldPivotPlan.selectedMachineCount,
+        fieldCoveragePercent: advisoryFieldPivotPlan.fieldCoveragePercent,
+        modeledIrrigatedUnionAcres: advisoryFieldPivotPlan.modeledIrrigatedUnionAcres,
+      }),
+      ...advisoryFieldPivotPlan.candidates.map((candidate) => pointFeature(project, "advisory_generated_field_pivot_center", candidate.pivotCenter, {
+        id: candidate.id,
+        sequence: candidate.sequence,
+        advisoryOnly: true,
+        canonicalGeometryMutation: false,
+        qualifiedReviewRequired: true,
+        incrementalIrrigatedAcres: candidate.incrementalIrrigatedAcres,
+        cumulativeFieldCoveragePercent: candidate.cumulativeFieldCoveragePercent,
+        minimumRequiredSeparationMeters: candidate.minimumRequiredSeparationMeters,
+      })),
+    ]
+    : [];
   return {
     type: "FeatureCollection",
     features: [
@@ -23,6 +48,7 @@ export function projectLayoutToWgs84FeatureCollection(
       polygonFeature(project, "allowed_coverage", result.allowedCoverage, { ...result.metrics }),
       polygonFeature(project, "outside_field_coverage", result.outsideFieldCoverage, { acres: result.metrics.outsideFieldAcres }),
       polygonFeature(project, "end_gun_coverage", result.endGunCoverage, { acres: result.metrics.endGunAcres }),
+      ...advisoryFieldPivotFeatures,
       polygonFeature(project, "obstacle", result.obstacles, { count: project.obstacles.length }),
       pointFeature(project, "pivot_center", project.pivotCenter, { label: "Pivot" }),
       pointFeature(project, "water_source", project.waterSource, { label: "Water" }),

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 
-import { sampleProject } from "@cplayout/core";
-import { evaluateLayout } from "@cplayout/geometry";
+import { defaultAppSettings, resolveReferenceOverlaySource, sampleProject } from "@cplayout/core";
+import { evaluateLayout, planAdvisoryFieldPivots } from "@cplayout/geometry";
 import { projectLayoutToWgs84FeatureCollection, projectWgs84Bounds, projectWgs84Center } from "./mapOverlayGeoJson";
+import { buildWorkbenchStyle } from "./mapWorkbenchStyle";
 
 const beforeProjectGeometry = JSON.stringify({
   fieldBoundary: sampleProject.fieldBoundary,
@@ -11,6 +12,13 @@ const beforeProjectGeometry = JSON.stringify({
 });
 const result = evaluateLayout(sampleProject);
 const featureCollection = projectLayoutToWgs84FeatureCollection(sampleProject, result);
+const advisoryFieldPivotPlan = planAdvisoryFieldPivots(sampleProject, {
+  gridDivisions: 6,
+  maxMachines: 3,
+  candidatePoolSize: 24,
+  collisionBufferMeters: sampleProject.machine.machineClearanceBufferMeters,
+});
+const featureCollectionWithAdvisoryPlan = projectLayoutToWgs84FeatureCollection(sampleProject, result, [], advisoryFieldPivotPlan);
 const bounds = projectWgs84Bounds(sampleProject);
 const center = projectWgs84Center(sampleProject);
 const projectWithMapFeature = {
@@ -41,9 +49,24 @@ const projectWithMapFeature = {
 };
 const featureCollectionWithMapFeature = projectLayoutToWgs84FeatureCollection(projectWithMapFeature, evaluateLayout(projectWithMapFeature));
 const boundsWithMapFeature = projectWgs84Bounds(projectWithMapFeature);
+const settings = defaultAppSettings();
+const workbenchStyleWithAdvisoryPlan = buildWorkbenchStyle(
+  null,
+  featureCollectionWithAdvisoryPlan,
+  resolveReferenceOverlaySource({
+    preferences: { ...settings.referenceOverlay, mode: "off" },
+    mapPackages: [],
+    target: "web_maplibre_gl_js",
+  }),
+  { ...settings.referenceOverlay, mode: "off" },
+);
 
 assert.equal(featureCollection.type, "FeatureCollection");
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "field_boundary"));
+assert.ok(featureCollectionWithAdvisoryPlan.features.some((feature) => feature.properties.layerType === "advisory_generated_field_pivot_coverage" && feature.properties.canonicalGeometryMutation === false));
+assert.ok(featureCollectionWithAdvisoryPlan.features.some((feature) => feature.properties.layerType === "advisory_generated_field_pivot_center" && feature.properties.advisoryOnly === true));
+assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "advisory-generated-field-pivot-fill"));
+assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "advisory-generated-field-pivot-center"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Pipeline A"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Corner Footprint A" && feature.geometry.type === "MultiPolygon"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "End Gun Circle A" && feature.geometry.type === "MultiPolygon"));

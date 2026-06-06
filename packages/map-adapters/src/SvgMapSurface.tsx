@@ -17,7 +17,7 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
-import Svg, { Circle, Image as SvgImage, Line, Path, Rect, Text as SvgText } from "react-native-svg";
+import Svg, { Circle, G, Image as SvgImage, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import { boundsForGeometry, createCirclePolygon, planOnlineImageryTiles, ringsToSvgPath, supportsSvgOnlineImageryOverlay } from "@cplayout/geometry";
 import {
@@ -35,6 +35,7 @@ import {
   visibleWidthMeters,
 } from "@cplayout/geometry";
 import type { InfrastructurePoint, MapStyle, MappingWorkflowMode, ObstacleZone, ProjectMapFeature, ProjectMapFeatureKind, SurveyPoint } from "@cplayout/core";
+import type { AdvisoryFieldPivotPlan } from "@cplayout/geometry";
 import { resolveReferenceOverlaySource } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
@@ -66,6 +67,7 @@ export function SvgMapSurface({
   activeMapFeatureKind,
   activeToolMode,
   activeToolRequestId,
+  advisoryFieldPivotPlan,
   bottomOverlay,
   homeView = false,
   project,
@@ -91,12 +93,20 @@ export function SvgMapSurface({
   const designMode = settings.mappingWorkflowMode === "design" && !catalogHomeView;
   const showProjectGeometry = !catalogHomeView;
   const mapFeatures = project.mapFeatures ?? [];
+  const advisoryFieldPivotPlanVisible = showProjectGeometry && (advisoryFieldPivotPlan?.selectedMachineCount ?? 0) > 0;
+  const advisoryFieldPivotPlanRings = advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan
+    ? [
+      ...advisoryFieldPivotPlan.modeledCoverageUnion.flat(),
+      ...advisoryFieldPivotPlan.candidates.flatMap((candidate) => candidate.machineEnvelope.flat()),
+    ]
+    : [];
   const allRings = showProjectGeometry
     ? [
       project.fieldBoundary,
       ...result.allowedCoverage.flat(),
       ...result.outsideFieldCoverage.flat(),
       ...result.endGunCoverage.flat(),
+      ...advisoryFieldPivotPlanRings,
       ...project.obstacles.map((obstacle) => obstacle.polygon),
       ...mapFeatures.flatMap(mapFeatureRings),
     ]
@@ -555,6 +565,9 @@ export function SvgMapSurface({
               <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} />
               <Path d={ringsToSvgPath(result.endGunCoverage)} fill={palette.endGun} opacity={0.25} />
               <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} />
+              {advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan ? (
+                <AdvisoryFieldPivotOverlay palette={palette} plan={advisoryFieldPivotPlan} />
+              ) : null}
               <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
               <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
               <EditableRing
@@ -750,6 +763,7 @@ export function SvgMapSurface({
           <LegendSwatch color="#6cb6df" label="Allowed wet area" />
           <LegendSwatch color="#63c7cf" label="End gun" />
           <LegendSwatch color="#e68b58" label="Outside field" />
+          <LegendSwatch color={palette.advisory} label="Generated advisory plan" />
           <LegendSwatch color="#c64f43" label="Obstacle/no-spray" />
           <LegendSwatch color={palette.survey} label="Survey/object point" />
           <LegendSwatch color={palette.utility} label="Utility map feature" />
@@ -905,6 +919,56 @@ function SurveyPointSymbol({ color, point }: { color: string; point: SurveyPoint
         {shortSurveyLabel(point.role)}
       </SvgText>
     </>
+  );
+}
+
+function AdvisoryFieldPivotOverlay({
+  palette,
+  plan,
+}: {
+  palette: MapPalette;
+  plan: AdvisoryFieldPivotPlan;
+}): React.JSX.Element {
+  const coveragePath = ringsToSvgPath(plan.modeledCoverageUnion);
+  return (
+    <G accessibilityLabel="Generated advisory field pivot overlay" testID="svg-advisory-generated-field-pivot-overlay">
+      {coveragePath ? (
+        <Path
+          d={coveragePath}
+          fill={palette.advisory}
+          opacity={0.2}
+          stroke={palette.advisoryStroke}
+          strokeDasharray="14 8"
+          strokeLinejoin="round"
+          strokeWidth={2.4}
+        />
+      ) : null}
+      {plan.candidates.map((candidate) => {
+        const envelopePath = ringsToSvgPath(candidate.machineEnvelope);
+        const modeledPath = ringsToSvgPath(candidate.modeledCoverage);
+        return (
+          <React.Fragment key={candidate.id}>
+            {modeledPath ? <Path d={modeledPath} fill={palette.advisory} opacity={0.08} /> : null}
+            {envelopePath ? (
+              <Path
+                d={envelopePath}
+                fill="none"
+                opacity={0.9}
+                stroke={palette.advisoryStroke}
+                strokeDasharray="20 10"
+                strokeLinejoin="round"
+                strokeWidth={3}
+              />
+            ) : null}
+            <Circle cx={candidate.pivotCenter.x} cy={-candidate.pivotCenter.y} r={15} fill="#fffef8" stroke={palette.advisoryStroke} strokeWidth={5} />
+            <Circle cx={candidate.pivotCenter.x} cy={-candidate.pivotCenter.y} r={5} fill={palette.advisoryStroke} />
+            <SvgText x={candidate.pivotCenter.x + 18} y={-candidate.pivotCenter.y - 16} fill={palette.advisoryStroke} fontSize={22} fontWeight="900">
+              G{candidate.sequence}
+            </SvgText>
+          </React.Fragment>
+        );
+      })}
+    </G>
   );
 }
 
@@ -1310,6 +1374,8 @@ function paletteForMapStyle(style: MapStyle): {
   outside: string;
   endGun: string;
   allowed: string;
+  advisory: string;
+  advisoryStroke: string;
   fieldStroke: string;
   obstacle: string;
   obstacleStroke: string;
@@ -1330,6 +1396,8 @@ function paletteForMapStyle(style: MapStyle): {
       outside: "#b84b2f",
       endGun: "#007d86",
       allowed: "#006bb0",
+      advisory: "#8b5cf6",
+      advisoryStroke: "#4c1d95",
       fieldStroke: "#0b160f",
       obstacle: "#b00020",
       obstacleStroke: "#3b0008",
@@ -1352,6 +1420,8 @@ function paletteForMapStyle(style: MapStyle): {
       outside: "#d77b46",
       endGun: "#4ab4bd",
       allowed: "#458fc4",
+      advisory: "#9b5de5",
+      advisoryStroke: "#5b21b6",
       fieldStroke: "#203526",
       obstacle: "#bb4b42",
       obstacleStroke: "#70271f",
@@ -1374,6 +1444,8 @@ function paletteForMapStyle(style: MapStyle): {
       outside: "#db844d",
       endGun: "#52aeb8",
       allowed: "#5e9dcc",
+      advisory: "#8b5cf6",
+      advisoryStroke: "#5b21b6",
       fieldStroke: "#2b3c24",
       obstacle: "#c4513f",
       obstacleStroke: "#71301e",
@@ -1395,6 +1467,8 @@ function paletteForMapStyle(style: MapStyle): {
     outside: "#e68b58",
     endGun: "#63c7cf",
     allowed: "#6cb6df",
+    advisory: "#9b5de5",
+    advisoryStroke: "#5b21b6",
     fieldStroke: "#253f2f",
     obstacle: "#c64f43",
     obstacleStroke: "#70271f",

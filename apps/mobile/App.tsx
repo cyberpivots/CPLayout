@@ -257,6 +257,12 @@ function AppContent(): React.JSX.Element {
   const [activeInspectorPage, setActiveInspectorPage] = useState<InspectorPage>("metrics");
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
+  const advisoryFieldPivotPlan = useMemo<AdvisoryFieldPivotPlan>(() => planAdvisoryFieldPivots(project, {
+    gridDivisions: 6,
+    maxMachines: 3,
+    candidatePoolSize: 24,
+    collisionBufferMeters: project.machine.machineClearanceBufferMeters,
+  }), [project]);
   const cornerArmEvaluation = useMemo(() => evaluateAdvisoryCornerArm(project), [project]);
   const advisoryCostInput = useMemo(() => advisoryCostInputFromDraft(advisoryCostDraft), [advisoryCostDraft]);
   const androidNativeProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_ANDROID_NATIVE_PROOF === "1";
@@ -1001,6 +1007,7 @@ function AppContent(): React.JSX.Element {
                   activeMapFeatureKind={guidedMapTool?.featureKind}
                   activeToolMode={guidedMapTool?.mode}
                   activeToolRequestId={guidedMapTool?.requestId}
+                  advisoryFieldPivotPlan={!homeMapView ? advisoryFieldPivotPlan : undefined}
                   bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled ? (
                     <DesignActionHud
                       activeModal={designConsoleModal}

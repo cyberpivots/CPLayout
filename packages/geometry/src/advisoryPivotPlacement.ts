@@ -251,6 +251,80 @@ export interface AdvisoryMultiMachineReview {
   sourceRefs: AdvisorySourceReference[];
 }
 
+export type AdvisoryFieldPivotPlanStatus =
+  | "no_boundary"
+  | "no_feasible_candidates"
+  | "single_candidate"
+  | "ready";
+
+export interface AdvisoryFieldPivotPlanOptions extends PivotPlacementCandidateOptions {
+  maxMachines?: number;
+  candidatePoolSize?: number;
+  collisionBufferMeters?: number;
+  minimumMachineSeparationMeters?: number;
+}
+
+export interface AdvisoryFieldPivotPlanCandidate {
+  id: string;
+  sequence: number;
+  placementCandidate: PivotPlacementCandidate;
+  pivotCenter: XY;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  machineRadiusMeters: number;
+  minimumRequiredSeparationMeters: number;
+  nearestSelectedDistanceMeters: number | null;
+  modeledIrrigatedAcres: number;
+  incrementalIrrigatedAcres: number;
+  cumulativeFieldCoveragePercent: number;
+  modeledCoverage: MultiPolygonXY;
+  machineEnvelope: MultiPolygonXY;
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
+export interface AdvisoryFieldPivotSeparationRejection {
+  candidateId: string;
+  pivotCenter: XY;
+  nearestSelectedCandidateId: string;
+  centerDistanceMeters: number;
+  minimumRequiredSeparationMeters: number;
+  separationDeficitMeters: number;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  warnings: string[];
+}
+
+export interface AdvisoryFieldPivotPlan {
+  status: AdvisoryFieldPivotPlanStatus;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  projectCrs: string;
+  requestedMachineCount: number;
+  selectedMachineCount: number;
+  candidatePoolCount: number;
+  feasibleCandidateCount: number;
+  rejectedForSeparationCount: number;
+  machineRadiusMeters: number;
+  collisionBufferMeters: number;
+  minimumRequiredSeparationMeters: number;
+  fieldBoundaryAcres: number;
+  fieldCoveragePercent: number;
+  fieldUnirrigatedAcres: number;
+  modeledIrrigatedAcresSum: number;
+  modeledIrrigatedUnionAcres: number;
+  duplicateModeledCoverageAcres: number;
+  modeledCoverageUnion: MultiPolygonXY;
+  candidates: AdvisoryFieldPivotPlanCandidate[];
+  separationRejections: AdvisoryFieldPivotSeparationRejection[];
+  blockers: string[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
 export type AdvisoryMachineStrategyKind =
   | "current_machine"
   | "full_circle_same_radius"
@@ -610,6 +684,143 @@ export function analyzeAdvisoryMultiMachineLayout(
       "Each scenario reuses the current machine template; span package, corner-arm, flow, pressure, and vendor constraints require qualified review.",
       "Envelope conflicts are conservative geometry warnings and do not model timing, tower phasing, alignment controls, or bender-machine kinematics.",
       ...(compilation.duplicateModeledCoverageAcres > 0.001 ? ["Modeled irrigated acreage overlaps between scenarios; summed acres are not de-duplicated."] : []),
+      ...blockers,
+    ],
+    sourceRefs,
+  };
+}
+
+export function planAdvisoryFieldPivots(
+  project: PivotProject,
+  options: AdvisoryFieldPivotPlanOptions = {},
+): AdvisoryFieldPivotPlan {
+  const sourceRefs = options.sourceRefs ?? DEFAULT_ADVISORY_PLACEMENT_SOURCE_REFS;
+  const requestedMachineCount = Math.max(1, Math.floor(options.maxMachines ?? 3));
+  const machineRadius = machineRadiusMeters(project.machine);
+  const collisionBufferMeters = Math.max(0, options.collisionBufferMeters ?? project.machine.machineClearanceBufferMeters ?? 0);
+  const minimumRequiredSeparationMeters = Math.max(
+    Math.max(0, options.minimumMachineSeparationMeters ?? 0),
+    machineRadius * 2 + collisionBufferMeters,
+  );
+  const base = {
+    advisoryOnly: true as const,
+    canonicalGeometryMutation: false as const,
+    qualifiedReviewRequired: true as const,
+    projectCrs: project.projectCrs,
+    requestedMachineCount,
+    machineRadiusMeters: round(machineRadius),
+    collisionBufferMeters: round(collisionBufferMeters),
+    minimumRequiredSeparationMeters: round(minimumRequiredSeparationMeters),
+    sourceRefs,
+  };
+
+  if (project.fieldBoundary.length < 3) {
+    return {
+      ...base,
+      status: "no_boundary",
+      selectedMachineCount: 0,
+      candidatePoolCount: 0,
+      feasibleCandidateCount: 0,
+      rejectedForSeparationCount: 0,
+      fieldBoundaryAcres: 0,
+      fieldCoveragePercent: 0,
+      fieldUnirrigatedAcres: 0,
+      modeledIrrigatedAcresSum: 0,
+      modeledIrrigatedUnionAcres: 0,
+      duplicateModeledCoverageAcres: 0,
+      modeledCoverageUnion: [],
+      candidates: [],
+      separationRejections: [],
+      blockers: ["At least three projected-XY field boundary vertices are required before advisory field-pivot planning."],
+      warnings: ["Advisory field-pivot planning did not run because the field boundary is incomplete."],
+    };
+  }
+
+  const candidatePool = buildFieldPivotPlanCandidatePool(project, options, sourceRefs, requestedMachineCount);
+  const feasibleCandidates = candidatePool.filter((candidate) => candidate.feasible && candidate.insideFieldBoundary);
+  const { selected, separationRejections } = selectAdvisoryFieldPivotCandidates(
+    project,
+    feasibleCandidates,
+    requestedMachineCount,
+    minimumRequiredSeparationMeters,
+  );
+
+  const fieldBoundaryAcres = squareMetersToAcres(polygonAreaSquareMeters(project.fieldBoundary));
+  let runningCoverage: MultiPolygonXY = [];
+  let modeledIrrigatedAcresSum = 0;
+  const planCandidates = selected.map((candidate, index): AdvisoryFieldPivotPlanCandidate => {
+    const scenarioProject: PivotProject = { ...project, pivotCenter: candidate.pivotCenter };
+    const result = evaluateLayout(scenarioProject);
+    const priorCoverageAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(
+      intersectMultiPolygons(runningCoverage, [[project.fieldBoundary]]),
+    ));
+    runningCoverage = unionMultiPolygons([...runningCoverage, ...result.allowedCoverage]);
+    const cumulativeCoverageAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(
+      intersectMultiPolygons(runningCoverage, [[project.fieldBoundary]]),
+    ));
+    modeledIrrigatedAcresSum += result.metrics.irrigatedAcres;
+    const nearest = nearestSelectedPlacementCandidate(candidate, selected.slice(0, index));
+    return {
+      id: `field-pivot-${index + 1}-${candidate.id}`,
+      sequence: index + 1,
+      placementCandidate: candidate,
+      pivotCenter: candidate.pivotCenter,
+      advisoryOnly: true,
+      canonicalGeometryMutation: false,
+      qualifiedReviewRequired: true,
+      machineRadiusMeters: round(machineRadius),
+      minimumRequiredSeparationMeters: round(minimumRequiredSeparationMeters),
+      nearestSelectedDistanceMeters: nearest ? round(nearest.centerDistanceMeters) : null,
+      modeledIrrigatedAcres: round(result.metrics.irrigatedAcres),
+      incrementalIrrigatedAcres: round(Math.max(0, cumulativeCoverageAcres - priorCoverageAcres)),
+      cumulativeFieldCoveragePercent: round(fieldBoundaryAcres > 0 ? (cumulativeCoverageAcres / fieldBoundaryAcres) * 100 : 0),
+      modeledCoverage: result.allowedCoverage,
+      machineEnvelope: machineEnvelopeFor(project, candidate.pivotCenter),
+      warnings: [
+        "Advisory field-pivot candidate does not create a saved pivot or machine zone.",
+        "Separation screening uses projected-XY envelope distance only and does not model timing, tower phasing, controls, or field operations.",
+        ...candidate.warnings,
+      ],
+      sourceRefs,
+    };
+  });
+
+  const modeledCoverageUnion = intersectMultiPolygons(runningCoverage, [[project.fieldBoundary]]);
+  const modeledIrrigatedUnionAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(modeledCoverageUnion));
+  const fieldCoveragePercent = fieldBoundaryAcres > 0 ? (modeledIrrigatedUnionAcres / fieldBoundaryAcres) * 100 : 0;
+  const selectedMachineCount = planCandidates.length;
+  const blockers = selectedMachineCount === 0
+    ? ["No feasible projected-XY center candidate satisfied boundary, obstacle, and separation constraints."]
+    : selectedMachineCount < requestedMachineCount
+      ? [`Only ${selectedMachineCount} separated feasible center${selectedMachineCount === 1 ? "" : "s"} were found for ${requestedMachineCount} requested machines.`]
+      : [];
+  const status: AdvisoryFieldPivotPlanStatus = selectedMachineCount === 0
+    ? "no_feasible_candidates"
+    : selectedMachineCount === 1
+      ? "single_candidate"
+      : "ready";
+
+  return {
+    ...base,
+    status,
+    selectedMachineCount,
+    candidatePoolCount: candidatePool.length,
+    feasibleCandidateCount: feasibleCandidates.length,
+    rejectedForSeparationCount: separationRejections.length,
+    fieldBoundaryAcres: round(fieldBoundaryAcres),
+    fieldCoveragePercent: round(fieldCoveragePercent),
+    fieldUnirrigatedAcres: round(Math.max(0, fieldBoundaryAcres - modeledIrrigatedUnionAcres)),
+    modeledIrrigatedAcresSum: round(modeledIrrigatedAcresSum),
+    modeledIrrigatedUnionAcres: round(modeledIrrigatedUnionAcres),
+    duplicateModeledCoverageAcres: round(Math.max(0, modeledIrrigatedAcresSum - modeledIrrigatedUnionAcres)),
+    modeledCoverageUnion,
+    candidates: planCandidates,
+    separationRejections,
+    blockers,
+    warnings: [
+      "Advisory field-pivot planning is a deterministic projected-XY screening aid and does not create pivots, zones, machine settings, or project storage records.",
+      "Candidate separation is conservative envelope spacing only; it is not runtime or certified multi-pivot collision prevention.",
+      "Span package, corner-arm behavior, bender mechanics, flow, pressure, terrain, controls, and vendor constraints require qualified review.",
       ...blockers,
     ],
     sourceRefs,
@@ -1027,6 +1238,151 @@ function buildMachineZoneReviews(
       ],
     };
   });
+}
+
+function buildFieldPivotPlanCandidatePool(
+  project: PivotProject,
+  options: AdvisoryFieldPivotPlanOptions,
+  sourceRefs: AdvisorySourceReference[],
+  requestedMachineCount: number,
+): PivotPlacementCandidate[] {
+  const candidatePoolSize = Math.max(
+    requestedMachineCount,
+    Math.floor(options.candidatePoolSize ?? Math.max(requestedMachineCount * 10, 18)),
+  );
+  const gridDivisions = Math.max(3, Math.floor(options.gridDivisions ?? 9));
+  const optimizedCandidates = buildPivotPlacementCandidates(project, {
+    ...options,
+    maxCandidates: Math.max(candidatePoolSize, requestedMachineCount * 4),
+    includeMachineZoneReviews: false,
+    sourceRefs,
+  });
+  const gridCandidates = fieldPivotGridCandidates(project, options, sourceRefs, gridDivisions);
+  return dedupePlacementCandidates([...optimizedCandidates, ...gridCandidates])
+    .sort(comparePlacementCandidates);
+}
+
+function fieldPivotGridCandidates(
+  project: PivotProject,
+  options: PivotPlacementCandidateOptions,
+  sourceRefs: AdvisorySourceReference[],
+  gridDivisions: number,
+): PivotPlacementCandidate[] {
+  const bounds = boundsForGeometry([project.fieldBoundary]);
+  const xStep = (bounds.maxX - bounds.minX) / gridDivisions;
+  const yStep = (bounds.maxY - bounds.minY) / gridDivisions;
+  const candidates: PivotPlacementCandidate[] = [];
+  for (let yIndex = 0; yIndex <= gridDivisions; yIndex += 1) {
+    for (let xIndex = 0; xIndex <= gridDivisions; xIndex += 1) {
+      const pivotCenter = {
+        x: bounds.minX + xStep * xIndex,
+        y: bounds.minY + yStep * yIndex,
+      };
+      if (!pointInPolygon(pivotCenter, project.fieldBoundary)) continue;
+      if (distanceToRing(pivotCenter, project.fieldBoundary) <= 0.001) continue;
+      candidates.push(candidateFromProject(project, pivotCenter, "bbox_grid", options, sourceRefs));
+    }
+  }
+  return candidates;
+}
+
+function selectAdvisoryFieldPivotCandidates(
+  project: PivotProject,
+  candidates: PivotPlacementCandidate[],
+  requestedMachineCount: number,
+  minimumRequiredSeparationMeters: number,
+): { selected: PivotPlacementCandidate[]; separationRejections: AdvisoryFieldPivotSeparationRejection[] } {
+  const selected: PivotPlacementCandidate[] = [];
+  const separationRejections: AdvisoryFieldPivotSeparationRejection[] = [];
+  const rejectedIds = new Set<string>();
+  const remaining = [...candidates];
+  let runningCoverage: MultiPolygonXY = [];
+
+  while (selected.length < requestedMachineCount && remaining.length > 0) {
+    const separatedCandidates: PivotPlacementCandidate[] = [];
+    for (let index = remaining.length - 1; index >= 0; index -= 1) {
+      const candidate = remaining[index];
+      const nearest = nearestSelectedPlacementCandidate(candidate, selected);
+      if (nearest && nearest.centerDistanceMeters < minimumRequiredSeparationMeters) {
+        if (!rejectedIds.has(candidate.id)) {
+          rejectedIds.add(candidate.id);
+          separationRejections.push(fieldPivotSeparationRejection(candidate, nearest, minimumRequiredSeparationMeters));
+        }
+        remaining.splice(index, 1);
+      } else {
+        separatedCandidates.push(candidate);
+      }
+    }
+
+    if (separatedCandidates.length === 0) break;
+    const chosen = separatedCandidates
+      .map((candidate) => ({
+        candidate,
+        incrementalCoverageAcres: fieldPivotIncrementalCoverageAcres(project, runningCoverage, candidate),
+      }))
+      .sort((left, right) => {
+        if (right.incrementalCoverageAcres !== left.incrementalCoverageAcres) return right.incrementalCoverageAcres - left.incrementalCoverageAcres;
+        return comparePlacementCandidates(left.candidate, right.candidate);
+      })[0]?.candidate;
+    if (!chosen) break;
+    selected.push(chosen);
+    const result = evaluateLayout({ ...project, pivotCenter: chosen.pivotCenter });
+    runningCoverage = unionMultiPolygons([...runningCoverage, ...result.allowedCoverage]);
+    const chosenIndex = remaining.findIndex((candidate) => candidate.id === chosen.id);
+    if (chosenIndex >= 0) remaining.splice(chosenIndex, 1);
+  }
+
+  return { selected, separationRejections };
+}
+
+function fieldPivotIncrementalCoverageAcres(
+  project: PivotProject,
+  runningCoverage: MultiPolygonXY,
+  candidate: PivotPlacementCandidate,
+): number {
+  const priorCoverage = intersectMultiPolygons(runningCoverage, [[project.fieldBoundary]]);
+  const priorCoverageAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(priorCoverage));
+  const result = evaluateLayout({ ...project, pivotCenter: candidate.pivotCenter });
+  const nextCoverage = intersectMultiPolygons(
+    unionMultiPolygons([...runningCoverage, ...result.allowedCoverage]),
+    [[project.fieldBoundary]],
+  );
+  return squareMetersToAcres(multiPolygonAreaSquareMeters(nextCoverage)) - priorCoverageAcres;
+}
+
+function nearestSelectedPlacementCandidate(
+  candidate: PivotPlacementCandidate,
+  selected: PivotPlacementCandidate[],
+): { candidate: PivotPlacementCandidate; centerDistanceMeters: number } | null {
+  return selected.reduce<{ candidate: PivotPlacementCandidate; centerDistanceMeters: number } | null>((nearest, selectedCandidate) => {
+    const centerDistanceMeters = distance(candidate.pivotCenter, selectedCandidate.pivotCenter);
+    if (!nearest || centerDistanceMeters < nearest.centerDistanceMeters) {
+      return { candidate: selectedCandidate, centerDistanceMeters };
+    }
+    return nearest;
+  }, null);
+}
+
+function fieldPivotSeparationRejection(
+  candidate: PivotPlacementCandidate,
+  nearest: { candidate: PivotPlacementCandidate; centerDistanceMeters: number },
+  minimumRequiredSeparationMeters: number,
+): AdvisoryFieldPivotSeparationRejection {
+  return {
+    candidateId: candidate.id,
+    pivotCenter: candidate.pivotCenter,
+    nearestSelectedCandidateId: nearest.candidate.id,
+    centerDistanceMeters: round(nearest.centerDistanceMeters),
+    minimumRequiredSeparationMeters: round(minimumRequiredSeparationMeters),
+    separationDeficitMeters: round(minimumRequiredSeparationMeters - nearest.centerDistanceMeters),
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    warnings: [
+      "Candidate was skipped by advisory separation screening only; this is not certified collision prevention.",
+      "Qualified review is required before using separated candidates for field placement decisions.",
+    ],
+  };
 }
 
 function planningBoundaryFeatures(project: PivotProject): ProjectMapFeature[] {

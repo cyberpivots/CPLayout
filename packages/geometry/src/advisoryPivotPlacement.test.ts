@@ -9,6 +9,7 @@ import {
   buildPivotPlacementCandidates,
   compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
+  planAdvisoryFieldPivots,
 } from "./advisoryPivotPlacement";
 import { evaluateLayout } from "./geometry";
 
@@ -337,6 +338,59 @@ assert.ok((overlapConflict?.separationReviewZoneAcres ?? 0) >= (overlapConflict?
 assert.ok(overlapConflict?.warnings.some((warning) => warning.includes("projected-XY collision/review zone evidence")));
 assert.ok(multiMachineReview.warnings.some((warning) => warning.includes("does not create pivots")));
 assert.equal(JSON.stringify(multiZoneProject), multiZoneBefore);
+
+const openMultiPivotProject = makeProject({
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 520, y: 0 },
+    { x: 520, y: 220 },
+    { x: 0, y: 220 },
+  ],
+  pivotCenter: { x: 80, y: 110 },
+  waterSource: { x: 0, y: 110 },
+  powerSource: { x: 520, y: 110 },
+  obstacles: [],
+  mapFeatures: [],
+});
+const openMultiPivotBefore = JSON.stringify(openMultiPivotProject);
+const generatedFieldPlan = planAdvisoryFieldPivots(openMultiPivotProject, {
+  gridDivisions: 9,
+  maxMachines: 3,
+  candidatePoolSize: 36,
+  collisionBufferMeters: 0,
+});
+assert.equal(generatedFieldPlan.status, "ready");
+assert.equal(generatedFieldPlan.advisoryOnly, true);
+assert.equal(generatedFieldPlan.canonicalGeometryMutation, false);
+assert.equal(generatedFieldPlan.qualifiedReviewRequired, true);
+assert.equal(generatedFieldPlan.requestedMachineCount, 3);
+assert.equal(generatedFieldPlan.selectedMachineCount, 3);
+assert.ok(generatedFieldPlan.candidatePoolCount >= generatedFieldPlan.selectedMachineCount);
+assert.ok(generatedFieldPlan.feasibleCandidateCount >= generatedFieldPlan.selectedMachineCount);
+assert.ok(generatedFieldPlan.fieldCoveragePercent > 0);
+assert.ok(generatedFieldPlan.fieldCoveragePercent <= 100);
+assert.ok(generatedFieldPlan.fieldUnirrigatedAcres >= 0);
+assert.ok(generatedFieldPlan.modeledIrrigatedUnionAcres <= generatedFieldPlan.modeledIrrigatedAcresSum);
+assert.ok(generatedFieldPlan.candidates.every((candidate) => candidate.canonicalGeometryMutation === false));
+assert.ok(generatedFieldPlan.candidates.every((candidate) => candidate.incrementalIrrigatedAcres > 0));
+assert.ok(generatedFieldPlan.candidates.slice(1).every((candidate) => (
+  candidate.nearestSelectedDistanceMeters !== null
+  && candidate.nearestSelectedDistanceMeters >= generatedFieldPlan.minimumRequiredSeparationMeters
+)));
+assert.ok(generatedFieldPlan.warnings.some((warning) => warning.includes("does not create pivots")));
+assert.equal(JSON.stringify(openMultiPivotProject), openMultiPivotBefore);
+
+const constrainedFieldPlan = planAdvisoryFieldPivots(openMultiPivotProject, {
+  gridDivisions: 7,
+  maxMachines: 3,
+  candidatePoolSize: 24,
+  minimumMachineSeparationMeters: 1000,
+});
+assert.equal(constrainedFieldPlan.status, "single_candidate");
+assert.equal(constrainedFieldPlan.selectedMachineCount, 1);
+assert.ok(constrainedFieldPlan.rejectedForSeparationCount > 0);
+assert.ok(constrainedFieldPlan.separationRejections.every((rejection) => rejection.canonicalGeometryMutation === false));
+assert.ok(constrainedFieldPlan.blockers.some((blocker) => blocker.includes("Only 1 separated feasible center")));
 
 const bufferWestMachineZone: ProjectMapFeature = {
   id: "zone-buffer-west",

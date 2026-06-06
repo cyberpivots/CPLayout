@@ -115,9 +115,11 @@ import {
   evaluateLayout,
   exportScenarioGeoJson,
   machineRadiusMeters,
+  planAdvisoryFieldPivots,
   type AdvisoryCostAssessment,
   type AdvisoryCostInput,
   type AdvisoryCornerArmEvaluation,
+  type AdvisoryFieldPivotPlan,
   type AdvisoryMachineStrategyComparison,
   type AdvisoryMultiMachineReview,
   type AdvisoryObstacleInteractionReview,
@@ -2212,6 +2214,12 @@ function CalculateSheet({
     maxCandidates: 3,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
   }), [project]);
+  const fieldPivotPlan = useMemo<AdvisoryFieldPivotPlan>(() => planAdvisoryFieldPivots(project, {
+    gridDivisions: 6,
+    maxMachines: 3,
+    candidatePoolSize: 24,
+    collisionBufferMeters: project.machine.machineClearanceBufferMeters,
+  }), [project]);
   const bestStrategy = strategyComparison.bestStrategy;
   const benderStrategy = benderStrategyForReview(strategyComparison);
   return (
@@ -2268,6 +2276,14 @@ function CalculateSheet({
         </View>
         <Text style={styles.rowMeta}>{formatFullScopeBoundarySummary(multiMachineReview, settings)}</Text>
         <Text style={styles.mapFeatureMeta}>Compiled full-scope boundary review is advisory only and leaves canonical projected XY, field boundary, machine zones, and project storage unchanged.</Text>
+      </View>
+      <View style={styles.placementReviewPanel} testID="advisory-generated-field-pivot-plan">
+        <View style={styles.scenarioRowHeader}>
+          <Text style={styles.rowTitle}>Generated Field Pivot Plan</Text>
+          <Text style={styles.scenarioScore}>{fieldPivotPlan.selectedMachineCount}/{fieldPivotPlan.requestedMachineCount}</Text>
+        </View>
+        <Text style={styles.rowMeta}>{formatGeneratedFieldPivotPlanSummary(fieldPivotPlan, settings)}</Text>
+        <Text style={styles.mapFeatureMeta}>Generated field-pivot planning is advisory only and does not create saved pivots, machine zones, project storage records, or canonical projected XY changes.</Text>
       </View>
       <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
@@ -2662,6 +2678,12 @@ function DesignAwarenessPanel({
     maxCandidates: 3,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
   }), [project]);
+  const fieldPivotPlan = useMemo<AdvisoryFieldPivotPlan>(() => planAdvisoryFieldPivots(project, {
+    gridDivisions: 6,
+    maxMachines: 3,
+    candidatePoolSize: 24,
+    collisionBufferMeters: project.machine.machineClearanceBufferMeters,
+  }), [project]);
   const strategyComparison = useMemo<AdvisoryMachineStrategyComparison>(() => compareAdvisoryMachineStrategies(project, {
     maxCandidates: 2,
     costInput: advisoryCostInput,
@@ -2687,6 +2709,7 @@ function DesignAwarenessPanel({
         <MetricTile label="Advisory scenarios" value={`${multiMachineReview.compilation.readyScenarioCount}/${multiMachineReview.compilation.scenarioCount}`} tone={multiMachineReview.compilation.readyScenarioCount > 0 ? "neutral" : "warn"} />
         <MetricTile label="Envelope risks" value={`${multiMachineReview.conflicts.length}`} tone={multiMachineReview.conflicts.length > 0 ? "danger" : "good"} />
         <MetricTile label="Modeled union" value={formatAreaFromAcres(multiMachineReview.compilation.modeledIrrigatedUnionAcres, settings.unitSystem)} />
+        <MetricTile label="Generated pivots" value={`${fieldPivotPlan.selectedMachineCount}/${fieldPivotPlan.requestedMachineCount}`} tone={fieldPivotPlan.selectedMachineCount > 1 ? "neutral" : "warn"} />
         <MetricTile label="Machine strategies" value={`${readyStrategyCount}/${strategyComparison.strategies.length}`} tone={readyStrategyCount > 0 ? "neutral" : "warn"} />
         <MetricTile label="Cost review" value={strategyCostStatus} tone={strategyComparison.costInputStatus === "complete" ? "good" : "warn"} />
         <MetricTile label="Obstacle review" value={`${obstacleInteractionReview.summary.hardBlockingCount}/${obstacleInteractionReview.itemCount}`} tone={obstacleInteractionReview.summary.hardBlockingCount > 0 ? "danger" : "neutral"} />
@@ -2696,6 +2719,9 @@ function DesignAwarenessPanel({
       </View>
       <Text style={styles.mapFeatureMeta}>
         Multi-machine review: {multiMachineReview.status.replaceAll("_", " ")} · {multiMachineReview.compilation.compiledBoundaryAcres.toFixed(2)} compiled advisory acres · {multiMachineReview.compilation.fullScopeCoveragePercent.toFixed(1)}% full-scope coverage · canonical projected XY unchanged.
+      </Text>
+      <Text style={styles.mapFeatureMeta} testID="design-awareness-generated-field-pivot-plan">
+        Generated field-pivot plan: {fieldPivotPlan.selectedMachineCount}/{fieldPivotPlan.requestedMachineCount} advisory centers · {fieldPivotPlan.fieldCoveragePercent.toFixed(1)}% field coverage · no saved pivots created.
       </Text>
       {firstConflict ? (
         <Text style={styles.formError}>
@@ -3110,6 +3136,14 @@ function formatFullScopeBoundarySummary(review: AdvisoryMultiMachineReview, sett
     ? "no scenario zones"
     : `${review.compilation.scenarioBoundarySource.replaceAll("_", " ")} scenarios`;
   return `${formatAreaFromAcres(review.compilation.compiledBoundaryAcres, settings.unitSystem)} ${fullScopeSource} full scope · ${review.compilation.fullScopeCoveragePercent.toFixed(1)}% modeled coverage · ${formatAreaFromAcres(review.compilation.fullScopeUnirrigatedAcres, settings.unitSystem)} remaining dry · ${scenarioSource}`;
+}
+
+function formatGeneratedFieldPivotPlanSummary(plan: AdvisoryFieldPivotPlan, settings: AppSettings): string {
+  const first = plan.candidates[0];
+  const firstIncrement = first
+    ? ` · first adds ${formatAreaFromAcres(first.incrementalIrrigatedAcres, settings.unitSystem)}`
+    : "";
+  return `${plan.status.replaceAll("_", " ")} · ${plan.selectedMachineCount}/${plan.requestedMachineCount} separated advisory center${plan.requestedMachineCount === 1 ? "" : "s"} · ${plan.fieldCoveragePercent.toFixed(1)}% field coverage · ${formatAreaFromAcres(plan.fieldUnirrigatedAcres, settings.unitSystem)} remaining dry${firstIncrement}`;
 }
 
 function advisoryCostInputFromDraft(draft: AdvisoryCostDraft): AdvisoryCostInput | undefined {

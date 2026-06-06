@@ -37,9 +37,12 @@ The current baseline already includes local companion evidence flags, the `cplay
 
 `cplayout-imagery-evidence-v2` is the target companion report schema for Phase 1. It is local-only evidence, not a project schema.
 
+Current implementation note, 2026-06-06: `packages/core/src/imageryEvidence.ts` now validates strict v2 packets for read-only companion review. The validator computes packet status as `blocked` or `ready_for_read_only_report` and candidate status as `metadata_only`, `blocked`, or `calibrated_projected_xy`. It does not import evidence into the app, write project storage, mutate canonical projected `XY`, update KML/KMZ behavior, launch Google Earth, or prove imagery/model quality. The Python companion emitter in `tools/local-ml-companion/src/cplayout_ml/evidence_packet.py` still emits the earlier companion packet shape and must be updated or routed through an explicit adapter before strict v2 validation.
+
 Required packet boundaries:
 
 - `schemaVersion: "cplayout-imagery-evidence-v2"`
+- `projectId`, projected/local `projectCrs`, `createdAt`, and v2 `calibrationStatus`
 - `canonicalGeometryMutation: false`
 - `networkRequired: false`
 - `hiddenKeysAllowed: false`
@@ -47,6 +50,23 @@ Required packet boundaries:
 - `evidenceOnly: true`
 - `appImportable: false`
 - `writesProjectDatabase: false`
+- `paidServiceRequired: false`
+- `cloudUrls: []`
+- `telemetryUpload: false`
+- `bulkPublicTileCaching: false`
+
+Strict v2 calibration statuses:
+
+- `evidence_only` and `image_space_only` can support safe read-only metadata/image-space review when all local-only, hash, attribution, and visual-evidence gates pass.
+- `valid_projected_xy` is required for any projected pivot center, field boundary, obstacle polygon, or other proposed projected `XY` geometry.
+- `invalid_projected_xy` and `rejected_projected_xy` are explicit rejection statuses, not apply-ready statuses.
+- Legacy Python companion statuses such as `valid`, `calibrated`, and `project_crs_xy` are not silently accepted by the strict v2 validator.
+
+Strict v2 validation blockers:
+
+- Forbidden boundary flags, geographic canonical CRS such as `EPSG:4326`, project/calibration id or CRS mismatch, missing calibration metadata, invalid projected calibration, missing/invalid/mismatched SHA-256 values, hidden keys/tokens, paid/keyed/cloud dependencies, missing attribution/license/provenance, blank/black/near-uniform visual evidence, candidate hard failures marked feasible, and any claim to import/write/archive/mutate project geometry.
+- Visual evidence must declare positive dimensions, SHA-256 through the visual record or linked artifact, `nonBlankPixelRatio` or equivalent of at least `0.08`, `grayVariance` of at least `80`, `mostlyBlack: false`, `nearUniform: false`, and attribution.
+- Projected candidate geometry requires matching projected `projectCrs`, `calibrationStatus: "valid_projected_xy"`, finite projected `XY`, no hard failures, and an operator projected truth label. KML/KMZ style metadata, `styleUrl`, screenshots, WGS84 display coordinates, labels, and LookAt metadata remain visual/display evidence only.
 
 Required content groups:
 

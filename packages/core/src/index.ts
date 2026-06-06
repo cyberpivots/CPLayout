@@ -1,4 +1,5 @@
 export * from "./coordinates";
+export * from "./imageryEvidence";
 export * from "./machineCatalog";
 export * from "./mapTilePackages";
 export * from "./projectDocument";

@@ -106,6 +106,7 @@ import {
 } from "@cplayout/core";
 import {
   DEFAULT_CORNER_ARM_SOURCE_REFS,
+  analyzeAdvisoryMultiMachineLayout,
   analyzeIdealPivotCenter,
   buildDesignScenarioPreview,
   evaluateAdvisoryCornerArm,
@@ -114,6 +115,7 @@ import {
   machineRadiusMeters,
   type AdvisoryCostAssessment,
   type AdvisoryCornerArmEvaluation,
+  type AdvisoryMultiMachineReview,
   type DesignScenarioPreview,
   type DrawingLayerType,
   type DrawingMode,
@@ -2500,6 +2502,11 @@ function DesignAwarenessPanel({
   const undergroundWire = features.filter((feature) => feature.kind === "underground_wire").length;
   const pivotEvidence = project.surveyPoints.filter((point) => point.role === "pivot_center" && point.source === "imported").length;
   const measurementLength = measurementLines.reduce((sum, feature) => sum + mapFeatureLengthMeters(feature), 0);
+  const multiMachineReview = useMemo<AdvisoryMultiMachineReview>(() => analyzeAdvisoryMultiMachineLayout(project, {
+    maxCandidates: 3,
+    collisionBufferMeters: project.machine.machineClearanceBufferMeters,
+  }), [project]);
+  const firstConflict = multiMachineReview.conflicts[0] ?? null;
   return (
     <View style={styles.mapFeatureEditor} testID="design-awareness-panel">
       <View style={styles.metricGrid}>
@@ -2509,9 +2516,20 @@ function DesignAwarenessPanel({
         <MetricTile label="Existing pivots" value={`${pivotEvidence}`} tone={pivotEvidence > 0 ? "neutral" : "warn"} />
         <MetricTile label="Wells" value={`${wells}`} />
         <MetricTile label="Underground wire" value={`${undergroundWire}`} />
+        <MetricTile label="Advisory scenarios" value={`${multiMachineReview.compilation.readyScenarioCount}/${multiMachineReview.compilation.scenarioCount}`} tone={multiMachineReview.compilation.readyScenarioCount > 0 ? "neutral" : "warn"} />
+        <MetricTile label="Envelope risks" value={`${multiMachineReview.conflicts.length}`} tone={multiMachineReview.conflicts.length > 0 ? "danger" : "good"} />
+        <MetricTile label="Modeled union" value={formatAreaFromAcres(multiMachineReview.compilation.modeledIrrigatedUnionAcres, settings.unitSystem)} />
         <MetricTile label="Hard conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
         <MetricTile label="Outside wet" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "warn" : "good"} />
       </View>
+      <Text style={styles.mapFeatureMeta}>
+        Multi-machine review: {multiMachineReview.status.replaceAll("_", " ")} · {multiMachineReview.compilation.compiledBoundaryAcres.toFixed(2)} compiled advisory acres · canonical projected XY unchanged.
+      </Text>
+      {firstConflict ? (
+        <Text style={styles.formError}>
+          {firstConflict.leftZoneName} / {firstConflict.rightZoneName}: {formatDistance(firstConflict.separationDeficitMeters, settings.unitSystem)} envelope separation deficit.
+        </Text>
+      ) : null}
       <Text style={styles.mapFeatureMeta}>Awareness evidence supports review and scenario planning only. Additional machine zones, measurement lines, wells, and wire paths do not create pivots or mutate canonical projected XY automatically.</Text>
     </View>
   );

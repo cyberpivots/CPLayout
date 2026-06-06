@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, XY } from "@cplayout/core";
 
 import {
+  analyzeAdvisoryMultiMachineLayout,
   analyzeIdealPivotCenter,
   buildPivotPlacementCandidates,
   evaluateAdvisoryCornerArm,
@@ -140,6 +141,96 @@ assert.equal(zoneAnalysis.machineZoneReviews[0].canonicalGeometryMutation, false
 assert.equal(zoneAnalysis.bestCandidate?.costAssessment.status, "complete");
 assert.ok((zoneAnalysis.bestCandidate?.costAssessment.costPerIrrigatedAcre ?? 0) > 0);
 assert.ok(Number.isFinite(zoneAnalysis.bestCandidate?.scoreBreakdown.costEfficiency));
+
+const westMachineZone: ProjectMapFeature = {
+  id: "zone-west",
+  name: "West machine zone",
+  kind: "machine_zone",
+  geometry: {
+    type: "Polygon",
+    vertices: [
+      { x: 0, y: 0 },
+      { x: 150, y: 0 },
+      { x: 150, y: 150 },
+      { x: 0, y: 150 },
+    ],
+  },
+  confidence: "user_estimated",
+  properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+};
+const eastMachineZone: ProjectMapFeature = {
+  id: "zone-east",
+  name: "East machine zone",
+  kind: "machine_zone",
+  geometry: {
+    type: "Polygon",
+    vertices: [
+      { x: 95, y: 0 },
+      { x: 245, y: 0 },
+      { x: 245, y: 150 },
+      { x: 95, y: 150 },
+    ],
+  },
+  confidence: "user_estimated",
+  properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+};
+const multiZoneProject = makeProject({
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 245, y: 0 },
+    { x: 245, y: 150 },
+    { x: 0, y: 150 },
+  ],
+  pivotCenter: { x: 25, y: 75 },
+  waterSource: { x: 20, y: 75 },
+  powerSource: { x: 225, y: 75 },
+  obstacles: [],
+  mapFeatures: [westMachineZone, eastMachineZone],
+});
+const multiZoneBefore = JSON.stringify(multiZoneProject);
+const multiMachineReview = analyzeAdvisoryMultiMachineLayout(multiZoneProject, {
+  gridDivisions: 6,
+  maxCandidates: 3,
+  collisionBufferMeters: 20,
+});
+assert.equal(multiMachineReview.status, "ready");
+assert.equal(multiMachineReview.advisoryOnly, true);
+assert.equal(multiMachineReview.canonicalGeometryMutation, false);
+assert.equal(multiMachineReview.qualifiedReviewRequired, true);
+assert.equal(multiMachineReview.compilation.machineZoneCount, 2);
+assert.equal(multiMachineReview.compilation.scenarioCount, 2);
+assert.equal(multiMachineReview.compilation.readyScenarioCount, 2);
+assert.ok(multiMachineReview.compilation.compiledBoundaryAcres > 0);
+assert.ok(multiMachineReview.compilation.modeledIrrigatedUnionAcres <= multiMachineReview.compilation.modeledIrrigatedAcresSum);
+assert.equal(multiMachineReview.scenarios.length, 2);
+assert.ok(multiMachineReview.scenarios.every((scenario) => scenario.status === "ready"));
+assert.ok(multiMachineReview.scenarios.every((scenario) => scenario.canonicalGeometryMutation === false));
+assert.ok(multiMachineReview.conflicts.some((conflict) => conflict.status === "machine_envelope_overlap"));
+assert.ok(multiMachineReview.conflicts.every((conflict) => conflict.separationDeficitMeters > 0));
+assert.ok(multiMachineReview.warnings.some((warning) => warning.includes("does not create pivots")));
+assert.equal(JSON.stringify(multiZoneProject), multiZoneBefore);
+
+const missingZoneReview = analyzeAdvisoryMultiMachineLayout(readyProject, { gridDivisions: 5, maxCandidates: 2 });
+assert.equal(missingZoneReview.status, "missing_zones");
+assert.equal(missingZoneReview.scenarios.length, 0);
+assert.ok(missingZoneReview.blockers.some((blocker) => blocker.includes("machine zone or planning boundary")));
+
+const planningBoundaryReview = analyzeAdvisoryMultiMachineLayout({
+  ...readyProject,
+  mapFeatures: [{
+    id: "full-scope",
+    name: "Full scope boundary",
+    kind: "planning_boundary",
+    geometry: {
+      type: "Polygon",
+      vertices: readyProject.fieldBoundary,
+    },
+    confidence: "user_estimated",
+  }],
+}, { gridDivisions: 5, maxCandidates: 2 });
+assert.equal(planningBoundaryReview.status, "single_zone_review");
+assert.equal(planningBoundaryReview.compilation.planningBoundaryCount, 1);
+assert.equal(planningBoundaryReview.compilation.readyScenarioCount, 1);
 
 const missingCostCandidate = buildPivotPlacementCandidates(readyProject, { gridDivisions: 6, maxCandidates: 1 })[0];
 assert.equal(missingCostCandidate.costAssessment.status, "missing_cost_input");

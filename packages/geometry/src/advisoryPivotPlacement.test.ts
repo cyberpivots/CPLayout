@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import type { ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, XY } from "@cplayout/core";
+import type { ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SurveyPoint, XY } from "@cplayout/core";
 
 import {
   analyzeAdvisoryMultiMachineLayout,
@@ -418,6 +418,71 @@ assert.ok(strategyComparison.strategies.filter((strategy) => strategy.status ===
 assert.ok(strategyComparison.warnings.some((warning) => warning.includes("does not mutate canonical projected XY")));
 assert.equal(JSON.stringify(strategyProject), strategyProjectBefore);
 
+const ordinaryPivotEvidence: SurveyPoint = {
+  id: "existing-pivot-evidence",
+  label: "Existing pivot point",
+  role: "pivot_center",
+  projected: { x: 125, y: 110 },
+  observedAt: "2026-06-06T00:00:00.000Z",
+  source: "imported",
+  confidence: "user_estimated",
+  notes: "Imported pivot evidence without bender intent.",
+};
+const ordinaryPivotComparison = compareAdvisoryMachineStrategies({
+  ...strategyProject,
+  surveyPoints: [ordinaryPivotEvidence],
+}, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  includeGeneratedRadiusStrategies: false,
+});
+assert.equal(ordinaryPivotComparison.strategies.some((strategy) => strategy.strategyKind === "bender_second_pivot"), false);
+assert.ok(ordinaryPivotComparison.strategies.some((strategy) => strategy.strategyKind === "unsupported_bender_second_pivot" && strategy.status === "unsupported_model"));
+
+const benderSecondPivotEvidence: SurveyPoint = {
+  id: "bender-second-pivot-evidence",
+  label: "Bender second pivot drive tower",
+  role: "pivot_center",
+  projected: { x: 115, y: 110 },
+  observedAt: "2026-06-06T00:00:00.000Z",
+  source: "imported",
+  confidence: "user_estimated",
+  notes: "Operator-labeled second pivot hinge evidence for advisory review.",
+};
+const benderStrategyProject = makeProject({
+  ...strategyProject,
+  machine: {
+    ...strategyProject.machine,
+    spanLengthsMeters: [60, 45, 30],
+  },
+  surveyPoints: [benderSecondPivotEvidence],
+});
+const benderStrategyBefore = JSON.stringify(benderStrategyProject);
+const benderStrategyComparison = compareAdvisoryMachineStrategies(benderStrategyProject, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  includeGeneratedRadiusStrategies: false,
+  costInput: {
+    fixedMachineCost: 90000,
+    costPerMeter: 650,
+    costPerTower: 2500,
+    currencyCode: "USD",
+  },
+});
+const benderStrategy = benderStrategyComparison.strategies.find((strategy) => strategy.strategyKind === "bender_second_pivot");
+assert.ok(benderStrategy);
+assert.equal(benderStrategy?.status, "ready");
+assert.equal(benderStrategy?.secondPivotPointId, "bender-second-pivot-evidence");
+assert.deepEqual(benderStrategy?.secondPivotPoint, benderSecondPivotEvidence.projected);
+assert.ok((benderStrategy?.benderPrimaryDistanceMeters ?? 0) > 0);
+assert.ok((benderStrategy?.benderTailRadiusMeters ?? 0) > 0);
+assert.ok((benderStrategy?.irrigatedAcres ?? 0) > 0);
+assert.equal(benderStrategy?.costAssessment?.status, "complete");
+assert.equal(benderStrategyComparison.strategies.some((strategy) => strategy.strategyKind === "unsupported_bender_second_pivot"), false);
+assert.ok(benderStrategy?.sourceRefs.some((sourceRef) => sourceRef.guideId === "local-vflex-corner-0998325"));
+assert.ok(benderStrategy?.warnings.some((warning) => warning.includes("does not verify drive-tower hinge")));
+assert.equal(JSON.stringify(benderStrategyProject), benderStrategyBefore);
+
 const linearMovePath: ProjectMapFeature = {
   id: "linear-path-a",
   name: "Linear move path A",
@@ -633,7 +698,7 @@ function makeProject(overrides: Partial<PivotProject> = {}): PivotProject {
     powerSource: overrides.powerSource ?? { x: 220, y: 140 },
     machine: overrides.machine ?? defaultMachine(),
     obstacles: overrides.obstacles ?? [],
-    surveyPoints: [],
+    surveyPoints: overrides.surveyPoints ?? [],
     mapFeatures: overrides.mapFeatures ?? [],
   };
 }

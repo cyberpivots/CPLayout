@@ -2203,10 +2203,10 @@ function CalculateSheet({
 }): React.JSX.Element {
   const strategyComparison = useMemo<AdvisoryMachineStrategyComparison>(() => compareAdvisoryMachineStrategies(project, {
     maxCandidates: 2,
-    includeUnsupportedConceptPlaceholders: false,
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
   const bestStrategy = strategyComparison.bestStrategy;
+  const benderStrategy = benderStrategyForReview(strategyComparison);
   return (
     <View style={styles.machineForm}>
       <View style={styles.metricGrid}>
@@ -2239,6 +2239,11 @@ function CalculateSheet({
             : "No advisory machine strategy is ready for cost comparison."}
         </Text>
         <Text style={styles.mapFeatureMeta}>Strategy cost review uses operator-supplied local assumptions only and does not create a quote, purchase recommendation, or project geometry change.</Text>
+        {benderStrategy ? (
+          <Text style={styles.mapFeatureMeta} testID="advisory-bender-strategy-summary">
+            {formatBenderStrategySummary(benderStrategy, settings)}
+          </Text>
+        ) : null}
       </View>
       <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
@@ -2635,7 +2640,6 @@ function DesignAwarenessPanel({
   }), [project]);
   const strategyComparison = useMemo<AdvisoryMachineStrategyComparison>(() => compareAdvisoryMachineStrategies(project, {
     maxCandidates: 2,
-    includeUnsupportedConceptPlaceholders: false,
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
   const firstConflict = multiMachineReview.conflicts[0] ?? null;
@@ -2644,6 +2648,7 @@ function DesignAwarenessPanel({
     : 0;
   const readyStrategyCount = strategyComparison.strategies.filter((strategy) => strategy.status === "ready").length;
   const strategyCostStatus = costStatusShortLabel(strategyComparison.costInputStatus);
+  const benderStrategy = benderStrategyForReview(strategyComparison);
   return (
     <View style={styles.mapFeatureEditor} testID="design-awareness-panel">
       <View style={styles.metricGrid}>
@@ -2673,6 +2678,11 @@ function DesignAwarenessPanel({
       {strategyComparison.bestStrategy ? (
         <Text style={styles.mapFeatureMeta}>
           Best advisory strategy: {strategyComparison.bestStrategy.label} · {formatAreaFromAcres(strategyComparison.bestStrategy.irrigatedAcres, settings.unitSystem)} modeled · cost ranking {strategyComparison.costInputStatus.replaceAll("_", " ")}.
+        </Text>
+      ) : null}
+      {benderStrategy ? (
+        <Text style={styles.mapFeatureMeta} testID="design-awareness-bender-review">
+          {formatBenderStrategySummary(benderStrategy, settings)}
         </Text>
       ) : null}
       <Text style={styles.mapFeatureMeta}>Awareness evidence supports review and scenario planning only. Additional machine zones, linear paths, measurement lines, wells, and wire paths do not create pivots or mutate canonical projected XY automatically.</Text>
@@ -3024,6 +3034,27 @@ function formatCostAssessment(assessment: AdvisoryCostAssessment): string {
     return `Cost input ${assessment.currencyCode} ${assessment.estimatedCost.toFixed(0)} · ${assessment.currencyCode} ${assessment.costPerIrrigatedAcre.toFixed(0)} per irrigated acre.`;
   }
   return assessment.warnings[0] ?? "Cost efficiency is incomplete.";
+}
+
+function benderStrategyForReview(
+  comparison: AdvisoryMachineStrategyComparison,
+): AdvisoryMachineStrategyComparison["strategies"][number] | null {
+  return comparison.strategies.find((strategy) => strategy.strategyKind === "bender_second_pivot")
+    ?? comparison.strategies.find((strategy) => strategy.strategyKind === "unsupported_bender_second_pivot")
+    ?? null;
+}
+
+function formatBenderStrategySummary(
+  strategy: AdvisoryMachineStrategyComparison["strategies"][number],
+  settings: AppSettings,
+): string {
+  if (strategy.strategyKind === "bender_second_pivot" && strategy.status === "ready") {
+    const tail = strategy.benderTailRadiusMeters !== undefined
+      ? ` · tail ${formatDistance(strategy.benderTailRadiusMeters, settings.unitSystem)}`
+      : "";
+    return `Bender / second-pivot review: ${strategy.label}${tail} · ${formatAreaFromAcres(strategy.irrigatedAcres, settings.unitSystem)} advisory opportunity envelope · unverified kinematics.`;
+  }
+  return `Bender / second-pivot review: ${strategy.warnings[0] ?? "operator-labeled projected-XY second-pivot evidence is required before advisory scoring."}`;
 }
 
 function advisoryCostInputFromDraft(draft: AdvisoryCostDraft): AdvisoryCostInput | undefined {

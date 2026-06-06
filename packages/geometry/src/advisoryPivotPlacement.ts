@@ -8,6 +8,7 @@ import type {
   PivotMachine,
   PivotProject,
   ProjectMapFeature,
+  SurveyPoint,
   XY,
 } from "@cplayout/core";
 import { squareMetersToAcres } from "@cplayout/core";
@@ -241,6 +242,7 @@ export type AdvisoryMachineStrategyKind =
   | "full_circle_same_radius"
   | "full_circle_radius"
   | "linear_lateral_move"
+  | "bender_second_pivot"
   | "unsupported_linear_lateral"
   | "unsupported_bender_second_pivot";
 
@@ -260,6 +262,7 @@ export interface AdvisoryMachineStrategyInput {
   strategyKind: AdvisoryMachineStrategyKind;
   machine?: PivotMachine;
   pathFeatureId?: string;
+  secondPivotPointId?: string;
   notes?: string;
   sourceRefs?: AdvisorySourceReference[];
 }
@@ -284,6 +287,10 @@ export interface AdvisoryMachineStrategyResult {
   sweepMode: PivotMachine["sweep"]["mode"] | "unsupported";
   bestCandidate: PivotPlacementCandidate | null;
   pathFeatureId?: string;
+  secondPivotPointId?: string;
+  secondPivotPoint?: XY;
+  benderPrimaryDistanceMeters?: number;
+  benderTailRadiusMeters?: number;
   candidateCount: number;
   irrigatedAcres: number;
   outsideFieldAcres: number;
@@ -368,6 +375,25 @@ export const DEFAULT_CORNER_ARM_SOURCE_REFS: AdvisorySourceReference[] = [
     url: "https://www.ndsu.edu/agriculture/extension/publications/selecting-sprinkler-irrigation-system",
     checkedAt: "2026-06-05",
     limit: "Extension guidance for planning context only; qualified review remains required.",
+  },
+];
+
+export const DEFAULT_BENDER_SECOND_PIVOT_SOURCE_REFS: AdvisorySourceReference[] = [
+  {
+    sourceId: "SRC-LOCAL-VFLEX-CORNER-GUIDANCE-SEQUENCING",
+    guideId: "local-vflex-corner-0998325",
+    page: 8,
+    lineRange: "131-190",
+    checkedAt: "2026-06-05",
+    limit: "Local design-guide summary identifies swing tower, sequencing, GPS guidance, and terrain-compensation context; CPLayout uses it only for advisory second-pivot review notes.",
+  },
+  {
+    sourceId: "SRC-LOCAL-PIVOT-DESIGN-PRESSURE-LOSS",
+    guideId: "local-pivot-design-0998236",
+    page: 74,
+    lineRange: "4118-4170",
+    checkedAt: "2026-06-05",
+    limit: "Local design-guide summary supports pressure and length review warnings only; it is not hydraulic or mechanical certification.",
   },
 ];
 
@@ -1107,6 +1133,7 @@ function buildMachineStrategyInputs(
     }];
   const currentRadius = machineRadiusMeters(project.machine);
   const linearPathFeatures = linearMovePathFeatures(project);
+  const benderSecondPivotPoints = benderSecondPivotEvidencePoints(project);
 
   if (project.machine.sweep.mode === "partial_circle" && currentRadius > 0) {
     inputs.push({
@@ -1158,6 +1185,18 @@ function buildMachineStrategyInputs(
     });
   }
 
+  for (const point of benderSecondPivotPoints) {
+    inputs.push({
+      id: `bender-second-pivot-${point.id}`,
+      label: point.label || "Bender / second pivot point",
+      strategyKind: "bender_second_pivot",
+      machine: project.machine,
+      secondPivotPointId: point.id,
+      sourceRefs: mergeSourceRefs(sourceRefs, DEFAULT_BENDER_SECOND_PIVOT_SOURCE_REFS),
+      notes: "Bender strategy uses an operator-labeled projected-XY second-pivot evidence point and a conservative tail-sweep opportunity envelope.",
+    });
+  }
+
   if (options.includeUnsupportedConceptPlaceholders !== false) {
     inputs.push(
       ...(linearPathFeatures.length === 0 ? [{
@@ -1167,13 +1206,13 @@ function buildMachineStrategyInputs(
         sourceRefs,
         notes: "Linear/lateral move design requires a separate path, guidance, water-supply, and travel-stop model.",
       } as AdvisoryMachineStrategyInput] : []),
-      {
+      ...(benderSecondPivotPoints.length === 0 ? [{
         id: "bender-second-pivot-placeholder",
         label: "Bender / second pivot point",
         strategyKind: "unsupported_bender_second_pivot",
         sourceRefs,
-        notes: "Bender or second-pivot behavior requires source-backed tower-pivot kinematics before scoring.",
-      },
+        notes: "Bender or second-pivot review requires operator-labeled projected-XY second-pivot evidence before CPLayout can build an advisory opportunity envelope.",
+      } as AdvisoryMachineStrategyInput] : []),
     );
   }
 
@@ -1202,6 +1241,7 @@ function evaluateMachineStrategy(
       sweepMode: "unsupported",
       bestCandidate: null,
       pathFeatureId: strategy.pathFeatureId,
+      secondPivotPointId: strategy.secondPivotPointId,
       candidateCount: 0,
       irrigatedAcres: 0,
       outsideFieldAcres: 0,
@@ -1219,6 +1259,10 @@ function evaluateMachineStrategy(
 
   if (strategy.strategyKind === "linear_lateral_move") {
     return evaluateLinearLateralStrategy(project, strategy, options, sourceRefs);
+  }
+
+  if (strategy.strategyKind === "bender_second_pivot") {
+    return evaluateBenderSecondPivotStrategy(project, strategy, options, sourceRefs);
   }
 
   const strategyProject: PivotProject = {
@@ -1274,9 +1318,166 @@ function unsupportedStrategyWarning(strategy: AdvisoryMachineStrategyInput): str
     return "Linear/lateral move scoring is not implemented; CPLayout needs a source-backed travel-path and water-supply model before ranking it.";
   }
   if (strategy.strategyKind === "unsupported_bender_second_pivot") {
-    return "Bender or second-pivot scoring is not implemented; CPLayout does not model tower-pivot kinematics yet.";
+    return "Bender/second-pivot opportunity review needs operator-labeled projected-XY second-pivot evidence; proprietary tower-pivot kinematics remain unmodeled.";
   }
   return null;
+}
+
+function evaluateBenderSecondPivotStrategy(
+  project: PivotProject,
+  strategy: AdvisoryMachineStrategyInput,
+  options: AdvisoryMachineStrategyComparisonOptions,
+  sourceRefs: AdvisorySourceReference[],
+): AdvisoryMachineStrategyResult {
+  const point = benderSecondPivotEvidencePoints(project).find((candidate) => candidate.id === strategy.secondPivotPointId);
+  const machine = strategy.machine;
+  const unsupportedBase = {
+    id: strategy.id,
+    label: strategy.label,
+    strategyKind: strategy.strategyKind,
+    advisoryOnly: true as const,
+    canonicalGeometryMutation: false as const,
+    qualifiedReviewRequired: true as const,
+    machineRadiusMeters: machine ? round(machineRadiusMeters(machine)) : 0,
+    spanCount: machine?.spanLengthsMeters.length ?? 0,
+    sweepMode: machine?.sweep.mode ?? "unsupported" as const,
+    bestCandidate: null,
+    secondPivotPointId: strategy.secondPivotPointId,
+    secondPivotPoint: point?.projected,
+    candidateCount: 0,
+    irrigatedAcres: 0,
+    outsideFieldAcres: 0,
+    coveragePercent: 0,
+    costAssessment: null,
+    costEfficiencyAcresPerHundredThousand: null,
+    advisoryScore: Number.NEGATIVE_INFINITY,
+    sourceRefs,
+  };
+
+  if (!machine || !point) {
+    return {
+      ...unsupportedBase,
+      status: "unsupported_model",
+      warnings: [
+        "Bender/second-pivot scoring requires an operator-labeled pivot_center survey point whose label or notes identify it as bender, second pivot, tower pivot, hinge, or drive tower evidence.",
+        ...(strategy.notes ? [strategy.notes] : []),
+      ],
+    };
+  }
+
+  const bender = evaluateBenderSecondPivotEnvelope(project, machine, point);
+  const costAssessment = assessAdvisoryCost({ ...project, machine }, bender.metrics.irrigatedAcres, options.costInput, sourceRefs);
+  const costEfficiencyAcresPerHundredThousand = costAssessment.estimatedCost
+    ? round(bender.metrics.irrigatedAcres / (costAssessment.estimatedCost / 100000))
+    : null;
+  const advisoryScore = round(
+    bender.metrics.irrigatedAcres
+    - Math.min(40, bender.metrics.outsideFieldAcres * 10)
+    - bender.metrics.hardMechanicalConflictCount * 35
+    - bender.metrics.obstacleConflictCount * 15
+    + (costEfficiencyAcresPerHundredThousand ?? 0),
+  );
+
+  return {
+    ...unsupportedBase,
+    status: bender.metrics.irrigatedAcres > 0 && bender.tailRadiusMeters > 0 ? "ready" : "no_feasible_candidate",
+    candidateCount: 1,
+    irrigatedAcres: bender.metrics.irrigatedAcres,
+    outsideFieldAcres: bender.metrics.outsideFieldAcres,
+    coveragePercent: bender.metrics.coveragePercent,
+    costAssessment,
+    costEfficiencyAcresPerHundredThousand,
+    advisoryScore,
+    benderPrimaryDistanceMeters: bender.primaryDistanceMeters,
+    benderTailRadiusMeters: bender.tailRadiusMeters,
+    warnings: [
+      `${strategy.label} is an advisory bender/second-pivot opportunity envelope only; applying it requires explicit operator edits and validation.`,
+      "Tail coverage is approximated as a full-circle sweep around the labeled projected-XY second pivot point using the remaining machine length beyond that point.",
+      "The model does not verify drive-tower hinge hardware, steering sequence, sprinkler timing, water supply, slope, interlocks, or manufacturer-specific controls.",
+      ...(strategy.notes ? [strategy.notes] : []),
+      ...bender.warnings,
+    ],
+  };
+}
+
+function evaluateBenderSecondPivotEnvelope(
+  project: PivotProject,
+  machine: PivotMachine,
+  point: SurveyPoint,
+): { metrics: LayoutMetrics; primaryDistanceMeters: number; tailRadiusMeters: number; warnings: string[] } {
+  const machineRadius = machineRadiusMeters(machine);
+  const primaryDistanceMeters = distance(project.pivotCenter, point.projected);
+  const tailRadiusMeters = Math.max(0, machineRadius - primaryDistanceMeters);
+  const fieldArea = polygonAreaSquareMeters(project.fieldBoundary);
+  const baseProject: PivotProject = { ...project, machine };
+  const baseResult = evaluateLayout(baseProject);
+  const noSprayObstacles = project.obstacles.filter((obstacle) => obstacle.noSpray);
+
+  if (machineRadius <= 0 || tailRadiusMeters <= 0) {
+    return {
+      metrics: {
+        ...baseResult.metrics,
+        irrigatedAcres: 0,
+        nonIrrigatedAcres: squareMetersToAcres(fieldArea),
+        coveragePercent: 0,
+      },
+      primaryDistanceMeters: round(primaryDistanceMeters),
+      tailRadiusMeters: round(tailRadiusMeters),
+      warnings: [
+        `Second pivot evidence is ${primaryDistanceMeters.toFixed(2)} meters from the primary pivot, which leaves no positive tail length from the current ${machineRadius.toFixed(2)} meter machine radius.`,
+      ],
+    };
+  }
+
+  const tailEnvelope: MultiPolygonXY = [[createCirclePolygon(point.projected, tailRadiusMeters, 96)]];
+  const tailInsideField = intersectMultiPolygons(tailEnvelope, [[project.fieldBoundary]]);
+  const tailAllowed = noSprayObstacles.reduce(
+    (current, obstacle) => differenceMultiPolygons(current, [[obstacle.polygon]]),
+    tailInsideField,
+  );
+  const combinedAllowed = unionMultiPolygons([...baseResult.allowedCoverage, ...tailAllowed]);
+  const combinedOutside = unionMultiPolygons([
+    ...baseResult.outsideFieldCoverage,
+    ...differenceMultiPolygons(tailEnvelope, [[project.fieldBoundary]]),
+  ]);
+  const benderEnvelope = unionMultiPolygons([
+    ...machineEnvelopeFor(baseProject, project.pivotCenter),
+    ...tailEnvelope,
+  ]);
+  const allowedArea = multiPolygonAreaSquareMeters(combinedAllowed);
+  const outsideArea = multiPolygonAreaSquareMeters(combinedOutside);
+  const obstacleConflictCount = project.obstacles.filter((obstacle) => (
+    multiPolygonAreaSquareMeters(intersectMultiPolygons(benderEnvelope, [[obstacle.polygon]])) > 0.000001
+  )).length;
+  const noSprayConflictCount = noSprayObstacles.filter((obstacle) => (
+    multiPolygonAreaSquareMeters(intersectMultiPolygons(benderEnvelope, [[obstacle.polygon]])) > 0.000001
+  )).length;
+  const hardMechanicalConflictCount = project.obstacles.filter((obstacle) => (
+    obstacle.hardConflict
+    && multiPolygonAreaSquareMeters(intersectMultiPolygons(benderEnvelope, [[obstacle.polygon]])) > 0.000001
+  )).length;
+
+  return {
+    metrics: {
+      fieldAcres: squareMetersToAcres(fieldArea),
+      irrigatedAcres: squareMetersToAcres(allowedArea),
+      nonIrrigatedAcres: squareMetersToAcres(Math.max(0, fieldArea - allowedArea)),
+      coveragePercent: fieldArea > 0 ? (allowedArea / fieldArea) * 100 : 0,
+      endGunAcres: baseResult.metrics.endGunAcres,
+      outsideFieldAcres: squareMetersToAcres(outsideArea),
+      obstacleConflictCount,
+      noSprayConflictCount,
+      hardMechanicalConflictCount,
+      towerTrackConflictCount: baseResult.metrics.towerTrackConflictCount,
+    },
+    primaryDistanceMeters: round(primaryDistanceMeters),
+    tailRadiusMeters: round(tailRadiusMeters),
+    warnings: [
+      `Second pivot evidence ${point.label} leaves an approximate ${tailRadiusMeters.toFixed(2)} meter tail-sweep radius.`,
+      ...(outsideArea > 0 ? [`Bender tail-sweep envelope extends outside the field by ${squareMetersToAcres(outsideArea).toFixed(2)} acres.`] : []),
+      ...(obstacleConflictCount > 0 ? [`Bender opportunity envelope intersects ${obstacleConflictCount} obstacle feature${obstacleConflictCount === 1 ? "" : "s"}.`] : []),
+    ],
+  };
 }
 
 function evaluateLinearLateralStrategy(
@@ -1299,6 +1500,7 @@ function evaluateLinearLateralStrategy(
     sweepMode: machine?.sweep.mode ?? "unsupported" as const,
     bestCandidate: null,
     pathFeatureId: strategy.pathFeatureId,
+    secondPivotPointId: strategy.secondPivotPointId,
     candidateCount: 0,
     irrigatedAcres: 0,
     outsideFieldAcres: 0,
@@ -1404,6 +1606,23 @@ function linearMovePathFeatures(project: PivotProject): ProjectMapFeature[] {
   return (project.mapFeatures ?? []).filter((feature) => feature.kind === "linear_move_path");
 }
 
+function benderSecondPivotEvidencePoints(project: PivotProject): SurveyPoint[] {
+  return project.surveyPoints.filter((point) => (
+    point.role === "pivot_center"
+    && point.projected
+    && Number.isFinite(point.projected.x)
+    && Number.isFinite(point.projected.y)
+    && benderSecondPivotEvidenceText(`${point.label} ${point.notes ?? ""}`)
+  ));
+}
+
+function benderSecondPivotEvidenceText(text: string): boolean {
+  if (/\b(no|not|without)\s+(?:a\s+)?(?:bender|second[-_\s]*pivot|tower[-_\s]*pivot|hinge|drive[-_\s]*tower|bend[-_\s]*point)\b/i.test(text)) {
+    return false;
+  }
+  return /\b(bender|second[-_\s]*pivot|tower[-_\s]*pivot|hinge|drive[-_\s]*tower|bend[-_\s]*point)\b/i.test(text);
+}
+
 function sweptStripForLineString(vertices: XY[], halfWidthMeters: number): MultiPolygonXY {
   if (vertices.length < 2 || halfWidthMeters <= 0) return [];
   const polygons: MultiPolygonXY = [];
@@ -1462,8 +1681,20 @@ function dedupeMachineStrategyInputs(inputs: AdvisoryMachineStrategyInput[]): Ad
   for (const input of inputs) {
     const radius = input.machine ? machineRadiusMeters(input.machine).toFixed(3) : "unsupported";
     const sweep = input.machine ? JSON.stringify(input.machine.sweep) : input.strategyKind;
-    const key = `${input.strategyKind}:${input.pathFeatureId ?? "no-path"}:${radius}:${sweep}`;
+    const key = `${input.strategyKind}:${input.pathFeatureId ?? "no-path"}:${input.secondPivotPointId ?? "no-second-pivot"}:${radius}:${sweep}`;
     if (!byKey.has(key)) byKey.set(key, input);
+  }
+  return [...byKey.values()];
+}
+
+function mergeSourceRefs(
+  primary: AdvisorySourceReference[],
+  secondary: AdvisorySourceReference[],
+): AdvisorySourceReference[] {
+  const byKey = new Map<string, AdvisorySourceReference>();
+  for (const sourceRef of [...primary, ...secondary]) {
+    const key = `${sourceRef.sourceId}:${sourceRef.guideId ?? ""}:${sourceRef.page ?? ""}:${sourceRef.lineRange ?? ""}`;
+    if (!byKey.has(key)) byKey.set(key, sourceRef);
   }
   return [...byKey.values()];
 }

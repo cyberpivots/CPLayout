@@ -794,6 +794,7 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByTestId("advisory-cost-review-panel")).toContainText("Cost Review");
   await expect(page.getByTestId("advisory-cost-status")).toContainText("will not infer machine prices");
+  await expect(page.getByTestId("advisory-bender-strategy-summary")).toContainText("operator-labeled projected-XY second-pivot evidence");
 
   await page.getByTestId("advisory-cost-fixed").fill("80000");
   await page.getByTestId("advisory-cost-per-meter").fill("700");

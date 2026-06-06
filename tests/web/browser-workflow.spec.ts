@@ -801,7 +801,7 @@ test("generated field pivot plan saves advisory machine-zone review features aft
 
   await page.getByTestId("save-generated-field-pivot-zones").click();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
-  await expect(page.getByTestId("generated-field-pivot-zone-save-status")).toHaveText(/Review zones saved: [1-9]\d*\/[1-9]\d*/);
+  await expect(page.getByTestId("generated-field-pivot-zone-save-status")).toHaveText(/Review zones: [1-9]\d* current \/ 0 missing \/ 0 stale/);
 
   await page.getByTestId("design-console-calculate").click();
   await expect.poll(
@@ -828,6 +828,10 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   await expect(page.getByTestId("advisory-full-scope-boundary-summary")).toContainText("canonical projected XY");
   await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("Generated Field Pivot Plan");
   await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("canonical projected XY");
+  await expect(page.getByTestId("advisory-design-report-panel")).toContainText("Advisory Design Report");
+  await expect(page.getByTestId("advisory-design-report-panel")).toContainText("does not create pivots");
+  await expect(page.getByTestId("advisory-review-zone-audit-summary")).toContainText("Review-zone audit");
+  await expect(page.getByTestId("advisory-design-report-preview")).toContainText("Canonical geometry mutation: false");
 
   await page.getByTestId("advisory-cost-fixed").fill("80000");
   await page.getByTestId("advisory-cost-per-meter").fill("700");
@@ -848,6 +852,19 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
     async () => page.getByTestId("placement-review-panel").evaluate((node) => node.textContent ?? ""),
     { timeout: 30000 },
   ).toContain("Cost input USD");
+  const reportDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-advisory-design-report").click();
+  const reportDownload = await reportDownloadPromise;
+  expect(reportDownload.suggestedFilename()).toMatch(/\.advisory-design-report\.txt$/);
+  const reportPath = await reportDownload.path();
+  expect(reportPath, "report download path").not.toBeNull();
+  const reportText = await readFile(reportPath!, "utf8");
+  expect(reportText).toContain("Advisory Design Report");
+  expect(reportText).toContain("Advisory only: true");
+  expect(reportText).toContain("Canonical geometry mutation: false");
+  expect(reportText).toContain("Review-zone audit:");
+  expect(reportText).toContain("Cost review is local and advisory");
+  await expect(page.getByTestId("advisory-design-report-export-status")).toContainText("Advisory report is review-only");
   await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
   await saveScreen(page, testInfo, "advisory-cost-review-local-assumptions");
 });

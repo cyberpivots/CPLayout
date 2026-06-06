@@ -67,7 +67,7 @@ import { SettingsPanel } from "./src/components/SettingsPanel";
 import { DrawingToolPalette, type DrawingToolPaletteModal } from "./src/components/DrawingToolPalette";
 import { useProjectRepository, type ProjectWorkspaceStatus } from "./src/hooks/useProjectRepository";
 import type { ClientRecord } from "@cplayout/project-store";
-import { rehydrateInstalledMapPackageManifestsAsync } from "@cplayout/project-store";
+import { exportFileAsync, rehydrateInstalledMapPackageManifestsAsync } from "@cplayout/project-store";
 import {
   COORDINATE_FORMAT_LABELS,
   MACHINE_CATALOG_PRESETS,
@@ -109,6 +109,8 @@ import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeAdvisoryObstacleInteractions,
   analyzeIdealPivotCenter,
+  auditGeneratedFieldPivotReviewZones,
+  buildAdvisoryDesignReport,
   buildDesignScenarioPreview,
   compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
@@ -119,7 +121,9 @@ import {
   type AdvisoryCostAssessment,
   type AdvisoryCostInput,
   type AdvisoryCornerArmEvaluation,
+  type AdvisoryDesignReport,
   type AdvisoryFieldPivotPlan,
+  type AdvisoryGeneratedReviewZoneAudit,
   type AdvisoryMachineStrategyComparison,
   type AdvisoryMultiMachineReview,
   type AdvisoryObstacleInteractionReview,
@@ -2243,7 +2247,28 @@ function CalculateSheet({
   }), [project]);
   const bestStrategy = strategyComparison.bestStrategy;
   const benderStrategy = benderStrategyForReview(strategyComparison);
-  const savedGeneratedZoneCount = countSavedGeneratedFieldPivotZones(project, fieldPivotPlan);
+  const reviewZoneAudit = useMemo<AdvisoryGeneratedReviewZoneAudit>(() => auditGeneratedFieldPivotReviewZones(project, fieldPivotPlan), [fieldPivotPlan, project]);
+  const [advisoryReportExportStatus, setAdvisoryReportExportStatus] = useState("Report export has not run.");
+  const advisoryDesignReport = useMemo<AdvisoryDesignReport>(() => buildAdvisoryDesignReport({
+    project,
+    result,
+    fieldPivotPlan,
+    multiMachineReview,
+    strategyComparison,
+    obstacleInteractionReview,
+    reviewZoneAudit,
+  }), [fieldPivotPlan, multiMachineReview, obstacleInteractionReview, project, result, reviewZoneAudit, strategyComparison]);
+
+  async function exportAdvisoryDesignReport(): Promise<void> {
+    try {
+      const filename = `${slugIdPart(project.id)}.advisory-design-report.txt`;
+      const outcome = await exportFileAsync(filename, advisoryDesignReport.text, { mimeType: "text/plain;charset=utf-8" });
+      setAdvisoryReportExportStatus(`${outcome.message} Advisory report is review-only and did not change canonical projected XY or project storage.`);
+    } catch (error) {
+      setAdvisoryReportExportStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   return (
     <View style={styles.machineForm}>
       <View style={styles.metricGrid}>
@@ -2308,7 +2333,7 @@ function CalculateSheet({
         <Text style={styles.mapFeatureMeta}>
           Generated field-pivot planning is advisory only. Save Review Zones creates projected-XY machine-zone map features for review; it does not create saved pivots, change the active pivot, or mutate canonical projected XY automatically.
         </Text>
-        <Text style={styles.mapFeatureMeta} testID="generated-field-pivot-zone-save-status">Review zones saved: {savedGeneratedZoneCount}/{fieldPivotPlan.selectedMachineCount}</Text>
+        <Text style={styles.mapFeatureMeta} testID="generated-field-pivot-zone-save-status">Review zones: {reviewZoneAudit.currentCount} current / {reviewZoneAudit.missingCount} missing / {reviewZoneAudit.staleCount} stale</Text>
         <View style={styles.inlineActions}>
           <SmallActionButton
             disabled={fieldPivotPlan.selectedMachineCount === 0}
@@ -2317,6 +2342,28 @@ function CalculateSheet({
             testID="save-generated-field-pivot-zones"
           />
         </View>
+      </View>
+      <View style={styles.placementReviewPanel} testID="advisory-design-report-panel">
+        <View style={styles.scenarioRowHeader}>
+          <Text style={styles.rowTitle}>Advisory Design Report</Text>
+          <Text style={styles.scenarioScore}>{advisoryDesignReport.readiness.replaceAll("_", " ")}</Text>
+        </View>
+        <Text style={styles.rowMeta} testID="advisory-design-report-headline">{advisoryDesignReport.headline}</Text>
+        <Text style={styles.mapFeatureMeta} testID="advisory-review-zone-audit-summary">
+          Review-zone audit: {reviewZoneAudit.currentCount} current, {reviewZoneAudit.missingCount} missing, {reviewZoneAudit.staleCount} stale.
+        </Text>
+        <Text style={styles.mapFeatureMeta}>
+          The generated report is a local review packet only. It does not create pivots, certify a design, quote equipment, mutate canonical projected XY, or save into project archives.
+        </Text>
+        <View style={styles.codeBlock}>
+          <Text style={styles.codeText} numberOfLines={10} testID="advisory-design-report-preview">
+            {advisoryDesignReport.text}
+          </Text>
+        </View>
+        <View style={styles.inlineActions}>
+          <SmallActionButton label="Export Report" onPress={exportAdvisoryDesignReport} testID="export-advisory-design-report" />
+        </View>
+        <Text style={styles.mapFeatureMeta} testID="advisory-design-report-export-status">{advisoryReportExportStatus}</Text>
       </View>
       <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
@@ -3201,11 +3248,6 @@ function generatedFieldPivotZoneFeature(project: PivotProject, candidate: Adviso
       machineRadiusMeters: candidate.machineRadiusMeters,
     },
   };
-}
-
-function countSavedGeneratedFieldPivotZones(project: PivotProject, plan: AdvisoryFieldPivotPlan): number {
-  const mapFeatures = project.mapFeatures ?? [];
-  return plan.candidates.filter((candidate) => mapFeatures.some((feature) => feature.id === generatedFieldPivotZoneFeatureId(project.id, candidate.sequence))).length;
 }
 
 function generatedFieldPivotZoneFeatureId(projectId: string, sequence: number): string {

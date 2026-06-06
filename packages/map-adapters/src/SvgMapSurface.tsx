@@ -1262,13 +1262,17 @@ function LegendSwatch({ color, label }: { color: string; label: string }): React
 
 function colorForMapFeature(kind: ProjectMapFeatureKind, palette: MapPalette): string {
   if (kind === "power_line" || kind === "power_pole") return palette.power;
-  if (kind === "underground_pipeline" || kind === "pump_location") return palette.water;
+  if (kind === "underground_wire") return palette.power;
+  if (kind === "underground_pipeline" || kind === "pump_location" || kind === "well_location") return palette.water;
+  if (kind === "planning_boundary" || kind === "machine_zone" || kind === "measurement_line") return palette.fieldStroke;
   if (kind === "tree") return palette.survey;
   return palette.utility;
 }
 
 function dashForMapFeature(kind: ProjectMapFeatureKind): string | undefined {
-  if (kind === "underground_pipeline") return "12 8";
+  if (kind === "underground_pipeline" || kind === "underground_wire") return "12 8";
+  if (kind === "planning_boundary" || kind === "machine_zone") return "18 8";
+  if (kind === "measurement_line") return "4 6";
   if (kind === "fence") return "5 5";
   if (kind === "ditch" || kind === "canal") return "14 7 4 7";
   return undefined;
@@ -1278,10 +1282,18 @@ function shortMapFeatureLabel(kind: ProjectMapFeatureKind): string {
   switch (kind) {
     case "pump_location":
       return "Pump";
+    case "well_location":
+      return "Well";
     case "power_pole":
       return "Pole";
     case "tree":
       return "Tree";
+    case "planning_boundary":
+      return "Plan";
+    case "machine_zone":
+      return "Zone";
+    case "measurement_line":
+      return "Measure";
     case "end_gun_mark":
       return "EG";
     default:

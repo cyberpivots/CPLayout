@@ -35,6 +35,11 @@ export interface PivotPlacementCandidateOptions {
   powerSourceWeight?: number;
   accessWeight?: number;
   includeMaximumInscribedCircleSeed?: boolean;
+  includeMachineZoneReviews?: boolean;
+  minimumBoundaryClearanceMeters?: number;
+  minimumObstacleClearanceMeters?: number;
+  obstacleCrossingProfiles?: AdvisoryObstacleCrossingProfile[];
+  costInput?: AdvisoryCostInput;
   sourceRefs?: AdvisorySourceReference[];
 }
 
@@ -46,7 +51,37 @@ export interface PivotPlacementScoreBreakdown {
   powerSourceProximity: number;
   accessProximity: number;
   dryCornerPenalty: number;
+  costEfficiency: number;
   feasibility: number;
+}
+
+export interface AdvisoryCostInput {
+  fixedMachineCost?: number;
+  costPerMeter?: number;
+  costPerTower?: number;
+  currencyCode?: string;
+  notes?: string;
+  sourceRefs?: AdvisorySourceReference[];
+}
+
+export interface AdvisoryCostAssessment {
+  status: "complete" | "missing_cost_input" | "invalid_cost_input" | "no_irrigated_acres";
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  estimatedCost: number | null;
+  costPerIrrigatedAcre: number | null;
+  currencyCode: string;
+  sourceRefs: AdvisorySourceReference[];
+  warnings: string[];
+}
+
+export interface AdvisoryObstacleCrossingProfile {
+  obstacleId: string;
+  crossingAllowed: boolean;
+  minimumClearanceMeters?: number;
+  reason: string;
+  sourceRefs?: AdvisorySourceReference[];
+  advisoryOnly: true;
 }
 
 export interface PivotPlacementCandidate {
@@ -67,6 +102,10 @@ export interface PivotPlacementCandidate {
   distanceToWaterSourceMeters: number;
   distanceToPowerSourceMeters: number;
   distanceToAccessMeters: number | null;
+  minimumRequiredBoundaryClearanceMeters: number;
+  minimumRequiredObstacleClearanceMeters: number;
+  obstacleCrossingProfileIds: string[];
+  costAssessment: AdvisoryCostAssessment;
   warnings: string[];
   disqualificationReasons: string[];
   sourceRefs: AdvisorySourceReference[];
@@ -84,7 +123,23 @@ export interface IdealCenterPointAnalysis {
   fieldBoundaryVertexCount: number;
   bestCandidate: PivotPlacementCandidate | null;
   candidates: PivotPlacementCandidate[];
+  machineZoneReviews: AdvisoryMachineZoneReview[];
   blockers: string[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
+export interface AdvisoryMachineZoneReview {
+  featureId: string;
+  featureName: string;
+  featureKind: "planning_boundary" | "machine_zone";
+  status: "ready" | "unsupported_geometry" | "no_feasible_candidate";
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  boundaryVertexCount: number;
+  bestCandidate: PivotPlacementCandidate | null;
+  candidateCount: number;
   warnings: string[];
   sourceRefs: AdvisorySourceReference[];
 }
@@ -196,12 +251,16 @@ export function analyzeIdealPivotCenter(
       status: "no_boundary",
       bestCandidate: null,
       candidates: [],
+      machineZoneReviews: [],
       blockers: ["At least three projected-XY field boundary vertices are required before ideal center-point analysis."],
       warnings: ["Automatic center-point analysis did not run because the field boundary is incomplete."],
     };
   }
 
   const candidates = buildPivotPlacementCandidates(project, options);
+  const machineZoneReviews = options.includeMachineZoneReviews === false
+    ? []
+    : buildMachineZoneReviews(project, options, sourceRefs);
   const bestCandidate = candidates.find((candidate) => candidate.feasible && candidate.insideFieldBoundary) ?? null;
   const status: IdealCenterPointAnalysisStatus = bestCandidate
     ? "ready"
@@ -224,6 +283,7 @@ export function analyzeIdealPivotCenter(
     status,
     bestCandidate,
     candidates,
+    machineZoneReviews,
     blockers,
     warnings,
   };
@@ -335,11 +395,15 @@ function candidateFromProject(
   const insideFieldBoundary = pointInPolygon(pivotCenter, originalProject.fieldBoundary);
   const boundaryClearanceMeters = (insideFieldBoundary ? 1 : -1) * distanceToRing(pivotCenter, originalProject.fieldBoundary);
   const minimumObstacleClearanceMeters = minimumObstacleClearance(pivotCenter, originalProject, obstacleBufferMeters);
+  const minimumRequiredBoundaryClearanceMeters = Math.max(0, options.minimumBoundaryClearanceMeters ?? 0);
+  const minimumRequiredObstacleClearanceMeters = Math.max(0, options.minimumObstacleClearanceMeters ?? 0);
+  const obstacleCrossingProfileIds = matchingCrossingProfileIds(originalProject, options.obstacleCrossingProfiles ?? []);
   const distanceFromCurrentMeters = distance(pivotCenter, originalProject.pivotCenter);
   const distanceToWaterSourceMeters = distance(pivotCenter, originalProject.waterSource);
   const distanceToPowerSourceMeters = distance(pivotCenter, originalProject.powerSource);
   const distanceToAccessMeters = distanceToAccess(pivotCenter, originalProject);
   const feasible = alternative?.feasible ?? (result.metrics.outsideFieldAcres <= 0.0001 && result.metrics.obstacleConflictCount === 0);
+  const costAssessment = assessAdvisoryCost(originalProject, result.metrics.irrigatedAcres, options.costInput, sourceRefs);
   const scoreBreakdown = placementScoreBreakdown({
     metrics: result.metrics,
     dryCornerAcres,
@@ -352,12 +416,15 @@ function candidateFromProject(
     waterSourceWeight: options.waterSourceWeight ?? 8,
     powerSourceWeight: options.powerSourceWeight ?? 6,
     accessWeight: options.accessWeight ?? 4,
+    costPerIrrigatedAcre: costAssessment.costPerIrrigatedAcre,
   });
   const score = totalPlacementScore(scoreBreakdown);
   const disqualificationReasons = [
     ...(alternative?.disqualificationReasons ?? []),
     ...(!insideFieldBoundary ? ["Candidate pivot center is outside the field boundary."] : []),
+    ...(boundaryClearanceMeters < minimumRequiredBoundaryClearanceMeters ? [`Candidate boundary clearance ${boundaryClearanceMeters.toFixed(2)} meters is below required ${minimumRequiredBoundaryClearanceMeters.toFixed(2)} meters.`] : []),
     ...(minimumObstacleClearanceMeters !== null && minimumObstacleClearanceMeters < 0 ? [`Candidate is inside obstacle buffer by ${Math.abs(minimumObstacleClearanceMeters).toFixed(2)} meters.`] : []),
+    ...(minimumObstacleClearanceMeters !== null && minimumObstacleClearanceMeters < minimumRequiredObstacleClearanceMeters ? [`Candidate obstacle clearance ${minimumObstacleClearanceMeters.toFixed(2)} meters is below required ${minimumRequiredObstacleClearanceMeters.toFixed(2)} meters.`] : []),
   ];
 
   return {
@@ -378,8 +445,14 @@ function candidateFromProject(
     distanceToWaterSourceMeters,
     distanceToPowerSourceMeters,
     distanceToAccessMeters,
+    minimumRequiredBoundaryClearanceMeters,
+    minimumRequiredObstacleClearanceMeters,
+    obstacleCrossingProfileIds,
+    costAssessment,
     warnings: [
       ...result.warnings,
+      ...(costAssessment.status === "missing_cost_input" ? ["Cost efficiency is incomplete because no explicit local cost input was supplied."] : []),
+      ...(obstacleCrossingProfileIds.length > 0 ? [`${obstacleCrossingProfileIds.length} obstacle crossing profile${obstacleCrossingProfileIds.length === 1 ? "" : "s"} are advisory only; layout metrics still use project hard/no-spray obstacle settings.`] : []),
       "Placement candidate is advisory; apply requires explicit operator confirmation.",
     ],
     disqualificationReasons,
@@ -400,10 +473,14 @@ function placementScoreBreakdown(input: {
   waterSourceWeight: number;
   powerSourceWeight: number;
   accessWeight: number;
+  costPerIrrigatedAcre: number | null;
 }): PivotPlacementScoreBreakdown {
   const obstacleClearance = input.minimumObstacleClearanceMeters === null
     ? 0
     : Math.max(-35, Math.min(18, input.minimumObstacleClearanceMeters / 2));
+  const costEfficiency = input.costPerIrrigatedAcre === null
+    ? 0
+    : -Math.max(0, Math.min(35, input.costPerIrrigatedAcre / 1000));
   return {
     coverage: round(input.metrics.irrigatedAcres),
     boundaryFit: round(-Math.min(40, input.metrics.outsideFieldAcres * 10)),
@@ -412,12 +489,128 @@ function placementScoreBreakdown(input: {
     powerSourceProximity: round(proximityScore(input.distanceToPowerSourceMeters, input.diagonal, input.powerSourceWeight)),
     accessProximity: round(input.distanceToAccessMeters === null ? 0 : proximityScore(input.distanceToAccessMeters, input.diagonal, input.accessWeight)),
     dryCornerPenalty: round(-Math.min(35, input.dryCornerAcres * 0.18)),
+    costEfficiency: round(costEfficiency),
     feasibility: input.feasible ? 35 : -75,
   };
 }
 
 function totalPlacementScore(breakdown: PivotPlacementScoreBreakdown): number {
   return round(Object.values(breakdown).reduce((sum, value) => sum + value, 0));
+}
+
+function assessAdvisoryCost(
+  project: PivotProject,
+  irrigatedAcres: number,
+  input: AdvisoryCostInput | undefined,
+  defaultSourceRefs: AdvisorySourceReference[],
+): AdvisoryCostAssessment {
+  const sourceRefs = input?.sourceRefs ?? defaultSourceRefs;
+  const base = {
+    advisoryOnly: true as const,
+    canonicalGeometryMutation: false as const,
+    estimatedCost: null,
+    costPerIrrigatedAcre: null,
+    currencyCode: input?.currencyCode?.trim() || "USD",
+    sourceRefs,
+  };
+  if (!input) {
+    return {
+      ...base,
+      status: "missing_cost_input",
+      warnings: ["No explicit local cost input was supplied; CPLayout did not infer machine price."],
+    };
+  }
+  const fixedMachineCost = input.fixedMachineCost ?? 0;
+  const costPerMeter = input.costPerMeter ?? 0;
+  const costPerTower = input.costPerTower ?? 0;
+  if (
+    !Number.isFinite(fixedMachineCost)
+    || !Number.isFinite(costPerMeter)
+    || !Number.isFinite(costPerTower)
+    || fixedMachineCost < 0
+    || costPerMeter < 0
+    || costPerTower < 0
+    || fixedMachineCost + costPerMeter + costPerTower <= 0
+  ) {
+    return {
+      ...base,
+      status: "invalid_cost_input",
+      warnings: ["Cost input must include at least one nonnegative fixed, per-meter, or per-tower value."],
+    };
+  }
+  const estimatedCost = fixedMachineCost
+    + machineRadiusMeters(project.machine) * costPerMeter
+    + project.machine.spanLengthsMeters.length * costPerTower;
+  if (irrigatedAcres <= 0) {
+    return {
+      ...base,
+      status: "no_irrigated_acres",
+      estimatedCost: round(estimatedCost),
+      warnings: ["Cost per irrigated acre was not computed because modeled irrigated acres are zero."],
+    };
+  }
+  return {
+    ...base,
+    status: "complete",
+    estimatedCost: round(estimatedCost),
+    costPerIrrigatedAcre: round(estimatedCost / irrigatedAcres),
+    warnings: [
+      "Cost efficiency uses operator-supplied local cost inputs only and is not a price quote.",
+      ...(input.notes ? [input.notes] : []),
+    ],
+  };
+}
+
+function buildMachineZoneReviews(
+  project: PivotProject,
+  options: PivotPlacementCandidateOptions,
+  sourceRefs: AdvisorySourceReference[],
+): AdvisoryMachineZoneReview[] {
+  const zoneFeatures = (project.mapFeatures ?? []).filter((feature) => (
+    feature.kind === "planning_boundary" || feature.kind === "machine_zone"
+  ));
+  return zoneFeatures.map((feature): AdvisoryMachineZoneReview => {
+    const zoneBoundary = mapFeatureBoundary(feature);
+    const base = {
+      featureId: feature.id,
+      featureName: feature.name,
+      featureKind: feature.kind as "planning_boundary" | "machine_zone",
+      advisoryOnly: true as const,
+      canonicalGeometryMutation: false as const,
+      qualifiedReviewRequired: true as const,
+      boundaryVertexCount: zoneBoundary?.length ?? 0,
+      sourceRefs,
+    };
+    if (!zoneBoundary || zoneBoundary.length < 3) {
+      return {
+        ...base,
+        status: "unsupported_geometry",
+        bestCandidate: null,
+        candidateCount: 0,
+        warnings: ["Machine-zone review requires a polygon or circle map feature with at least three projected-XY vertices."],
+      };
+    }
+    const zoneProject: PivotProject = {
+      ...project,
+      fieldBoundary: zoneBoundary,
+    };
+    const candidates = buildPivotPlacementCandidates(zoneProject, {
+      ...options,
+      includeMachineZoneReviews: false,
+      sourceRefs,
+    });
+    const bestCandidate = candidates.find((candidate) => candidate.feasible && candidate.insideFieldBoundary) ?? null;
+    return {
+      ...base,
+      status: bestCandidate ? "ready" : "no_feasible_candidate",
+      bestCandidate,
+      candidateCount: candidates.length,
+      warnings: [
+        `${feature.kind.replaceAll("_", " ")} review is transient and does not create another pivot, zone, or canonical field boundary.`,
+        ...(bestCandidate ? [] : ["No feasible center candidate was found inside this advisory zone."]),
+      ],
+    };
+  });
 }
 
 function dryCornerPolygonsFor(project: PivotProject, allowedCoverage: MultiPolygonXY): MultiPolygonXY {
@@ -464,6 +657,16 @@ function minimumObstacleClearance(point: XY, project: PivotProject, additionalBu
   }, Number.POSITIVE_INFINITY);
 }
 
+function matchingCrossingProfileIds(
+  project: PivotProject,
+  profiles: AdvisoryObstacleCrossingProfile[],
+): string[] {
+  const obstacleIds = new Set(project.obstacles.map((obstacle) => obstacle.id));
+  return profiles
+    .filter((profile) => profile.advisoryOnly === true && obstacleIds.has(profile.obstacleId))
+    .map((profile) => profile.obstacleId);
+}
+
 function distanceToAccess(point: XY, project: PivotProject): number | null {
   const candidates: number[] = [];
   for (const obstacle of project.obstacles) {
@@ -483,6 +686,12 @@ function distanceToMapFeature(point: XY, feature: ProjectMapFeature): number {
   const vertices = feature.geometry.vertices;
   if (feature.geometry.type === "Polygon") return distanceToRing(point, vertices);
   return distanceToLineString(point, vertices);
+}
+
+function mapFeatureBoundary(feature: ProjectMapFeature): XY[] | null {
+  if (feature.geometry.type === "Polygon") return feature.geometry.vertices;
+  if (feature.geometry.type === "Circle") return createCirclePolygon(feature.geometry.center, feature.geometry.radiusMeters, 96);
+  return null;
 }
 
 function distanceToLineString(point: XY, vertices: XY[]): number {

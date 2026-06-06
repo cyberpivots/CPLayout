@@ -445,7 +445,7 @@ function kmlImportItems(result: GoogleEarthKmlImportResult): { id: string; title
   const items = result.items.map((item) => ({
     id: item.id,
     title: item.name,
-    detail: `${item.classification.replaceAll("_", " ")} · ${item.geometryType}${item.warning ? ` · ${item.warning}` : ""}`,
+    detail: `${item.classification.replaceAll("_", " ")}${item.featureKind ? ` · ${item.featureKind.replaceAll("_", " ")}` : ""} · ${item.geometryType}${item.warning ? ` · ${item.warning}` : ""}`,
   }));
   return items.length > 0
     ? items

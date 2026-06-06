@@ -112,6 +112,7 @@ import {
   evaluateLayout,
   exportScenarioGeoJson,
   machineRadiusMeters,
+  type AdvisoryCostAssessment,
   type AdvisoryCornerArmEvaluation,
   type DesignScenarioPreview,
   type DrawingLayerType,
@@ -1758,6 +1759,7 @@ function PointToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode
       <ConsoleChoiceButton label="Control Point" meta="Capture a manual control point." onPress={() => onActivateTool("capture_point", "control_point")} />
       <ConsoleChoiceButton label="Note Point" meta="Capture a map note point." onPress={() => onActivateTool("capture_point", "note_point")} />
       <ConsoleChoiceButton label="Pump Feature" meta="Save a pump location map feature from one click." onPress={() => onActivateTool("measure", "control_point", "pump_location")} />
+      <ConsoleChoiceButton label="Well Feature" meta="Save a well or water-source evidence point from one click." onPress={() => onActivateTool("measure", "control_point", "well_location")} />
       <ConsoleChoiceButton label="Power Pole" meta="Save a utility pole map feature from one click." onPress={() => onActivateTool("measure", "control_point", "power_pole")} />
       <ConsoleChoiceButton label="Tree Point" meta="Save a tree map feature from one click." onPress={() => onActivateTool("measure", "control_point", "tree")} />
     </View>
@@ -1767,6 +1769,8 @@ function PointToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode
 function LineToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
   const lineKinds: Array<{ kind: ProjectMapFeatureKind; label: string; meta: string }> = [
     { kind: "underground_pipeline", label: "Pipeline", meta: "Click line vertices for buried main or lateral route." },
+    { kind: "underground_wire", label: "Underground Wire", meta: "Click vertices for buried power or control wire route evidence." },
+    { kind: "measurement_line", label: "Measurement Line", meta: "Click vertices for imported or field-measured reference distance." },
     { kind: "power_line", label: "Power Line", meta: "Click vertices for overhead or buried power path." },
     { kind: "fence", label: "Fence", meta: "Trace fence path as a utility line." },
     { kind: "access_lane", label: "Access Lane", meta: "Trace farm access or service path." },
@@ -1787,6 +1791,8 @@ function PolygonToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMo
   return (
     <View style={styles.consoleChoiceGrid}>
       <ConsoleChoiceButton label="Field Boundary" meta="Click vertices; snap or double-click near the first point to close." onPress={() => onActivateTool("draw_boundary", "field_boundary")} />
+      <ConsoleChoiceButton label="Planning Boundary" meta="Draw advisory full-scope boundary evidence without replacing the active field." onPress={() => onActivateTool("measure", "control_point", "planning_boundary")} />
+      <ConsoleChoiceButton label="Machine Zone" meta="Draw advisory zone evidence for a single pivot or machine footprint." onPress={() => onActivateTool("measure", "control_point", "machine_zone")} />
       <ConsoleChoiceButton label="Obstacle / No-Spray" meta="Draw a hard-conflict no-spray exclusion polygon." onPress={() => onActivateTool("mark_obstacle", "exclusion")} />
       <ConsoleChoiceButton label="Building Footprint" meta="Draw a building obstacle polygon." onPress={() => onActivateTool("mark_obstacle", "building")} />
       <ConsoleChoiceButton label="Corner-Arm Footprint" meta="Draw advisory vendor/operator footprint evidence." onPress={() => onActivateTool("measure", "control_point", "corner_swing_limit")} />
@@ -2461,7 +2467,11 @@ function DesignBuilderPanel({
         <Text style={styles.mapFeatureMeta}>Corner-arm inputs are advisory footprints only until operator/vendor coverage and track geometry are supplied. They do not change end-gun settings.</Text>
       </DesignStep>
 
-      <DesignStep index={7} title="Calculate Preview" meta={preview ? `${preview.length} scenarios` : "Not calculated"}>
+      <DesignStep index={7} title="Awareness / Design Review" meta={`${awarenessFeatureCount(project)} evidence features`}>
+        <DesignAwarenessPanel project={project} result={result} settings={settings} />
+      </DesignStep>
+
+      <DesignStep index={8} title="Calculate Preview" meta={preview ? `${preview.length} scenarios` : "Not calculated"}>
         <Pressable accessibilityRole="button" onPress={onCalculate} style={styles.calculateButton} testID="design-builder-calculate">
           <Calculator size={16} color="#ffffff" />
           <Text style={styles.calculateButtonText}>Calculate</Text>
@@ -2469,6 +2479,40 @@ function DesignBuilderPanel({
         {editorError ? <Text style={styles.formError}>{editorError}</Text> : null}
         <ScenarioPreviewList preview={preview} settings={settings} />
       </DesignStep>
+    </View>
+  );
+}
+
+function DesignAwarenessPanel({
+  project,
+  result,
+  settings,
+}: {
+  project: PivotProject;
+  result: ReturnType<typeof evaluateLayout>;
+  settings: AppSettings;
+}): React.JSX.Element {
+  const features = project.mapFeatures ?? [];
+  const planningBoundaries = features.filter((feature) => feature.kind === "planning_boundary").length;
+  const machineZones = features.filter((feature) => feature.kind === "machine_zone").length;
+  const measurementLines = features.filter((feature) => feature.kind === "measurement_line");
+  const wells = features.filter((feature) => feature.kind === "well_location").length;
+  const undergroundWire = features.filter((feature) => feature.kind === "underground_wire").length;
+  const pivotEvidence = project.surveyPoints.filter((point) => point.role === "pivot_center" && point.source === "imported").length;
+  const measurementLength = measurementLines.reduce((sum, feature) => sum + mapFeatureLengthMeters(feature), 0);
+  return (
+    <View style={styles.mapFeatureEditor} testID="design-awareness-panel">
+      <View style={styles.metricGrid}>
+        <MetricTile label="Machine zones" value={`${machineZones}`} tone={machineZones > 0 ? "neutral" : "warn"} />
+        <MetricTile label="Planning boundaries" value={`${planningBoundaries}`} />
+        <MetricTile label="Measurement lines" value={measurementLines.length > 0 ? formatDistance(measurementLength, settings.unitSystem) : "0"} />
+        <MetricTile label="Existing pivots" value={`${pivotEvidence}`} tone={pivotEvidence > 0 ? "neutral" : "warn"} />
+        <MetricTile label="Wells" value={`${wells}`} />
+        <MetricTile label="Underground wire" value={`${undergroundWire}`} />
+        <MetricTile label="Hard conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
+        <MetricTile label="Outside wet" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "warn" : "good"} />
+      </View>
+      <Text style={styles.mapFeatureMeta}>Awareness evidence supports review and scenario planning only. Additional machine zones, measurement lines, wells, and wire paths do not create pivots or mutate canonical projected XY automatically.</Text>
     </View>
   );
 }
@@ -2653,11 +2697,16 @@ function IdealCenterSummary({
             <MetricTile label="Best score" value={best.score.toFixed(1)} tone="good" />
             <MetricTile label="Boundary clearance" value={formatDistance(best.boundaryClearanceMeters, settings.unitSystem)} tone={best.boundaryClearanceMeters >= 0 ? "good" : "danger"} />
             <MetricTile label="Move from current" value={formatDistance(best.distanceFromCurrentMeters, settings.unitSystem)} />
+            <MetricTile label="Cost input" value={costAssessmentLabel(best.costAssessment)} tone={best.costAssessment.status === "complete" ? "neutral" : "warn"} />
           </View>
           <Text style={styles.rowMeta}>
             XY {best.pivotCenter.x.toFixed(2)}, {best.pivotCenter.y.toFixed(2)} · {formatAreaFromAcres(best.metrics.irrigatedAcres, settings.unitSystem)} irrigated · outside {formatAreaFromAcres(best.metrics.outsideFieldAcres, settings.unitSystem)}
           </Text>
           <Text style={styles.scoreBreakdown}>{formatPlacementScoreBreakdown(best)}</Text>
+          <Text style={styles.mapFeatureMeta}>{formatCostAssessment(best.costAssessment)}</Text>
+          {analysis.machineZoneReviews.length > 0 ? (
+            <Text style={styles.mapFeatureMeta}>{analysis.machineZoneReviews.length} advisory machine-zone review{analysis.machineZoneReviews.length === 1 ? "" : "s"} available in Placement Review.</Text>
+          ) : null}
           <View style={styles.inlineActions}>
             <SmallActionButton disabled={!best.feasible} label="Apply Ideal Center" onPress={() => onRequestApplyPivotCandidate(best)} testID="ideal-center-apply" />
           </View>
@@ -2696,6 +2745,23 @@ function PlacementReviewPanel({
       {!candidates ? (
         <Text style={styles.mapFeatureMeta}>Automatic center alternatives update after Calculate Preview.</Text>
       ) : null}
+      {analysis?.machineZoneReviews.map((zone) => (
+        <View key={zone.featureId} style={styles.placementCandidateRow} testID={`machine-zone-review-${zone.featureId}`}>
+          <View style={styles.scenarioRowHeader}>
+            <Text style={styles.rowTitle}>{zone.featureName}</Text>
+            <Text style={styles.scenarioScore}>{zone.status.replaceAll("_", " ")}</Text>
+          </View>
+          <Text style={styles.rowMeta}>
+            {zone.featureKind.replaceAll("_", " ")} · {zone.boundaryVertexCount} projected-XY vertices · {zone.candidateCount} candidates
+          </Text>
+          {zone.bestCandidate ? (
+            <Text style={styles.rowMeta}>
+              Best XY {zone.bestCandidate.pivotCenter.x.toFixed(2)}, {zone.bestCandidate.pivotCenter.y.toFixed(2)} · {formatAreaFromAcres(zone.bestCandidate.metrics.irrigatedAcres, settings.unitSystem)}
+            </Text>
+          ) : null}
+          {zone.warnings[0] ? <Text style={styles.mapFeatureMeta}>{zone.warnings[0]}</Text> : null}
+        </View>
+      ))}
       {candidates?.map((candidate, index) => (
         <View key={candidate.id} style={[styles.placementCandidateRow, candidate.feasible ? styles.scenarioRowFeasible : styles.scenarioRowRejected]} testID={`placement-candidate-${index}`}>
           <View style={styles.scenarioRowHeader}>
@@ -2712,6 +2778,7 @@ function PlacementReviewPanel({
             clearance {formatDistance(candidate.boundaryClearanceMeters, settings.unitSystem)} · move {formatDistance(candidate.distanceFromCurrentMeters, settings.unitSystem)}
           </Text>
           <Text style={styles.scoreBreakdown}>{formatPlacementScoreBreakdown(candidate)}</Text>
+          <Text style={styles.mapFeatureMeta}>{formatCostAssessment(candidate.costAssessment)}</Text>
           {candidate.disqualificationReasons[0] ? <Text style={styles.formError}>{candidate.disqualificationReasons[0]}</Text> : null}
           {candidate.warnings[0] ? <Text style={styles.mapFeatureMeta}>{candidate.warnings[0]}</Text> : null}
           <View style={styles.inlineActions}>
@@ -2772,8 +2839,46 @@ function formatPlacementScoreBreakdown(candidate: PivotPlacementCandidate): stri
     `power ${breakdown.powerSourceProximity.toFixed(1)}`,
     `access ${breakdown.accessProximity.toFixed(1)}`,
     `dry ${breakdown.dryCornerPenalty.toFixed(1)}`,
+    `cost ${breakdown.costEfficiency.toFixed(1)}`,
     `feasibility ${breakdown.feasibility.toFixed(1)}`,
   ].join(" · ");
+}
+
+function costAssessmentLabel(assessment: AdvisoryCostAssessment): string {
+  if (assessment.status === "complete") return `${assessment.currencyCode}/ac`;
+  return assessment.status.replaceAll("_", " ");
+}
+
+function formatCostAssessment(assessment: AdvisoryCostAssessment): string {
+  if (assessment.status === "complete" && assessment.estimatedCost !== null && assessment.costPerIrrigatedAcre !== null) {
+    return `Cost input ${assessment.currencyCode} ${assessment.estimatedCost.toFixed(0)} · ${assessment.currencyCode} ${assessment.costPerIrrigatedAcre.toFixed(0)} per irrigated acre.`;
+  }
+  return assessment.warnings[0] ?? "Cost efficiency is incomplete.";
+}
+
+function awarenessFeatureCount(project: PivotProject): number {
+  return (project.mapFeatures ?? []).filter((feature) => (
+    feature.kind === "planning_boundary"
+    || feature.kind === "machine_zone"
+    || feature.kind === "measurement_line"
+    || feature.kind === "well_location"
+    || feature.kind === "underground_wire"
+  )).length;
+}
+
+function mapFeatureLengthMeters(feature: ProjectMapFeature): number {
+  if (typeof feature.properties?.lengthMeters === "number") return feature.properties.lengthMeters;
+  if (feature.geometry.type === "LineString") return lineLengthMeters(feature.geometry.vertices);
+  if (feature.geometry.type === "Polygon") return lineLengthMeters([...feature.geometry.vertices, feature.geometry.vertices[0]].filter(Boolean));
+  if (feature.geometry.type === "Circle") return Math.PI * 2 * feature.geometry.radiusMeters;
+  return 0;
+}
+
+function lineLengthMeters(vertices: XY[]): number {
+  return vertices.slice(1).reduce((sum, vertex, index) => {
+    const previous = vertices[index];
+    return sum + Math.hypot(vertex.x - previous.x, vertex.y - previous.y);
+  }, 0);
 }
 
 function CatalogHomePanel({

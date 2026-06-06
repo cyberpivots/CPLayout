@@ -118,6 +118,46 @@ const parsedExtendedMapFeatures = parseProjectDocument({
 assert.equal(parsedExtendedMapFeatures.mapFeatures?.[0].geometry.type, "Polygon");
 assert.equal(parsedExtendedMapFeatures.mapFeatures?.[1].geometry.type, "Circle");
 
+const parsedAwarenessMapFeatures = parseProjectDocument({
+  ...sampleProject,
+  mapFeatures: [
+    {
+      id: "north-machine-zone",
+      name: "North machine zone",
+      kind: "machine_zone",
+      geometry: { type: "Polygon", vertices: sampleProject.fieldBoundary.slice(0, 3) },
+      confidence: "user_estimated",
+      properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+    },
+    {
+      id: "lrdu-measurement",
+      name: "LRDU measurement",
+      kind: "measurement_line",
+      geometry: { type: "LineString", vertices: sampleProject.fieldBoundary.slice(0, 2) },
+      confidence: "imagery_digitized",
+      properties: { lengthMeters: 1514.96 },
+    },
+    {
+      id: "well-a",
+      name: "Well A",
+      kind: "well_location",
+      geometry: { type: "Point", point: sampleProject.waterSource },
+      confidence: "user_estimated",
+    },
+    {
+      id: "buried-wire-a",
+      name: "Buried wire A",
+      kind: "underground_wire",
+      geometry: { type: "LineString", vertices: sampleProject.fieldBoundary.slice(1, 3) },
+      confidence: "user_estimated",
+    },
+  ],
+});
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[0].kind, "machine_zone");
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[1].kind, "measurement_line");
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[2].kind, "well_location");
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[3].kind, "underground_wire");
+
 const cornerArmSourceRef = {
   sourceId: "SRC-VALLEY-VFLEX-CORNER",
   title: "Valley VFlex Corner",

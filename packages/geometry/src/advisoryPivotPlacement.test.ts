@@ -104,7 +104,53 @@ assert.equal(idealAnalysis.bestCandidate?.insideFieldBoundary, true);
 assert.ok((idealAnalysis.bestCandidate?.boundaryClearanceMeters ?? -1) >= 0);
 assert.ok(idealAnalysis.warnings.some((warning) => warning.includes("does not mutate canonical projected XY")));
 assert.ok(idealAnalysis.sourceRefs.length > 0);
+assert.equal(idealAnalysis.machineZoneReviews.length, 0);
 assert.deepEqual(readyProject.pivotCenter, { x: 25, y: 100 });
+
+const machineZone: ProjectMapFeature = {
+  id: "zone-a",
+  name: "Zone A",
+  kind: "machine_zone",
+  geometry: {
+    type: "Polygon",
+    vertices: [
+      { x: 0, y: 0 },
+      { x: 160, y: 0 },
+      { x: 160, y: 160 },
+      { x: 0, y: 160 },
+    ],
+  },
+  confidence: "user_estimated",
+  properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+};
+const zoneAnalysis = analyzeIdealPivotCenter({ ...readyProject, mapFeatures: [machineZone] }, {
+  gridDivisions: 6,
+  maxCandidates: 3,
+  costInput: {
+    fixedMachineCost: 100000,
+    costPerMeter: 500,
+    costPerTower: 2500,
+    currencyCode: "USD",
+  },
+});
+assert.equal(zoneAnalysis.status, "ready");
+assert.equal(zoneAnalysis.machineZoneReviews.length, 1);
+assert.equal(zoneAnalysis.machineZoneReviews[0].status, "ready");
+assert.equal(zoneAnalysis.machineZoneReviews[0].canonicalGeometryMutation, false);
+assert.equal(zoneAnalysis.bestCandidate?.costAssessment.status, "complete");
+assert.ok((zoneAnalysis.bestCandidate?.costAssessment.costPerIrrigatedAcre ?? 0) > 0);
+assert.ok(Number.isFinite(zoneAnalysis.bestCandidate?.scoreBreakdown.costEfficiency));
+
+const missingCostCandidate = buildPivotPlacementCandidates(readyProject, { gridDivisions: 6, maxCandidates: 1 })[0];
+assert.equal(missingCostCandidate.costAssessment.status, "missing_cost_input");
+assert.equal(missingCostCandidate.scoreBreakdown.costEfficiency, 0);
+
+const strictClearanceAnalysis = analyzeIdealPivotCenter(readyProject, {
+  gridDivisions: 5,
+  maxCandidates: 3,
+  minimumBoundaryClearanceMeters: 120,
+});
+assert.ok(strictClearanceAnalysis.candidates.some((candidate) => candidate.disqualificationReasons.some((reason) => reason.includes("boundary clearance"))));
 
 const infeasibleAnalysis = analyzeIdealPivotCenter(makeProject({
   fieldBoundary: [
@@ -143,6 +189,20 @@ const powerWeighted = buildPivotPlacementCandidates(project, {
   accessWeight: 0,
 });
 assert.notEqual(waterWeighted[0].id, powerWeighted[0].id);
+
+const crossingProfileCandidate = buildPivotPlacementCandidates(project, {
+  gridDivisions: 8,
+  maxCandidates: 1,
+  obstacleCrossingProfiles: [{
+    obstacleId: bufferedObstacle.id,
+    crossingAllowed: true,
+    minimumClearanceMeters: 4,
+    reason: "Operator says this low object may be spanned; requires field/vendor review.",
+    advisoryOnly: true,
+  }],
+})[0];
+assert.deepEqual(crossingProfileCandidate.obstacleCrossingProfileIds, [bufferedObstacle.id]);
+assert.ok(crossingProfileCandidate.warnings.some((warning) => warning.includes("obstacle crossing profile")));
 
 const cornerSwingLimit: ProjectMapFeature = {
   id: "corner-evidence",

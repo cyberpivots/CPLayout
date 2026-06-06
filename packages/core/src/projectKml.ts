@@ -11,7 +11,9 @@ const OBSTACLE_KINDS = ["road", "ditch", "fence", "building", "canal", "tree", "
 const POINT_ROLES = ["boundary", "pivot_center", "water_source", "power_source", "obstacle", "control", "note"] as const;
 const MAP_FEATURE_KINDS = [
   "pump_location",
+  "well_location",
   "underground_pipeline",
+  "underground_wire",
   "power_pole",
   "power_line",
   "tree",
@@ -20,6 +22,9 @@ const MAP_FEATURE_KINDS = [
   "ditch",
   "canal",
   "fence",
+  "planning_boundary",
+  "machine_zone",
+  "measurement_line",
   "end_gun_mark",
   "end_gun_arc",
   "corner_swing_limit",
@@ -213,12 +218,22 @@ const GOOGLE_EARTH_KML_STYLES: GoogleEarthStyleDefinition[] = [
   },
 ];
 
-export type GoogleEarthKmlImportClassification = "field_boundary" | "obstacle" | "survey_point" | "map_feature" | "skipped";
+export type GoogleEarthKmlImportClassification =
+  | "field_boundary"
+  | "planning_boundary"
+  | "machine_zone"
+  | "measurement_line"
+  | "existing_pivot"
+  | "obstacle"
+  | "survey_point"
+  | "map_feature"
+  | "skipped";
 
 export interface GoogleEarthKmlImportItem {
   id: string;
   name: string;
   classification: GoogleEarthKmlImportClassification;
+  featureKind?: ProjectMapFeatureKind;
   geometryType: "Point" | "LineString" | "Polygon";
   selected: boolean;
   warning?: string;
@@ -317,19 +332,23 @@ export function importGoogleEarthKmlToProject(
       skippedFeatureCount += 1;
       continue;
     }
-    const explicitMapFeatureKind = explicitMapFeatureKindFromProperties(candidate.properties);
-    if (explicitMapFeatureKind) {
+    const mapFeatureKind = explicitMapFeatureKindFromProperties(candidate.properties) ?? polygonMapFeatureKindFromName(candidate.name);
+    if (mapFeatureKind) {
       classified.push({
         item: {
           id: itemId,
           name: candidate.name,
-          classification: "map_feature",
+          classification: importClassificationForMapFeatureKind(mapFeatureKind),
+          featureKind: mapFeatureKind,
           geometryType: "Polygon",
           selected: selectedByDefault(itemId, selectedItemIds),
-          warning: candidate.holeCount > 0 ? `${candidate.holeCount} inner ring${candidate.holeCount === 1 ? "" : "s"} ignored.` : undefined,
+          warning: itemWarning(
+            candidate.holeCount > 0 ? `${candidate.holeCount} inner ring${candidate.holeCount === 1 ? "" : "s"} ignored.` : undefined,
+            mapFeatureImportWarning(mapFeatureKind),
+          ),
         },
         kind: "map_feature",
-        feature: mapFeatureFromPolygon(project, candidate, itemId, explicitMapFeatureKind),
+        feature: mapFeatureFromPolygon(project, candidate, itemId, mapFeatureKind),
       });
     } else if (isBoundaryCandidate(candidate.properties, candidate.name)) {
       hasBoundaryCandidate = true;
@@ -393,21 +412,27 @@ export function importGoogleEarthKmlToProject(
         item: {
           id: itemId,
           name: candidate.name,
-          classification: "map_feature",
+          classification: importClassificationForMapFeatureKind(mapFeatureKind),
+          featureKind: mapFeatureKind,
           geometryType: "Point",
           selected: selectedByDefault(itemId, selectedItemIds),
+          warning: mapFeatureImportWarning(mapFeatureKind),
         },
         kind: "map_feature",
         feature: mapFeatureFromPoint(project, candidate, itemId, mapFeatureKind),
       });
     } else {
+      const role = pointRoleFromProperties(candidate.properties, candidate.name);
       classified.push({
         item: {
           id: itemId,
           name: candidate.name,
-          classification: "survey_point",
+          classification: role === "pivot_center" ? "existing_pivot" : "survey_point",
           geometryType: "Point",
           selected: selectedByDefault(itemId, selectedItemIds),
+          warning: role === "pivot_center"
+            ? "Existing pivot evidence only; applying the import adds a survey point and does not move the active pivot center."
+            : undefined,
         },
         kind: "survey_point",
         candidate,
@@ -444,13 +469,17 @@ export function importGoogleEarthKmlToProject(
       skippedFeatureCount += 1;
       warnings.push(`Skipped open LineString "${candidate.name}" because polygon boundary/obstacle imports must be closed.`);
     } else if (mapFeatureKind) {
-      const warning = candidate.source === "closed_linestring" ? "Closed utility LineString kept as a line and closing duplicate removed." : undefined;
+      const warning = itemWarning(
+        candidate.source === "closed_linestring" ? "Closed utility LineString kept as a line and closing duplicate removed." : undefined,
+        mapFeatureImportWarning(mapFeatureKind),
+      );
       if (warning) warnings.push(`${warning} "${candidate.name}".`);
       classified.push({
         item: {
           id: itemId,
           name: candidate.name,
-          classification: "map_feature",
+          classification: importClassificationForMapFeatureKind(mapFeatureKind),
+          featureKind: mapFeatureKind,
           geometryType: "LineString",
           selected: selectedByDefault(itemId, selectedItemIds),
           warning,
@@ -863,10 +892,17 @@ function obstacleStyleId(kind: string): string {
 
 function mapFeatureStyleId(kind: string, placemark: XmlElement): string {
   if (firstElement(placemark.getElementsByTagName("Point"))) return "cplayout-map-point";
-  if (kind === "underground_pipeline" || kind === "ditch" || kind === "canal") return "cplayout-map-line-water";
-  if (kind === "power_line") return "cplayout-map-line-power";
+  if (kind === "underground_pipeline" || kind === "well_location" || kind === "ditch" || kind === "canal") return "cplayout-map-line-water";
+  if (kind === "power_line" || kind === "underground_wire") return "cplayout-map-line-power";
   if (kind === "road" || kind === "access_lane") return "cplayout-map-line-access";
-  if (kind === "fence" || kind === "end_gun_arc" || kind === "corner_swing_limit") return "cplayout-map-line-boundary";
+  if (
+    kind === "fence"
+    || kind === "planning_boundary"
+    || kind === "machine_zone"
+    || kind === "measurement_line"
+    || kind === "end_gun_arc"
+    || kind === "corner_swing_limit"
+  ) return "cplayout-map-line-boundary";
   return "cplayout-map-line-access";
 }
 
@@ -1210,6 +1246,7 @@ function pointRoleFromProperties(properties: Record<string, unknown>, name: stri
   const layer = normalizedLayer(properties);
   if (POINT_ROLES.includes(layer as SurveyPoint["role"])) return layer as SurveyPoint["role"];
   const normalizedName = name.toLowerCase().replaceAll(" ", "_");
+  if (/\bpivot\b/.test(name.toLowerCase())) return "pivot_center";
   return POINT_ROLES.find((role) => normalizedName.includes(role)) ?? "note";
 }
 
@@ -1226,7 +1263,7 @@ function mapFeatureFromPoint(
     geometry: { type: "Point", point: candidate.projected },
     confidence: confidenceOrDefault(readStringProperty(candidate.properties, ["confidence", "sourceConfidence"]), "imagery_digitized"),
     notes: readStringProperty(candidate.properties, ["description", "notes"]) ?? undefined,
-    properties: stringProperties(candidate.properties),
+    properties: mapFeatureProperties(candidate.properties, kind),
   };
 }
 
@@ -1243,7 +1280,9 @@ function mapFeatureFromLine(
     geometry: { type: "LineString", vertices: candidate.vertices },
     confidence: confidenceOrDefault(readStringProperty(candidate.properties, ["confidence", "sourceConfidence"]), "imagery_digitized"),
     notes: readStringProperty(candidate.properties, ["description", "notes"]) ?? undefined,
-    properties: stringProperties(candidate.properties),
+    properties: mapFeatureProperties(candidate.properties, kind, {
+      lengthMeters: Number(lineStringLengthMeters(candidate.vertices).toFixed(3)),
+    }),
   };
 }
 
@@ -1275,8 +1314,41 @@ function mapFeatureFromPolygon(
     geometry,
     confidence: confidenceOrDefault(readStringProperty(candidate.properties, ["confidence", "sourceConfidence"]), "imagery_digitized"),
     notes: readStringProperty(candidate.properties, ["description", "notes"]) ?? undefined,
-    properties: stringProperties(candidate.properties),
+    properties: mapFeatureProperties(candidate.properties, kind),
   };
+}
+
+function mapFeatureProperties(
+  properties: Record<string, unknown>,
+  kind: ProjectMapFeatureKind,
+  derived: Record<string, string | number | boolean | null> = {},
+): Record<string, string | number | boolean | null> | undefined {
+  const base = stringProperties(properties) ?? {};
+  const advisoryKinds = new Set<ProjectMapFeatureKind>([
+    "planning_boundary",
+    "machine_zone",
+    "measurement_line",
+    "corner_swing_limit",
+    "end_gun_arc",
+  ]);
+  const result = {
+    ...base,
+    ...derived,
+    ...(advisoryKinds.has(kind)
+      ? {
+        advisoryOnly: true,
+        canonicalGeometryMutation: false,
+      }
+      : {}),
+  };
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function lineStringLengthMeters(vertices: XY[]): number {
+  return vertices.slice(1).reduce((sum, vertex, index) => {
+    const previous = vertices[index];
+    return sum + Math.hypot(vertex.x - previous.x, vertex.y - previous.y);
+  }, 0);
 }
 
 function candidateItemId(properties: Record<string, unknown>, name: string, fallbackIndex: number): string {
@@ -1293,7 +1365,16 @@ function mapFeatureKindFromProperties(properties: Record<string, unknown>, name:
   const cplayoutKind = readStringProperty(properties, ["mapFeatureKind", "map_feature_kind", "utilityKind", "utility_kind"]);
   const normalizedKind = cplayoutKind?.toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
   if (MAP_FEATURE_KINDS.includes(normalizedKind as ProjectMapFeatureKind)) return normalizedKind as ProjectMapFeatureKind;
+  return mapFeatureKindFromName(name);
+}
+
+function mapFeatureKindFromName(name: string): ProjectMapFeatureKind | null {
   const normalizedName = name.toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+  if (/\bwell\b|\bwater_source\b/.test(normalizedName)) return "well_location";
+  if (/\bwire\b|\belectric_cable\b|\bburied_power\b/.test(normalizedName)) return "underground_wire";
+  if (/\b(distance|measurement|measure|length|lrdu)\b/.test(normalizedName)) return "measurement_line";
+  if (/\b(machine|pivot)_?(zone|field|boundary)\b|\b(middle|south|north|east|west)_machine_field_boundary\b/.test(normalizedName)) return "machine_zone";
+  if (/\bplanning_boundary\b|\bplanning_area\b|\bfull_scope\b|\bscope_boundary\b/.test(normalizedName)) return "planning_boundary";
   return MAP_FEATURE_KINDS.find((kind) => normalizedName.includes(kind)) ?? null;
 }
 
@@ -1309,8 +1390,12 @@ function explicitMapFeatureKindFromProperties(properties: Record<string, unknown
 }
 
 function lineMapFeatureKindFromName(name: string): ProjectMapFeatureKind | null {
+  const namedKind = mapFeatureKindFromName(name);
+  if (namedKind) return namedKind;
   const normalizedName = name.toLowerCase();
   if (/\b(pipe|pipeline|water\s*line)\b/.test(normalizedName)) return "underground_pipeline";
+  if (/\b(wire|buried\s*power|electric\s*cable)\b/.test(normalizedName)) return "underground_wire";
+  if (/\b(distance|measurement|measure|length|lrdu)\b/.test(normalizedName)) return "measurement_line";
   if (/\b(power|electric|utility)\s*line\b/.test(normalizedName)) return "power_line";
   if (/\b(access|lane)\b/.test(normalizedName)) return "access_lane";
   if (/\broad\b/.test(normalizedName)) return "road";
@@ -1320,6 +1405,32 @@ function lineMapFeatureKindFromName(name: string): ProjectMapFeatureKind | null 
   if (/\bend\s*gun\b/.test(normalizedName)) return "end_gun_arc";
   if (/\bcorner\b/.test(normalizedName)) return "corner_swing_limit";
   return null;
+}
+
+function polygonMapFeatureKindFromName(name: string): ProjectMapFeatureKind | null {
+  const normalizedName = name.toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+  if (/\b(machine|pivot)_?(zone|field|boundary)\b|\b(middle|south|north|east|west)_machine_field_boundary\b/.test(normalizedName)) return "machine_zone";
+  if (/\bplanning_boundary\b|\bplanning_area\b|\bscope_boundary\b/.test(normalizedName)) return "planning_boundary";
+  return null;
+}
+
+function importClassificationForMapFeatureKind(kind: ProjectMapFeatureKind): GoogleEarthKmlImportClassification {
+  if (kind === "planning_boundary") return "planning_boundary";
+  if (kind === "machine_zone") return "machine_zone";
+  if (kind === "measurement_line") return "measurement_line";
+  return "map_feature";
+}
+
+function mapFeatureImportWarning(kind: ProjectMapFeatureKind): string | undefined {
+  if (kind === "planning_boundary") return "Planning boundary evidence only; applying the import saves a map feature and does not replace the active field boundary unless selected as field_boundary.";
+  if (kind === "machine_zone") return "Machine-zone evidence only; applying the import saves a map feature and does not create another pivot automatically.";
+  if (kind === "measurement_line") return "Measurement-line evidence only; applying the import saves the line and derived length metadata.";
+  return undefined;
+}
+
+function itemWarning(...warnings: Array<string | undefined>): string | undefined {
+  const present = warnings.filter((warning): warning is string => Boolean(warning));
+  return present.length > 0 ? present.join(" ") : undefined;
 }
 
 function isPolygonLineCandidate(properties: Record<string, unknown>, name: string): boolean {

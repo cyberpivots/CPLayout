@@ -178,7 +178,9 @@ export interface ObstacleZone {
 
 export type ProjectMapFeatureKind =
   | "pump_location"
+  | "well_location"
   | "underground_pipeline"
+  | "underground_wire"
   | "power_pole"
   | "power_line"
   | "tree"
@@ -187,6 +189,9 @@ export type ProjectMapFeatureKind =
   | "ditch"
   | "canal"
   | "fence"
+  | "planning_boundary"
+  | "machine_zone"
+  | "measurement_line"
   | "end_gun_mark"
   | "end_gun_arc"
   | "corner_swing_limit";

@@ -37,7 +37,9 @@ const SOURCE_CONFIDENCES: SourceConfidence[] = [
 const OBSTACLE_KINDS: ObstacleZone["kind"][] = ["road", "ditch", "fence", "building", "canal", "tree", "exclusion"];
 const MAP_FEATURE_KINDS: ProjectMapFeatureKind[] = [
   "pump_location",
+  "well_location",
   "underground_pipeline",
+  "underground_wire",
   "power_pole",
   "power_line",
   "tree",
@@ -46,6 +48,9 @@ const MAP_FEATURE_KINDS: ProjectMapFeatureKind[] = [
   "ditch",
   "canal",
   "fence",
+  "planning_boundary",
+  "machine_zone",
+  "measurement_line",
   "end_gun_mark",
   "end_gun_arc",
   "corner_swing_limit",

@@ -13,6 +13,13 @@ function kmlRing(points: XY[]): string {
   }).join(" ");
 }
 
+function kmlLine(points: XY[]): string {
+  return points.map((point) => {
+    const lonLat = projectXyToLonLat(point, sampleProject.projectCrs);
+    return `${lonLat.longitude},${lonLat.latitude},0`;
+  }).join(" ");
+}
+
 function polygonPlacemark(name: string, coordinates: string, extendedData = ""): string {
   return `
     <Placemark>
@@ -79,6 +86,41 @@ assert.equal(heuristic.importedBoundary, true);
 assert.equal(heuristic.importedObstacleCount, 1);
 assert.equal(heuristic.project.obstacles.at(-1)?.kind, "ditch");
 assert.match(heuristic.warnings.join("\n"), /No explicit field_boundary/);
+
+const willRheaStyleKml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    ${polygonPlacemark("Middle_Machine_Field_Boundary", kmlRing(boundaryRing))}
+    ${polygonPlacemark("South_Machine_Field_Boundary", kmlRing(obstacleRing))}
+    <Placemark>
+      <name>LRDU Distance</name>
+      <LineString><coordinates>${kmlLine([boundaryRing[0], boundaryRing[1]])}</coordinates></LineString>
+    </Placemark>
+    ${polygonPlacemark("Full_Scope_Field Boundary", kmlRing([
+      { x: 501080, y: 4506080 },
+      { x: 501260, y: 4506080 },
+      { x: 501260, y: 4506260 },
+      { x: 501080, y: 4506260 },
+    ]))}
+    <Placemark>
+      <name>Pivot Point</name>
+      <Point><coordinates>${pointLonLat.longitude},${pointLonLat.latitude},0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>`;
+const willRheaStyleImport = importGoogleEarthKmlToProject(sampleProject, willRheaStyleKml, { observedAt: "2026-06-06T00:00:00.000Z" });
+assert.equal(willRheaStyleImport.importedBoundary, true);
+assert.equal(willRheaStyleImport.importedObstacleCount, 0);
+assert.equal(willRheaStyleImport.importedMapFeatureCount, 3);
+assert.equal(willRheaStyleImport.importedSurveyPointCount, 1);
+assert.equal(willRheaStyleImport.items.find((item) => item.name === "Middle_Machine_Field_Boundary")?.classification, "machine_zone");
+assert.equal(willRheaStyleImport.items.find((item) => item.name === "South_Machine_Field_Boundary")?.featureKind, "machine_zone");
+assert.equal(willRheaStyleImport.items.find((item) => item.name === "LRDU Distance")?.classification, "measurement_line");
+assert.equal(willRheaStyleImport.items.find((item) => item.name === "Pivot Point")?.classification, "existing_pivot");
+assert.equal(willRheaStyleImport.project.mapFeatures?.filter((feature) => feature.kind === "machine_zone").length, 2);
+assert.equal(willRheaStyleImport.project.mapFeatures?.some((feature) => feature.kind === "measurement_line" && typeof feature.properties?.lengthMeters === "number"), true);
+assert.equal(willRheaStyleImport.project.surveyPoints.at(-1)?.role, "pivot_center");
+assert.match(willRheaStyleImport.items.find((item) => item.name === "Pivot Point")?.warning ?? "", /does not move/);
 
 const closedLineStringKml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">

@@ -17,7 +17,7 @@ This roadmap sets the long-range direction for imagery-assisted mapping, local C
 
 Prioritize Imagery/ML capability over the next several years, but keep every claim behind a matching proof class. Imagery, CV, ML, KML/KMZ, and Google Earth evidence may advise decisions. Canonical geometry changes must remain projected/local `XY`, operator-confirmed, reducer-validated, undoable, and never automatic.
 
-The current baseline already includes local companion evidence flags, the `cplayout-real-pivot-fixtures-v1` manifest gate, a curated single real-pivot fixture path, retired app recommendation contracts, schema-v10 removal of retired review tables, current Android schema-v10 SQLite/ZIP proof, and current Android vector TileJSON/template MapLibre proof. This roadmap organizes the next capability layers without weakening those boundaries.
+The current baseline already includes local companion evidence flags, the `cplayout-real-pivot-fixtures-v1` manifest gate, a curated single real-pivot fixture path, retired app recommendation contracts, schema-v10 removal of retired review tables, current Android schema-v10 SQLite/ZIP proof, current Android vector TileJSON/template MapLibre proof, and an in-app Awareness / Design Review surface for advisory map evidence such as machine zones, planning boundaries, measurement lines, wells, wire paths, and existing pivot evidence. This roadmap organizes the next capability layers without weakening those boundaries.
 
 ## Phase Roadmap
 
@@ -62,7 +62,7 @@ Raw imagery, masks, model outputs, dashboards, and reports stay outside project 
 ## Public Interfaces And Data Boundaries
 
 - Companion interface: standalone local reports and optional companion GeoJSON for review, hashing, and fixture evaluation.
-- App interface: no production UI change until Phase 3; the future Evidence Review surface is session-only and must not create a dirty project from preview.
+- App interface: current Awareness / Design Review UI summarizes committed projected-XY map/survey evidence only. Future ML/CV Evidence Review remains Phase 3, session-only, and must not create a dirty project from preview.
 - Project mutation interface: Phase 4 only, after operator confirmation, projected-XY calibration, existing reducer validation, and undo support.
 - Storage interface: no evidence packet is persisted to `PivotProject`, exported project archives, native SQLite project rows, or web MVP local-storage projects.
 - Native ML interface: proof-report first. No ONNX or other native inference dependency enters the production app until Android and iOS development-build reports pass.

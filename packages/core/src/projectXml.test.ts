@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 
 import { CPLAYOUT_MAP_XML_VERSION, exportProjectMapXml, importProjectMapXmlToProject } from "./projectXml";
 import { sampleProject } from "./sampleProject";
+import type { PivotProject } from "./types";
 
-const projectWithFeatures = {
+const projectWithFeatures: PivotProject = {
   ...sampleProject,
   mapFeatures: [
     {
@@ -28,6 +29,38 @@ const projectWithFeatures = {
       },
       confidence: "user_estimated" as const,
       properties: { advisoryOnly: true },
+    },
+    {
+      id: "machine-zone-a",
+      name: "Machine zone A",
+      kind: "machine_zone" as const,
+      geometry: {
+        type: "Polygon" as const,
+        vertices: sampleProject.fieldBoundary.slice(1, 4),
+      },
+      confidence: "user_estimated" as const,
+      properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+    },
+    {
+      id: "measurement-line-a",
+      name: "Measurement line A",
+      kind: "measurement_line" as const,
+      geometry: {
+        type: "LineString" as const,
+        vertices: sampleProject.fieldBoundary.slice(0, 2),
+      },
+      confidence: "imagery_digitized" as const,
+      properties: { lengthMeters: 1514.96 },
+    },
+    {
+      id: "well-a",
+      name: "Well A",
+      kind: "well_location" as const,
+      geometry: {
+        type: "Point" as const,
+        point: sampleProject.waterSource,
+      },
+      confidence: "user_estimated" as const,
     },
   ],
   machine: {
@@ -68,6 +101,9 @@ assert.match(xml, /canonicalGeometry="projected_xy"/);
 assert.match(xml, /gpsCoordinateSystem="decimal_degrees"/);
 assert.match(xml, /<mapFeature id="corner-footprint-a"/);
 assert.match(xml, /<geometry type="Circle" radiusMeters="24">/);
+assert.match(xml, /<mapFeature id="machine-zone-a"/);
+assert.match(xml, /<mapFeature id="measurement-line-a"/);
+assert.match(xml, /<mapFeature id="well-a"/);
 assert.match(xml, /catalogId="valley-8000-public-preset"/);
 assert.match(xml, /<cornerArm id="corner-arm-a"/);
 assert.match(xml, /sourceId="SRC-VALLEY-VFLEX-CORNER"/);
@@ -77,9 +113,12 @@ const imported = importProjectMapXmlToProject(xml);
 assert.equal(imported.project.id, projectWithFeatures.id);
 assert.equal(imported.project.projectCrs, projectWithFeatures.projectCrs);
 assert.equal(imported.project.fieldBoundary.length, projectWithFeatures.fieldBoundary.length);
-assert.equal(imported.project.mapFeatures?.length, 2);
+assert.equal(imported.project.mapFeatures?.length, 5);
 assert.equal(imported.project.mapFeatures?.[0].geometry.type, "Polygon");
 assert.equal(imported.project.mapFeatures?.[1].geometry.type, "Circle");
+assert.equal(imported.project.mapFeatures?.[2].kind, "machine_zone");
+assert.equal(imported.project.mapFeatures?.[3].kind, "measurement_line");
+assert.equal(imported.project.mapFeatures?.[4].kind, "well_location");
 assert.equal(imported.project.machine.catalogSelection?.catalogId, "valley-8000-public-preset");
 assert.equal(imported.project.machine.cornerArm?.id, "corner-arm-a");
 assert.equal(imported.project.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");

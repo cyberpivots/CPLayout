@@ -303,7 +303,200 @@ async function run(): Promise<void> {
   assert.equal(designReloaded.name, "Adams North Base Pivot");
   assert.ok(clientB.id.startsWith("client-"));
 
+  globalThis.localStorage.clear();
+  const stressClient = await projectRepository.createClientAsync({
+    companyName: "Stress Proof Farms",
+    primaryContactFirstName: "Scale",
+    primaryContactLastName: "Operator",
+    notes: "Catalog profile data must stay out of project archive payloads.",
+  });
+  const stressProject = buildLargeStressProject();
+  const stressResult = evaluateLayout(stressProject);
+  await projectRepository.createProjectWithInitialDesignAsync({
+    clientId: stressClient.id,
+    project: stressProject,
+    result: stressResult,
+  });
+  for (let index = 0; index < 30; index += 1) {
+    const catalogProject = await projectRepository.createProjectRecordAsync({
+      clientId: stressClient.id,
+      id: `stress-catalog-project-${index.toString().padStart(2, "0")}`,
+      name: `Stress Catalog Project ${index.toString().padStart(2, "0")}`,
+      projectCrs: stressProject.projectCrs,
+      unitSystem: stressProject.unitSystem,
+    });
+    await projectRepository.createFieldMapRecordAsync({
+      id: `${catalogProject.id}:field-map`,
+      projectId: catalogProject.id,
+      name: "Primary Field Map",
+    });
+  }
+  const stressCatalog = await projectRepository.listProjectCatalogAsync();
+  assert.equal(stressCatalog.clients.length, 1);
+  assert.equal(stressCatalog.projects.length, 31);
+  assert.equal(stressCatalog.fieldMaps.length, 31);
+  assert.equal(stressCatalog.designs.length, 1);
+  const stressReloaded = await projectRepository.loadProjectAsync(stressProject.id);
+  assert.ok(stressReloaded);
+  assert.equal(stressReloaded.fieldBoundary.length, stressProject.fieldBoundary.length);
+  assert.equal(stressReloaded.obstacles.length, stressProject.obstacles.length);
+  assert.equal(stressReloaded.surveyPoints.length, stressProject.surveyPoints.length);
+  assert.equal(stressReloaded.mapFeatures?.length, stressProject.mapFeatures?.length);
+  assert.deepEqual(stressReloaded.pivotCenter, stressProject.pivotCenter);
+  assert.equal(stressReloaded.wgs84Companion?.status, "projected");
+  assert.equal(stressReloaded.wgs84Companion?.mapFeatures?.length, stressProject.mapFeatures?.length);
+
+  const stressBundle = buildProjectArchiveBundle(
+    stressReloaded,
+    evaluateLayout(stressReloaded),
+    exportScenarioGeoJson(stressReloaded, evaluateLayout(stressReloaded)),
+    "2026-06-06T12:00:00.000Z",
+  );
+  assert.match(stressBundle.files[PROJECT_JSON_FILENAME], /large-project-stress-proof/);
+  assert.match(stressBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Stress line feature 079/);
+  assert.doesNotMatch(stressBundle.files[PROJECT_JSON_FILENAME], /Stress Proof Farms|Scale Operator|Catalog profile data/);
+  assert.doesNotMatch(stressBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /Stress Proof Farms|Scale Operator|Catalog profile data/);
+  const stressRoundTrip = importProjectArchiveZip(exportProjectArchiveZip(stressBundle));
+  assert.equal(stressRoundTrip.fieldBoundary.length, stressProject.fieldBoundary.length);
+  assert.equal(stressRoundTrip.obstacles.length, stressProject.obstacles.length);
+  assert.equal(stressRoundTrip.surveyPoints.length, stressProject.surveyPoints.length);
+  assert.equal(stressRoundTrip.mapFeatures?.length, stressProject.mapFeatures?.length);
+  assert.deepEqual(stressRoundTrip.pivotCenter, stressProject.pivotCenter);
+
   console.log("project repository saveable geometry tests passed");
+}
+
+function buildLargeStressProject(): PivotProject {
+  const stressObservedAt = "2026-06-06T12:00:00.000Z";
+  const center = { x: 501200, y: 4506600 };
+  const fieldBoundary = regularRing(center, 620, 96);
+  return {
+    ...sampleProject,
+    id: "large-project-stress-proof",
+    name: "Large Project Stress Proof",
+    fieldBoundary,
+    pivotCenter: center,
+    waterSource: { x: center.x - 42, y: center.y - 28 },
+    powerSource: { x: center.x - 520, y: center.y + 430 },
+    machine: {
+      ...sampleProject.machine,
+      id: "large-stress-machine",
+      name: "Large stress full-circle machine",
+      spanLengthsMeters: [48, 48, 48, 48, 48, 48],
+      overhangMeters: 18,
+      endGunThrowMeters: 20,
+      towerClearanceBufferMeters: 6,
+      machineClearanceBufferMeters: 10,
+      sweep: { mode: "full_circle" },
+    },
+    obstacles: Array.from({ length: 24 }, (_, index) => {
+      const column = index % 6;
+      const row = Math.floor(index / 6);
+      const x = center.x - 420 + column * 150;
+      const y = center.y - 300 + row * 150;
+      return {
+        id: `stress-obstacle-${index.toString().padStart(2, "0")}`,
+        name: `Stress obstacle ${index.toString().padStart(2, "0")}`,
+        kind: index % 5 === 0 ? "building" as const : index % 3 === 0 ? "road" as const : "exclusion" as const,
+        polygon: rectangle(x, y, 26 + (index % 4) * 3, 22 + (index % 5) * 2),
+        bufferMeters: 4 + (index % 4),
+        hardConflict: index % 4 === 0,
+        noSpray: index % 3 === 0,
+        confidence: index % 2 === 0 ? "imagery_digitized" as const : "user_estimated" as const,
+      };
+    }),
+    surveyPoints: [
+      {
+        id: "stress-pivot-rtk",
+        label: "Stress pivot RTK check",
+        role: "pivot_center",
+        projected: center,
+        observedAt: stressObservedAt,
+        source: "external_gnss",
+        confidence: "rtk_fixed",
+        rtk: {
+          fixType: "rtk_fixed",
+          satellites: 18,
+          hdop: 0.7,
+          vdop: 0.9,
+          pdop: 1.2,
+          correctionAgeSeconds: 1,
+          horizontalAccuracyMeters: 0.02,
+          verticalAccuracyMeters: 0.04,
+          baseStationId: "BASE-STRESS",
+          roverId: "ROVER-STRESS",
+          nmeaQualityCode: 4,
+        },
+      },
+      ...fieldBoundary.map((point, index) => ({
+        id: `stress-boundary-shot-${index.toString().padStart(2, "0")}`,
+        label: `Stress boundary shot ${index.toString().padStart(2, "0")}`,
+        role: "boundary" as const,
+        projected: point,
+        observedAt: stressObservedAt,
+        source: "manual" as const,
+        confidence: "imagery_digitized" as const,
+      })),
+    ],
+    mapFeatures: [
+      ...Array.from({ length: 12 }, (_, index) => ({
+        id: `stress-machine-zone-${index.toString().padStart(2, "0")}`,
+        name: `Stress machine zone ${index.toString().padStart(2, "0")}`,
+        kind: "machine_zone" as const,
+        geometry: {
+          type: "Circle" as const,
+          center: pointOnRing(center, 220 + (index % 3) * 35, index * 30),
+          radiusMeters: 120 + (index % 4) * 8,
+        },
+        confidence: "optimized" as const,
+        notes: "Generated advisory stress review zone; not a saved pivot.",
+        properties: {
+          advisoryOnly: true,
+          canonicalGeometryMutation: false,
+          qualifiedReviewRequired: true,
+          stressSequence: index + 1,
+        },
+      })),
+      ...Array.from({ length: 80 }, (_, index) => ({
+        id: `stress-line-feature-${index.toString().padStart(3, "0")}`,
+        name: `Stress line feature ${index.toString().padStart(3, "0")}`,
+        kind: index % 4 === 0 ? "underground_pipeline" as const : index % 4 === 1 ? "underground_wire" as const : index % 4 === 2 ? "power_line" as const : "measurement_line" as const,
+        geometry: {
+          type: "LineString" as const,
+          vertices: [
+            pointOnRing(center, 520, index * 11),
+            pointOnRing(center, 430, index * 11 + 12),
+            pointOnRing(center, 350, index * 11 + 24),
+          ],
+        },
+        confidence: "user_estimated" as const,
+        notes: "Synthetic projected-XY stress feature.",
+      })),
+    ],
+    mapPackages: [],
+    wgs84Companion: undefined,
+  };
+}
+
+function regularRing(center: { x: number; y: number }, radiusMeters: number, count: number): Array<{ x: number; y: number }> {
+  return Array.from({ length: count }, (_, index) => pointOnRing(center, radiusMeters + (index % 4) * 8, (index / count) * 360));
+}
+
+function pointOnRing(center: { x: number; y: number }, radiusMeters: number, angleDegrees: number): { x: number; y: number } {
+  const radians = angleDegrees * Math.PI / 180;
+  return {
+    x: Math.round((center.x + Math.cos(radians) * radiusMeters) * 1000) / 1000,
+    y: Math.round((center.y + Math.sin(radians) * radiusMeters) * 1000) / 1000,
+  };
+}
+
+function rectangle(x: number, y: number, width: number, height: number): Array<{ x: number; y: number }> {
+  return [
+    { x, y },
+    { x: x + width, y },
+    { x: x + width, y: y + height },
+    { x, y: y + height },
+  ];
 }
 
 function buildEditedProjectFromEditorActions(): PivotProject {

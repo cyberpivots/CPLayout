@@ -2208,6 +2208,10 @@ function CalculateSheet({
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
   const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
+  const multiMachineReview = useMemo<AdvisoryMultiMachineReview>(() => analyzeAdvisoryMultiMachineLayout(project, {
+    maxCandidates: 3,
+    collisionBufferMeters: project.machine.machineClearanceBufferMeters,
+  }), [project]);
   const bestStrategy = strategyComparison.bestStrategy;
   const benderStrategy = benderStrategyForReview(strategyComparison);
   return (
@@ -2256,6 +2260,14 @@ function CalculateSheet({
         <Text style={styles.rowMeta}>{formatObstacleInteractionSummary(obstacleInteractionReview)}</Text>
         <Text style={styles.mapFeatureMeta}>{formatFirstObstacleInteraction(obstacleInteractionReview)}</Text>
         <Text style={styles.mapFeatureMeta}>Obstacle interaction review is advisory only and does not mutate canonical projected XY, obstacle settings, utility features, or machine settings.</Text>
+      </View>
+      <View style={styles.placementReviewPanel} testID="advisory-full-scope-boundary-summary">
+        <View style={styles.scenarioRowHeader}>
+          <Text style={styles.rowTitle}>Full-Scope Boundary Review</Text>
+          <Text style={styles.scenarioScore}>{multiMachineReview.compilation.fullScopeCoveragePercent.toFixed(1)}%</Text>
+        </View>
+        <Text style={styles.rowMeta}>{formatFullScopeBoundarySummary(multiMachineReview, settings)}</Text>
+        <Text style={styles.mapFeatureMeta}>Compiled full-scope boundary review is advisory only and leaves canonical projected XY, field boundary, machine zones, and project storage unchanged.</Text>
       </View>
       <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
@@ -2683,7 +2695,7 @@ function DesignAwarenessPanel({
         <MetricTile label="Outside wet" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "warn" : "good"} />
       </View>
       <Text style={styles.mapFeatureMeta}>
-        Multi-machine review: {multiMachineReview.status.replaceAll("_", " ")} · {multiMachineReview.compilation.compiledBoundaryAcres.toFixed(2)} compiled advisory acres · canonical projected XY unchanged.
+        Multi-machine review: {multiMachineReview.status.replaceAll("_", " ")} · {multiMachineReview.compilation.compiledBoundaryAcres.toFixed(2)} compiled advisory acres · {multiMachineReview.compilation.fullScopeCoveragePercent.toFixed(1)}% full-scope coverage · canonical projected XY unchanged.
       </Text>
       {firstConflict ? (
         <Text style={styles.formError}>
@@ -3090,6 +3102,14 @@ function formatFirstObstacleInteraction(review: AdvisoryObstacleInteractionRevie
     ? ` · nearest tower ${first.nearestTowerIndex}`
     : "";
   return `${first.name}: ${first.category.replaceAll("_", " ")}${tower}. ${first.warnings[0]}`;
+}
+
+function formatFullScopeBoundarySummary(review: AdvisoryMultiMachineReview, settings: AppSettings): string {
+  const fullScopeSource = review.compilation.fullScopeBoundarySource.replaceAll("_", " ");
+  const scenarioSource = review.compilation.scenarioBoundarySource === "none"
+    ? "no scenario zones"
+    : `${review.compilation.scenarioBoundarySource.replaceAll("_", " ")} scenarios`;
+  return `${formatAreaFromAcres(review.compilation.compiledBoundaryAcres, settings.unitSystem)} ${fullScopeSource} full scope · ${review.compilation.fullScopeCoveragePercent.toFixed(1)}% modeled coverage · ${formatAreaFromAcres(review.compilation.fullScopeUnirrigatedAcres, settings.unitSystem)} remaining dry · ${scenarioSource}`;
 }
 
 function advisoryCostInputFromDraft(draft: AdvisoryCostDraft): AdvisoryCostInput | undefined {

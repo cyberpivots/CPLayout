@@ -313,7 +313,15 @@ assert.equal(multiMachineReview.qualifiedReviewRequired, true);
 assert.equal(multiMachineReview.compilation.machineZoneCount, 2);
 assert.equal(multiMachineReview.compilation.scenarioCount, 2);
 assert.equal(multiMachineReview.compilation.readyScenarioCount, 2);
+assert.equal(multiMachineReview.compilation.fullScopeBoundarySource, "field_boundary");
+assert.equal(multiMachineReview.compilation.scenarioBoundarySource, "machine_zone");
+assert.equal(multiMachineReview.compilation.compiledBoundaryPolygonCount, multiMachineReview.compilation.compiledBoundary.length);
+assert.ok(multiMachineReview.compilation.compiledBoundary.length > 0);
 assert.ok(multiMachineReview.compilation.compiledBoundaryAcres > 0);
+assert.ok(multiMachineReview.compilation.scenarioBoundaryUnionAcres > 0);
+assert.ok(multiMachineReview.compilation.fullScopeCoveragePercent > 0);
+assert.ok(multiMachineReview.compilation.fullScopeCoveragePercent <= 100);
+assert.ok(multiMachineReview.compilation.fullScopeUnirrigatedAcres >= 0);
 assert.ok(multiMachineReview.compilation.modeledIrrigatedUnionAcres <= multiMachineReview.compilation.modeledIrrigatedAcresSum);
 assert.equal(multiMachineReview.scenarios.length, 2);
 assert.ok(multiMachineReview.scenarios.every((scenario) => scenario.status === "ready"));
@@ -384,6 +392,9 @@ const bufferOnlyReview = analyzeAdvisoryMultiMachineLayout(bufferOnlyProject, {
 });
 const bufferConflict = bufferOnlyReview.conflicts.find((conflict) => conflict.status === "separation_buffer_warning");
 assert.equal(bufferOnlyReview.status, "ready");
+assert.equal(bufferOnlyReview.compilation.fullScopeBoundarySource, "field_boundary");
+assert.equal(bufferOnlyReview.compilation.scenarioBoundarySource, "machine_zone");
+assert.ok(bufferOnlyReview.compilation.scenarioBoundaryUnionAcres < bufferOnlyReview.compilation.compiledBoundaryAcres);
 assert.ok(bufferConflict);
 assert.equal(bufferConflict?.severity, "buffer_intrusion");
 assert.equal(bufferConflict?.collisionZoneAcres, 0);
@@ -392,6 +403,61 @@ assert.ok((bufferConflict?.separationReviewBufferMeters ?? 0) > 0);
 assert.ok((bufferConflict?.separationReviewZone.length ?? 0) > 0);
 assert.ok((bufferConflict?.separationReviewZoneAcres ?? 0) > 0);
 assert.equal(JSON.stringify(bufferOnlyProject), bufferOnlyBefore);
+
+const explicitFullScopeBoundary: ProjectMapFeature = {
+  id: "full-scope-planning-boundary",
+  name: "Full Scope Field Boundary",
+  kind: "planning_boundary",
+  geometry: {
+    type: "Polygon",
+    vertices: [
+      { x: 0, y: 0 },
+      { x: 350, y: 0 },
+      { x: 350, y: 140 },
+      { x: 0, y: 140 },
+    ],
+  },
+  confidence: "user_estimated",
+  properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+};
+const explicitFullScopeReview = analyzeAdvisoryMultiMachineLayout({
+  ...bufferOnlyProject,
+  mapFeatures: [explicitFullScopeBoundary, bufferWestMachineZone, bufferEastMachineZone],
+}, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  collisionBufferMeters: 0,
+});
+assert.equal(explicitFullScopeReview.compilation.fullScopeBoundarySource, "planning_boundary");
+assert.equal(explicitFullScopeReview.compilation.scenarioBoundarySource, "machine_zone");
+assert.ok(explicitFullScopeReview.compilation.compiledBoundaryAcres > explicitFullScopeReview.compilation.scenarioBoundaryUnionAcres);
+
+const narrowFullScopeBoundary: ProjectMapFeature = {
+  ...explicitFullScopeBoundary,
+  id: "narrow-full-scope-planning-boundary",
+  geometry: {
+    type: "Polygon",
+    vertices: [
+      { x: 50, y: 40 },
+      { x: 300, y: 40 },
+      { x: 300, y: 100 },
+      { x: 50, y: 100 },
+    ],
+  },
+};
+const clippedFullScopeReview = analyzeAdvisoryMultiMachineLayout({
+  ...bufferOnlyProject,
+  mapFeatures: [narrowFullScopeBoundary, bufferWestMachineZone, bufferEastMachineZone],
+}, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  collisionBufferMeters: 0,
+});
+assert.equal(clippedFullScopeReview.compilation.fullScopeBoundarySource, "planning_boundary");
+assert.equal(clippedFullScopeReview.compilation.scenarioBoundarySource, "machine_zone");
+assert.ok(clippedFullScopeReview.compilation.modeledIrrigatedUnionAcres > clippedFullScopeReview.compilation.compiledBoundaryAcres);
+assert.ok(clippedFullScopeReview.compilation.fullScopeCoveragePercent <= 100);
+assert.ok(clippedFullScopeReview.compilation.fullScopeUnirrigatedAcres > 0);
 
 const partialSweepNoOverlapReview = analyzeAdvisoryMultiMachineLayout({
   ...bufferOnlyProject,
@@ -467,6 +533,12 @@ assert.equal(separatedReview.conflicts.length, 0);
 const missingZoneReview = analyzeAdvisoryMultiMachineLayout(readyProject, { gridDivisions: 5, maxCandidates: 2 });
 assert.equal(missingZoneReview.status, "missing_zones");
 assert.equal(missingZoneReview.scenarios.length, 0);
+assert.equal(missingZoneReview.compilation.fullScopeBoundarySource, "field_boundary");
+assert.equal(missingZoneReview.compilation.scenarioBoundarySource, "none");
+assert.equal(missingZoneReview.compilation.compiledBoundaryPolygonCount, 1);
+assert.equal(missingZoneReview.compilation.scenarioBoundaryUnionAcres, 0);
+assert.equal(missingZoneReview.compilation.fullScopeCoveragePercent, 0);
+assert.equal(missingZoneReview.compilation.fullScopeUnirrigatedAcres, missingZoneReview.compilation.compiledBoundaryAcres);
 assert.ok(missingZoneReview.blockers.some((blocker) => blocker.includes("machine zone or planning boundary")));
 
 const planningBoundaryReview = analyzeAdvisoryMultiMachineLayout({

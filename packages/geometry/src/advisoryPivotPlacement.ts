@@ -218,12 +218,19 @@ export interface AdvisoryBoundaryCompilation {
   advisoryOnly: true;
   canonicalGeometryMutation: false;
   fieldBoundaryAcres: number;
+  fullScopeBoundarySource: "field_boundary" | "planning_boundary";
+  scenarioBoundarySource: "none" | "planning_boundary" | "machine_zone";
+  compiledBoundary: MultiPolygonXY;
+  compiledBoundaryPolygonCount: number;
   planningBoundaryCount: number;
   machineZoneCount: number;
   scenarioCount: number;
   readyScenarioCount: number;
   unsupportedScenarioCount: number;
   compiledBoundaryAcres: number;
+  fullScopeCoveragePercent: number;
+  fullScopeUnirrigatedAcres: number;
+  scenarioBoundaryUnionAcres: number;
   scenarioZoneAcres: number;
   modeledIrrigatedAcresSum: number;
   modeledIrrigatedUnionAcres: number;
@@ -1206,29 +1213,53 @@ function buildBoundaryCompilation(
   machineZones: ProjectMapFeature[],
   scenarios: AdvisoryMachineScenario[],
 ): AdvisoryBoundaryCompilation {
-  const allBoundaries = [...planningBoundaries, ...machineZones]
+  const planningBoundaryRings = planningBoundaries
     .map((feature) => mapFeatureBoundary(feature))
     .filter((boundary): boundary is XY[] => Boolean(boundary && boundary.length >= 3));
-  const compiledBoundary = allBoundaries.length > 0
-    ? unionMultiPolygons(allBoundaries.map((boundary) => [boundary]))
+  const compiledBoundary = planningBoundaryRings.length > 0
+    ? unionMultiPolygons(planningBoundaryRings.map((boundary) => [boundary]))
     : [[project.fieldBoundary]];
+  const scenarioBoundaryRings = (machineZones.length > 0 ? machineZones : planningBoundaries)
+    .map((feature) => mapFeatureBoundary(feature))
+    .filter((boundary): boundary is XY[] => Boolean(boundary && boundary.length >= 3));
+  const scenarioBoundaryUnion = scenarioBoundaryRings.length > 0
+    ? unionMultiPolygons(scenarioBoundaryRings.map((boundary) => [boundary]))
+    : [];
   const modeledCoverages = scenarios
     .filter((scenario) => scenario.status === "ready")
     .flatMap((scenario) => scenario.modeledCoverage);
   const modeledCoverageUnion = unionMultiPolygons(modeledCoverages);
   const modeledIrrigatedAcresSum = scenarios.reduce((sum, scenario) => sum + scenario.modeledIrrigatedAcres, 0);
   const modeledIrrigatedUnionAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(modeledCoverageUnion));
+  const compiledBoundaryAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(compiledBoundary));
+  const modeledCoverageInFullScope = intersectMultiPolygons(modeledCoverageUnion, compiledBoundary);
+  const fullScopeCoveredAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(modeledCoverageInFullScope));
+  const fullScopeBoundarySource: AdvisoryBoundaryCompilation["fullScopeBoundarySource"] = planningBoundaryRings.length > 0
+    ? "planning_boundary"
+    : "field_boundary";
+  const scenarioBoundarySource: AdvisoryBoundaryCompilation["scenarioBoundarySource"] = scenarioBoundaryRings.length === 0
+    ? "none"
+    : machineZones.length > 0
+      ? "machine_zone"
+      : "planning_boundary";
 
   return {
     advisoryOnly: true,
     canonicalGeometryMutation: false,
     fieldBoundaryAcres: round(squareMetersToAcres(polygonAreaSquareMeters(project.fieldBoundary))),
+    fullScopeBoundarySource,
+    scenarioBoundarySource,
+    compiledBoundary,
+    compiledBoundaryPolygonCount: compiledBoundary.length,
     planningBoundaryCount: planningBoundaries.length,
     machineZoneCount: machineZones.length,
     scenarioCount: scenarios.length,
     readyScenarioCount: scenarios.filter((scenario) => scenario.status === "ready").length,
     unsupportedScenarioCount: scenarios.filter((scenario) => scenario.status === "unsupported_geometry").length,
-    compiledBoundaryAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(compiledBoundary))),
+    compiledBoundaryAcres: round(compiledBoundaryAcres),
+    fullScopeCoveragePercent: round(compiledBoundaryAcres > 0 ? (fullScopeCoveredAcres / compiledBoundaryAcres) * 100 : 0),
+    fullScopeUnirrigatedAcres: round(Math.max(0, compiledBoundaryAcres - fullScopeCoveredAcres)),
+    scenarioBoundaryUnionAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(scenarioBoundaryUnion))),
     scenarioZoneAcres: round(scenarios.reduce((sum, scenario) => sum + scenario.zoneAcres, 0)),
     modeledIrrigatedAcresSum: round(modeledIrrigatedAcresSum),
     modeledIrrigatedUnionAcres: round(modeledIrrigatedUnionAcres),

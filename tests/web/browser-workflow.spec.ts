@@ -798,6 +798,8 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   await expect(page.getByTestId("advisory-bender-strategy-summary")).toContainText("operator-labeled projected-XY second-pivot evidence");
   await expect(page.getByTestId("advisory-obstacle-interaction-summary")).toContainText("Obstacle Interaction Review");
   await expect(page.getByTestId("advisory-obstacle-interaction-summary")).toContainText("does not mutate canonical projected XY");
+  await expect(page.getByTestId("advisory-full-scope-boundary-summary")).toContainText("Full-Scope Boundary Review");
+  await expect(page.getByTestId("advisory-full-scope-boundary-summary")).toContainText("canonical projected XY");
 
   await page.getByTestId("advisory-cost-fixed").fill("80000");
   await page.getByTestId("advisory-cost-per-meter").fill("700");

@@ -41,6 +41,7 @@ export interface ClientKmzAdvisoryReportOptions {
   endGunThrowMeters?: number;
   towerClearanceBufferMeters?: number;
   machineClearanceBufferMeters?: number;
+  radiusSensitivityRadiiMeters?: number[];
 }
 
 export interface ClientKmzAdvisoryReportResult {
@@ -56,6 +57,8 @@ export interface ClientKmzAdvisoryReportResult {
   selectedMachineCount: number;
   readyScenarioCount: number;
   costInputStatus: string;
+  radiusSensitivityReadyCount: number;
+  bestSensitivityRadiusMeters: number | null;
 }
 
 interface KmlArtifact {
@@ -66,6 +69,48 @@ interface KmlArtifact {
 interface LonLat {
   longitude: number;
   latitude: number;
+}
+
+interface RadiusSensitivityCost {
+  status: "complete" | "missing_cost_input" | "invalid_cost_input" | "no_irrigated_acres";
+  estimatedCost: number | null;
+  costPerIrrigatedAcre: number | null;
+  currencyCode: string;
+}
+
+interface RadiusSensitivityRow {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  radiusMeters: number;
+  spanCount: number;
+  irrigatedAcres: number;
+  coveragePercent: number;
+  outsideFieldAcres: number;
+  fieldPivotStatus: string;
+  selectedMachineCount: number;
+  readyScenarioCount: number;
+  scenarioCount: number;
+  fullScopeCoveragePercent: number;
+  fullScopeUnirrigatedAcres: number;
+  strategyStatus: string;
+  readyStrategyCount: number;
+  cost: RadiusSensitivityCost;
+  warnings: string[];
+}
+
+interface RadiusSensitivityReview {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  source: "imported_radius_sensitivity";
+  importedRadiusMeters: number;
+  rowCount: number;
+  readyRowCount: number;
+  bestByCostPerAcre: RadiusSensitivityRow | null;
+  bestByFullScopeCoverage: RadiusSensitivityRow | null;
+  rows: RadiusSensitivityRow[];
+  warnings: string[];
 }
 
 const DEFAULT_INPUT_PATH = "tmp/Will Rhea.kmz";
@@ -114,6 +159,7 @@ export function generateClientKmzAdvisoryReport(
   const multiMachineReview = analyzeAdvisoryMultiMachineLayout(analysisProject, reviewOptions);
   const strategyComparison = compareAdvisoryMachineStrategies(analysisProject, reviewOptions);
   const obstacleInteractionReview = analyzeAdvisoryObstacleInteractions(analysisProject, { sourceRefs });
+  const radiusSensitivity = buildRadiusSensitivityReview(analysisProject, options, sourceRefs);
   const report = buildAdvisoryDesignReport({
     project: analysisProject,
     result: layoutResult,
@@ -126,7 +172,7 @@ export function generateClientKmzAdvisoryReport(
 
   const reportPath = join(outputDir, "advisory-design-report.txt");
   const manifestPath = join(outputDir, "advisory-design-summary.json");
-  writeFileSync(reportPath, report.text, "utf8");
+  writeFileSync(reportPath, appendRadiusSensitivityReport(report.text, radiusSensitivity), "utf8");
   writeFileSync(manifestPath, JSON.stringify({
     schemaVersion: "cplayout-client-kmz-advisory-report-v1",
     generatedAt,
@@ -203,6 +249,7 @@ export function generateClientKmzAdvisoryReport(
         hardBlockingCount: obstacleInteractionReview.summary.hardBlockingCount,
         utilityPathReviewCount: obstacleInteractionReview.summary.utilityPathReviewCount,
       },
+      radiusSensitivity,
     },
     boundaries: {
       canonicalGeometryMutation: false,
@@ -232,6 +279,10 @@ export function generateClientKmzAdvisoryReport(
     selectedMachineCount: fieldPivotPlan.selectedMachineCount,
     readyScenarioCount: multiMachineReview.compilation.readyScenarioCount,
     costInputStatus: strategyComparison.costInputStatus,
+    radiusSensitivityReadyCount: radiusSensitivity.readyRowCount,
+    bestSensitivityRadiusMeters: radiusSensitivity.bestByCostPerAcre?.radiusMeters
+      ?? radiusSensitivity.bestByFullScopeCoverage?.radiusMeters
+      ?? null,
   };
 }
 
@@ -316,6 +367,183 @@ function buildMachineFromRadius(radiusMeters: number, options: ClientKmzAdvisory
     machineClearanceBufferMeters: Math.max(0, options.machineClearanceBufferMeters ?? 8),
     sweep: { mode: "full_circle" },
   };
+}
+
+function buildRadiusSensitivityReview(
+  project: PivotProject,
+  options: ClientKmzAdvisoryReportOptions,
+  sourceRefs: AdvisorySourceReference[],
+): RadiusSensitivityReview {
+  const importedRadiusMeters = machineRadiusMeters(project.machine);
+  const radii = options.radiusSensitivityRadiiMeters ?? defaultRadiusSensitivityRadii(importedRadiusMeters);
+  const rows = radii.map((radiusMeters): RadiusSensitivityRow => {
+    const variantProject: PivotProject = {
+      ...project,
+      machine: buildMachineFromRadius(radiusMeters, options),
+    };
+    const costInput = costInputFromOptions(options, sourceRefs);
+    const reviewOptions = {
+      maxMachines: Math.max(1, Math.floor(options.maxMachines ?? 3)),
+      costInput,
+      sourceRefs,
+      includeMachineZoneReviews: true,
+      includeGeneratedRadiusStrategies: false,
+      includeUnsupportedConceptPlaceholders: false,
+    };
+    const layout = evaluateLayout(variantProject);
+    const fieldPlan = planAdvisoryFieldPivots(variantProject, reviewOptions);
+    const multiMachine = analyzeAdvisoryMultiMachineLayout(variantProject, reviewOptions);
+    const strategies = compareAdvisoryMachineStrategies(variantProject, reviewOptions);
+    const readyStrategyCount = strategies.strategies.filter((strategy) => strategy.status === "ready").length;
+    const cost = estimateRadiusSensitivityCost(variantProject, layout.metrics.irrigatedAcres, options);
+    return {
+      advisoryOnly: true,
+      canonicalGeometryMutation: false,
+      qualifiedReviewRequired: true,
+      radiusMeters: round(machineRadiusMeters(variantProject.machine)),
+      spanCount: variantProject.machine.spanLengthsMeters.length,
+      irrigatedAcres: round(layout.metrics.irrigatedAcres),
+      coveragePercent: round(layout.metrics.coveragePercent),
+      outsideFieldAcres: round(layout.metrics.outsideFieldAcres),
+      fieldPivotStatus: fieldPlan.status,
+      selectedMachineCount: fieldPlan.selectedMachineCount,
+      readyScenarioCount: multiMachine.compilation.readyScenarioCount,
+      scenarioCount: multiMachine.compilation.scenarioCount,
+      fullScopeCoveragePercent: round(multiMachine.compilation.fullScopeCoveragePercent),
+      fullScopeUnirrigatedAcres: round(multiMachine.compilation.fullScopeUnirrigatedAcres),
+      strategyStatus: strategies.status,
+      readyStrategyCount,
+      cost,
+      warnings: [
+        ...(multiMachine.compilation.readyScenarioCount === 0 ? ["No machine-zone scenario was ready for this radius under the current conservative screening."] : []),
+        ...(fieldPlan.selectedMachineCount === 0 ? ["Generated field-pivot screening selected no separated advisory centers for this radius."] : []),
+        ...(cost.status !== "complete" ? [`Cost-per-acre status is ${cost.status}.`] : []),
+      ],
+    };
+  });
+  const completeCostRows = rows.filter((row) => row.cost.status === "complete" && row.cost.costPerIrrigatedAcre !== null);
+  const coverageRows = rows.filter((row) => row.coveragePercent > 0 || row.fullScopeCoveragePercent > 0);
+  const bestByCostPerAcre = completeCostRows.length > 0
+    ? [...completeCostRows].sort((a, b) => (a.cost.costPerIrrigatedAcre ?? Infinity) - (b.cost.costPerIrrigatedAcre ?? Infinity))[0]
+    : null;
+  const bestByFullScopeCoverage = coverageRows.length > 0
+    ? [...coverageRows].sort((a, b) => (
+      b.fullScopeCoveragePercent - a.fullScopeCoveragePercent
+      || b.coveragePercent - a.coveragePercent
+      || a.radiusMeters - b.radiusMeters
+    ))[0]
+    : null;
+  return {
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    source: "imported_radius_sensitivity",
+    importedRadiusMeters: round(importedRadiusMeters),
+    rowCount: rows.length,
+    readyRowCount: rows.filter((row) => row.readyScenarioCount > 0 || row.readyStrategyCount > 0 || row.irrigatedAcres > 0).length,
+    bestByCostPerAcre,
+    bestByFullScopeCoverage,
+    rows,
+    warnings: [
+      "Radius sensitivity is a local advisory comparison over machine-length assumptions only; it does not change project geometry, machine settings, storage, archives, or KML/KMZ.",
+      "Rows use the imported pivot and full-scope/machine-zone evidence as ephemeral projected-XY analysis inputs; qualified design review is required before relying on any radius.",
+      ...(bestByCostPerAcre ? [] : ["No radius row had complete cost-per-acre evidence."]),
+    ],
+  };
+}
+
+function defaultRadiusSensitivityRadii(importedRadiusMeters: number): number[] {
+  return [0.25, 0.4, 0.55, 0.7, 0.85, 1]
+    .map((ratio) => round(importedRadiusMeters * ratio))
+    .filter((radius) => Number.isFinite(radius) && radius > 0)
+    .filter((radius, index, radii) => radii.indexOf(radius) === index);
+}
+
+function estimateRadiusSensitivityCost(
+  project: PivotProject,
+  irrigatedAcres: number,
+  options: ClientKmzAdvisoryReportOptions,
+): RadiusSensitivityCost {
+  const fixedMachineCost = options.fixedMachineCost;
+  const costPerMeter = options.costPerMeter;
+  const costPerTower = options.costPerTower;
+  const currencyCode = options.currencyCode ?? "USD";
+  if (fixedMachineCost === undefined && costPerMeter === undefined && costPerTower === undefined) {
+    return {
+      status: "missing_cost_input",
+      estimatedCost: null,
+      costPerIrrigatedAcre: null,
+      currencyCode,
+    };
+  }
+  const fixed = fixedMachineCost ?? 0;
+  const perMeter = costPerMeter ?? 0;
+  const perTower = costPerTower ?? 0;
+  if (
+    !Number.isFinite(fixed)
+    || !Number.isFinite(perMeter)
+    || !Number.isFinite(perTower)
+    || fixed < 0
+    || perMeter < 0
+    || perTower < 0
+    || fixed + perMeter + perTower <= 0
+  ) {
+    return {
+      status: "invalid_cost_input",
+      estimatedCost: null,
+      costPerIrrigatedAcre: null,
+      currencyCode,
+    };
+  }
+  const estimatedCost = fixed + machineRadiusMeters(project.machine) * perMeter + project.machine.spanLengthsMeters.length * perTower;
+  if (irrigatedAcres <= 0) {
+    return {
+      status: "no_irrigated_acres",
+      estimatedCost: round(estimatedCost),
+      costPerIrrigatedAcre: null,
+      currencyCode,
+    };
+  }
+  return {
+    status: "complete",
+    estimatedCost: round(estimatedCost),
+    costPerIrrigatedAcre: round(estimatedCost / irrigatedAcres),
+    currencyCode,
+  };
+}
+
+function machineRadiusMeters(machine: PivotMachine): number {
+  return machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0) + machine.overhangMeters;
+}
+
+function appendRadiusSensitivityReport(reportText: string, review: RadiusSensitivityReview): string {
+  const lines = [
+    "",
+    "Radius Sensitivity Review",
+    `- Advisory only: ${review.advisoryOnly}`,
+    `- Canonical geometry mutation: ${review.canonicalGeometryMutation}`,
+    `- Imported radius: ${review.importedRadiusMeters.toFixed(1)} m`,
+    `- Rows reviewed: ${review.rowCount}`,
+    `- Ready rows: ${review.readyRowCount}`,
+    review.bestByCostPerAcre
+      ? `- Best cost-per-acre radius: ${review.bestByCostPerAcre.radiusMeters.toFixed(1)} m at ${review.bestByCostPerAcre.cost.currencyCode} ${review.bestByCostPerAcre.cost.costPerIrrigatedAcre?.toFixed(0)}/ac`
+      : "- Best cost-per-acre radius: none",
+    review.bestByFullScopeCoverage
+      ? `- Best full-scope coverage radius: ${review.bestByFullScopeCoverage.radiusMeters.toFixed(1)} m at ${review.bestByFullScopeCoverage.fullScopeCoveragePercent.toFixed(1)}% full-scope coverage`
+      : "- Best full-scope coverage radius: none",
+    ...review.rows.map((row) => (
+      `- Radius ${row.radiusMeters.toFixed(1)} m: ${row.irrigatedAcres.toFixed(1)} ac current, ${row.coveragePercent.toFixed(1)}% current coverage, ${row.fullScopeCoveragePercent.toFixed(1)}% full-scope coverage, ${row.readyScenarioCount}/${row.scenarioCount} ready zones, ${formatSensitivityCost(row.cost)}`
+    )),
+    ...review.warnings.map((warning) => `- ${warning}`),
+  ];
+  return `${reportText.trimEnd()}\n${lines.join("\n")}\n`;
+}
+
+function formatSensitivityCost(cost: RadiusSensitivityCost): string {
+  if (cost.status === "complete" && cost.costPerIrrigatedAcre !== null) {
+    return `${cost.currencyCode} ${cost.costPerIrrigatedAcre.toFixed(0)}/ac`;
+  }
+  return cost.status.replaceAll("_", " ");
 }
 
 function costInputFromOptions(
@@ -440,6 +668,7 @@ function optionsFromArgs(args: string[]): ClientKmzAdvisoryReportOptions {
     endGunThrowMeters: numberFor(args, "--end-gun-throw-meters"),
     towerClearanceBufferMeters: numberFor(args, "--tower-clearance-buffer-meters"),
     machineClearanceBufferMeters: numberFor(args, "--machine-clearance-buffer-meters"),
+    radiusSensitivityRadiiMeters: numberListFor(args, "--radius-sensitivity-radii"),
   };
 }
 
@@ -454,5 +683,15 @@ function numberFor(args: string[], name: string): number | undefined {
   if (value === undefined) return undefined;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) throw new Error(`Invalid numeric value for ${name}: ${value}`);
+  return parsed;
+}
+
+function numberListFor(args: string[], name: string): number[] | undefined {
+  const value = valueFor(args, name);
+  if (value === undefined) return undefined;
+  const parsed = value.split(",").map((part) => Number(part.trim()));
+  const invalid = parsed.find((number) => !Number.isFinite(number) || number <= 0);
+  if (invalid !== undefined) throw new Error(`Invalid numeric list for ${name}: ${value}`);
+  if (parsed.length === 0) throw new Error(`Invalid numeric list for ${name}: ${value}`);
   return parsed;
 }

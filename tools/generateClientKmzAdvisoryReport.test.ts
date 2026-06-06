@@ -57,6 +57,7 @@ try {
     costPerMeter: 650,
     costPerTower: 2800,
     maxMachines: 3,
+    radiusSensitivityRadiiMeters: [60, 85],
   });
 
   assert.equal(result.importedBoundary, true);
@@ -64,14 +65,19 @@ try {
   assert.ok(result.importedMapFeatureCount >= 3);
   assert.equal(result.sourceSha256, createHash("sha256").update(readFileSync(inputPath)).digest("hex"));
   assert.equal(result.costInputStatus, "complete");
+  assert.ok(result.radiusSensitivityReadyCount >= 1);
+  assert.ok((result.bestSensitivityRadiusMeters ?? 0) > 0);
 
   const manifest = JSON.parse(readFileSync(result.manifestPath, "utf8")) as {
     schemaVersion?: string;
     boundaries?: {
       canonicalGeometryMutation?: boolean;
       writesProjectStorage?: boolean;
+      writesProjectZip?: boolean;
       googleEarthRenderProof?: boolean;
       finalClientDesign?: boolean;
+      advisoryOnly?: boolean;
+      qualifiedReviewRequired?: boolean;
     };
     source?: { kmlEntryName?: string; sha256?: string };
     importReview?: {
@@ -80,14 +86,32 @@ try {
     advisoryReview?: {
       multiMachineReview?: { scenarioCount?: number; readyScenarioCount?: number };
       strategyComparison?: { costInputStatus?: string; readyStrategyCount?: number };
+      radiusSensitivity?: {
+        advisoryOnly?: boolean;
+        canonicalGeometryMutation?: boolean;
+        qualifiedReviewRequired?: boolean;
+        source?: string;
+        rowCount?: number;
+        readyRowCount?: number;
+        bestByCostPerAcre?: { radiusMeters?: number; cost?: { status?: string; costPerIrrigatedAcre?: number | null } } | null;
+        rows?: Array<{
+          advisoryOnly?: boolean;
+          canonicalGeometryMutation?: boolean;
+          radiusMeters?: number;
+          cost?: { status?: string; costPerIrrigatedAcre?: number | null };
+        }>;
+      };
     };
   };
   assert.equal(manifest.schemaVersion, "cplayout-client-kmz-advisory-report-v1");
   assert.equal(manifest.source?.kmlEntryName, "doc.kml");
   assert.equal(manifest.boundaries?.canonicalGeometryMutation, false);
   assert.equal(manifest.boundaries?.writesProjectStorage, false);
+  assert.equal(manifest.boundaries?.writesProjectZip, false);
   assert.equal(manifest.boundaries?.googleEarthRenderProof, false);
   assert.equal(manifest.boundaries?.finalClientDesign, false);
+  assert.equal(manifest.boundaries?.advisoryOnly, true);
+  assert.equal(manifest.boundaries?.qualifiedReviewRequired, true);
   assert.equal(manifest.importReview?.items?.some((item) => item.featureKind === "machine_zone"), true);
   assert.equal(manifest.importReview?.items?.some((item) => item.featureKind === "measurement_line"), true);
   assert.equal(manifest.importReview?.items?.some((item) => item.classification === "existing_pivot"), true);
@@ -95,12 +119,26 @@ try {
   assert.ok((manifest.advisoryReview?.multiMachineReview?.readyScenarioCount ?? 0) >= 1);
   assert.equal(manifest.advisoryReview?.strategyComparison?.costInputStatus, "complete");
   assert.ok((manifest.advisoryReview?.strategyComparison?.readyStrategyCount ?? 0) >= 1);
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.advisoryOnly, true);
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.canonicalGeometryMutation, false);
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.qualifiedReviewRequired, true);
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.source, "imported_radius_sensitivity");
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.rowCount, 2);
+  assert.ok((manifest.advisoryReview?.radiusSensitivity?.readyRowCount ?? 0) >= 1);
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.rows?.some((row) => row.cost?.status === "complete"), true);
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.rows?.every((row) => row.advisoryOnly === true), true);
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.rows?.every((row) => row.canonicalGeometryMutation === false), true);
+  assert.equal(manifest.advisoryReview?.radiusSensitivity?.bestByCostPerAcre?.cost?.status, "complete");
 
   const report = readFileSync(result.reportPath, "utf8");
   assert.match(report, /Advisory only: true/);
   assert.match(report, /Canonical geometry mutation: false/);
   assert.match(report, /Machine Strategy And Cost Review/);
   assert.match(report, /Cost review is local and advisory/);
+  assert.match(report, /Radius Sensitivity Review/);
+  assert.match(report, /Best cost-per-acre radius/);
+  assert.match(report, /not a final design, not Google Earth render proof, and not automatic canonical geometry mutation/);
+  assert.match(report, /does not change project geometry, machine settings, storage, archives, or KML\/KMZ/);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

@@ -15,7 +15,7 @@ Keep center-pivot layout work inside the current workspace split. Pure domain an
 | `packages/gnss/` | GNSS parsing and quality helpers. | Use for field collection gates; do not mix RTK/GNSS proof with imagery-only recommendations. |
 | `packages/map-adapters/` | SVG map surface, overlay conversion, MapLibre preview boundary. | Keep rendering read-only unless an explicit editor mutation path is implemented through core reducer actions. |
 | `packages/project-store/` | Web MVP local storage, native SQLite plans/adapters, ZIP/KML/archive export surfaces. | Keep project archives round-tripping through `projectArchive.ts` and `projectDocument.ts`. Export canonical project/GIS/survey/metrics/map-package files only; retired review entries are ignored on import and not persisted. |
-| `apps/mobile/` | Expo React Native app, panels, settings UI, design awareness review, drawing tools, and export/import controls. | Wire package APIs after tests pass. Use Expo packages for native dependencies when needed. Keep Awareness / Design Review advisory and local; applying pivot candidates remains an explicit operator action. |
+| `apps/mobile/` | Expo React Native app, panels, settings UI, design awareness review, local cost-assumption review, drawing tools, and export/import controls. | Wire package APIs after tests pass. Use Expo packages for native dependencies when needed. Keep Awareness / Design Review advisory and local; applying pivot candidates remains an explicit operator action, and operator cost inputs are not vendor quotes. |
 | `docs/` | Verification gates, architecture notes, source ledgers, planning records. | Keep source-backed package/platform claims here, with unverified native claims explicitly blocked. |
 | `.agents/skills/` | Repo-local reusable workflow surfaces. | Use for agent workflow guidance only, not product runtime code. |
 
@@ -33,7 +33,7 @@ Keep center-pivot layout work inside the current workspace split. Pure domain an
 - Native SQLite and ZIP sharing may typecheck and compile without proving device behavior.
 - Android native MapLibre vector TileJSON/template rendering has a current SM-P613 proof report in the focused plan/source ledger. Raw PMTiles/MBTiles rendering, imported raster/aerial package rendering, and iOS native rendering remain advanced lanes until local adapter work and platform verification pass.
 - Full saveable geometry editing is incomplete until draft vertices can be committed to project field/obstacle entities with undo and validation.
-- Advisory machine zones, planning boundaries, linear move paths, measurement lines, wells, wire paths, imported pivot evidence, projected collision/review zones, and machine-strategy comparisons are project review data. They do not implement runtime/certified multi-pivot collision prevention, bender/corner-arm proprietary kinematics, certified linear/lateral design, automatic cost quotes, or Google Earth/native runtime proof.
+- Advisory machine zones, planning boundaries, linear move paths, measurement lines, wells, wire paths, imported pivot evidence, projected collision/review zones, local cost assumptions, and machine-strategy comparisons are project review data. They do not implement runtime/certified multi-pivot collision prevention, bender/corner-arm proprietary kinematics, certified linear/lateral design, automatic/vendor cost quotes, or Google Earth/native runtime proof.
 
 ## Acceptance Checks
 

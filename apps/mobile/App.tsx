@@ -115,6 +115,7 @@ import {
   exportScenarioGeoJson,
   machineRadiusMeters,
   type AdvisoryCostAssessment,
+  type AdvisoryCostInput,
   type AdvisoryCornerArmEvaluation,
   type AdvisoryMachineStrategyComparison,
   type AdvisoryMultiMachineReview,
@@ -131,9 +132,22 @@ type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "validation" | "export";
 type DesignConsoleModal = DrawingToolPaletteModal;
 type InspectorPage = "metrics" | "layers" | "feature" | "rtk" | "warnings";
+type AdvisoryCostDraft = {
+  fixedMachineCost: string;
+  costPerMeter: string;
+  costPerTower: string;
+  currencyCode: string;
+};
 type PendingPlacementAction =
   | { kind: "pivot"; candidate: PivotPlacementCandidate }
   | { kind: "cornerArm"; config: AdvisoryCornerArmConfig };
+
+const EMPTY_ADVISORY_COST_DRAFT: AdvisoryCostDraft = {
+  fixedMachineCost: "",
+  costPerMeter: "",
+  costPerTower: "",
+  currencyCode: "USD",
+};
 
 function createBlankDesignProject(settings: AppSettings): PivotProject {
   const timestamp = new Date().toISOString();
@@ -201,6 +215,7 @@ function AppContent(): React.JSX.Element {
   const [designScenarioPreview, setDesignScenarioPreview] = useState<DesignScenarioPreview[] | null>(null);
   const [idealCenterAnalysis, setIdealCenterAnalysis] = useState<IdealCenterPointAnalysis | null>(null);
   const [placementCandidates, setPlacementCandidates] = useState<PivotPlacementCandidate[] | null>(null);
+  const [advisoryCostDraft, setAdvisoryCostDraft] = useState<AdvisoryCostDraft>(EMPTY_ADVISORY_COST_DRAFT);
   const [pendingPlacementAction, setPendingPlacementAction] = useState<PendingPlacementAction | null>(null);
   const [guidedMapTool, setGuidedMapTool] = useState<{
     activeLayer: DrawingLayerType;
@@ -239,6 +254,7 @@ function AppContent(): React.JSX.Element {
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
   const cornerArmEvaluation = useMemo(() => evaluateAdvisoryCornerArm(project), [project]);
+  const advisoryCostInput = useMemo(() => advisoryCostInputFromDraft(advisoryCostDraft), [advisoryCostDraft]);
   const androidNativeProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_ANDROID_NATIVE_PROOF === "1";
   const nativeMapLibreProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF === "1";
   const isDirty = editor.revision !== savedRevision;
@@ -278,6 +294,15 @@ function AppContent(): React.JSX.Element {
   }, [editor.revision]);
 
   useEffect(() => {
+    setAdvisoryCostDraft(EMPTY_ADVISORY_COST_DRAFT);
+  }, [project.id]);
+
+  useEffect(() => {
+    setIdealCenterAnalysis(null);
+    setPlacementCandidates(null);
+  }, [advisoryCostInput]);
+
+  useEffect(() => {
     if (homeMapView) setDesignConsoleModal(null);
   }, [homeMapView]);
 
@@ -310,7 +335,7 @@ function AppContent(): React.JSX.Element {
   }
 
   function calculateDesignScenarios(): void {
-    const analysis = analyzeIdealPivotCenter(project, { maxCandidates: 4 });
+    const analysis = analyzeIdealPivotCenter(project, { maxCandidates: 4, costInput: advisoryCostInput });
     setDesignScenarioPreview(buildDesignScenarioPreview(project, { maxOptimizedCandidates: 3 }));
     setIdealCenterAnalysis(analysis);
     setPlacementCandidates(analysis.candidates);
@@ -1246,6 +1271,8 @@ function AppContent(): React.JSX.Element {
       {!homeMapView ? (
           <DesignConsoleDialog
             activeModal={designConsoleModal}
+            advisoryCostDraft={advisoryCostDraft}
+            advisoryCostInput={advisoryCostInput}
             cornerArmEvaluation={cornerArmEvaluation}
             editorError={editor.lastError}
             onActivateTool={activateDesignConsoleTool}
@@ -1258,6 +1285,7 @@ function AppContent(): React.JSX.Element {
             }}
             onRequestApplyPivotCandidate={(candidate) => setPendingPlacementAction({ kind: "pivot", candidate })}
             onRequestSaveCornerArm={(config) => setPendingPlacementAction({ kind: "cornerArm", config })}
+            onUpdateAdvisoryCostDraft={setAdvisoryCostDraft}
             onSettingsChange={commitSettings}
             onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
             idealCenterAnalysis={idealCenterAnalysis}
@@ -1618,6 +1646,8 @@ function DesignActionHud({
 
 function DesignConsoleDialog({
   activeModal,
+  advisoryCostDraft,
+  advisoryCostInput,
   cornerArmEvaluation,
   editorError,
   onActivateTool,
@@ -1627,6 +1657,7 @@ function DesignConsoleDialog({
   onOpenFiles,
   onRequestApplyPivotCandidate,
   onRequestSaveCornerArm,
+  onUpdateAdvisoryCostDraft,
   onSettingsChange,
   onUpdateMachine,
   idealCenterAnalysis,
@@ -1638,6 +1669,8 @@ function DesignConsoleDialog({
   visible,
 }: {
   activeModal: DesignConsoleModal;
+  advisoryCostDraft: AdvisoryCostDraft;
+  advisoryCostInput: AdvisoryCostInput | undefined;
   cornerArmEvaluation: AdvisoryCornerArmEvaluation;
   editorError: string | null;
   onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
@@ -1647,6 +1680,7 @@ function DesignConsoleDialog({
   onOpenFiles: () => void;
   onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
   onRequestSaveCornerArm: (config: AdvisoryCornerArmConfig) => void;
+  onUpdateAdvisoryCostDraft: (draft: AdvisoryCostDraft) => void;
   onSettingsChange: (settings: AppSettings) => void;
   onUpdateMachine: (machine: PivotMachine) => boolean;
   idealCenterAnalysis: IdealCenterPointAnalysis | null;
@@ -1700,12 +1734,16 @@ function DesignConsoleDialog({
             ) : null}
             {activeModal === "calculate" ? (
               <CalculateSheet
+                advisoryCostDraft={advisoryCostDraft}
+                advisoryCostInput={advisoryCostInput}
                 editorError={editorError}
                 idealCenterAnalysis={idealCenterAnalysis}
                 onCalculate={onCalculate}
                 onRequestApplyPivotCandidate={onRequestApplyPivotCandidate}
+                onUpdateAdvisoryCostDraft={onUpdateAdvisoryCostDraft}
                 placementCandidates={placementCandidates}
                 preview={preview}
+                project={project}
                 result={result}
                 settings={settings}
               />
@@ -2137,24 +2175,38 @@ function CornerArmSheet({
 }
 
 function CalculateSheet({
+  advisoryCostDraft,
+  advisoryCostInput,
   editorError,
   idealCenterAnalysis,
   onCalculate,
   onRequestApplyPivotCandidate,
+  onUpdateAdvisoryCostDraft,
   placementCandidates,
   preview,
+  project,
   result,
   settings,
 }: {
+  advisoryCostDraft: AdvisoryCostDraft;
+  advisoryCostInput: AdvisoryCostInput | undefined;
   editorError: string | null;
   idealCenterAnalysis: IdealCenterPointAnalysis | null;
   onCalculate: () => void;
   onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
+  onUpdateAdvisoryCostDraft: (draft: AdvisoryCostDraft) => void;
   placementCandidates: PivotPlacementCandidate[] | null;
   preview: DesignScenarioPreview[] | null;
+  project: PivotProject;
   result: ReturnType<typeof evaluateLayout>;
   settings: AppSettings;
 }): React.JSX.Element {
+  const strategyComparison = useMemo<AdvisoryMachineStrategyComparison>(() => compareAdvisoryMachineStrategies(project, {
+    maxCandidates: 2,
+    includeUnsupportedConceptPlaceholders: false,
+    costInput: advisoryCostInput,
+  }), [advisoryCostInput, project]);
+  const bestStrategy = strategyComparison.bestStrategy;
   return (
     <View style={styles.machineForm}>
       <View style={styles.metricGrid}>
@@ -2162,14 +2214,81 @@ function CalculateSheet({
         <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
         <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
       </View>
+      <AdvisoryCostReviewPanel
+        draft={advisoryCostDraft}
+        onChange={onUpdateAdvisoryCostDraft}
+      />
       <Pressable accessibilityRole="button" onPress={onCalculate} style={styles.calculateButton} testID="design-console-calculate">
         <Calculator size={16} color="#ffffff" />
         <Text style={styles.calculateButtonText}>Calculate Preview</Text>
       </Pressable>
       {editorError ? <Text style={styles.formError}>{editorError}</Text> : null}
+      {advisoryCostInput ? (
+        <Text style={styles.mapFeatureMeta} testID="advisory-cost-active-note">
+          Cost assumptions will rank advisory candidates and machine strategies only; they are not saved as canonical geometry or vendor quotes.
+        </Text>
+      ) : null}
+      <View style={styles.placementReviewPanel} testID="advisory-strategy-cost-summary">
+        <View style={styles.scenarioRowHeader}>
+          <Text style={styles.rowTitle}>Machine Strategy Cost Review</Text>
+          <Text style={styles.scenarioScore}>{costStatusShortLabel(strategyComparison.costInputStatus)}</Text>
+        </View>
+        <Text style={styles.rowMeta}>
+          {bestStrategy
+            ? `${bestStrategy.label} · ${formatAreaFromAcres(bestStrategy.irrigatedAcres, settings.unitSystem)} modeled · ${bestStrategy.costAssessment ? formatCostAssessment(bestStrategy.costAssessment) : "Cost efficiency pending."}`
+            : "No advisory machine strategy is ready for cost comparison."}
+        </Text>
+        <Text style={styles.mapFeatureMeta}>Strategy cost review uses operator-supplied local assumptions only and does not create a quote, purchase recommendation, or project geometry change.</Text>
+      </View>
       <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
       <PlacementReviewPanel analysis={idealCenterAnalysis} candidates={placementCandidates} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
+    </View>
+  );
+}
+
+function AdvisoryCostReviewPanel({
+  draft,
+  onChange,
+}: {
+  draft: AdvisoryCostDraft;
+  onChange: (draft: AdvisoryCostDraft) => void;
+}): React.JSX.Element {
+  const status = advisoryCostDraftStatus(draft);
+  const statusTone = status === "complete" ? "good" : status === "invalid_cost_input" ? "danger" : "warn";
+
+  function update(field: keyof AdvisoryCostDraft, value: string): void {
+    onChange({ ...draft, [field]: field === "currencyCode" ? value.toUpperCase().slice(0, 8) : value });
+  }
+
+  function clear(): void {
+    onChange(EMPTY_ADVISORY_COST_DRAFT);
+  }
+
+  return (
+    <View style={styles.placementReviewPanel} testID="advisory-cost-review-panel">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Cost Review</Text>
+        <Text style={styles.scenarioScore}>{costStatusShortLabel(status)}</Text>
+      </View>
+      <AdvisoryBadgeRow badges={["operator supplied", "advisory", "not a quote"]} />
+      <View style={styles.metricGrid}>
+        <MetricTile label="Cost input" value={costStatusShortLabel(status)} tone={statusTone} />
+        <MetricTile label="Currency" value={draft.currencyCode.trim() || "USD"} />
+        <MetricTile label="Price source" value="Local" />
+      </View>
+      <View style={styles.formGrid}>
+        <FormField label="Fixed machine cost" onChangeText={(value) => update("fixedMachineCost", value)} testID="advisory-cost-fixed" value={draft.fixedMachineCost} />
+        <FormField label="Cost per meter" onChangeText={(value) => update("costPerMeter", value)} testID="advisory-cost-per-meter" value={draft.costPerMeter} />
+        <FormField label="Cost per tower" onChangeText={(value) => update("costPerTower", value)} testID="advisory-cost-per-tower" value={draft.costPerTower} />
+        <FormField keyboardType="default" label="Currency" onChangeText={(value) => update("currencyCode", value)} testID="advisory-cost-currency" value={draft.currencyCode} />
+      </View>
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Clear Cost Input" onPress={clear} testID="advisory-cost-clear" />
+      </View>
+      <Text style={status === "invalid_cost_input" ? styles.formError : styles.mapFeatureMeta} testID="advisory-cost-status">
+        {advisoryCostDraftMessage(draft, status)}
+      </Text>
     </View>
   );
 }
@@ -2348,6 +2467,7 @@ function LayerGroupCard({ detail, meta, title }: { detail: string; meta: string;
 }
 
 function DesignBuilderPanel({
+  advisoryCostInput,
   editorError,
   onActivateMapTool,
   onCalculate,
@@ -2360,6 +2480,7 @@ function DesignBuilderPanel({
   result,
   settings,
 }: {
+  advisoryCostInput?: AdvisoryCostInput;
   editorError: string | null;
   onActivateMapTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
   onCalculate: () => void;
@@ -2473,7 +2594,7 @@ function DesignBuilderPanel({
       </DesignStep>
 
       <DesignStep index={7} title="Awareness / Design Review" meta={`${awarenessFeatureCount(project)} evidence features`}>
-        <DesignAwarenessPanel project={project} result={result} settings={settings} />
+        <DesignAwarenessPanel advisoryCostInput={advisoryCostInput} project={project} result={result} settings={settings} />
       </DesignStep>
 
       <DesignStep index={8} title="Calculate Preview" meta={preview ? `${preview.length} scenarios` : "Not calculated"}>
@@ -2489,10 +2610,12 @@ function DesignBuilderPanel({
 }
 
 function DesignAwarenessPanel({
+  advisoryCostInput,
   project,
   result,
   settings,
 }: {
+  advisoryCostInput?: AdvisoryCostInput;
   project: PivotProject;
   result: ReturnType<typeof evaluateLayout>;
   settings: AppSettings;
@@ -2513,7 +2636,8 @@ function DesignAwarenessPanel({
   const strategyComparison = useMemo<AdvisoryMachineStrategyComparison>(() => compareAdvisoryMachineStrategies(project, {
     maxCandidates: 2,
     includeUnsupportedConceptPlaceholders: false,
-  }), [project]);
+    costInput: advisoryCostInput,
+  }), [advisoryCostInput, project]);
   const firstConflict = multiMachineReview.conflicts[0] ?? null;
   const firstConflictReviewAcres = firstConflict
     ? Math.max(firstConflict.collisionZoneAcres, firstConflict.separationReviewZoneAcres)
@@ -2900,6 +3024,54 @@ function formatCostAssessment(assessment: AdvisoryCostAssessment): string {
     return `Cost input ${assessment.currencyCode} ${assessment.estimatedCost.toFixed(0)} · ${assessment.currencyCode} ${assessment.costPerIrrigatedAcre.toFixed(0)} per irrigated acre.`;
   }
   return assessment.warnings[0] ?? "Cost efficiency is incomplete.";
+}
+
+function advisoryCostInputFromDraft(draft: AdvisoryCostDraft): AdvisoryCostInput | undefined {
+  if (!advisoryCostDraftHasAnyValue(draft)) return undefined;
+  return {
+    fixedMachineCost: optionalDraftCostNumber(draft.fixedMachineCost),
+    costPerMeter: optionalDraftCostNumber(draft.costPerMeter),
+    costPerTower: optionalDraftCostNumber(draft.costPerTower),
+    currencyCode: draft.currencyCode.trim() || "USD",
+    notes: "Operator-supplied local advisory cost assumptions; not a vendor quote.",
+  };
+}
+
+function advisoryCostDraftStatus(draft: AdvisoryCostDraft): AdvisoryCostAssessment["status"] {
+  if (!advisoryCostDraftHasAnyValue(draft)) return "missing_cost_input";
+  const values = [
+    optionalDraftCostNumber(draft.fixedMachineCost),
+    optionalDraftCostNumber(draft.costPerMeter),
+    optionalDraftCostNumber(draft.costPerTower),
+  ].map((value) => value ?? 0);
+  if (values.some((value) => !Number.isFinite(value) || value < 0)) return "invalid_cost_input";
+  return values.reduce((sum, value) => sum + value, 0) > 0 ? "complete" : "invalid_cost_input";
+}
+
+function advisoryCostDraftMessage(draft: AdvisoryCostDraft, status: AdvisoryCostAssessment["status"]): string {
+  if (status === "missing_cost_input") {
+    return "Enter local cost assumptions to rank advisory candidates; CPLayout will not infer machine prices.";
+  }
+  if (status === "invalid_cost_input") {
+    return "Cost assumptions must be finite, nonnegative numbers with at least one value above zero.";
+  }
+  const input = advisoryCostInputFromDraft(draft);
+  const fixed = input?.fixedMachineCost ?? 0;
+  const perMeter = input?.costPerMeter ?? 0;
+  const perTower = input?.costPerTower ?? 0;
+  return `${input?.currencyCode ?? "USD"} assumptions: fixed ${fixed.toFixed(0)} · per meter ${perMeter.toFixed(0)} · per tower ${perTower.toFixed(0)}.`;
+}
+
+function advisoryCostDraftHasAnyValue(draft: AdvisoryCostDraft): boolean {
+  return draft.fixedMachineCost.trim().length > 0
+    || draft.costPerMeter.trim().length > 0
+    || draft.costPerTower.trim().length > 0;
+}
+
+function optionalDraftCostNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  return Number(trimmed);
 }
 
 function awarenessFeatureCount(project: PivotProject): number {
@@ -4234,14 +4406,27 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
   );
 }
 
-function FormField({ label, onChangeText, value }: { label: string; onChangeText: (value: string) => void; value: string }): React.JSX.Element {
+function FormField({
+  keyboardType = "numbers-and-punctuation",
+  label,
+  onChangeText,
+  testID,
+  value,
+}: {
+  keyboardType?: "default" | "numbers-and-punctuation";
+  label: string;
+  onChangeText: (value: string) => void;
+  testID?: string;
+  value: string;
+}): React.JSX.Element {
   return (
     <View style={styles.formField}>
       <Text style={styles.formLabel}>{label}</Text>
       <TextInput
-        keyboardType="numbers-and-punctuation"
+        keyboardType={keyboardType}
         onChangeText={onChangeText}
         style={styles.textInput}
+        testID={testID}
         value={value}
       />
     </View>

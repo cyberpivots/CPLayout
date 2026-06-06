@@ -785,6 +785,39 @@ test("placement review applies advisory pivot candidates only after confirmation
   await saveScreen(page, testInfo, "placement-review-confirmed-apply");
 });
 
+test("advisory cost review uses local assumptions without dirtying geometry", async ({ page }, testInfo) => {
+  test.slow();
+  await page.goto("/");
+  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("design-action-calculate").click();
+  await expect(page.getByTestId("design-console-dialog")).toBeVisible();
+  await expect(page.getByTestId("advisory-cost-review-panel")).toContainText("Cost Review");
+  await expect(page.getByTestId("advisory-cost-status")).toContainText("will not infer machine prices");
+
+  await page.getByTestId("advisory-cost-fixed").fill("80000");
+  await page.getByTestId("advisory-cost-per-meter").fill("700");
+  await page.getByTestId("advisory-cost-per-tower").fill("3000");
+  await expect(page.getByTestId("advisory-cost-review-panel")).toContainText("Complete");
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
+
+  await page.getByTestId("design-console-calculate").click();
+  await expect.poll(
+    async () => page.getByTestId("advisory-strategy-cost-summary").evaluate((node) => node.textContent ?? ""),
+    { timeout: 30000 },
+  ).toContain("Cost input USD");
+  await expect.poll(
+    async () => page.getByTestId("advisory-strategy-cost-summary").evaluate((node) => node.textContent ?? ""),
+    { timeout: 30000 },
+  ).toContain("does not create a quote");
+  await expect.poll(
+    async () => page.getByTestId("placement-review-panel").evaluate((node) => node.textContent ?? ""),
+    { timeout: 30000 },
+  ).toContain("Cost input USD");
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
+  await saveScreen(page, testInfo, "advisory-cost-review-local-assumptions");
+});
+
 test("corner arm advisory save requires confirmation and remains advisory", async ({ page }, testInfo) => {
   await page.goto("/");
   await openBaselineSample(page);

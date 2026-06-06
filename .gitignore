@@ -5,6 +5,7 @@ dist/
 dist-android/
 web-build/
 reports/android-native-verification/
+reports/client-kmz-advisory/
 reports/android-layout/
 reports/android-app-review/
 reports/continuous-improvement/

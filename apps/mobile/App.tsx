@@ -109,12 +109,14 @@ import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeIdealPivotCenter,
   buildDesignScenarioPreview,
+  compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
   evaluateLayout,
   exportScenarioGeoJson,
   machineRadiusMeters,
   type AdvisoryCostAssessment,
   type AdvisoryCornerArmEvaluation,
+  type AdvisoryMachineStrategyComparison,
   type AdvisoryMultiMachineReview,
   type DesignScenarioPreview,
   type DrawingLayerType,
@@ -2506,7 +2508,13 @@ function DesignAwarenessPanel({
     maxCandidates: 3,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
   }), [project]);
+  const strategyComparison = useMemo<AdvisoryMachineStrategyComparison>(() => compareAdvisoryMachineStrategies(project, {
+    maxCandidates: 2,
+    includeUnsupportedConceptPlaceholders: false,
+  }), [project]);
   const firstConflict = multiMachineReview.conflicts[0] ?? null;
+  const readyStrategyCount = strategyComparison.strategies.filter((strategy) => strategy.status === "ready").length;
+  const strategyCostStatus = costStatusShortLabel(strategyComparison.costInputStatus);
   return (
     <View style={styles.mapFeatureEditor} testID="design-awareness-panel">
       <View style={styles.metricGrid}>
@@ -2519,6 +2527,8 @@ function DesignAwarenessPanel({
         <MetricTile label="Advisory scenarios" value={`${multiMachineReview.compilation.readyScenarioCount}/${multiMachineReview.compilation.scenarioCount}`} tone={multiMachineReview.compilation.readyScenarioCount > 0 ? "neutral" : "warn"} />
         <MetricTile label="Envelope risks" value={`${multiMachineReview.conflicts.length}`} tone={multiMachineReview.conflicts.length > 0 ? "danger" : "good"} />
         <MetricTile label="Modeled union" value={formatAreaFromAcres(multiMachineReview.compilation.modeledIrrigatedUnionAcres, settings.unitSystem)} />
+        <MetricTile label="Machine strategies" value={`${readyStrategyCount}/${strategyComparison.strategies.length}`} tone={readyStrategyCount > 0 ? "neutral" : "warn"} />
+        <MetricTile label="Cost review" value={strategyCostStatus} tone={strategyComparison.costInputStatus === "complete" ? "good" : "warn"} />
         <MetricTile label="Hard conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
         <MetricTile label="Outside wet" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "warn" : "good"} />
       </View>
@@ -2528,6 +2538,11 @@ function DesignAwarenessPanel({
       {firstConflict ? (
         <Text style={styles.formError}>
           {firstConflict.leftZoneName} / {firstConflict.rightZoneName}: {formatDistance(firstConflict.separationDeficitMeters, settings.unitSystem)} envelope separation deficit.
+        </Text>
+      ) : null}
+      {strategyComparison.bestStrategy ? (
+        <Text style={styles.mapFeatureMeta}>
+          Best advisory strategy: {strategyComparison.bestStrategy.label} · {formatAreaFromAcres(strategyComparison.bestStrategy.irrigatedAcres, settings.unitSystem)} modeled · cost ranking {strategyComparison.costInputStatus.replaceAll("_", " ")}.
         </Text>
       ) : null}
       <Text style={styles.mapFeatureMeta}>Awareness evidence supports review and scenario planning only. Additional machine zones, measurement lines, wells, and wire paths do not create pivots or mutate canonical projected XY automatically.</Text>
@@ -2865,6 +2880,13 @@ function formatPlacementScoreBreakdown(candidate: PivotPlacementCandidate): stri
 function costAssessmentLabel(assessment: AdvisoryCostAssessment): string {
   if (assessment.status === "complete") return `${assessment.currencyCode}/ac`;
   return assessment.status.replaceAll("_", " ");
+}
+
+function costStatusShortLabel(status: AdvisoryCostAssessment["status"]): string {
+  if (status === "complete") return "Complete";
+  if (status === "invalid_cost_input") return "Invalid";
+  if (status === "no_irrigated_acres") return "No acres";
+  return "Missing";
 }
 
 function formatCostAssessment(assessment: AdvisoryCostAssessment): string {

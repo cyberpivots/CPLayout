@@ -5,6 +5,7 @@ import type {
   AdvisorySourceReference,
   LayoutMetrics,
   MultiPolygonXY,
+  PivotMachine,
   PivotProject,
   ProjectMapFeature,
   XY,
@@ -228,6 +229,76 @@ export interface AdvisoryMultiMachineReview {
   sourceRefs: AdvisorySourceReference[];
 }
 
+export type AdvisoryMachineStrategyKind =
+  | "current_machine"
+  | "full_circle_same_radius"
+  | "full_circle_radius"
+  | "unsupported_linear_lateral"
+  | "unsupported_bender_second_pivot";
+
+export type AdvisoryMachineStrategyStatus =
+  | "ready"
+  | "no_feasible_candidate"
+  | "unsupported_model";
+
+export type AdvisoryMachineStrategyComparisonStatus =
+  | "ready"
+  | "no_boundary"
+  | "no_feasible_strategy";
+
+export interface AdvisoryMachineStrategyInput {
+  id: string;
+  label: string;
+  strategyKind: AdvisoryMachineStrategyKind;
+  machine?: PivotMachine;
+  notes?: string;
+  sourceRefs?: AdvisorySourceReference[];
+}
+
+export interface AdvisoryMachineStrategyComparisonOptions extends PivotPlacementCandidateOptions {
+  strategies?: AdvisoryMachineStrategyInput[];
+  generatedFullCircleRadiiMeters?: number[];
+  includeGeneratedRadiusStrategies?: boolean;
+  includeUnsupportedConceptPlaceholders?: boolean;
+}
+
+export interface AdvisoryMachineStrategyResult {
+  id: string;
+  label: string;
+  strategyKind: AdvisoryMachineStrategyKind;
+  status: AdvisoryMachineStrategyStatus;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  machineRadiusMeters: number;
+  spanCount: number;
+  sweepMode: PivotMachine["sweep"]["mode"] | "unsupported";
+  bestCandidate: PivotPlacementCandidate | null;
+  candidateCount: number;
+  irrigatedAcres: number;
+  outsideFieldAcres: number;
+  coveragePercent: number;
+  costAssessment: AdvisoryCostAssessment | null;
+  costEfficiencyAcresPerHundredThousand: number | null;
+  advisoryScore: number;
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
+export interface AdvisoryMachineStrategyComparison {
+  status: AdvisoryMachineStrategyComparisonStatus;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  projectCrs: string;
+  strategies: AdvisoryMachineStrategyResult[];
+  bestStrategy: AdvisoryMachineStrategyResult | null;
+  costInputStatus: AdvisoryCostAssessment["status"];
+  blockers: string[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
 export interface AdvisoryCornerArmEvaluationOptions {
   sourceRefs?: AdvisorySourceReference[];
 }
@@ -413,6 +484,59 @@ export function analyzeAdvisoryMultiMachineLayout(
       "Each scenario reuses the current machine template; span package, corner-arm, flow, pressure, and vendor constraints require qualified review.",
       "Envelope conflicts are conservative geometry warnings and do not model timing, tower phasing, alignment controls, or bender-machine kinematics.",
       ...(compilation.duplicateModeledCoverageAcres > 0.001 ? ["Modeled irrigated acreage overlaps between scenarios; summed acres are not de-duplicated."] : []),
+      ...blockers,
+    ],
+    sourceRefs,
+  };
+}
+
+export function compareAdvisoryMachineStrategies(
+  project: PivotProject,
+  options: AdvisoryMachineStrategyComparisonOptions = {},
+): AdvisoryMachineStrategyComparison {
+  const sourceRefs = options.sourceRefs ?? DEFAULT_ADVISORY_PLACEMENT_SOURCE_REFS;
+  const base = {
+    advisoryOnly: true as const,
+    canonicalGeometryMutation: false as const,
+    qualifiedReviewRequired: true as const,
+    projectCrs: project.projectCrs,
+    sourceRefs,
+  };
+
+  if (project.fieldBoundary.length < 3) {
+    return {
+      ...base,
+      status: "no_boundary",
+      strategies: [],
+      bestStrategy: null,
+      costInputStatus: costInputStatusForInput(options.costInput),
+      blockers: ["At least three projected-XY field boundary vertices are required before advisory machine strategy comparison."],
+      warnings: ["Machine strategy comparison did not run because the field boundary is incomplete."],
+    };
+  }
+
+  const strategyInputs = buildMachineStrategyInputs(project, options, sourceRefs);
+  const strategies = strategyInputs
+    .map((strategy) => evaluateMachineStrategy(project, strategy, options, sourceRefs))
+    .sort(compareMachineStrategyResults);
+  const bestStrategy = strategies.find((strategy) => strategy.status === "ready" && strategy.bestCandidate?.feasible) ?? null;
+  const costInputStatus = firstCostStatus(strategies, options.costInput);
+  const blockers = bestStrategy
+    ? []
+    : ["No advisory machine strategy produced a feasible center candidate."];
+
+  return {
+    ...base,
+    status: bestStrategy ? "ready" : "no_feasible_strategy",
+    strategies,
+    bestStrategy,
+    costInputStatus,
+    blockers,
+    warnings: [
+      "Machine strategy comparison is advisory and does not mutate canonical projected XY, machine settings, zones, or project storage.",
+      "Generated full-circle strategies are approximate planning templates derived from the current span package; operator/vendor confirmation is required.",
+      ...(costInputStatus === "missing_cost_input" ? ["Cost ranking is incomplete because no explicit local cost input was supplied."] : []),
+      ...(costInputStatus === "invalid_cost_input" ? ["Cost ranking is blocked because the supplied local cost input is invalid."] : []),
       ...blockers,
     ],
     sourceRefs,
@@ -936,6 +1060,245 @@ function buildBoundaryCompilation(
     modeledIrrigatedUnionAcres: round(modeledIrrigatedUnionAcres),
     duplicateModeledCoverageAcres: round(Math.max(0, modeledIrrigatedAcresSum - modeledIrrigatedUnionAcres)),
   };
+}
+
+function buildMachineStrategyInputs(
+  project: PivotProject,
+  options: AdvisoryMachineStrategyComparisonOptions,
+  sourceRefs: AdvisorySourceReference[],
+): AdvisoryMachineStrategyInput[] {
+  const inputs: AdvisoryMachineStrategyInput[] = options.strategies
+    ? [...options.strategies]
+    : [{
+      id: "current-machine",
+      label: "Current machine",
+      strategyKind: "current_machine",
+      machine: project.machine,
+      sourceRefs,
+    }];
+  const currentRadius = machineRadiusMeters(project.machine);
+
+  if (project.machine.sweep.mode === "partial_circle" && currentRadius > 0) {
+    inputs.push({
+      id: "full-circle-same-radius",
+      label: "Full circle at current radius",
+      strategyKind: "full_circle_same_radius",
+      machine: {
+        ...project.machine,
+        id: `${project.machine.id}-full-circle`,
+        name: `${project.machine.name} full circle`,
+        sweep: { mode: "full_circle" },
+        endGunAngleRanges: undefined,
+      },
+      sourceRefs,
+      notes: "Compares the current radius against a full-circle sweep; it is not a machine quote or vendor recommendation.",
+    });
+  }
+
+  if (options.includeGeneratedRadiusStrategies !== false && currentRadius > 0) {
+    const radii = options.generatedFullCircleRadiiMeters ?? generatedFullCircleRadii(currentRadius);
+    for (const radius of radii) {
+      if (!Number.isFinite(radius) || radius <= 0) continue;
+      inputs.push({
+        id: `full-circle-radius-${radius.toFixed(2)}`,
+        label: `Full circle ${radius.toFixed(0)} m radius`,
+        strategyKind: "full_circle_radius",
+        machine: approximateFullCircleMachine(project.machine, radius),
+        sourceRefs,
+        notes: "Generated radius strategy is a local planning approximation from the current span package.",
+      });
+    }
+  }
+
+  if (options.includeUnsupportedConceptPlaceholders !== false) {
+    inputs.push(
+      {
+        id: "linear-lateral-placeholder",
+        label: "Linear/lateral move",
+        strategyKind: "unsupported_linear_lateral",
+        sourceRefs,
+        notes: "Linear/lateral move design requires a separate path, guidance, water-supply, and travel-stop model.",
+      },
+      {
+        id: "bender-second-pivot-placeholder",
+        label: "Bender / second pivot point",
+        strategyKind: "unsupported_bender_second_pivot",
+        sourceRefs,
+        notes: "Bender or second-pivot behavior requires source-backed tower-pivot kinematics before scoring.",
+      },
+    );
+  }
+
+  return dedupeMachineStrategyInputs(inputs);
+}
+
+function evaluateMachineStrategy(
+  project: PivotProject,
+  strategy: AdvisoryMachineStrategyInput,
+  options: AdvisoryMachineStrategyComparisonOptions,
+  defaultSourceRefs: AdvisorySourceReference[],
+): AdvisoryMachineStrategyResult {
+  const sourceRefs = strategy.sourceRefs ?? defaultSourceRefs;
+  const unsupportedWarning = unsupportedStrategyWarning(strategy);
+  if (unsupportedWarning || !strategy.machine) {
+    return {
+      id: strategy.id,
+      label: strategy.label,
+      strategyKind: strategy.strategyKind,
+      status: "unsupported_model",
+      advisoryOnly: true,
+      canonicalGeometryMutation: false,
+      qualifiedReviewRequired: true,
+      machineRadiusMeters: 0,
+      spanCount: 0,
+      sweepMode: "unsupported",
+      bestCandidate: null,
+      candidateCount: 0,
+      irrigatedAcres: 0,
+      outsideFieldAcres: 0,
+      coveragePercent: 0,
+      costAssessment: null,
+      costEfficiencyAcresPerHundredThousand: null,
+      advisoryScore: Number.NEGATIVE_INFINITY,
+      warnings: [
+        unsupportedWarning ?? "Machine strategy is missing a machine template and was not scored.",
+        ...(strategy.notes ? [strategy.notes] : []),
+      ],
+      sourceRefs,
+    };
+  }
+
+  const strategyProject: PivotProject = {
+    ...project,
+    machine: strategy.machine,
+  };
+  const candidates = buildPivotPlacementCandidates(strategyProject, {
+    ...options,
+    includeMachineZoneReviews: false,
+    sourceRefs,
+  });
+  const bestCandidate = candidates.find((candidate) => candidate.feasible && candidate.insideFieldBoundary) ?? null;
+  const costAssessment = bestCandidate?.costAssessment
+    ?? assessAdvisoryCost(strategyProject, 0, options.costInput, sourceRefs);
+  const costEfficiencyAcresPerHundredThousand = costAssessment.estimatedCost && bestCandidate
+    ? round(bestCandidate.metrics.irrigatedAcres / (costAssessment.estimatedCost / 100000))
+    : null;
+  const advisoryScore = bestCandidate
+    ? round(bestCandidate.score + (costEfficiencyAcresPerHundredThousand ?? 0))
+    : Number.NEGATIVE_INFINITY;
+
+  return {
+    id: strategy.id,
+    label: strategy.label,
+    strategyKind: strategy.strategyKind,
+    status: bestCandidate ? "ready" : "no_feasible_candidate",
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    machineRadiusMeters: round(machineRadiusMeters(strategy.machine)),
+    spanCount: strategy.machine.spanLengthsMeters.length,
+    sweepMode: strategy.machine.sweep.mode,
+    bestCandidate,
+    candidateCount: candidates.length,
+    irrigatedAcres: bestCandidate?.metrics.irrigatedAcres ?? 0,
+    outsideFieldAcres: bestCandidate?.metrics.outsideFieldAcres ?? 0,
+    coveragePercent: bestCandidate?.metrics.coveragePercent ?? 0,
+    costAssessment,
+    costEfficiencyAcresPerHundredThousand,
+    advisoryScore,
+    warnings: [
+      `${strategy.label} is an advisory machine strategy only; applying it requires explicit operator edits and validation.`,
+      ...(strategy.notes ? [strategy.notes] : []),
+      ...(bestCandidate ? bestCandidate.warnings : ["No feasible pivot-center candidate was found for this machine strategy."]),
+    ],
+    sourceRefs,
+  };
+}
+
+function unsupportedStrategyWarning(strategy: AdvisoryMachineStrategyInput): string | null {
+  if (strategy.strategyKind === "unsupported_linear_lateral") {
+    return "Linear/lateral move scoring is not implemented; CPLayout needs a source-backed travel-path and water-supply model before ranking it.";
+  }
+  if (strategy.strategyKind === "unsupported_bender_second_pivot") {
+    return "Bender or second-pivot scoring is not implemented; CPLayout does not model tower-pivot kinematics yet.";
+  }
+  return null;
+}
+
+function generatedFullCircleRadii(currentRadius: number): number[] {
+  return [0.6, 0.8, 1, 1.2]
+    .map((ratio) => round(currentRadius * ratio))
+    .filter((radius, index, radii) => radius > 0 && radii.indexOf(radius) === index);
+}
+
+function approximateFullCircleMachine(machine: PivotMachine, radiusMeters: number): PivotMachine {
+  const positiveSpans = machine.spanLengthsMeters.filter((span) => Number.isFinite(span) && span > 0);
+  const averageSpan = positiveSpans.length > 0
+    ? positiveSpans.reduce((sum, span) => sum + span, 0) / positiveSpans.length
+    : Math.max(1, radiusMeters);
+  const spanCount = Math.max(1, Math.ceil(radiusMeters / Math.max(1, averageSpan)));
+  const spanLength = radiusMeters / spanCount;
+  return {
+    ...machine,
+    id: `${machine.id}-full-circle-${radiusMeters.toFixed(2)}`,
+    name: `${machine.name} ${radiusMeters.toFixed(0)} m full circle`,
+    spanLengthsMeters: Array.from({ length: spanCount }, () => spanLength),
+    overhangMeters: 0,
+    sweep: { mode: "full_circle" },
+    endGunAngleRanges: undefined,
+  };
+}
+
+function dedupeMachineStrategyInputs(inputs: AdvisoryMachineStrategyInput[]): AdvisoryMachineStrategyInput[] {
+  const byKey = new Map<string, AdvisoryMachineStrategyInput>();
+  for (const input of inputs) {
+    const radius = input.machine ? machineRadiusMeters(input.machine).toFixed(3) : "unsupported";
+    const sweep = input.machine ? JSON.stringify(input.machine.sweep) : input.strategyKind;
+    const key = `${input.strategyKind}:${radius}:${sweep}`;
+    if (!byKey.has(key)) byKey.set(key, input);
+  }
+  return [...byKey.values()];
+}
+
+function compareMachineStrategyResults(left: AdvisoryMachineStrategyResult, right: AdvisoryMachineStrategyResult): number {
+  if (left.status !== right.status) return strategyStatusRank(left.status) - strategyStatusRank(right.status);
+  if (right.advisoryScore !== left.advisoryScore) return right.advisoryScore - left.advisoryScore;
+  if (right.irrigatedAcres !== left.irrigatedAcres) return right.irrigatedAcres - left.irrigatedAcres;
+  return left.label.localeCompare(right.label);
+}
+
+function strategyStatusRank(status: AdvisoryMachineStrategyStatus): number {
+  if (status === "ready") return 0;
+  if (status === "no_feasible_candidate") return 1;
+  return 2;
+}
+
+function firstCostStatus(
+  strategies: AdvisoryMachineStrategyResult[],
+  input: AdvisoryCostInput | undefined,
+): AdvisoryCostAssessment["status"] {
+  const status = strategies.find((strategy) => strategy.costAssessment)?.costAssessment?.status;
+  if (status) return status;
+  return costInputStatusForInput(input);
+}
+
+function costInputStatusForInput(input: AdvisoryCostInput | undefined): AdvisoryCostAssessment["status"] {
+  if (!input) return "missing_cost_input";
+  const fixedMachineCost = input.fixedMachineCost ?? 0;
+  const costPerMeter = input.costPerMeter ?? 0;
+  const costPerTower = input.costPerTower ?? 0;
+  if (
+    !Number.isFinite(fixedMachineCost)
+    || !Number.isFinite(costPerMeter)
+    || !Number.isFinite(costPerTower)
+    || fixedMachineCost < 0
+    || costPerMeter < 0
+    || costPerTower < 0
+    || fixedMachineCost + costPerMeter + costPerTower <= 0
+  ) {
+    return "invalid_cost_input";
+  }
+  return "complete";
 }
 
 function dryCornerPolygonsFor(project: PivotProject, allowedCoverage: MultiPolygonXY): MultiPolygonXY {

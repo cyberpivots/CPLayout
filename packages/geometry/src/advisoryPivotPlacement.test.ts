@@ -6,6 +6,7 @@ import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeIdealPivotCenter,
   buildPivotPlacementCandidates,
+  compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
 } from "./advisoryPivotPlacement";
 import { evaluateLayout } from "./geometry";
@@ -231,6 +232,87 @@ const planningBoundaryReview = analyzeAdvisoryMultiMachineLayout({
 assert.equal(planningBoundaryReview.status, "single_zone_review");
 assert.equal(planningBoundaryReview.compilation.planningBoundaryCount, 1);
 assert.equal(planningBoundaryReview.compilation.readyScenarioCount, 1);
+
+const strategyProject = makeProject({
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 260, y: 0 },
+    { x: 260, y: 220 },
+    { x: 0, y: 220 },
+  ],
+  pivotCenter: { x: 40, y: 110 },
+  waterSource: { x: 30, y: 110 },
+  powerSource: { x: 230, y: 110 },
+  obstacles: [],
+  mapFeatures: [],
+  machine: {
+    ...defaultMachine(),
+    spanLengthsMeters: [45, 45],
+  },
+});
+const strategyProjectBefore = JSON.stringify(strategyProject);
+const strategyComparison = compareAdvisoryMachineStrategies(strategyProject, {
+  gridDivisions: 6,
+  maxCandidates: 3,
+  generatedFullCircleRadiiMeters: [55, 75, 95],
+  costInput: {
+    fixedMachineCost: 80000,
+    costPerMeter: 700,
+    costPerTower: 3000,
+    currencyCode: "USD",
+  },
+});
+assert.equal(strategyComparison.status, "ready");
+assert.equal(strategyComparison.advisoryOnly, true);
+assert.equal(strategyComparison.canonicalGeometryMutation, false);
+assert.equal(strategyComparison.qualifiedReviewRequired, true);
+assert.equal(strategyComparison.costInputStatus, "complete");
+assert.ok(strategyComparison.bestStrategy);
+assert.ok(strategyComparison.strategies.some((strategy) => strategy.strategyKind === "current_machine"));
+assert.ok(strategyComparison.strategies.some((strategy) => strategy.strategyKind === "full_circle_radius"));
+assert.ok(strategyComparison.strategies.some((strategy) => strategy.strategyKind === "unsupported_linear_lateral" && strategy.status === "unsupported_model"));
+assert.ok(strategyComparison.strategies.some((strategy) => strategy.strategyKind === "unsupported_bender_second_pivot" && strategy.status === "unsupported_model"));
+assert.ok(strategyComparison.strategies.filter((strategy) => strategy.status === "ready").every((strategy) => strategy.costAssessment?.status === "complete"));
+assert.ok(strategyComparison.strategies.filter((strategy) => strategy.status === "ready").every((strategy) => Number.isFinite(strategy.advisoryScore)));
+assert.ok(strategyComparison.warnings.some((warning) => warning.includes("does not mutate canonical projected XY")));
+assert.equal(JSON.stringify(strategyProject), strategyProjectBefore);
+
+const missingCostStrategyComparison = compareAdvisoryMachineStrategies(strategyProject, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  includeUnsupportedConceptPlaceholders: false,
+});
+assert.equal(missingCostStrategyComparison.status, "ready");
+assert.equal(missingCostStrategyComparison.costInputStatus, "missing_cost_input");
+assert.ok(missingCostStrategyComparison.warnings.some((warning) => warning.includes("Cost ranking is incomplete")));
+
+const partialStrategyComparison = compareAdvisoryMachineStrategies({
+  ...strategyProject,
+  machine: {
+    ...strategyProject.machine,
+    sweep: {
+      mode: "partial_circle",
+      startAngleDegrees: 180,
+      stopAngleDegrees: 20,
+      direction: "counterclockwise",
+    },
+  },
+}, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  includeGeneratedRadiusStrategies: false,
+  includeUnsupportedConceptPlaceholders: false,
+});
+assert.ok(partialStrategyComparison.strategies.some((strategy) => strategy.strategyKind === "full_circle_same_radius"));
+
+const noBoundaryStrategyComparison = compareAdvisoryMachineStrategies(makeProject({
+  fieldBoundary: [],
+  obstacles: [],
+  mapFeatures: [],
+}));
+assert.equal(noBoundaryStrategyComparison.status, "no_boundary");
+assert.equal(noBoundaryStrategyComparison.bestStrategy, null);
+assert.ok(noBoundaryStrategyComparison.blockers.some((blocker) => blocker.includes("field boundary vertices")));
 
 const missingCostCandidate = buildPivotPlacementCandidates(readyProject, { gridDivisions: 6, maxCandidates: 1 })[0];
 assert.equal(missingCostCandidate.costAssessment.status, "missing_cost_input");

@@ -911,6 +911,33 @@ test("browser map tool buttons expose active state", async ({ page }, testInfo) 
   await saveScreen(page, testInfo, "browser-map-tool-active-state");
 });
 
+test("browser map edit vertices nudges projected boundary through reducer actions", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("browser-tool-edit-vertices").click();
+  await expect(page.getByTestId("browser-tool-edit-vertices")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("edit vertices · 0 draft pts")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  if (testInfo.project.name === "mobile-390") {
+    await saveScreen(page, testInfo, "browser-edit-vertices-compact");
+    return;
+  }
+
+  await page.getByTestId("browser-edit-select-boundary").click();
+  await expect(page.getByText(/Selected boundary vertex 1 of \d+ for projected XY editing\./)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("browser-edit-nudge-east").click();
+  await expect(page.getByText(/Moved boundary vertex 1 of \d+ in projected XY\. Save Local to persist\./)).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "browser-edit-vertices-nudge");
+});
+
 test("grouped drawing HUD menus do not clear active drafts", async ({ page }, testInfo) => {
   await page.goto("/");
   await openBaselineSample(page);

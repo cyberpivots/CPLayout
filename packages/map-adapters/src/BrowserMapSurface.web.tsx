@@ -1,4 +1,6 @@
 import {
+  ArrowLeft,
+  ArrowRight,
   Check,
   Crosshair,
   Fence,
@@ -8,6 +10,7 @@ import {
   MapPinned,
   MousePointer2,
   Satellite,
+  Trash2,
   UtilityPole,
   X,
 } from "lucide-react-native";
@@ -47,6 +50,15 @@ import {
   type RasterImageryStyleSource,
 } from "./mapWorkbenchStyle";
 import { registerPmtilesProtocolOnce } from "./pmtilesProtocol.web";
+import {
+  adjacentProjectVertexSelection,
+  firstBoundaryVertexSelection,
+  firstObstacleVertexSelection,
+  hasObstacleVertexSelection,
+  selectedProjectVertexPoint,
+  selectedProjectVertexText,
+  type SelectedProjectVertex,
+} from "./projectVertexEditing";
 import { SvgMapSurface } from "./SvgMapSurface";
 import type { MapSurfaceProps } from "./types";
 
@@ -75,8 +87,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onAddSurveyPoint,
     onCommitBoundaryDraft,
     onCommitObstacleDraft,
+    onDeleteBoundaryVertex,
+    onDeleteObstacleVertex,
     onMappingWorkflowModeChange,
+    onMoveBoundaryVertex,
     onMoveInfrastructurePoint,
+    onMoveObstacleVertex,
     onPlacePivot,
     onSelectMapFeature,
     onSettingsChange,
@@ -93,7 +109,11 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onAddSurveyPoint,
     onCommitBoundaryDraft,
     onCommitObstacleDraft,
+    onDeleteBoundaryVertex,
+    onDeleteObstacleVertex,
+    onMoveBoundaryVertex,
     onMoveInfrastructurePoint,
+    onMoveObstacleVertex,
     onPlacePivot,
     onSelectMapFeature,
   });
@@ -103,6 +123,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [mapFeatureKind, setMapFeatureKind] = useState<ProjectMapFeatureKind>("underground_pipeline");
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [selectedVertex, setSelectedVertex] = useState<SelectedProjectVertex | null>(null);
   const [status, setStatus] = useState("Imagery is a live reference. Project edits remain projected XY.");
   const mapFeatureOption = featureOptionForKind(mapFeatureKind);
   const projectionFrame = useMemo(() => {
@@ -205,11 +226,27 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       onAddSurveyPoint,
       onCommitBoundaryDraft,
       onCommitObstacleDraft,
+      onDeleteBoundaryVertex,
+      onDeleteObstacleVertex,
+      onMoveBoundaryVertex,
       onMoveInfrastructurePoint,
+      onMoveObstacleVertex,
       onPlacePivot,
       onSelectMapFeature,
     };
-  }, [onAddMapFeature, onAddSurveyPoint, onCommitBoundaryDraft, onCommitObstacleDraft, onMoveInfrastructurePoint, onPlacePivot, onSelectMapFeature]);
+  }, [
+    onAddMapFeature,
+    onAddSurveyPoint,
+    onCommitBoundaryDraft,
+    onCommitObstacleDraft,
+    onDeleteBoundaryVertex,
+    onDeleteObstacleVertex,
+    onMoveBoundaryVertex,
+    onMoveInfrastructurePoint,
+    onMoveObstacleVertex,
+    onPlacePivot,
+    onSelectMapFeature,
+  ]);
 
   useEffect(() => {
     interactionRef.current = {
@@ -370,6 +407,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     if ((!designMode || homeView) && nextMode !== "pan") return;
     setMode(nextMode);
     if (nextLayer) setActiveLayer(nextLayer);
+    if (nextMode !== "edit_vertices") setSelectedVertex(null);
     if (nextMode !== "draw_boundary" && nextMode !== "mark_obstacle" && nextMode !== "measure") {
       clearDraft(`${toolLabel(nextMode)} mode selected. No draft vertices are pending.`);
     }
@@ -458,6 +496,67 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     setStatus(nextStatus);
   }
 
+  function selectVertex(nextVertex: SelectedProjectVertex | null, fallbackStatus: string): void {
+    if (!canEditOnMap) return;
+    if (!nextVertex) {
+      setStatus(fallbackStatus);
+      return;
+    }
+    setSelectedVertex(nextVertex);
+    setMode("edit_vertices");
+    clearDraft(`Selected ${selectedProjectVertexText(project, nextVertex)} for projected XY editing.`);
+  }
+
+  function selectFirstBoundaryVertex(): void {
+    selectVertex(
+      firstBoundaryVertexSelection(project),
+      "No boundary vertices are available for editing.",
+    );
+  }
+
+  function selectFirstObstacleVertex(): void {
+    selectVertex(
+      firstObstacleVertexSelection(project),
+      "No obstacle vertices are available for editing.",
+    );
+  }
+
+  function selectAdjacentVertex(direction: -1 | 1): void {
+    selectVertex(
+      adjacentProjectVertexSelection(project, selectedVertex, direction),
+      "No project vertices are available for editing.",
+    );
+  }
+
+  function nudgeSelectedVertex(delta: XY): void {
+    if (!canEditOnMap || !selectedVertex) return;
+    const point = selectedProjectVertexPoint(project, selectedVertex);
+    if (!point) {
+      setSelectedVertex(null);
+      setStatus("Selected vertex is no longer available.");
+      return;
+    }
+    const nextPoint = { x: point.x + delta.x, y: point.y + delta.y };
+    if (selectedVertex.layer === "field_boundary") {
+      callbacksRef.current.onMoveBoundaryVertex?.(selectedVertex.vertexIndex, nextPoint);
+    } else {
+      callbacksRef.current.onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, nextPoint);
+    }
+    setStatus(`Moved ${selectedProjectVertexText(project, selectedVertex)} in projected XY. Save Local to persist.`);
+  }
+
+  function deleteSelectedVertex(): void {
+    if (!canEditOnMap || !selectedVertex) return;
+    const selectedText = selectedProjectVertexText(project, selectedVertex);
+    if (selectedVertex.layer === "field_boundary") {
+      callbacksRef.current.onDeleteBoundaryVertex?.(selectedVertex.vertexIndex);
+    } else {
+      callbacksRef.current.onDeleteObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex);
+    }
+    setSelectedVertex(null);
+    setStatus(`Deleted ${selectedText} through reducer validation. Save Local to persist.`);
+  }
+
   function toggleReferenceLayer(layer: ReferenceOverlayLayerKey): void {
     if (!onSettingsChange || !referenceOverlay.canRender) return;
     const nextReferenceOverlay = {
@@ -472,8 +571,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     && mode === "measure"
     && mapFeatureOption.geometry !== "Point"
     && draftVertices.length >= featureDraftMinimumVertices(mapFeatureOption.geometry);
+  const selectedVertexPoint = selectedVertex ? selectedProjectVertexPoint(project, selectedVertex) : null;
+  const canEditSelectedVertex = canEditOnMap && mode === "edit_vertices" && selectedVertexPoint !== null;
+  const editStepMeters = Math.max(1, settings.drawing.panStepMeters / 4);
   const canToggleReferenceOverlay = Boolean(onSettingsChange && referenceOverlay.canRender);
-  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${utilitySaveHint(mode, mapFeatureOption.geometry)}`;
+  const selectedVertexStatus = selectedVertex ? ` · ${selectedProjectVertexText(project, selectedVertex)}` : "";
+  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${selectedVertexStatus}${utilitySaveHint(mode, mapFeatureOption.geometry)}`;
   const advisoryFieldPivotPlanVisible = !homeView && (advisoryFieldPivotPlan?.selectedMachineCount ?? 0) > 0;
 
   return (
@@ -513,6 +616,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
               <ToolButton active={mode === "measure"} compact={compactLayout} icon={<UtilityPole size={17} color={mode === "measure" ? "#ffffff" : "#173428"} />} label="Utility" onPress={() => setTool("measure")} testID="browser-tool-utility" />
               <ToolButton active={mode === "draw_boundary"} compact={compactLayout} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} testID="browser-tool-boundary" />
               <ToolButton active={mode === "mark_obstacle"} compact={compactLayout} icon={<Layers size={17} color={mode === "mark_obstacle" ? "#ffffff" : "#173428"} />} label="Obstacle" onPress={() => setTool("mark_obstacle", "obstacle")} testID="browser-tool-obstacle" />
+              <ToolButton active={mode === "edit_vertices"} compact={compactLayout} icon={<MousePointer2 size={17} color={mode === "edit_vertices" ? "#ffffff" : "#173428"} />} label="Edit" onPress={() => setTool("edit_vertices", "field_boundary")} testID="browser-tool-edit-vertices" />
               <ToolButton active={mode === "place_pivot"} compact={compactLayout} icon={<LocateFixed size={17} color={mode === "place_pivot" ? "#ffffff" : "#173428"} />} label="Pivot" onPress={() => setTool("place_pivot", "pivot_center")} testID="browser-tool-pivot" />
               <ToolButton active={mode === "capture_point"} compact={compactLayout} icon={<Crosshair size={17} color={mode === "capture_point" ? "#ffffff" : "#173428"} />} label="Survey" onPress={() => setTool("capture_point", "control_point")} testID="browser-tool-survey" />
             </>
@@ -625,6 +729,16 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
             <View pointerEvents="box-none" style={styles.hudActions} testID="browser-map-hud-actions">
               <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="browser-action-commit" />
               <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="browser-action-save-feature" />
+              {canEditOnMap && mode === "edit_vertices" ? (
+                <>
+                  <HudButton disabled={project.fieldBoundary.length === 0} icon={<MousePointer2 size={15} color={project.fieldBoundary.length > 0 ? "#173428" : "#718077"} />} label="Boundary" onPress={selectFirstBoundaryVertex} testID="browser-edit-select-boundary" />
+                  <HudButton disabled={!hasObstacleVertexSelection(project)} icon={<MousePointer2 size={15} color={hasObstacleVertexSelection(project) ? "#173428" : "#718077"} />} label="Obstacle" onPress={selectFirstObstacleVertex} testID="browser-edit-select-obstacle" />
+                  <HudButton disabled={!selectedVertex} icon={<ArrowLeft size={15} color={selectedVertex ? "#173428" : "#718077"} />} label="Prev" onPress={() => selectAdjacentVertex(-1)} testID="browser-edit-previous-vertex" />
+                  <HudButton disabled={!selectedVertex} icon={<ArrowRight size={15} color={selectedVertex ? "#173428" : "#718077"} />} label="Next" onPress={() => selectAdjacentVertex(1)} testID="browser-edit-next-vertex" />
+                  <HudButton disabled={!canEditSelectedVertex} icon={<ArrowRight size={15} color={canEditSelectedVertex ? "#173428" : "#718077"} />} label="Nudge E" onPress={() => nudgeSelectedVertex({ x: editStepMeters, y: 0 })} testID="browser-edit-nudge-east" />
+                  <HudButton disabled={!canEditSelectedVertex} icon={<Trash2 size={15} color={canEditSelectedVertex ? "#173428" : "#718077"} />} label="Delete" onPress={deleteSelectedVertex} testID="browser-edit-delete-vertex" />
+                </>
+              ) : null}
               <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="browser-action-clear" />
             </View>
           </View>

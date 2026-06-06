@@ -1,7 +1,11 @@
 import {
+  ArrowLeft,
+  ArrowRight,
   Check,
   MapPinned,
+  MousePointer2,
   Satellite,
+  Trash2,
   X,
 } from "lucide-react-native";
 import { Camera, Map as MapLibreMap } from "@maplibre/maplibre-react-native";
@@ -35,6 +39,15 @@ import {
   rasterStyleSourceFromAerialReferenceResolution,
   type RasterImageryStyleSource,
 } from "./mapWorkbenchStyle";
+import {
+  adjacentProjectVertexSelection,
+  firstBoundaryVertexSelection,
+  firstObstacleVertexSelection,
+  hasObstacleVertexSelection,
+  selectedProjectVertexPoint,
+  selectedProjectVertexText,
+  type SelectedProjectVertex,
+} from "./projectVertexEditing";
 import { SvgMapSurface } from "./SvgMapSurface";
 import type { MapSurfaceProps } from "./types";
 
@@ -69,8 +82,12 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
     onAddSurveyPoint,
     onCommitBoundaryDraft,
     onCommitObstacleDraft,
+    onDeleteBoundaryVertex,
+    onDeleteObstacleVertex,
     onMappingWorkflowModeChange,
+    onMoveBoundaryVertex,
     onMoveInfrastructurePoint,
+    onMoveObstacleVertex,
     onPlacePivot,
     onSelectMapFeature,
   } = props;
@@ -83,7 +100,11 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
     onAddSurveyPoint,
     onCommitBoundaryDraft,
     onCommitObstacleDraft,
+    onDeleteBoundaryVertex,
+    onDeleteObstacleVertex,
+    onMoveBoundaryVertex,
     onMoveInfrastructurePoint,
+    onMoveObstacleVertex,
     onPlacePivot,
     onSelectMapFeature,
   });
@@ -92,6 +113,7 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
   const [draftVertices, setDraftVertices] = useState<XY[]>([]);
   const [mapFeatureKind, setMapFeatureKind] = useState<ProjectMapFeatureKind>("underground_pipeline");
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [selectedVertex, setSelectedVertex] = useState<SelectedProjectVertex | null>(null);
   const [status, setStatus] = useState("Native imagery is reference-only until projected XY edits are committed.");
   const mapFeatureOption = featureOptionForKind(mapFeatureKind);
   const projectionFrame = useMemo(() => {
@@ -178,11 +200,27 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
       onAddSurveyPoint,
       onCommitBoundaryDraft,
       onCommitObstacleDraft,
+      onDeleteBoundaryVertex,
+      onDeleteObstacleVertex,
+      onMoveBoundaryVertex,
       onMoveInfrastructurePoint,
+      onMoveObstacleVertex,
       onPlacePivot,
       onSelectMapFeature,
     };
-  }, [onAddMapFeature, onAddSurveyPoint, onCommitBoundaryDraft, onCommitObstacleDraft, onMoveInfrastructurePoint, onPlacePivot, onSelectMapFeature]);
+  }, [
+    onAddMapFeature,
+    onAddSurveyPoint,
+    onCommitBoundaryDraft,
+    onCommitObstacleDraft,
+    onDeleteBoundaryVertex,
+    onDeleteObstacleVertex,
+    onMoveBoundaryVertex,
+    onMoveInfrastructurePoint,
+    onMoveObstacleVertex,
+    onPlacePivot,
+    onSelectMapFeature,
+  ]);
 
   useEffect(() => {
     interactionRef.current = {
@@ -230,6 +268,7 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
     if ((!designMode || homeView) && nextMode !== "pan") return;
     setMode(nextMode);
     if (nextLayer) setActiveLayer(nextLayer);
+    if (nextMode !== "edit_vertices") setSelectedVertex(null);
     if (nextMode !== "draw_boundary" && nextMode !== "mark_obstacle" && nextMode !== "measure") {
       clearDraft(`${nextMode.replaceAll("_", " ")} mode selected. No draft vertices are pending.`);
     }
@@ -339,12 +378,77 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
     setStatus(nextStatus);
   }
 
+  function selectVertex(nextVertex: SelectedProjectVertex | null, fallbackStatus: string): void {
+    if (!canEditOnMap) return;
+    if (!nextVertex) {
+      setStatus(fallbackStatus);
+      return;
+    }
+    setSelectedVertex(nextVertex);
+    setMode("edit_vertices");
+    clearDraft(`Selected ${selectedProjectVertexText(project, nextVertex)} for projected XY editing.`);
+  }
+
+  function selectFirstBoundaryVertex(): void {
+    selectVertex(
+      firstBoundaryVertexSelection(project),
+      "No boundary vertices are available for editing.",
+    );
+  }
+
+  function selectFirstObstacleVertex(): void {
+    selectVertex(
+      firstObstacleVertexSelection(project),
+      "No obstacle vertices are available for editing.",
+    );
+  }
+
+  function selectAdjacentVertex(direction: -1 | 1): void {
+    selectVertex(
+      adjacentProjectVertexSelection(project, selectedVertex, direction),
+      "No project vertices are available for editing.",
+    );
+  }
+
+  function nudgeSelectedVertex(delta: XY): void {
+    if (!canEditOnMap || !selectedVertex) return;
+    const point = selectedProjectVertexPoint(project, selectedVertex);
+    if (!point) {
+      setSelectedVertex(null);
+      setStatus("Selected vertex is no longer available.");
+      return;
+    }
+    const nextPoint = { x: point.x + delta.x, y: point.y + delta.y };
+    if (selectedVertex.layer === "field_boundary") {
+      callbacksRef.current.onMoveBoundaryVertex?.(selectedVertex.vertexIndex, nextPoint);
+    } else {
+      callbacksRef.current.onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, nextPoint);
+    }
+    setStatus(`Moved ${selectedProjectVertexText(project, selectedVertex)} in projected XY. Save Local to persist.`);
+  }
+
+  function deleteSelectedVertex(): void {
+    if (!canEditOnMap || !selectedVertex) return;
+    const selectedText = selectedProjectVertexText(project, selectedVertex);
+    if (selectedVertex.layer === "field_boundary") {
+      callbacksRef.current.onDeleteBoundaryVertex?.(selectedVertex.vertexIndex);
+    } else {
+      callbacksRef.current.onDeleteObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex);
+    }
+    setSelectedVertex(null);
+    setStatus(`Deleted ${selectedText} through reducer validation. Save Local to persist.`);
+  }
+
   const canCommitDraft = canEditOnMap && draftVertices.length >= 3 && (mode === "draw_boundary" || mode === "mark_obstacle");
   const canSaveFeature = canEditOnMap
     && mode === "measure"
     && mapFeatureOption.geometry !== "Point"
     && draftVertices.length >= featureDraftMinimumVertices(mapFeatureOption.geometry);
-  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts`;
+  const selectedVertexPoint = selectedVertex ? selectedProjectVertexPoint(project, selectedVertex) : null;
+  const canEditSelectedVertex = canEditOnMap && mode === "edit_vertices" && selectedVertexPoint !== null;
+  const editStepMeters = Math.max(1, settings.drawing.panStepMeters / 4);
+  const selectedVertexStatus = selectedVertex ? ` · ${selectedProjectVertexText(project, selectedVertex)}` : "";
+  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${selectedVertexStatus}`;
   const imageryStatus = imageryStatusText(activeImagery, aerialImagery.reason, aerialImagery.sourceKind);
 
   return (
@@ -398,6 +502,16 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
           <View pointerEvents="box-none" style={styles.hudActions} testID="native-map-hud-actions">
             <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="native-action-commit" />
             <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="native-action-save-feature" />
+            {canEditOnMap && mode === "edit_vertices" ? (
+              <>
+                <HudButton disabled={project.fieldBoundary.length === 0} icon={<MousePointer2 size={15} color={project.fieldBoundary.length > 0 ? "#173428" : "#718077"} />} label="Boundary" onPress={selectFirstBoundaryVertex} testID="native-edit-select-boundary" />
+                <HudButton disabled={!hasObstacleVertexSelection(project)} icon={<MousePointer2 size={15} color={hasObstacleVertexSelection(project) ? "#173428" : "#718077"} />} label="Obstacle" onPress={selectFirstObstacleVertex} testID="native-edit-select-obstacle" />
+                <HudButton disabled={!selectedVertex} icon={<ArrowLeft size={15} color={selectedVertex ? "#173428" : "#718077"} />} label="Prev" onPress={() => selectAdjacentVertex(-1)} testID="native-edit-previous-vertex" />
+                <HudButton disabled={!selectedVertex} icon={<ArrowRight size={15} color={selectedVertex ? "#173428" : "#718077"} />} label="Next" onPress={() => selectAdjacentVertex(1)} testID="native-edit-next-vertex" />
+                <HudButton disabled={!canEditSelectedVertex} icon={<ArrowRight size={15} color={canEditSelectedVertex ? "#173428" : "#718077"} />} label="Nudge E" onPress={() => nudgeSelectedVertex({ x: editStepMeters, y: 0 })} testID="native-edit-nudge-east" />
+                <HudButton disabled={!canEditSelectedVertex} icon={<Trash2 size={15} color={canEditSelectedVertex ? "#173428" : "#718077"} />} label="Delete" onPress={deleteSelectedVertex} testID="native-edit-delete-vertex" />
+              </>
+            ) : null}
             <HudButton disabled={draftVertices.length === 0} icon={<X size={15} color={draftVertices.length > 0 ? "#173428" : "#718077"} />} label="Clear" onPress={() => clearDraft()} testID="native-action-clear" />
           </View>
         </View>

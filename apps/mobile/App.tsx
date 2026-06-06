@@ -499,6 +499,14 @@ function AppContent(): React.JSX.Element {
     setSelectedMapFeatureId(id);
   }
 
+  function saveGeneratedFieldPivotReviewZones(plan: AdvisoryFieldPivotPlan): void {
+    if (plan.selectedMachineCount === 0) return;
+    const features = plan.candidates.map((candidate) => generatedFieldPivotZoneFeature(project, candidate));
+    if (dispatchProjectWithResult({ type: "upsert_map_features", features })) {
+      setSelectedMapFeatureId(features[0]?.id ?? null);
+    }
+  }
+
   function updateMapFeatureName(feature: ProjectMapFeature, name: string): void {
     const trimmedName = name.trim();
     if (!trimmedName || trimmedName === feature.name) return;
@@ -1286,16 +1294,18 @@ function AppContent(): React.JSX.Element {
             advisoryCostInput={advisoryCostInput}
             cornerArmEvaluation={cornerArmEvaluation}
             editorError={editor.lastError}
+            fieldPivotPlan={advisoryFieldPivotPlan}
             onActivateTool={activateDesignConsoleTool}
             onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
             onCalculate={calculateDesignScenarios}
             onClose={() => setDesignConsoleModal(null)}
-          onOpenFiles={() => {
-            setDesignConsoleModal(null);
-            setActiveView("files");
+            onOpenFiles={() => {
+              setDesignConsoleModal(null);
+              setActiveView("files");
             }}
             onRequestApplyPivotCandidate={(candidate) => setPendingPlacementAction({ kind: "pivot", candidate })}
             onRequestSaveCornerArm={(config) => setPendingPlacementAction({ kind: "cornerArm", config })}
+            onSaveGeneratedFieldPivotZones={saveGeneratedFieldPivotReviewZones}
             onUpdateAdvisoryCostDraft={setAdvisoryCostDraft}
             onSettingsChange={commitSettings}
             onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
@@ -1661,6 +1671,7 @@ function DesignConsoleDialog({
   advisoryCostInput,
   cornerArmEvaluation,
   editorError,
+  fieldPivotPlan,
   onActivateTool,
   onApplyPivot,
   onCalculate,
@@ -1668,6 +1679,7 @@ function DesignConsoleDialog({
   onOpenFiles,
   onRequestApplyPivotCandidate,
   onRequestSaveCornerArm,
+  onSaveGeneratedFieldPivotZones,
   onUpdateAdvisoryCostDraft,
   onSettingsChange,
   onUpdateMachine,
@@ -1684,6 +1696,7 @@ function DesignConsoleDialog({
   advisoryCostInput: AdvisoryCostInput | undefined;
   cornerArmEvaluation: AdvisoryCornerArmEvaluation;
   editorError: string | null;
+  fieldPivotPlan: AdvisoryFieldPivotPlan;
   onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
   onApplyPivot: (point: XY, wgs84?: LonLat) => boolean;
   onCalculate: () => void;
@@ -1691,6 +1704,7 @@ function DesignConsoleDialog({
   onOpenFiles: () => void;
   onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
   onRequestSaveCornerArm: (config: AdvisoryCornerArmConfig) => void;
+  onSaveGeneratedFieldPivotZones: (plan: AdvisoryFieldPivotPlan) => void;
   onUpdateAdvisoryCostDraft: (draft: AdvisoryCostDraft) => void;
   onSettingsChange: (settings: AppSettings) => void;
   onUpdateMachine: (machine: PivotMachine) => boolean;
@@ -1748,9 +1762,11 @@ function DesignConsoleDialog({
                 advisoryCostDraft={advisoryCostDraft}
                 advisoryCostInput={advisoryCostInput}
                 editorError={editorError}
+                fieldPivotPlan={fieldPivotPlan}
                 idealCenterAnalysis={idealCenterAnalysis}
                 onCalculate={onCalculate}
                 onRequestApplyPivotCandidate={onRequestApplyPivotCandidate}
+                onSaveGeneratedFieldPivotZones={onSaveGeneratedFieldPivotZones}
                 onUpdateAdvisoryCostDraft={onUpdateAdvisoryCostDraft}
                 placementCandidates={placementCandidates}
                 preview={preview}
@@ -2189,9 +2205,11 @@ function CalculateSheet({
   advisoryCostDraft,
   advisoryCostInput,
   editorError,
+  fieldPivotPlan,
   idealCenterAnalysis,
   onCalculate,
   onRequestApplyPivotCandidate,
+  onSaveGeneratedFieldPivotZones,
   onUpdateAdvisoryCostDraft,
   placementCandidates,
   preview,
@@ -2202,9 +2220,11 @@ function CalculateSheet({
   advisoryCostDraft: AdvisoryCostDraft;
   advisoryCostInput: AdvisoryCostInput | undefined;
   editorError: string | null;
+  fieldPivotPlan: AdvisoryFieldPivotPlan;
   idealCenterAnalysis: IdealCenterPointAnalysis | null;
   onCalculate: () => void;
   onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
+  onSaveGeneratedFieldPivotZones: (plan: AdvisoryFieldPivotPlan) => void;
   onUpdateAdvisoryCostDraft: (draft: AdvisoryCostDraft) => void;
   placementCandidates: PivotPlacementCandidate[] | null;
   preview: DesignScenarioPreview[] | null;
@@ -2221,14 +2241,9 @@ function CalculateSheet({
     maxCandidates: 3,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
   }), [project]);
-  const fieldPivotPlan = useMemo<AdvisoryFieldPivotPlan>(() => planAdvisoryFieldPivots(project, {
-    gridDivisions: 6,
-    maxMachines: 3,
-    candidatePoolSize: 24,
-    collisionBufferMeters: project.machine.machineClearanceBufferMeters,
-  }), [project]);
   const bestStrategy = strategyComparison.bestStrategy;
   const benderStrategy = benderStrategyForReview(strategyComparison);
+  const savedGeneratedZoneCount = countSavedGeneratedFieldPivotZones(project, fieldPivotPlan);
   return (
     <View style={styles.machineForm}>
       <View style={styles.metricGrid}>
@@ -2290,7 +2305,18 @@ function CalculateSheet({
           <Text style={styles.scenarioScore}>{fieldPivotPlan.selectedMachineCount}/{fieldPivotPlan.requestedMachineCount}</Text>
         </View>
         <Text style={styles.rowMeta}>{formatGeneratedFieldPivotPlanSummary(fieldPivotPlan, settings)}</Text>
-        <Text style={styles.mapFeatureMeta}>Generated field-pivot planning is advisory only and does not create saved pivots, machine zones, project storage records, or canonical projected XY changes.</Text>
+        <Text style={styles.mapFeatureMeta}>
+          Generated field-pivot planning is advisory only. Save Review Zones creates projected-XY machine-zone map features for review; it does not create saved pivots, change the active pivot, or mutate canonical projected XY automatically.
+        </Text>
+        <Text style={styles.mapFeatureMeta} testID="generated-field-pivot-zone-save-status">Review zones saved: {savedGeneratedZoneCount}/{fieldPivotPlan.selectedMachineCount}</Text>
+        <View style={styles.inlineActions}>
+          <SmallActionButton
+            disabled={fieldPivotPlan.selectedMachineCount === 0}
+            label="Save Review Zones"
+            onPress={() => onSaveGeneratedFieldPivotZones(fieldPivotPlan)}
+            testID="save-generated-field-pivot-zones"
+          />
+        </View>
       </View>
       <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
@@ -3143,6 +3169,52 @@ function formatFullScopeBoundarySummary(review: AdvisoryMultiMachineReview, sett
     ? "no scenario zones"
     : `${review.compilation.scenarioBoundarySource.replaceAll("_", " ")} scenarios`;
   return `${formatAreaFromAcres(review.compilation.compiledBoundaryAcres, settings.unitSystem)} ${fullScopeSource} full scope · ${review.compilation.fullScopeCoveragePercent.toFixed(1)}% modeled coverage · ${formatAreaFromAcres(review.compilation.fullScopeUnirrigatedAcres, settings.unitSystem)} remaining dry · ${scenarioSource}`;
+}
+
+function generatedFieldPivotZoneFeature(project: PivotProject, candidate: AdvisoryFieldPivotPlan["candidates"][number]): ProjectMapFeature {
+  return {
+    id: generatedFieldPivotZoneFeatureId(project.id, candidate.sequence),
+    name: `Generated Pivot Zone ${candidate.sequence}`,
+    kind: "machine_zone",
+    geometry: {
+      type: "Circle",
+      center: candidate.pivotCenter,
+      radiusMeters: candidate.machineRadiusMeters,
+    },
+    confidence: "optimized",
+    notes: [
+      "Generated advisory field-pivot review zone.",
+      "This is a projected-XY machine-zone map feature, not a saved pivot or certified machine layout.",
+      "Qualified field and vendor review required before using for construction or operations.",
+    ].join(" "),
+    properties: {
+      advisoryOnly: true,
+      canonicalGeometryMutation: false,
+      qualifiedReviewRequired: true,
+      source: "generated_field_pivot_plan",
+      generatedFieldPivotCandidateId: candidate.id,
+      generatedFieldPivotSequence: candidate.sequence,
+      modeledIrrigatedAcres: candidate.modeledIrrigatedAcres,
+      incrementalIrrigatedAcres: candidate.incrementalIrrigatedAcres,
+      cumulativeFieldCoveragePercent: candidate.cumulativeFieldCoveragePercent,
+      minimumRequiredSeparationMeters: candidate.minimumRequiredSeparationMeters,
+      machineRadiusMeters: candidate.machineRadiusMeters,
+    },
+  };
+}
+
+function countSavedGeneratedFieldPivotZones(project: PivotProject, plan: AdvisoryFieldPivotPlan): number {
+  const mapFeatures = project.mapFeatures ?? [];
+  return plan.candidates.filter((candidate) => mapFeatures.some((feature) => feature.id === generatedFieldPivotZoneFeatureId(project.id, candidate.sequence))).length;
+}
+
+function generatedFieldPivotZoneFeatureId(projectId: string, sequence: number): string {
+  return `generated-field-pivot-zone-${slugIdPart(projectId)}-${sequence}`;
+}
+
+function slugIdPart(value: string): string {
+  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  return slug || "project";
 }
 
 function formatGeneratedFieldPivotPlanSummary(plan: AdvisoryFieldPivotPlan, settings: AppSettings): string {

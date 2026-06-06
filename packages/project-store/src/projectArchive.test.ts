@@ -18,7 +18,7 @@ import {
   metricsToCsv,
   surveyPointsToCsv,
 } from "./projectArchive";
-import { realCenterPivotProofProject, sampleProject } from "@cplayout/core";
+import { realCenterPivotProofProject, sampleProject, type PivotProject } from "@cplayout/core";
 
 const result = evaluateLayout(sampleProject);
 const bundle = buildProjectArchiveBundle(sampleProject, result, exportScenarioGeoJson(sampleProject, result), "2026-05-19T12:00:00.000Z");
@@ -168,7 +168,7 @@ assert.match(logicalMapPackageBundle.files[MAP_PACKAGES_CSV_FILENAME], /app:\/\/
 assert.doesNotMatch(logicalMapPackageBundle.files[PROJECT_JSON_FILENAME], /file:\/\/\/documents\/map-packages/);
 assert.doesNotMatch(logicalMapPackageBundle.files[MAP_PACKAGES_CSV_FILENAME], /file:\/\/\/documents\/map-packages/);
 
-const projectWithMapFeatures = {
+const projectWithMapFeatures: PivotProject = {
   ...sampleProject,
   mapFeatures: [
     {
@@ -204,6 +204,20 @@ const projectWithMapFeatures = {
       geometry: { type: "Circle" as const, center: sampleProject.pivotCenter, radiusMeters: 24 },
       confidence: "user_estimated" as const,
     },
+    {
+      id: "generated-field-pivot-zone-1",
+      name: "Generated Pivot Zone 1",
+      kind: "machine_zone" as const,
+      geometry: { type: "Circle" as const, center: { x: sampleProject.pivotCenter.x + 10, y: sampleProject.pivotCenter.y + 10 }, radiusMeters: 180 },
+      confidence: "optimized" as const,
+      notes: "Generated advisory review zone; not a saved pivot.",
+      properties: {
+        advisoryOnly: true,
+        canonicalGeometryMutation: false,
+        qualifiedReviewRequired: true,
+        source: "generated_field_pivot_plan",
+      },
+    },
   ],
 };
 const mapFeatureBundle = buildProjectArchiveBundle(
@@ -216,11 +230,14 @@ assert.match(bundle.files[PROJECT_JSON_FILENAME], /"mapFeatures": \[\]/);
 assert.match(mapFeatureBundle.files[PROJECT_JSON_FILENAME], /"mapFeatures"/);
 assert.match(mapFeatureBundle.files[PROJECT_JSON_FILENAME], /buried-main/);
 const importedMapFeatureProject = importProjectArchiveZip(exportProjectArchiveZip(mapFeatureBundle));
-assert.equal(importedMapFeatureProject.mapFeatures?.length, 4);
+assert.equal(importedMapFeatureProject.mapFeatures?.length, 5);
 assert.equal(importedMapFeatureProject.mapFeatures?.[0].kind, "pump_location");
 assert.equal(importedMapFeatureProject.mapFeatures?.[1].geometry.type, "LineString");
 assert.equal(importedMapFeatureProject.mapFeatures?.[2].geometry.type, "Polygon");
 assert.equal(importedMapFeatureProject.mapFeatures?.[3].geometry.type, "Circle");
+assert.equal(importedMapFeatureProject.mapFeatures?.[4].kind, "machine_zone");
+assert.equal(importedMapFeatureProject.mapFeatures?.[4].geometry.type, "Circle");
+assert.deepEqual(importedMapFeatureProject.pivotCenter, sampleProject.pivotCenter);
 
 const projectWithCornerArm = {
   ...sampleProject,

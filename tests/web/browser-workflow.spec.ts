@@ -788,6 +788,30 @@ test("placement review applies advisory pivot candidates only after confirmation
   await saveScreen(page, testInfo, "placement-review-confirmed-apply");
 });
 
+test("generated field pivot plan saves advisory machine-zone review features after explicit action", async ({ page }, testInfo) => {
+  test.slow();
+  await page.goto("/");
+  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("design-action-calculate").click();
+  await expect(page.getByTestId("design-console-dialog")).toBeVisible();
+  await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("Generated Field Pivot Plan");
+  await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("does not create saved pivots");
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("save-generated-field-pivot-zones").click();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await expect(page.getByTestId("generated-field-pivot-zone-save-status")).toHaveText(/Review zones saved: [1-9]\d*\/[1-9]\d*/);
+
+  await page.getByTestId("design-console-calculate").click();
+  await expect.poll(
+    async () => page.getByTestId("placement-review-panel").evaluate((node) => node.textContent ?? ""),
+    { timeout: 30000 },
+  ).toContain("Generated Pivot Zone 1");
+  await expect(page.getByTestId("placement-review-panel")).toContainText("machine zone");
+  await saveScreen(page, testInfo, "generated-field-pivot-review-zones-saved");
+});
+
 test("advisory cost review uses local assumptions without dirtying geometry", async ({ page }, testInfo) => {
   test.slow();
   await page.goto("/");

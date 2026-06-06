@@ -176,6 +176,48 @@ state = reduceProjectEditorState(state, {
 });
 assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "end-gun-circle-a")?.geometry.type, "Circle");
 assert.equal(state.project.wgs84Companion?.mapFeatures?.some((feature) => feature.id === "end-gun-circle-a" && feature.geometry.type === "Circle"), true);
+const beforeUpsertPivotCenter = state.project.pivotCenter;
+const machineZoneUpsertState = reduceProjectEditorState(state, {
+  type: "upsert_map_features",
+  features: [
+    {
+      id: "generated-field-pivot-zone-1",
+      name: "Generated Pivot Zone 1",
+      kind: "machine_zone",
+      geometry: { type: "Circle", center: { x: state.project.pivotCenter.x + 10, y: state.project.pivotCenter.y + 10 }, radiusMeters: 180 },
+      confidence: "optimized",
+      notes: "Generated advisory review zone; not a saved pivot.",
+      properties: {
+        advisoryOnly: true,
+        canonicalGeometryMutation: false,
+        qualifiedReviewRequired: true,
+        generatedFieldPivotSequence: 1,
+      },
+    },
+    {
+      id: "generated-field-pivot-zone-2",
+      name: "Generated Pivot Zone 2",
+      kind: "machine_zone",
+      geometry: { type: "Circle", center: { x: state.project.pivotCenter.x + 260, y: state.project.pivotCenter.y + 10 }, radiusMeters: 180 },
+      confidence: "optimized",
+    },
+  ],
+});
+assert.equal(machineZoneUpsertState.project.mapFeatures?.filter((feature) => feature.kind === "machine_zone").length, 2);
+assert.deepEqual(machineZoneUpsertState.project.pivotCenter, beforeUpsertPivotCenter);
+assert.equal(machineZoneUpsertState.revision, state.revision + 1);
+assert.equal(machineZoneUpsertState.project.wgs84Companion?.mapFeatures?.some((feature) => feature.id === "generated-field-pivot-zone-1" && feature.geometry.type === "Circle"), true);
+const updatedMachineZoneUpsertState = reduceProjectEditorState(machineZoneUpsertState, {
+  type: "upsert_map_features",
+  features: [
+    {
+      ...machineZoneUpsertState.project.mapFeatures!.find((feature) => feature.id === "generated-field-pivot-zone-1")!,
+      name: "Updated Generated Pivot Zone 1",
+    },
+  ],
+});
+assert.equal(updatedMachineZoneUpsertState.project.mapFeatures?.filter((feature) => feature.id.startsWith("generated-field-pivot-zone-")).length, 2);
+assert.equal(updatedMachineZoneUpsertState.project.mapFeatures?.find((feature) => feature.id === "generated-field-pivot-zone-1")?.name, "Updated Generated Pivot Zone 1");
 
 const obstacleId = state.project.obstacles.at(-1)?.id ?? "";
 state = reduceProjectEditorState(state, {

@@ -130,6 +130,19 @@ const parsedAwarenessMapFeatures = parseProjectDocument({
       properties: { advisoryOnly: true, canonicalGeometryMutation: false },
     },
     {
+      id: "generated-field-pivot-zone-1",
+      name: "Generated Pivot Zone 1",
+      kind: "machine_zone",
+      geometry: { type: "Circle", center: sampleProject.pivotCenter, radiusMeters: 180 },
+      confidence: "optimized",
+      properties: {
+        advisoryOnly: true,
+        canonicalGeometryMutation: false,
+        qualifiedReviewRequired: true,
+        source: "generated_field_pivot_plan",
+      },
+    },
+    {
       id: "lrdu-measurement",
       name: "LRDU measurement",
       kind: "measurement_line",
@@ -162,10 +175,12 @@ const parsedAwarenessMapFeatures = parseProjectDocument({
   ],
 });
 assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[0].kind, "machine_zone");
-assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[1].kind, "measurement_line");
-assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[2].kind, "well_location");
-assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[3].kind, "underground_wire");
-assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[4].kind, "linear_move_path");
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[1].geometry.type, "Circle");
+assert.deepEqual(parsedAwarenessMapFeatures.pivotCenter, sampleProject.pivotCenter);
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[2].kind, "measurement_line");
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[3].kind, "well_location");
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[4].kind, "underground_wire");
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[5].kind, "linear_move_path");
 
 const cornerArmSourceRef = {
   sourceId: "SRC-VALLEY-VFLEX-CORNER",

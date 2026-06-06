@@ -29,6 +29,7 @@ export type ProjectEditorAction =
   | { type: "update_survey_point"; point: SurveyPoint }
   | { type: "delete_survey_point"; id: string }
   | { type: "add_map_feature"; feature: ProjectMapFeature }
+  | { type: "upsert_map_features"; features: ProjectMapFeature[] }
   | { type: "update_map_feature"; feature: ProjectMapFeature }
   | { type: "delete_map_feature"; id: string }
   | { type: "promote_survey_point"; id: string; target: InfrastructurePoint }
@@ -93,6 +94,8 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
         return deleteSurveyPoint(state, action.id);
       case "add_map_feature":
         return addMapFeature(state, action.feature);
+      case "upsert_map_features":
+        return upsertMapFeatures(state, action.features);
       case "update_map_feature":
         return updateMapFeature(state, action.feature);
       case "delete_map_feature":
@@ -226,6 +229,26 @@ function addMapFeature(state: ProjectEditorState, feature: ProjectMapFeature): P
   return applyProjectChange(state, {
     ...state.project,
     mapFeatures: [...(state.project.mapFeatures ?? []), feature],
+  });
+}
+
+function upsertMapFeatures(state: ProjectEditorState, features: ProjectMapFeature[]): ProjectEditorState {
+  if (features.length === 0) return state;
+  const seenIds = new Set<string>();
+  for (const feature of features) {
+    if (seenIds.has(feature.id)) throw new Error(`Map feature ${feature.id} appears more than once.`);
+    seenIds.add(feature.id);
+  }
+  const currentFeatures = state.project.mapFeatures ?? [];
+  const nextById = new Map(currentFeatures.map((feature) => [feature.id, feature]));
+  for (const feature of features) nextById.set(feature.id, feature);
+  const currentIds = new Set(currentFeatures.map((feature) => feature.id));
+  return applyProjectChange(state, {
+    ...state.project,
+    mapFeatures: [
+      ...currentFeatures.map((feature) => nextById.get(feature.id) ?? feature),
+      ...features.filter((feature) => !currentIds.has(feature.id)),
+    ],
   });
 }
 

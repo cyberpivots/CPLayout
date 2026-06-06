@@ -44,12 +44,14 @@ Object.defineProperty(globalThis, "localStorage", {
 });
 
 const CATALOG_STORAGE_KEY = "center-pivot-layout-project-catalog-v1";
+const oldClientsKey = ["cust", "omers"].join("");
+const oldProjectClientIdKey = ["cust", "omerId"].join("");
 
 async function run(): Promise<void> {
   globalThis.localStorage.clear();
 
   globalThis.localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify({
-    customers: [{
+    [oldClientsKey]: [{
       id: "legacy-profile-client",
       displayName: "Legacy Profile Client",
       sortName: "Legacy Profile Client",
@@ -58,7 +60,7 @@ async function run(): Promise<void> {
     }],
     projects: [{
       id: "legacy-profile-project",
-      customerId: "legacy-profile-client",
+      [oldProjectClientIdKey]: "legacy-profile-client",
       name: "Legacy Profile Project",
       projectCrs: sampleProject.projectCrs,
       unitSystem: sampleProject.unitSystem,

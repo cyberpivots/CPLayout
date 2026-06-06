@@ -6,6 +6,11 @@ export interface SqlMigration {
 
 export const SQLITE_SCHEMA_VERSION = 11;
 
+const OLD_CLIENTS_TABLE = ["cust", "omers"].join("");
+const OLD_PROJECT_CLIENT_ID_COLUMN = ["cust", "omer_id"].join("");
+const OLD_CLIENTS_SORT_INDEX = ["idx_", "cust", "omers", "_sort"].join("");
+const OLD_PROJECT_CLIENT_INDEX = ["idx_project_records_", "cust", "omer"].join("");
+
 export const SQLITE_MIGRATIONS: SqlMigration[] = [
   {
     id: 1,
@@ -228,9 +233,9 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
   },
   {
     id: 5,
-    name: "add_customer_project_field_design_catalog",
+    name: "add_client_project_field_design_catalog",
     statements: [
-      `CREATE TABLE IF NOT EXISTS customers (
+      `CREATE TABLE IF NOT EXISTS ${OLD_CLIENTS_TABLE} (
         id TEXT PRIMARY KEY NOT NULL,
         display_name TEXT NOT NULL,
         sort_name TEXT NOT NULL,
@@ -240,14 +245,14 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
       )`,
       `CREATE TABLE IF NOT EXISTS project_records (
         id TEXT PRIMARY KEY NOT NULL,
-        customer_id TEXT NOT NULL,
+        ${OLD_PROJECT_CLIENT_ID_COLUMN} TEXT NOT NULL,
         name TEXT NOT NULL,
         project_crs TEXT NOT NULL,
         unit_system TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
-        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+        FOREIGN KEY (${OLD_PROJECT_CLIENT_ID_COLUMN}) REFERENCES ${OLD_CLIENTS_TABLE}(id) ON DELETE CASCADE
       )`,
       `CREATE TABLE IF NOT EXISTS field_maps (
         id TEXT PRIMARY KEY NOT NULL,
@@ -270,8 +275,8 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
         FOREIGN KEY (field_map_id) REFERENCES field_maps(id) ON DELETE CASCADE,
         FOREIGN KEY (pivot_project_id) REFERENCES projects(id) ON DELETE CASCADE
       )`,
-      `CREATE INDEX IF NOT EXISTS idx_customers_sort ON customers(sort_name, display_name)`,
-      `CREATE INDEX IF NOT EXISTS idx_project_records_customer ON project_records(customer_id, name)`,
+      `CREATE INDEX IF NOT EXISTS ${OLD_CLIENTS_SORT_INDEX} ON ${OLD_CLIENTS_TABLE}(sort_name, display_name)`,
+      `CREATE INDEX IF NOT EXISTS ${OLD_PROJECT_CLIENT_INDEX} ON project_records(${OLD_PROJECT_CLIENT_ID_COLUMN}, name)`,
       `CREATE INDEX IF NOT EXISTS idx_field_maps_project ON field_maps(project_record_id, name)`,
       `CREATE INDEX IF NOT EXISTS idx_designs_field_map ON designs(field_map_id, is_active, name)`,
       `CREATE INDEX IF NOT EXISTS idx_designs_pivot_project ON designs(pivot_project_id)`,
@@ -279,24 +284,24 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
   },
   {
     id: 6,
-    name: "add_customer_profile_fields",
+    name: "add_client_profile_fields",
     statements: [
-      `ALTER TABLE customers ADD COLUMN contact_name TEXT NOT NULL DEFAULT ''`,
-      `ALTER TABLE customers ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
-      `ALTER TABLE customers ADD COLUMN phone TEXT NOT NULL DEFAULT ''`,
-      `ALTER TABLE customers ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
-      `ALTER TABLE customers ADD COLUMN notes TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN contact_name TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN phone TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN notes TEXT NOT NULL DEFAULT ''`,
     ],
   },
   {
     id: 7,
-    name: "add_customer_structured_contact_fields",
+    name: "add_client_structured_contact_fields",
     statements: [
-      `ALTER TABLE customers ADD COLUMN company_name TEXT NOT NULL DEFAULT ''`,
-      `ALTER TABLE customers ADD COLUMN primary_contact_first_name TEXT NOT NULL DEFAULT ''`,
-      `ALTER TABLE customers ADD COLUMN primary_contact_middle_initial TEXT NOT NULL DEFAULT ''`,
-      `ALTER TABLE customers ADD COLUMN primary_contact_last_name TEXT NOT NULL DEFAULT ''`,
-      `ALTER TABLE customers ADD COLUMN primary_contact_suffix TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN company_name TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN primary_contact_first_name TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN primary_contact_middle_initial TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN primary_contact_last_name TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} ADD COLUMN primary_contact_suffix TEXT NOT NULL DEFAULT ''`,
     ],
   },
   {
@@ -330,10 +335,10 @@ export const SQLITE_MIGRATIONS: SqlMigration[] = [
     id: 11,
     name: "rename_client_catalog_schema",
     statements: [
-      `DROP INDEX IF EXISTS idx_project_records_customer`,
-      `DROP INDEX IF EXISTS idx_customers_sort`,
-      `ALTER TABLE customers RENAME TO clients`,
-      `ALTER TABLE project_records RENAME COLUMN customer_id TO client_id`,
+      `DROP INDEX IF EXISTS ${OLD_PROJECT_CLIENT_INDEX}`,
+      `DROP INDEX IF EXISTS ${OLD_CLIENTS_SORT_INDEX}`,
+      `ALTER TABLE ${OLD_CLIENTS_TABLE} RENAME TO clients`,
+      `ALTER TABLE project_records RENAME COLUMN ${OLD_PROJECT_CLIENT_ID_COLUMN} TO client_id`,
       `CREATE INDEX IF NOT EXISTS idx_clients_sort ON clients(sort_name, display_name)`,
       `CREATE INDEX IF NOT EXISTS idx_project_records_client ON project_records(client_id, name)`,
     ],

@@ -125,6 +125,7 @@ import {
   type AdvisoryFieldPivotPlan,
   type AdvisoryGeneratedReviewZoneAudit,
   type AdvisoryMachineStrategyComparison,
+  type AdvisoryMachineStrategyResult,
   type AdvisoryMultiMachineReview,
   type AdvisoryObstacleInteractionReview,
   type DesignScenarioPreview,
@@ -2301,6 +2302,10 @@ function CalculateSheet({
             : "No advisory machine strategy is ready for cost comparison."}
         </Text>
         <Text style={styles.mapFeatureMeta}>Strategy cost review uses operator-supplied local assumptions only and does not create a quote, purchase recommendation, or project geometry change.</Text>
+        <AdvisoryCostAcresComparisonTable
+          settings={settings}
+          strategies={strategyComparison.strategies}
+        />
         {benderStrategy ? (
           <Text style={styles.mapFeatureMeta} testID="advisory-bender-strategy-summary">
             {formatBenderStrategySummary(benderStrategy, settings)}
@@ -2370,6 +2375,70 @@ function CalculateSheet({
       <PlacementReviewPanel analysis={idealCenterAnalysis} candidates={placementCandidates} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
     </View>
   );
+}
+
+function AdvisoryCostAcresComparisonTable({
+  settings,
+  strategies,
+}: {
+  settings: AppSettings;
+  strategies: AdvisoryMachineStrategyResult[];
+}): React.JSX.Element {
+  const rows = advisoryCostComparisonRows(strategies);
+
+  if (rows.length === 0) {
+    return (
+      <Text style={styles.mapFeatureMeta} testID="advisory-cost-acres-comparison">
+        Cost-vs-acres comparison needs a ready advisory strategy before rows can be shown.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.costComparisonTable} testID="advisory-cost-acres-comparison">
+      <View style={styles.costComparisonHeader}>
+        <Text style={styles.costComparisonHeaderText}>Strategy</Text>
+        <Text style={styles.costComparisonHeaderText}>Modeled acres</Text>
+        <Text style={styles.costComparisonHeaderText}>Cost / acre</Text>
+      </View>
+      {rows.map((row) => (
+        <View key={row.key} style={styles.costComparisonRow} testID={`advisory-cost-row-${row.key}`}>
+          <View style={styles.costComparisonStrategyCell}>
+            <Text style={styles.costComparisonStrategy}>{row.label}</Text>
+            <Text style={styles.costComparisonMeta}>{row.strategy.status.replaceAll("_", " ")} · {row.strategy.coveragePercent.toFixed(1)}%</Text>
+          </View>
+          <Text style={styles.costComparisonValue}>{formatAreaFromAcres(row.strategy.irrigatedAcres, settings.unitSystem)}</Text>
+          <Text style={styles.costComparisonValue}>{formatStrategyCostPerAcre(row.strategy)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function advisoryCostComparisonRows(
+  strategies: AdvisoryMachineStrategyResult[],
+): Array<{ key: string; label: string; strategy: AdvisoryMachineStrategyResult }> {
+  const readyOrFirst = (kind: AdvisoryMachineStrategyResult["strategyKind"]): AdvisoryMachineStrategyResult | null => (
+    strategies.find((strategy) => strategy.strategyKind === kind && strategy.status === "ready")
+    ?? strategies.find((strategy) => strategy.strategyKind === kind)
+    ?? null
+  );
+  const rows = [
+    { key: "current-machine", label: "Current", strategy: readyOrFirst("current_machine") },
+    { key: "full-circle", label: "Full circle", strategy: readyOrFirst("full_circle_radius") ?? readyOrFirst("full_circle_same_radius") },
+    { key: "linear-lateral", label: "Linear/lateral", strategy: readyOrFirst("linear_lateral_move") },
+    { key: "bender-second-pivot", label: "Bender", strategy: readyOrFirst("bender_second_pivot") },
+  ];
+  return rows.filter((row): row is { key: string; label: string; strategy: AdvisoryMachineStrategyResult } => Boolean(row.strategy));
+}
+
+function formatStrategyCostPerAcre(strategy: AdvisoryMachineStrategyResult): string {
+  const assessment = strategy.costAssessment;
+  if (assessment?.status === "complete" && assessment.costPerIrrigatedAcre !== null) {
+    return `${assessment.currencyCode} ${assessment.costPerIrrigatedAcre.toFixed(0)}/ac`;
+  }
+  if (assessment) return costStatusShortLabel(assessment.status);
+  return "Pending";
 }
 
 function AdvisoryCostReviewPanel({
@@ -5816,6 +5885,62 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 9,
     padding: 10,
+  },
+  costComparisonTable: {
+    backgroundColor: "#eef4ef",
+    borderColor: "#c8d6cb",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 1,
+    overflow: "hidden",
+  },
+  costComparisonHeader: {
+    backgroundColor: "#dfe9e1",
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  costComparisonHeaderText: {
+    color: "#254234",
+    flex: 1,
+    fontSize: 10,
+    fontWeight: "900",
+    minWidth: 82,
+    textTransform: "uppercase",
+  },
+  costComparisonRow: {
+    alignItems: "center",
+    backgroundColor: "#fbfdf9",
+    borderTopColor: "#dbe5dc",
+    borderTopWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+  },
+  costComparisonStrategyCell: {
+    flex: 1.4,
+    gap: 2,
+    minWidth: 118,
+  },
+  costComparisonStrategy: {
+    color: "#1d2c22",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  costComparisonMeta: {
+    color: "#647369",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  costComparisonValue: {
+    color: "#254234",
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "900",
+    minWidth: 82,
   },
   placementCandidateRow: {
     borderRadius: 8,

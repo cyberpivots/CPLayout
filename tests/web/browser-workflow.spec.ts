@@ -191,6 +191,7 @@ test("file menu opens curated sample designs with projected xy status", async ({
     { testId: "command-file-sample-partial-sweep-road-structure", title: "Partial Sweep Near Road And Pad" },
     { testId: "command-file-sample-end-gun-shutoff-arc", title: "End-Gun Shutoff Arc" },
     { testId: "command-file-sample-advisory-corner-arm-footprint", title: "Advisory Corner-Arm Footprint" },
+    { testId: "command-file-sample-full-scope-multi-pivot-cost-demo", title: "Full-Scope Multi-Pivot Cost Demo" },
   ];
 
   for (const sample of samples) {
@@ -867,6 +868,48 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   await expect(page.getByTestId("advisory-design-report-export-status")).toContainText("Advisory report is review-only");
   await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
   await saveScreen(page, testInfo, "advisory-cost-review-local-assumptions");
+});
+
+test("full-scope demo compares cost versus acres across advisory strategies", async ({ page }, testInfo) => {
+  test.slow();
+  await page.goto("/");
+  await openFullScopeCostDemoSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+
+  await page.getByTestId("design-action-calculate").click();
+  await expect(page.getByTestId("design-console-dialog")).toBeVisible();
+  await page.getByTestId("advisory-cost-fixed").fill("85000");
+  await page.getByTestId("advisory-cost-per-meter").fill("650");
+  await page.getByTestId("advisory-cost-per-tower").fill("2800");
+  await expect(page.getByTestId("advisory-cost-review-panel")).toContainText("Complete");
+
+  await expect(page.getByTestId("advisory-cost-acres-comparison")).toContainText("Strategy");
+  await expect(page.getByTestId("advisory-cost-row-current-machine")).toContainText("Current");
+  await expect(page.getByTestId("advisory-cost-row-current-machine")).toContainText("USD");
+  await expect(page.getByTestId("advisory-cost-row-full-circle")).toContainText("Full circle");
+  await expect(page.getByTestId("advisory-cost-row-full-circle")).toContainText("/ac");
+  await expect(page.getByTestId("advisory-cost-row-linear-lateral")).toContainText("Linear/lateral");
+  await expect(page.getByTestId("advisory-cost-row-linear-lateral")).toContainText("/ac");
+  await expect(page.getByTestId("advisory-cost-row-bender-second-pivot")).toContainText("Bender");
+  await expect(page.getByTestId("advisory-cost-row-bender-second-pivot")).toContainText("/ac");
+  await expect(page.getByTestId("advisory-full-scope-boundary-summary")).toContainText("Full-Scope Boundary Review");
+  await expect(page.getByTestId("advisory-obstacle-interaction-summary")).toContainText("Obstacle Interaction Review");
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
+
+  const reportDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-advisory-design-report").click();
+  const reportDownload = await reportDownloadPromise;
+  const reportPath = await reportDownload.path();
+  expect(reportPath, "report download path").not.toBeNull();
+  const reportText = await readFile(reportPath!, "utf8");
+  expect(reportText).toContain("Full-Scope");
+  expect(reportText).toContain("Generated Field-Pivot Review");
+  expect(reportText).toContain("Machine Strategy And Cost Review");
+  expect(reportText).toContain("Obstacle And Utility Review");
+  expect(reportText).toContain("Canonical geometry mutation: false");
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
+  await saveScreen(page, testInfo, "full-scope-cost-demo-comparison");
 });
 
 test("corner arm advisory save requires confirmation and remains advisory", async ({ page }, testInfo) => {
@@ -2073,6 +2116,12 @@ async function openBaselineSample(page: Page): Promise<void> {
   await openCommandMenu(page, "file");
   await page.getByTestId("command-file-sample-baseline-needs-review").click();
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
+}
+
+async function openFullScopeCostDemoSample(page: Page): Promise<void> {
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-sample-full-scope-multi-pivot-cost-demo").click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Full-Scope Multi-Pivot Cost Demo");
 }
 
 async function openCatalogFromFile(page: Page): Promise<void> {

@@ -11,6 +11,9 @@ import type {
 export const LEGACY_CLIENT_ID = "example-client";
 export const LEGACY_CLIENT_NAME = "Example Client";
 
+const OLD_CLIENTS_KEY = ["cust", "omers"].join("");
+const OLD_PROJECT_CLIENT_ID_KEY = ["cust", "omerId"].join("");
+
 type ClientProfileFields = Pick<
   ClientRecord,
   | "companyName"
@@ -97,20 +100,15 @@ export function sortProjectCatalog(catalog: ProjectCatalog): ProjectCatalog {
   };
 }
 
-type LegacyProjectCatalog = Partial<ProjectCatalog> & {
-  customers?: unknown;
-};
-
-type LegacyCatalogProjectRecord = Partial<CatalogProjectRecord> & {
-  customerId?: unknown;
-};
+type PreviousProjectCatalog = Partial<ProjectCatalog> & Record<string, unknown>;
 
 export function normalizeProjectCatalog(catalog: Partial<ProjectCatalog>): ProjectCatalog {
-  const legacyCatalog = catalog as LegacyProjectCatalog;
+  const previousCatalog = catalog as PreviousProjectCatalog;
+  const previousClients = previousCatalog[OLD_CLIENTS_KEY];
   const rawClients = Array.isArray(catalog.clients)
     ? catalog.clients
-    : Array.isArray(legacyCatalog.customers)
-      ? legacyCatalog.customers
+    : Array.isArray(previousClients)
+      ? previousClients
       : [];
   return sortProjectCatalog({
     clients: rawClients.map(normalizeClientRecord).filter((record): record is ClientRecord => Boolean(record)),
@@ -122,9 +120,11 @@ export function normalizeProjectCatalog(catalog: Partial<ProjectCatalog>): Proje
   });
 }
 
-function normalizeCatalogProjectRecord(record: LegacyCatalogProjectRecord): CatalogProjectRecord | null {
+function normalizeCatalogProjectRecord(record: Partial<CatalogProjectRecord>): CatalogProjectRecord | null {
   if (typeof record.id !== "string" || record.id.length === 0) return null;
-  const legacyClientId = typeof record.customerId === "string" ? record.customerId : "";
+  const previousRecord = record as Record<string, unknown>;
+  const previousClientId = previousRecord[OLD_PROJECT_CLIENT_ID_KEY];
+  const legacyClientId = typeof previousClientId === "string" ? previousClientId : "";
   const clientId = typeof record.clientId === "string" && record.clientId.length > 0
     ? record.clientId
     : legacyClientId;

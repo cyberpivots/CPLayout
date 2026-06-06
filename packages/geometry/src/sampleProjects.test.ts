@@ -3,19 +3,27 @@ import assert from "node:assert/strict";
 import {
   advisoryCornerArmSampleProject,
   endGunShutoffArcSampleProject,
+  fullScopeMultiPivotCostDemoProject,
   improvedFullCircleSampleProject,
   partialSweepNearRoadSampleProject,
   sampleDesignProjects,
   sampleProject,
 } from "@cplayout/core";
 
+import {
+  analyzeAdvisoryMultiMachineLayout,
+  analyzeAdvisoryObstacleInteractions,
+  compareAdvisoryMachineStrategies,
+  planAdvisoryFieldPivots,
+} from "./advisoryPivotPlacement";
+import { buildAdvisoryDesignReport } from "./advisoryDesignReport";
 import { buildDesignScenarioPreview } from "./designScenarios";
 import { evaluateLayout } from "./geometry";
 import { rankLayoutAlternatives } from "./layoutScoring";
 
 const before = JSON.stringify(sampleDesignProjects.map((entry) => entry.project));
 
-assert.equal(sampleDesignProjects.length, 5);
+assert.equal(sampleDesignProjects.length, 6);
 assert.equal(sampleDesignProjects[0].project, sampleProject);
 assert.equal(sampleDesignProjects[0].reviewStatus, "needs_review");
 assert.ok(sampleDesignProjects.slice(1).every((entry) => entry.reviewStatus === "curated"));
@@ -48,6 +56,88 @@ assert.equal(cornerArm.metrics.obstacleConflictCount, 0);
 assert.ok((advisoryCornerArmSampleProject.mapFeatures ?? []).some((feature) => feature.kind === "corner_swing_limit"));
 assert.ok(buildDesignScenarioPreview(advisoryCornerArmSampleProject, { includeOptimizedCandidates: false })
   .some((scenario) => scenario.source === "advisory_corner_arm" && scenario.feasible === false));
+
+const fullScopeDemo = evaluateLayout(fullScopeMultiPivotCostDemoProject);
+const fullScopeDemoBefore = JSON.stringify(fullScopeMultiPivotCostDemoProject);
+const fullScopeSerialized = JSON.stringify(fullScopeMultiPivotCostDemoProject);
+assert.equal(fullScopeMultiPivotCostDemoProject.id, "sample-full-scope-multi-pivot-cost-demo");
+assert.equal(fullScopeMultiPivotCostDemoProject.projectCrs, "EPSG:32613");
+assert.equal(fullScopeMultiPivotCostDemoProject.wgs84Companion, undefined);
+assert.equal(fullScopeSerialized.includes("Will Rhea"), false);
+assert.equal(fullScopeSerialized.includes("Jason Harmelink"), false);
+assert.equal(fullScopeSerialized.includes("Harmelink"), false);
+assert.ok(fullScopeDemo.metrics.coveragePercent > 5);
+const fullScopeFeatureCounts = (fullScopeMultiPivotCostDemoProject.mapFeatures ?? []).reduce<Record<string, number>>((counts, feature) => {
+  counts[feature.kind] = (counts[feature.kind] ?? 0) + 1;
+  return counts;
+}, {});
+assert.equal(fullScopeFeatureCounts.planning_boundary, 2);
+assert.equal(fullScopeFeatureCounts.machine_zone, 3);
+assert.equal(fullScopeFeatureCounts.linear_move_path, 1);
+assert.equal(fullScopeFeatureCounts.measurement_line, 1);
+assert.ok((fullScopeFeatureCounts.well_location ?? 0) >= 1);
+assert.ok((fullScopeFeatureCounts.underground_pipeline ?? 0) >= 1);
+assert.ok((fullScopeFeatureCounts.underground_wire ?? 0) >= 1);
+assert.ok((fullScopeFeatureCounts.power_line ?? 0) >= 1);
+assert.ok((fullScopeFeatureCounts.power_pole ?? 0) >= 1);
+assert.ok(fullScopeMultiPivotCostDemoProject.surveyPoints.some((point) => /second pivot/i.test(`${point.label} ${point.notes ?? ""}`)));
+
+const fullScopeMultiMachineReview = analyzeAdvisoryMultiMachineLayout(fullScopeMultiPivotCostDemoProject);
+assert.equal(fullScopeMultiMachineReview.status, "ready");
+assert.equal(fullScopeMultiMachineReview.compilation.fullScopeBoundarySource, "planning_boundary");
+assert.equal(fullScopeMultiMachineReview.compilation.scenarioBoundarySource, "machine_zone");
+assert.equal(fullScopeMultiMachineReview.compilation.planningBoundaryCount, 2);
+assert.equal(fullScopeMultiMachineReview.compilation.machineZoneCount, 3);
+assert.equal(fullScopeMultiMachineReview.scenarios.length, 3);
+assert.ok(fullScopeMultiMachineReview.compilation.readyScenarioCount >= 2);
+assert.ok(fullScopeMultiMachineReview.compilation.compiledBoundaryAcres > fullScopeMultiMachineReview.compilation.fieldBoundaryAcres * 0.5);
+
+const fullScopeStrategyComparison = compareAdvisoryMachineStrategies(fullScopeMultiPivotCostDemoProject, {
+  costInput: {
+    fixedMachineCost: 85000,
+    costPerMeter: 650,
+    costPerTower: 2800,
+    currencyCode: "USD",
+  },
+});
+assert.equal(fullScopeStrategyComparison.costInputStatus, "complete");
+const readyStrategyKinds = new Set(fullScopeStrategyComparison.strategies.filter((strategy) => strategy.status === "ready").map((strategy) => strategy.strategyKind));
+assert.ok(readyStrategyKinds.has("current_machine"));
+assert.ok(readyStrategyKinds.has("full_circle_radius"));
+assert.ok(readyStrategyKinds.has("linear_lateral_move"));
+assert.ok(readyStrategyKinds.has("bender_second_pivot"));
+assert.equal(fullScopeStrategyComparison.strategies.some((strategy) => strategy.strategyKind === "unsupported_linear_lateral"), false);
+assert.equal(fullScopeStrategyComparison.strategies.some((strategy) => strategy.strategyKind === "unsupported_bender_second_pivot"), false);
+assert.ok(fullScopeStrategyComparison.strategies.some((strategy) => strategy.strategyKind === "linear_lateral_move" && strategy.costAssessment?.status === "complete"));
+assert.ok(fullScopeStrategyComparison.strategies.some((strategy) => strategy.strategyKind === "bender_second_pivot" && strategy.costAssessment?.status === "complete"));
+assert.ok(fullScopeStrategyComparison.strategies.filter((strategy) => strategy.status === "ready").length >= 3);
+
+const fullScopeGeneratedPlan = planAdvisoryFieldPivots(fullScopeMultiPivotCostDemoProject, { maxMachines: 3 });
+assert.equal(fullScopeGeneratedPlan.canonicalGeometryMutation, false);
+assert.ok(fullScopeGeneratedPlan.requestedMachineCount >= 3);
+assert.ok(fullScopeGeneratedPlan.candidates.length > 0);
+assert.ok((fullScopeGeneratedPlan.selectedMachineCount ?? 0) >= 2);
+assert.ok(fullScopeGeneratedPlan.candidates.every((candidate) => candidate.canonicalGeometryMutation === false));
+
+const fullScopeObstacleReview = analyzeAdvisoryObstacleInteractions(fullScopeMultiPivotCostDemoProject);
+assert.equal(fullScopeObstacleReview.status, "ready");
+assert.ok(fullScopeObstacleReview.summary.utilityPathReviewCount > 0);
+assert.ok(fullScopeObstacleReview.summary.hardBlockingCount > 0);
+
+const fullScopeReport = buildAdvisoryDesignReport({
+  project: fullScopeMultiPivotCostDemoProject,
+  result: fullScopeDemo,
+  fieldPivotPlan: fullScopeGeneratedPlan,
+  multiMachineReview: fullScopeMultiMachineReview,
+  strategyComparison: fullScopeStrategyComparison,
+  obstacleInteractionReview: fullScopeObstacleReview,
+});
+assert.ok(fullScopeReport.text.includes("Advisory only: true"));
+assert.ok(fullScopeReport.text.includes("Canonical geometry mutation: false"));
+assert.ok(fullScopeReport.text.includes("Full-Scope"));
+assert.ok(fullScopeReport.text.includes("Machine Strategy And Cost Review"));
+assert.ok(fullScopeReport.text.includes("Cost review is local and advisory"));
+assert.equal(JSON.stringify(fullScopeMultiPivotCostDemoProject), fullScopeDemoBefore);
 
 const ranked = rankLayoutAlternatives([
   { id: "baseline", project: sampleProject, confidence: 0.8, source: "operator" },

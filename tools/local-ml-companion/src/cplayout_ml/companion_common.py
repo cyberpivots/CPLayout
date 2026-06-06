@@ -7,9 +7,9 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-COMPANION_REPORT_PACKET_SCHEMA_VERSION = "cplayout-companion-report-packet-v1"
+COMPANION_REPORT_PACKET_SCHEMA_VERSION = "cplayout-imagery-evidence-v2"
 COMPANION_CANDIDATES_GEOJSON_SCHEMA_VERSION = "cplayout-companion-candidate-reports-geojson-v1"
-COMPANION_PACKET_VERSION = "cplayout-companion-evidence-packet-v1"
+COMPANION_PACKET_VERSION = "cplayout-imagery-evidence-packet-v2"
 DEFAULT_CREATED_AT = "1970-01-01T00:00:00.000Z"
 LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
@@ -52,9 +52,28 @@ def reject_hidden_keys(value: Any, path: str = "root") -> None:
         return
     if value.get("keyedService") is True:
         raise SystemExit(f"{path} declares keyedService: true; companion tooling must stay no-key and local/offline.")
+    for flag in ["paidServiceRequired", "telemetryUpload", "bulkPublicTileCaching"]:
+        if value.get(flag) is True:
+            raise SystemExit(f"{path} declares {flag}: true; companion tooling must stay local/offline and no-cost.")
+    cloud_urls = value.get("cloudUrls")
+    if isinstance(cloud_urls, list) and len(cloud_urls) > 0:
+        raise SystemExit(f"{path}.cloudUrls must stay empty for local/offline companion tooling.")
     for key, item in value.items():
         key_lower = str(key).lower()
-        if key_lower in {"apikey", "api_key", "accesstoken", "access_token", "secretkey", "secret_key"} and isinstance(item, str) and item:
+        if key_lower in {
+            "apikey",
+            "api_key",
+            "accesstoken",
+            "access_token",
+            "secretkey",
+            "secret_key",
+            "bearertoken",
+            "bearer_token",
+            "clientsecret",
+            "client_secret",
+            "password",
+            "token",
+        } and isinstance(item, str) and item:
             raise SystemExit(f"{path}.{key} contains a hidden key or token.")
         reject_hidden_keys(item, f"{path}.{key}")
 

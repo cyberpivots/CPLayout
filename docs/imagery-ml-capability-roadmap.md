@@ -37,7 +37,7 @@ The current baseline already includes local companion evidence flags, the `cplay
 
 `cplayout-imagery-evidence-v2` is the target companion report schema for Phase 1. It is local-only evidence, not a project schema.
 
-Current implementation note, 2026-06-06: `packages/core/src/imageryEvidence.ts` now validates strict v2 packets for read-only companion review. The validator computes packet status as `blocked` or `ready_for_read_only_report` and candidate status as `metadata_only`, `blocked`, or `calibrated_projected_xy`. It does not import evidence into the app, write project storage, mutate canonical projected `XY`, update KML/KMZ behavior, launch Google Earth, or prove imagery/model quality. The Python companion emitter in `tools/local-ml-companion/src/cplayout_ml/evidence_packet.py` still emits the earlier companion packet shape and must be updated or routed through an explicit adapter before strict v2 validation.
+Current implementation note, 2026-06-06: `packages/core/src/imageryEvidence.ts` validates strict v2 packets for read-only companion review, and `tools/local-ml-companion/src/cplayout_ml/evidence_packet.py` now emits the v2 packet shape for `build-evidence-packet`. The validator computes packet status as `blocked` or `ready_for_read_only_report` and candidate status as `metadata_only`, `blocked`, or `calibrated_projected_xy`. The emitter measures local visual artifacts when available, records attribution/license evidence, rejects legacy projected calibration aliases for projected output, and only emits projected candidate geometry when `valid_projected_xy` truth labels are present. These pieces do not import evidence into the app, write project storage, mutate canonical projected `XY`, update KML/KMZ behavior, launch Google Earth, or prove imagery/model quality.
 
 Required packet boundaries:
 
@@ -60,7 +60,7 @@ Strict v2 calibration statuses:
 - `evidence_only` and `image_space_only` can support safe read-only metadata/image-space review when all local-only, hash, attribution, and visual-evidence gates pass.
 - `valid_projected_xy` is required for any projected pivot center, field boundary, obstacle polygon, or other proposed projected `XY` geometry.
 - `invalid_projected_xy` and `rejected_projected_xy` are explicit rejection statuses, not apply-ready statuses.
-- Legacy Python companion statuses such as `valid`, `calibrated`, and `project_crs_xy` are not silently accepted by the strict v2 validator.
+- Legacy companion statuses such as `valid`, `calibrated`, and `project_crs_xy` are not accepted for projected output by the strict v2 validator or the v2 Python emitter.
 
 Strict v2 validation blockers:
 

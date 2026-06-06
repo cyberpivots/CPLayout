@@ -123,7 +123,7 @@ class CompanionToolingTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "source.png"
-            source.write_bytes(b"image")
+            write_test_ppm(source)
             candidates = root / "cv-candidates.json"
             candidates.write_text(json.dumps({
                 "candidates": [
@@ -140,7 +140,14 @@ class CompanionToolingTests(unittest.TestCase):
                         "confidence": 0.82,
                         "projectCrs": "EPSG:32613",
                         "projectedPoint": {"x": 500000.0, "y": 4410000.0},
-                        "calibrationStatus": "valid",
+                        "calibrationStatus": "valid_projected_xy",
+                        "truthLabels": {
+                            "TRUE_PIVOT_CENTER": {
+                                "projectedPoint": {"x": 500000.0, "y": 4410000.0},
+                                "calibrationStatus": "valid_projected_xy",
+                                "operatorApproved": True,
+                            },
+                        },
                     },
                 ],
             }), encoding="utf-8")
@@ -162,15 +169,29 @@ class CompanionToolingTests(unittest.TestCase):
             projected = json.loads((root / "packet" / "companion-evidence-packet-projected-xy.geojson").read_text(encoding="utf-8"))
             recommendation_geojson = json.loads((root / "packet" / "companion-evidence-packet-candidates.geojson").read_text(encoding="utf-8"))
 
-            self.assertEqual(packet["schemaVersion"], "cplayout-companion-report-packet-v1")
-            self.assertEqual(packet["packetVersion"], "cplayout-companion-evidence-packet-v1")
+            self.assertEqual(packet["schemaVersion"], "cplayout-imagery-evidence-v2")
+            self.assertEqual(packet["packetVersion"], "cplayout-imagery-evidence-packet-v2")
             self.assertFalse(packet["networkRequired"])
             self.assertFalse(packet["keyedService"])
+            self.assertFalse(packet["paidServiceRequired"])
+            self.assertEqual(packet["cloudUrls"], [])
+            self.assertFalse(packet["telemetryUpload"])
+            self.assertFalse(packet["bulkPublicTileCaching"])
             self.assertFalse(packet["canonicalGeometryMutation"])
+            self.assertEqual(packet["calibration"]["status"], "valid_projected_xy")
+            self.assertIn("TRUE_PIVOT_CENTER", packet["truthLabels"])
+            self.assertEqual(packet["visualEvidence"][0]["artifactId"], "sourceArtifact1")
+            self.assertGreaterEqual(packet["visualEvidence"][0]["nonBlankPixelRatio"], 0.08)
+            self.assertGreaterEqual(packet["visualEvidence"][0]["grayVariance"], 80)
+            self.assertFalse(packet["visualEvidence"][0]["mostlyBlack"])
+            self.assertFalse(packet["visualEvidence"][0]["nearUniform"])
+            self.assertEqual(packet["attribution"][0]["keyedService"], False)
             self.assertIn("sourceArtifact1", packet["sourceArtifactHashes"])
             self.assertNotIn("pivotCenter", recommendations[0]["proposedGeometry"])
             self.assertIn("projected XY calibration absent", recommendations[0]["metadata"]["hardFailures"])
             self.assertEqual(recommendations[1]["proposedGeometry"]["pivotCenter"], {"x": 500000.0, "y": 4410000.0})
+            self.assertEqual(recommendations[1]["calibrationStatus"], "valid_projected_xy")
+            self.assertEqual(recommendations[1]["truthLabelIds"], ["TRUE_PIVOT_CENTER"])
             self.assertEqual(projected["features"][0]["geometry"]["type"], "Point")
             self.assertEqual(recommendation_geojson["features"][0]["properties"]["geometryRole"], "metadata_only")
 
@@ -178,7 +199,7 @@ class CompanionToolingTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "real-map.png"
-            source.write_bytes(b"real pivot fixture")
+            write_test_ppm(source)
             manifest = root / "real-pivot-fixtures.json"
             manifest.write_text(json.dumps({
                 "schemaVersion": "cplayout-real-pivot-fixtures-v1",
@@ -218,9 +239,14 @@ class CompanionToolingTests(unittest.TestCase):
 
             packet = json.loads((root / "packet" / "companion-evidence-packet.json").read_text(encoding="utf-8"))
             recommendation = packet["candidateReports"][0]
-            artifact_hash = hashlib.sha256(b"real pivot fixture").hexdigest()
+            artifact_hash = hashlib.sha256(source.read_bytes()).hexdigest()
 
+            self.assertEqual(packet["schemaVersion"], "cplayout-imagery-evidence-v2")
+            self.assertEqual(packet["calibration"]["status"], "valid_projected_xy")
+            self.assertIn("TRUE_PIVOT_CENTER", packet["truthLabels"])
+            self.assertGreaterEqual(packet["visualEvidence"][0]["nonBlankPixelRatio"], 0.08)
             self.assertEqual(recommendation["proposedGeometry"]["pivotCenter"], {"x": 500000.0, "y": 4410000.0})
+            self.assertEqual(recommendation["calibrationStatus"], "valid_projected_xy")
             self.assertTrue(recommendation["metadata"]["operatorApproved"])
             self.assertEqual(recommendation["metadata"]["artifactHashes"]["mapCanvasCrop"]["sha256"], artifact_hash)
             self.assertEqual(recommendation["metadata"]["rejectionClasses"], ["road_circle", "ui_overlay_ring"])
@@ -231,7 +257,7 @@ class CompanionToolingTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "real-map.png"
-            source.write_bytes(b"uncalibrated fixture")
+            write_test_ppm(source)
             manifest = root / "real-pivot-fixtures.json"
             manifest.write_text(json.dumps({
                 "schemaVersion": "cplayout-real-pivot-fixtures-v1",
@@ -268,6 +294,9 @@ class CompanionToolingTests(unittest.TestCase):
             recommendation_geojson = json.loads((root / "packet" / "companion-evidence-packet-candidates.geojson").read_text(encoding="utf-8"))
 
             self.assertNotIn("pivotCenter", recommendation["proposedGeometry"])
+            self.assertEqual(packet["schemaVersion"], "cplayout-imagery-evidence-v2")
+            self.assertEqual(packet["calibrationStatus"], "evidence_only")
+            self.assertEqual(recommendation["calibrationStatus"], "image_space_only")
             self.assertIn("real-world pivot fixture calibration is not valid_projected_xy", recommendation["metadata"]["hardFailures"])
             self.assertIn("operator-approved real-world pivot fixture lacks calibrated TRUE_PIVOT_CENTER.projectedPoint", recommendation["metadata"]["hardFailures"])
             self.assertEqual(recommendation_geojson["features"][0]["properties"]["geometryRole"], "metadata_only")
@@ -277,7 +306,7 @@ class CompanionToolingTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "real-map.png"
-            source.write_bytes(b"real pivot fixture")
+            write_test_ppm(source)
             manifest = root / "real-pivot-fixtures.json"
             manifest.write_text(json.dumps({
                 "schemaVersion": "cplayout-real-pivot-fixtures-v1",
@@ -305,6 +334,34 @@ class CompanionToolingTests(unittest.TestCase):
                     "EPSG:32613",
                     root / "packet",
                     real_pivot_fixtures_path=manifest,
+                    created_at="2026-06-02T00:00:00.000Z",
+                )
+
+    def test_build_evidence_packet_rejects_paid_or_cloud_payloads(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source.png"
+            write_test_ppm(source)
+            candidates = root / "cv-candidates.json"
+            candidates.write_text(json.dumps({
+                "paidServiceRequired": True,
+                "cloudUrls": ["https://tiles.example.invalid/service"],
+                "candidates": [{
+                    "id": "unsafe-service-candidate",
+                    "kind": "pivot_center",
+                    "confidence": 0.7,
+                    "imagePoint": {"x": 120.0, "y": 140.0},
+                    "calibrationStatus": "image_space_only",
+                }],
+            }), encoding="utf-8")
+
+            with self.assertRaises(SystemExit):
+                build_evidence_packet(
+                    "project-a",
+                    "EPSG:32613",
+                    root / "packet",
+                    cv_candidates_path=candidates,
+                    source_artifact_paths=[source],
                     created_at="2026-06-02T00:00:00.000Z",
                 )
 
@@ -428,7 +485,7 @@ class CompanionToolingTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "source.png"
-            source.write_bytes(b"source image")
+            write_test_ppm(source)
             candidates = root / "cv-candidates.json"
             candidates.write_text(json.dumps({
                 "candidates": [{
@@ -448,7 +505,7 @@ class CompanionToolingTests(unittest.TestCase):
 
             hashed = client.get("/artifacts/hash", params={"path": "source.png"})
             self.assertEqual(hashed.status_code, 200)
-            self.assertEqual(hashed.json()["byteLength"], len(b"source image"))
+            self.assertEqual(hashed.json()["byteLength"], source.stat().st_size)
 
             built = client.post("/packets/build", json={
                 "projectId": "sample-project",
@@ -491,7 +548,7 @@ class CompanionToolingTests(unittest.TestCase):
 
 def write_companion_packet_fixture(root: Path) -> Path:
     source = root / "source.png"
-    source.write_bytes(b"image")
+    write_test_ppm(source)
     candidates = root / "cv-candidates.json"
     candidates.write_text(json.dumps({
         "candidates": [
@@ -509,7 +566,14 @@ def write_companion_packet_fixture(root: Path) -> Path:
                 "score": 0.88,
                 "projectCrs": "EPSG:32613",
                 "projectedPoint": {"x": 500000.0, "y": 4410000.0},
-                "calibrationStatus": "valid",
+                "calibrationStatus": "valid_projected_xy",
+                "truthLabels": {
+                    "TRUE_PIVOT_CENTER": {
+                        "projectedPoint": {"x": 500000.0, "y": 4410000.0},
+                        "calibrationStatus": "valid_projected_xy",
+                        "operatorApproved": True,
+                    },
+                },
             },
         ],
     }), encoding="utf-8")
@@ -522,6 +586,28 @@ def write_companion_packet_fixture(root: Path) -> Path:
         created_at="2026-06-02T00:00:00.000Z",
     )
     return root / "companion-evidence-packet.json"
+
+
+def write_test_ppm(path: Path) -> None:
+    pixels = bytes([
+        0, 0, 0,
+        255, 255, 255,
+        96, 96, 96,
+        210, 210, 210,
+        32, 32, 32,
+        240, 240, 240,
+        128, 128, 128,
+        16, 16, 16,
+        80, 80, 80,
+        190, 190, 190,
+        48, 48, 48,
+        220, 220, 220,
+        10, 10, 10,
+        140, 140, 140,
+        70, 70, 70,
+        250, 250, 250,
+    ])
+    path.write_bytes(b"P6\n4 4\n255\n" + pixels)
 
 
 if __name__ == "__main__":

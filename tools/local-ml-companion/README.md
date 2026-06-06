@@ -221,7 +221,7 @@ uv run cplayout-ml build-evidence-packet \
   --output-dir ./out/evidence-packet
 ```
 
-Outputs are `companion-evidence-packet.json`, `companion-evidence-packet-candidates.geojson`, and `companion-evidence-packet-projected-xy.geojson`. The JSON is a companion-owned report packet, not a CPLayout project review schema. Candidates without valid projected-XY calibration remain metadata-only with hard failures.
+Outputs are `companion-evidence-packet.json`, `companion-evidence-packet-candidates.geojson`, and `companion-evidence-packet-projected-xy.geojson`. The JSON uses `schemaVersion: "cplayout-imagery-evidence-v2"` and is a companion-owned report packet, not a CPLayout project review schema. It records local-only boundary flags, artifact hashes, attribution, calibration metadata, and measured visual evidence when a readable local image artifact is supplied. Candidates without `valid_projected_xy` calibration and projected operator truth remain metadata-only with hard-failure notes.
 
 Run a read-only local Streamlit dashboard dry run:
 

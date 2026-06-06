@@ -21,7 +21,9 @@ from .companion_common import (
 )
 
 REAL_PIVOT_FIXTURE_SCHEMA_VERSION = "cplayout-real-pivot-fixtures-v1"
-VALID_PROJECTED_CALIBRATION_STATUSES = {"valid", "valid_projected_xy", "project_crs_xy", "calibrated"}
+VALID_PROJECTED_CALIBRATION_STATUSES = {"valid_projected_xy"}
+V2_CALIBRATION_STATUSES = {"evidence_only", "image_space_only", "valid_projected_xy", "invalid_projected_xy", "rejected_projected_xy"}
+DEFAULT_ATTRIBUTION_ID = "operator-local-evidence"
 
 
 def build_evidence_packet(
@@ -54,6 +56,18 @@ def build_evidence_packet(
             project_crs,
         ),
     ]
+    candidate_artifact_ids = promote_candidate_artifacts(input_payloads["sourceArtifactHashes"], candidates)
+    source_artifact_ids = list(input_payloads["sourceArtifactHashes"])
+    truth_labels = packet_truth_labels(candidates)
+    visual_evidence = visual_evidence_entries(input_payloads["sourceArtifactHashes"])
+    attribution = [{
+        "id": DEFAULT_ATTRIBUTION_ID,
+        "providerName": "Operator supplied local evidence",
+        "attribution": "Operator supplied local imagery and companion evidence for CPLayout advisory review.",
+        "licenseText": "Operator supplied local evidence; verify rights before sharing outside the local project workflow.",
+        "keyedService": False,
+        "offlineCopyAllowed": True,
+    }]
     evidence_id = f"{project_id}:companion-evidence-packet:{timestamp_id(created_at)}"
     calibration_status = "valid_projected_xy" if any(candidate_has_valid_projected_xy(candidate, project_crs) for candidate in candidates) else "evidence_only"
     evidence_record = {
@@ -77,10 +91,22 @@ def build_evidence_packet(
             "appImportable": False,
             "canonicalGeometryMutation": False,
             "writesProjectDatabase": False,
+            "paidServiceRequired": False,
+            "cloudUrls": [],
+            "telemetryUpload": False,
+            "bulkPublicTileCaching": False,
         },
     }
     candidate_reports = [
-        candidate_recommendation(project_id, project_crs, evidence_id, candidate, index, created_at)
+        candidate_recommendation(
+            project_id,
+            project_crs,
+            evidence_id,
+            candidate,
+            index,
+            created_at,
+            sorted(set(source_artifact_ids + candidate_artifact_ids.get(str(candidate.get("id") or ""), []))),
+        )
         for index, candidate in enumerate(candidates)
     ]
     projected_features = [
@@ -99,19 +125,42 @@ def build_evidence_packet(
             "networkRequired": False,
             "keyedService": False,
             "hiddenKeysAllowed": False,
+            "evidenceOnly": True,
+            "appImportable": False,
             "canonicalGeometryMutation": False,
             "writesProjectDatabase": False,
+            "paidServiceRequired": False,
+            "cloudUrls": [],
+            "telemetryUpload": False,
+            "bulkPublicTileCaching": False,
         },
+        "calibration": {
+            "projectId": project_id,
+            "projectCrs": project_crs,
+            "method": "local_companion_packet_review",
+            "status": calibration_status,
+        },
+        "truthLabels": truth_labels,
+        "visualEvidence": visual_evidence,
+        "attribution": attribution,
         "evidenceRecords": [evidence_record],
         "candidateReports": candidate_reports,
         "operatorDecisionNotes": [],
         "networkRequired": False,
         "keyedService": False,
         "hiddenKeysAllowed": False,
+        "paidServiceRequired": False,
+        "cloudUrls": [],
+        "telemetryUpload": False,
+        "bulkPublicTileCaching": False,
         "evidenceOnly": True,
         "appImportable": False,
         "canonicalGeometryMutation": False,
         "writesProjectDatabase": False,
+        "warnings": [
+            *([] if visual_evidence else ["No measured visual-evidence artifact was available; strict v2 review will remain blocked until local screenshot/raster metrics are supplied."]),
+            "Companion evidence is read-only and cannot apply, import, or mutate CPLayout project geometry.",
+        ],
         "nonGoals": [
             "No React Native Python/GDAL runtime dependency.",
             "No cloud backend, hidden key, hosted dashboard, or paid imagery service.",
@@ -159,12 +208,39 @@ def load_input_payloads(
         payloads[key] = payload
         if key == "realPivotFixtures":
             payloads["realPivotFixturesManifestDir"] = str(path.parent)
-        payloads["sourceArtifactHashes"][key] = file_artifact(path)
+        payloads["sourceArtifactHashes"][key] = packet_artifact(path, f"{key}_json")
     for index, path in enumerate(source_artifact_paths):
-        payloads["sourceArtifactHashes"][f"sourceArtifact{index + 1}"] = file_artifact(path)
+        payloads["sourceArtifactHashes"][f"sourceArtifact{index + 1}"] = packet_artifact(path, "source_artifact")
     if len(payloads["sourceArtifactHashes"]) == 0:
         raise SystemExit("build-evidence-packet requires at least one input payload or source artifact.")
     return payloads
+
+
+def packet_artifact(path: Path, artifact_type: str, base_dir: Path | None = None) -> dict[str, Any]:
+    artifact = file_artifact(path, base_dir)
+    artifact["type"] = artifact_type
+    artifact["attributionId"] = DEFAULT_ATTRIBUTION_ID
+    return artifact
+
+
+def promote_candidate_artifacts(source_artifacts: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, list[str]]:
+    candidate_artifact_ids: dict[str, list[str]] = {}
+    for index, candidate in enumerate(candidates):
+        candidate_key = str(candidate.get("id") or candidate.get("name") or f"candidate-{index + 1}")
+        promoted_ids: list[str] = []
+        artifact_hashes = candidate.get("artifactHashes")
+        if isinstance(artifact_hashes, dict):
+            for artifact_name, artifact in artifact_hashes.items():
+                if not isinstance(artifact, dict):
+                    continue
+                artifact_id = safe_id(f"{candidate_key}-{artifact_name}")
+                promoted = dict(artifact)
+                promoted.setdefault("type", f"candidate_{artifact_name}")
+                promoted.setdefault("attributionId", DEFAULT_ATTRIBUTION_ID)
+                source_artifacts[artifact_id] = promoted
+                promoted_ids.append(artifact_id)
+        candidate_artifact_ids[candidate_key] = promoted_ids
+    return candidate_artifact_ids
 
 
 def candidate_entries(payload: Any) -> list[dict[str, Any]]:
@@ -176,6 +252,33 @@ def candidate_entries(payload: Any) -> list[dict[str, Any]]:
     for candidate in candidates:
         reject_hidden_keys(candidate)
     return [candidate for candidate in candidates if isinstance(candidate, dict)]
+
+
+def packet_truth_labels(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    labels: dict[str, Any] = {}
+    for candidate in candidates:
+        candidate_labels = candidate.get("truthLabels")
+        if not isinstance(candidate_labels, dict):
+            continue
+        for label_id, label in candidate_labels.items():
+            if not isinstance(label, dict):
+                continue
+            normalized = {
+                "label": str(label.get("label") or label_id),
+                "calibrationStatus": v2_calibration_status(label.get("calibrationStatus")),
+                "operatorApproved": bool(label.get("operatorApproved", candidate.get("operatorApproved", False))),
+            }
+            projected_point = xy_payload(label.get("projectedPoint") or label.get("projectedXY"))
+            image_point = xy_payload(label.get("imagePoint"))
+            projected_polygon = projected_polygon_payload(label.get("projectedPolygon"))
+            if projected_point is not None:
+                normalized["projectedPoint"] = projected_point
+            if image_point is not None:
+                normalized["imagePoint"] = image_point
+            if projected_polygon is not None:
+                normalized["projectedPolygon"] = projected_polygon
+            labels[str(label_id)] = normalized
+    return labels
 
 
 def real_pivot_fixture_candidates(
@@ -309,7 +412,7 @@ def real_pivot_fixture_artifacts(fixture: dict[str, Any], manifest_dir: Path, fi
     for key, path_value in artifact_paths.items():
         if not isinstance(path_value, str) or not path_value:
             raise SystemExit(f"Real pivot fixture {fixture_id} artifact {key} must be a non-empty path string.")
-        artifact = file_artifact(Path(path_value), manifest_dir)
+        artifact = packet_artifact(Path(path_value), f"real_pivot_fixture_{key}", manifest_dir)
         expected = (expected_hashes or {}).get(key)
         if expected is not None and str(expected) != artifact["sha256"]:
             raise SystemExit(f"Real pivot fixture {fixture_id} artifact {key} SHA-256 mismatch.")
@@ -320,8 +423,10 @@ def real_pivot_fixture_artifacts(fixture: dict[str, Any], manifest_dir: Path, fi
 def candidate_has_valid_projected_xy(candidate: dict[str, Any], project_crs: str) -> bool:
     if str(candidate.get("projectCrs", project_crs)) != project_crs:
         return False
-    calibration = str(candidate.get("calibrationStatus", "")).lower()
-    if calibration not in {"valid", "valid_projected_xy", "project_crs_xy", "calibrated"}:
+    calibration = v2_calibration_status(candidate.get("calibrationStatus"))
+    if calibration != "valid_projected_xy":
+        return False
+    if not candidate_has_projected_truth(candidate):
         return False
     return candidate_projected_point(candidate) is not None or candidate_projected_polygon(candidate) is not None
 
@@ -333,10 +438,13 @@ def candidate_recommendation(
     candidate: dict[str, Any],
     index: int,
     created_at: str,
+    artifact_ids: list[str],
 ) -> dict[str, Any]:
     candidate_id = safe_id(str(candidate.get("id") or candidate.get("name") or f"candidate-{index + 1}"))
     kind = str(candidate.get("kind") or candidate.get("geometryRole") or candidate.get("type") or "metadata_only")
     valid_projected = candidate_has_valid_projected_xy(candidate, project_crs)
+    calibration_status = "valid_projected_xy" if valid_projected else v2_calibration_status(candidate.get("calibrationStatus"))
+    truth_label_ids = sorted(packet_truth_labels([candidate]))
     proposed_geometry: dict[str, Any] = {"projectCrs": project_crs}
     if valid_projected and kind in {"pivot_center", "pivot", "center"}:
         proposed_geometry["pivotCenter"] = candidate_projected_point(candidate)
@@ -350,34 +458,53 @@ def candidate_recommendation(
             proposed_geometry["obstaclePolygons"] = [polygon]
     hard_failures = string_list(candidate.get("hardFailures"))
     if len(proposed_geometry) == 1:
-        hard_failures.append("projected XY calibration absent")
+        if candidate_projected_point(candidate) is not None or candidate_projected_polygon(candidate) is not None:
+            hard_failures.append("projected XY requires calibrationStatus valid_projected_xy and projected operator truth")
+        else:
+            hard_failures.append("projected XY calibration absent")
     if str(candidate.get("projectCrs", project_crs)) != project_crs:
         hard_failures.append(f"candidate project CRS does not match {project_crs}")
+    source_status = str(candidate.get("calibrationStatus", "evidence_only")).lower()
+    if source_status not in V2_CALIBRATION_STATUSES:
+        hard_failures.append(f"legacy calibration status {source_status} is not accepted by cplayout-imagery-evidence-v2")
     confidence = number_or_default(candidate.get("confidence"), 0.35)
+    score_breakdown = candidate.get("scoreBreakdown") if isinstance(candidate.get("scoreBreakdown"), dict) else None
     return {
         "id": f"{project_id}:companion:{candidate_id}",
         "projectId": project_id,
+        "kind": kind,
         "modelName": str(candidate.get("modelName") or "local-companion-gis-cv-packet"),
         "modelVersion": str(candidate.get("modelVersion") or "0.1.0"),
         "createdAt": created_at,
         "projectCrs": project_crs,
+        "calibrationStatus": calibration_status,
         "summary": str(candidate.get("summary") or f"Review local companion candidate {candidate_id}."),
         "proposedGeometry": proposed_geometry,
         "confidence": confidence,
         "evidenceIds": [evidence_id],
+        "artifactIds": artifact_ids,
+        "truthLabelIds": truth_label_ids,
+        "feasible": len(hard_failures) == 0 and len(proposed_geometry) > 1,
+        "evidenceOnly": True,
+        "appImportable": False,
+        "canonicalGeometryMutation": False,
+        "writesProjectDatabase": False,
         "reviewStatus": "unreviewed",
         "score": candidate.get("score") if isinstance(candidate.get("score"), (int, float)) else confidence,
-        "scoreBreakdown": candidate.get("scoreBreakdown") if isinstance(candidate.get("scoreBreakdown"), dict) else None,
+        "scoreBreakdown": score_breakdown,
         "metadata": {
             "packetVersion": COMPANION_PACKET_VERSION,
             "sourceCandidateId": candidate_id,
             "candidateKind": kind,
-            "calibrationStatus": candidate.get("calibrationStatus", "evidence_only"),
+            "calibrationStatus": calibration_status,
+            "sourceCalibrationStatus": candidate.get("calibrationStatus", "evidence_only"),
             "fixtureId": candidate.get("fixtureId"),
             "operatorApproved": candidate.get("operatorApproved"),
             "artifactHashes": candidate.get("artifactHashes"),
+            "artifactIds": artifact_ids,
             "provenance": candidate.get("provenance"),
             "truthLabels": candidate.get("truthLabels"),
+            "scoreBreakdown": score_breakdown,
             "rejectionClasses": candidate.get("rejectionClasses"),
             "imageSpaceOnly": len(hard_failures) > 0,
             "feasible": len(hard_failures) == 0,
@@ -403,10 +530,85 @@ def xy_payload(value: Any) -> dict[str, float] | None:
     return None
 
 
+def projected_polygon_payload(value: Any) -> list[dict[str, float]] | None:
+    if not isinstance(value, list):
+        return None
+    points = [xy_payload(point) for point in value]
+    if any(point is None for point in points):
+        return None
+    projected_points = [point for point in points if point is not None]
+    return projected_points if len(projected_points) >= 3 else None
+
+
 def string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item).strip()]
+
+
+def v2_calibration_status(value: Any) -> str:
+    status = str(value or "evidence_only").strip().lower()
+    return status if status in V2_CALIBRATION_STATUSES else "evidence_only"
+
+
+def candidate_has_projected_truth(candidate: dict[str, Any]) -> bool:
+    return any(truth_label_has_projected_xy(label) for label in packet_truth_labels([candidate]).values())
+
+
+def truth_label_has_projected_xy(label: Any) -> bool:
+    if not isinstance(label, dict):
+        return False
+    return (
+        v2_calibration_status(label.get("calibrationStatus")) == "valid_projected_xy"
+        and (
+            xy_payload(label.get("projectedPoint")) is not None
+            or xy_payload(label.get("projectedXY")) is not None
+            or projected_polygon_payload(label.get("projectedPolygon")) is not None
+        )
+    )
+
+
+def visual_evidence_entries(source_artifacts: dict[str, Any]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for artifact_id, artifact in source_artifacts.items():
+        if not isinstance(artifact, dict):
+            continue
+        metrics = visual_artifact_metrics(artifact)
+        if metrics is None:
+            continue
+        entries.append({
+            "id": f"{artifact_id}-visual",
+            "artifactId": artifact_id,
+            "status": "measured",
+            "attributionId": artifact.get("attributionId", DEFAULT_ATTRIBUTION_ID),
+            **metrics,
+        })
+    return entries
+
+
+def visual_artifact_metrics(artifact: dict[str, Any]) -> dict[str, Any] | None:
+    path_value = artifact.get("resolvedPath") or artifact.get("path")
+    if not isinstance(path_value, str):
+        return None
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+    except Exception:
+        return None
+    image = cv2.imread(path_value, cv2.IMREAD_GRAYSCALE)
+    if image is None or image.size == 0:
+        return None
+    non_blank_pixel_ratio = float(np.count_nonzero(image > 8) / image.size)
+    gray_variance = float(np.var(image))
+    return {
+        "widthPixels": int(image.shape[1]),
+        "heightPixels": int(image.shape[0]),
+        "nonBlankPixelRatio": round(non_blank_pixel_ratio, 6),
+        "nonBlackRatio": round(non_blank_pixel_ratio, 6),
+        "grayVariance": round(gray_variance, 6),
+        "mostlyBlack": non_blank_pixel_ratio < 0.08,
+        "nearUniform": gray_variance < 80,
+    }
 
 
 def packet_confidence(candidates: list[dict[str, Any]]) -> float:

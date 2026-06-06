@@ -24,6 +24,7 @@ const MAP_FEATURE_KINDS = [
   "fence",
   "planning_boundary",
   "machine_zone",
+  "linear_move_path",
   "measurement_line",
   "end_gun_mark",
   "end_gun_arc",
@@ -1327,6 +1328,7 @@ function mapFeatureProperties(
   const advisoryKinds = new Set<ProjectMapFeatureKind>([
     "planning_boundary",
     "machine_zone",
+    "linear_move_path",
     "measurement_line",
     "corner_swing_limit",
     "end_gun_arc",
@@ -1372,6 +1374,7 @@ function mapFeatureKindFromName(name: string): ProjectMapFeatureKind | null {
   const normalizedName = name.toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
   if (/\bwell\b|\bwater_source\b/.test(normalizedName)) return "well_location";
   if (/\bwire\b|\belectric_cable\b|\bburied_power\b/.test(normalizedName)) return "underground_wire";
+  if (/(^|_)(linear|lateral)(_)?(move|path|travel|track)(_path|_line|_route)?($|_)|\btravel_path\b/.test(normalizedName)) return "linear_move_path";
   if (/\b(distance|measurement|measure|length|lrdu)\b/.test(normalizedName)) return "measurement_line";
   if (/\b(machine|pivot)_?(zone|field|boundary)\b|\b(middle|south|north|east|west)_machine_field_boundary\b/.test(normalizedName)) return "machine_zone";
   if (/\bplanning_boundary\b|\bplanning_area\b|\bfull_scope\b|\bscope_boundary\b/.test(normalizedName)) return "planning_boundary";
@@ -1395,6 +1398,7 @@ function lineMapFeatureKindFromName(name: string): ProjectMapFeatureKind | null 
   const normalizedName = name.toLowerCase();
   if (/\b(pipe|pipeline|water\s*line)\b/.test(normalizedName)) return "underground_pipeline";
   if (/\b(wire|buried\s*power|electric\s*cable)\b/.test(normalizedName)) return "underground_wire";
+  if (/\b(linear|lateral)\s*(move|path|travel|track)(\s*(path|line|route))?\b|\btravel\s*path\b/.test(normalizedName)) return "linear_move_path";
   if (/\b(distance|measurement|measure|length|lrdu)\b/.test(normalizedName)) return "measurement_line";
   if (/\b(power|electric|utility)\s*line\b/.test(normalizedName)) return "power_line";
   if (/\b(access|lane)\b/.test(normalizedName)) return "access_lane";
@@ -1418,12 +1422,14 @@ function importClassificationForMapFeatureKind(kind: ProjectMapFeatureKind): Goo
   if (kind === "planning_boundary") return "planning_boundary";
   if (kind === "machine_zone") return "machine_zone";
   if (kind === "measurement_line") return "measurement_line";
+  if (kind === "linear_move_path") return "map_feature";
   return "map_feature";
 }
 
 function mapFeatureImportWarning(kind: ProjectMapFeatureKind): string | undefined {
   if (kind === "planning_boundary") return "Planning boundary evidence only; applying the import saves a map feature and does not replace the active field boundary unless selected as field_boundary.";
   if (kind === "machine_zone") return "Machine-zone evidence only; applying the import saves a map feature and does not create another pivot automatically.";
+  if (kind === "linear_move_path") return "Linear/lateral move path evidence only; applying the import saves a travel path and does not create or apply a machine layout automatically.";
   if (kind === "measurement_line") return "Measurement-line evidence only; applying the import saves the line and derived length metadata.";
   return undefined;
 }

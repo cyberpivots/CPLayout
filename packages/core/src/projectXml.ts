@@ -50,6 +50,7 @@ const MAP_FEATURE_KINDS: ProjectMapFeatureKind[] = [
   "fence",
   "planning_boundary",
   "machine_zone",
+  "linear_move_path",
   "measurement_line",
   "end_gun_mark",
   "end_gun_arc",

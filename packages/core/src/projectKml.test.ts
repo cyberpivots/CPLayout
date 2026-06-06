@@ -96,6 +96,10 @@ const willRheaStyleKml = `<?xml version="1.0" encoding="UTF-8"?>
       <name>LRDU Distance</name>
       <LineString><coordinates>${kmlLine([boundaryRing[0], boundaryRing[1]])}</coordinates></LineString>
     </Placemark>
+    <Placemark>
+      <name>Linear Move Path</name>
+      <LineString><coordinates>${kmlLine([boundaryRing[1], boundaryRing[2]])}</coordinates></LineString>
+    </Placemark>
     ${polygonPlacemark("Full_Scope_Field Boundary", kmlRing([
       { x: 501080, y: 4506080 },
       { x: 501260, y: 4506080 },
@@ -111,14 +115,16 @@ const willRheaStyleKml = `<?xml version="1.0" encoding="UTF-8"?>
 const willRheaStyleImport = importGoogleEarthKmlToProject(sampleProject, willRheaStyleKml, { observedAt: "2026-06-06T00:00:00.000Z" });
 assert.equal(willRheaStyleImport.importedBoundary, true);
 assert.equal(willRheaStyleImport.importedObstacleCount, 0);
-assert.equal(willRheaStyleImport.importedMapFeatureCount, 3);
+assert.equal(willRheaStyleImport.importedMapFeatureCount, 4);
 assert.equal(willRheaStyleImport.importedSurveyPointCount, 1);
 assert.equal(willRheaStyleImport.items.find((item) => item.name === "Middle_Machine_Field_Boundary")?.classification, "machine_zone");
 assert.equal(willRheaStyleImport.items.find((item) => item.name === "South_Machine_Field_Boundary")?.featureKind, "machine_zone");
 assert.equal(willRheaStyleImport.items.find((item) => item.name === "LRDU Distance")?.classification, "measurement_line");
+assert.equal(willRheaStyleImport.items.find((item) => item.name === "Linear Move Path")?.featureKind, "linear_move_path");
 assert.equal(willRheaStyleImport.items.find((item) => item.name === "Pivot Point")?.classification, "existing_pivot");
 assert.equal(willRheaStyleImport.project.mapFeatures?.filter((feature) => feature.kind === "machine_zone").length, 2);
 assert.equal(willRheaStyleImport.project.mapFeatures?.some((feature) => feature.kind === "measurement_line" && typeof feature.properties?.lengthMeters === "number"), true);
+assert.equal(willRheaStyleImport.project.mapFeatures?.some((feature) => feature.kind === "linear_move_path"), true);
 assert.equal(willRheaStyleImport.project.surveyPoints.at(-1)?.role, "pivot_center");
 assert.match(willRheaStyleImport.items.find((item) => item.name === "Pivot Point")?.warning ?? "", /does not move/);
 

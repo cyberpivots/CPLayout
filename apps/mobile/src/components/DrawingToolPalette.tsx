@@ -279,6 +279,7 @@ function paletteGroups(): Record<GroupId, PaletteOption[]> {
     utilities: [
       { id: "pipeline", label: "Pipeline Path", testID: "drawing-tool-option-pipeline", legacyTestID: "design-action-line", kind: "activate", mode: "measure", layer: "control_point", featureKind: "underground_pipeline" },
       { id: "underground-wire", label: "Wire Path", testID: "drawing-tool-option-underground-wire", kind: "activate", mode: "measure", layer: "control_point", featureKind: "underground_wire" },
+      { id: "linear-move-path", label: "Linear Path", testID: "drawing-tool-option-linear-move-path", kind: "activate", mode: "measure", layer: "control_point", featureKind: "linear_move_path" },
       { id: "measurement-line", label: "Measure Line", testID: "drawing-tool-option-measurement-line", kind: "activate", mode: "measure", layer: "control_point", featureKind: "measurement_line" },
       { id: "power-line", label: "Power Path", testID: "drawing-tool-option-power-line", kind: "activate", mode: "measure", layer: "control_point", featureKind: "power_line" },
       { id: "access-lane", label: "Access Path", testID: "drawing-tool-option-access-lane", kind: "activate", mode: "measure", layer: "control_point", featureKind: "access_lane" },

@@ -53,6 +53,17 @@ const projectWithFeatures: PivotProject = {
       properties: { lengthMeters: 1514.96 },
     },
     {
+      id: "linear-move-path-a",
+      name: "Linear move path A",
+      kind: "linear_move_path" as const,
+      geometry: {
+        type: "LineString" as const,
+        vertices: sampleProject.fieldBoundary.slice(2, 4),
+      },
+      confidence: "user_estimated" as const,
+      properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+    },
+    {
       id: "well-a",
       name: "Well A",
       kind: "well_location" as const,
@@ -103,6 +114,7 @@ assert.match(xml, /<mapFeature id="corner-footprint-a"/);
 assert.match(xml, /<geometry type="Circle" radiusMeters="24">/);
 assert.match(xml, /<mapFeature id="machine-zone-a"/);
 assert.match(xml, /<mapFeature id="measurement-line-a"/);
+assert.match(xml, /<mapFeature id="linear-move-path-a"/);
 assert.match(xml, /<mapFeature id="well-a"/);
 assert.match(xml, /catalogId="valley-8000-public-preset"/);
 assert.match(xml, /<cornerArm id="corner-arm-a"/);
@@ -113,12 +125,13 @@ const imported = importProjectMapXmlToProject(xml);
 assert.equal(imported.project.id, projectWithFeatures.id);
 assert.equal(imported.project.projectCrs, projectWithFeatures.projectCrs);
 assert.equal(imported.project.fieldBoundary.length, projectWithFeatures.fieldBoundary.length);
-assert.equal(imported.project.mapFeatures?.length, 5);
+assert.equal(imported.project.mapFeatures?.length, 6);
 assert.equal(imported.project.mapFeatures?.[0].geometry.type, "Polygon");
 assert.equal(imported.project.mapFeatures?.[1].geometry.type, "Circle");
 assert.equal(imported.project.mapFeatures?.[2].kind, "machine_zone");
 assert.equal(imported.project.mapFeatures?.[3].kind, "measurement_line");
-assert.equal(imported.project.mapFeatures?.[4].kind, "well_location");
+assert.equal(imported.project.mapFeatures?.[4].kind, "linear_move_path");
+assert.equal(imported.project.mapFeatures?.[5].kind, "well_location");
 assert.equal(imported.project.machine.catalogSelection?.catalogId, "valley-8000-public-preset");
 assert.equal(imported.project.machine.cornerArm?.id, "corner-arm-a");
 assert.equal(imported.project.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");

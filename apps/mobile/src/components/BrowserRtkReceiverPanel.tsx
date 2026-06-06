@@ -79,6 +79,7 @@ const OBSTACLE_KIND_OPTIONS: { kind: ObstacleZone["kind"]; label: string }[] = [
 const MAP_FEATURE_OPTIONS: { kind: ProjectMapFeatureKind; label: string; geometry: ProjectMapFeature["geometry"]["type"] }[] = [
   { kind: "underground_pipeline", label: "Pipe line", geometry: "LineString" },
   { kind: "underground_wire", label: "Wire line", geometry: "LineString" },
+  { kind: "linear_move_path", label: "Linear move path", geometry: "LineString" },
   { kind: "measurement_line", label: "Measure line", geometry: "LineString" },
   { kind: "power_line", label: "Power line", geometry: "LineString" },
   { kind: "fence", label: "Fence line", geometry: "LineString" },

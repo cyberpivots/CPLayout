@@ -191,6 +191,7 @@ export type ProjectMapFeatureKind =
   | "fence"
   | "planning_boundary"
   | "machine_zone"
+  | "linear_move_path"
   | "measurement_line"
   | "end_gun_mark"
   | "end_gun_arc"

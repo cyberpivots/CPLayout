@@ -233,6 +233,7 @@ export type AdvisoryMachineStrategyKind =
   | "current_machine"
   | "full_circle_same_radius"
   | "full_circle_radius"
+  | "linear_lateral_move"
   | "unsupported_linear_lateral"
   | "unsupported_bender_second_pivot";
 
@@ -251,6 +252,7 @@ export interface AdvisoryMachineStrategyInput {
   label: string;
   strategyKind: AdvisoryMachineStrategyKind;
   machine?: PivotMachine;
+  pathFeatureId?: string;
   notes?: string;
   sourceRefs?: AdvisorySourceReference[];
 }
@@ -274,6 +276,7 @@ export interface AdvisoryMachineStrategyResult {
   spanCount: number;
   sweepMode: PivotMachine["sweep"]["mode"] | "unsupported";
   bestCandidate: PivotPlacementCandidate | null;
+  pathFeatureId?: string;
   candidateCount: number;
   irrigatedAcres: number;
   outsideFieldAcres: number;
@@ -519,7 +522,7 @@ export function compareAdvisoryMachineStrategies(
   const strategies = strategyInputs
     .map((strategy) => evaluateMachineStrategy(project, strategy, options, sourceRefs))
     .sort(compareMachineStrategyResults);
-  const bestStrategy = strategies.find((strategy) => strategy.status === "ready" && strategy.bestCandidate?.feasible) ?? null;
+  const bestStrategy = strategies.find((strategy) => strategy.status === "ready") ?? null;
   const costInputStatus = firstCostStatus(strategies, options.costInput);
   const blockers = bestStrategy
     ? []
@@ -1077,6 +1080,7 @@ function buildMachineStrategyInputs(
       sourceRefs,
     }];
   const currentRadius = machineRadiusMeters(project.machine);
+  const linearPathFeatures = linearMovePathFeatures(project);
 
   if (project.machine.sweep.mode === "partial_circle" && currentRadius > 0) {
     inputs.push({
@@ -1110,15 +1114,33 @@ function buildMachineStrategyInputs(
     }
   }
 
+  for (const feature of linearPathFeatures) {
+    inputs.push({
+      id: `linear-lateral-${feature.id}`,
+      label: feature.name || "Linear/lateral move path",
+      strategyKind: "linear_lateral_move",
+      machine: {
+        ...project.machine,
+        id: `${project.machine.id}-linear-lateral-${feature.id}`,
+        name: `${project.machine.name} linear/lateral template`,
+        sweep: { mode: "full_circle" },
+        endGunAngleRanges: undefined,
+      },
+      pathFeatureId: feature.id,
+      sourceRefs,
+      notes: "Linear/lateral strategy uses an operator-supplied projected-XY travel path and an approximate swept strip.",
+    });
+  }
+
   if (options.includeUnsupportedConceptPlaceholders !== false) {
     inputs.push(
-      {
+      ...(linearPathFeatures.length === 0 ? [{
         id: "linear-lateral-placeholder",
         label: "Linear/lateral move",
         strategyKind: "unsupported_linear_lateral",
         sourceRefs,
         notes: "Linear/lateral move design requires a separate path, guidance, water-supply, and travel-stop model.",
-      },
+      } as AdvisoryMachineStrategyInput] : []),
       {
         id: "bender-second-pivot-placeholder",
         label: "Bender / second pivot point",
@@ -1153,6 +1175,7 @@ function evaluateMachineStrategy(
       spanCount: 0,
       sweepMode: "unsupported",
       bestCandidate: null,
+      pathFeatureId: strategy.pathFeatureId,
       candidateCount: 0,
       irrigatedAcres: 0,
       outsideFieldAcres: 0,
@@ -1166,6 +1189,10 @@ function evaluateMachineStrategy(
       ],
       sourceRefs,
     };
+  }
+
+  if (strategy.strategyKind === "linear_lateral_move") {
+    return evaluateLinearLateralStrategy(project, strategy, options, sourceRefs);
   }
 
   const strategyProject: PivotProject = {
@@ -1199,6 +1226,7 @@ function evaluateMachineStrategy(
     spanCount: strategy.machine.spanLengthsMeters.length,
     sweepMode: strategy.machine.sweep.mode,
     bestCandidate,
+    pathFeatureId: strategy.pathFeatureId,
     candidateCount: candidates.length,
     irrigatedAcres: bestCandidate?.metrics.irrigatedAcres ?? 0,
     outsideFieldAcres: bestCandidate?.metrics.outsideFieldAcres ?? 0,
@@ -1223,6 +1251,160 @@ function unsupportedStrategyWarning(strategy: AdvisoryMachineStrategyInput): str
     return "Bender or second-pivot scoring is not implemented; CPLayout does not model tower-pivot kinematics yet.";
   }
   return null;
+}
+
+function evaluateLinearLateralStrategy(
+  project: PivotProject,
+  strategy: AdvisoryMachineStrategyInput,
+  options: AdvisoryMachineStrategyComparisonOptions,
+  sourceRefs: AdvisorySourceReference[],
+): AdvisoryMachineStrategyResult {
+  const pathFeature = linearMovePathFeatures(project).find((feature) => feature.id === strategy.pathFeatureId);
+  const machine = strategy.machine;
+  const unsupportedBase = {
+    id: strategy.id,
+    label: strategy.label,
+    strategyKind: strategy.strategyKind,
+    advisoryOnly: true as const,
+    canonicalGeometryMutation: false as const,
+    qualifiedReviewRequired: true as const,
+    machineRadiusMeters: machine ? round(machineRadiusMeters(machine)) : 0,
+    spanCount: machine?.spanLengthsMeters.length ?? 0,
+    sweepMode: machine?.sweep.mode ?? "unsupported" as const,
+    bestCandidate: null,
+    pathFeatureId: strategy.pathFeatureId,
+    candidateCount: 0,
+    irrigatedAcres: 0,
+    outsideFieldAcres: 0,
+    coveragePercent: 0,
+    costAssessment: null,
+    costEfficiencyAcresPerHundredThousand: null,
+    advisoryScore: Number.NEGATIVE_INFINITY,
+    sourceRefs,
+  };
+
+  if (!machine || !pathFeature || pathFeature.geometry.type !== "LineString" || pathFeature.geometry.vertices.length < 2) {
+    return {
+      ...unsupportedBase,
+      status: "unsupported_model",
+      warnings: [
+        "Linear/lateral move scoring requires a projected-XY line path feature with at least two vertices.",
+        ...(strategy.notes ? [strategy.notes] : []),
+      ],
+    };
+  }
+
+  const linear = evaluateLinearLateralCoverage(project, machine, pathFeature.geometry.vertices);
+  const costAssessment = assessAdvisoryCost({ ...project, machine }, linear.metrics.irrigatedAcres, options.costInput, sourceRefs);
+  const costEfficiencyAcresPerHundredThousand = costAssessment.estimatedCost
+    ? round(linear.metrics.irrigatedAcres / (costAssessment.estimatedCost / 100000))
+    : null;
+  const advisoryScore = round(
+    linear.metrics.irrigatedAcres
+    - Math.min(40, linear.metrics.outsideFieldAcres * 10)
+    - linear.metrics.obstacleConflictCount * 25
+    + (costEfficiencyAcresPerHundredThousand ?? 0),
+  );
+
+  return {
+    ...unsupportedBase,
+    status: linear.metrics.irrigatedAcres > 0 ? "ready" : "no_feasible_candidate",
+    candidateCount: 1,
+    irrigatedAcres: linear.metrics.irrigatedAcres,
+    outsideFieldAcres: linear.metrics.outsideFieldAcres,
+    coveragePercent: linear.metrics.coveragePercent,
+    costAssessment,
+    costEfficiencyAcresPerHundredThousand,
+    advisoryScore,
+    warnings: [
+      `${strategy.label} is an advisory linear/lateral move approximation only; applying it requires explicit operator edits and validation.`,
+      "Swept-strip coverage assumes the supplied path is the machine centerline and uses the current machine radius as half-width.",
+      "The model does not verify hose/ditch water supply, cable guidance, slope, reversal timing, tower alignment, or manufacturer constraints.",
+      ...(strategy.notes ? [strategy.notes] : []),
+      ...linear.warnings,
+    ],
+  };
+}
+
+function evaluateLinearLateralCoverage(
+  project: PivotProject,
+  machine: PivotMachine,
+  pathVertices: XY[],
+): { metrics: LayoutMetrics; warnings: string[] } {
+  const fieldArea = polygonAreaSquareMeters(project.fieldBoundary);
+  const halfWidth = machineRadiusMeters(machine);
+  const swept = sweptStripForLineString(pathVertices, halfWidth);
+  const noSprayObstacles = project.obstacles.filter((obstacle) => obstacle.noSpray);
+  const insideField = intersectMultiPolygons(swept, [[project.fieldBoundary]]);
+  const allowed = noSprayObstacles.reduce(
+    (current, obstacle) => differenceMultiPolygons(current, [[obstacle.polygon]]),
+    insideField,
+  );
+  const outsideField = differenceMultiPolygons(swept, [[project.fieldBoundary]]);
+  const allowedArea = multiPolygonAreaSquareMeters(allowed);
+  const outsideArea = multiPolygonAreaSquareMeters(outsideField);
+  const obstacleConflictCount = project.obstacles.filter((obstacle) => (
+    multiPolygonAreaSquareMeters(intersectMultiPolygons(swept, [[obstacle.polygon]])) > 0.000001
+  )).length;
+  const noSprayConflictCount = noSprayObstacles.filter((obstacle) => (
+    multiPolygonAreaSquareMeters(intersectMultiPolygons(swept, [[obstacle.polygon]])) > 0.000001
+  )).length;
+  const hardMechanicalConflictCount = project.obstacles.filter((obstacle) => (
+    obstacle.hardConflict
+    && multiPolygonAreaSquareMeters(intersectMultiPolygons(swept, [[obstacle.polygon]])) > 0.000001
+  )).length;
+
+  return {
+    metrics: {
+      fieldAcres: squareMetersToAcres(fieldArea),
+      irrigatedAcres: squareMetersToAcres(allowedArea),
+      nonIrrigatedAcres: squareMetersToAcres(Math.max(0, fieldArea - allowedArea)),
+      coveragePercent: fieldArea > 0 ? (allowedArea / fieldArea) * 100 : 0,
+      endGunAcres: 0,
+      outsideFieldAcres: squareMetersToAcres(outsideArea),
+      obstacleConflictCount,
+      noSprayConflictCount,
+      hardMechanicalConflictCount,
+      towerTrackConflictCount: 0,
+    },
+    warnings: [
+      ...(outsideArea > 0 ? [`Linear/lateral swept strip extends outside the field by ${squareMetersToAcres(outsideArea).toFixed(2)} acres.`] : []),
+      ...(obstacleConflictCount > 0 ? [`Linear/lateral swept strip intersects ${obstacleConflictCount} obstacle feature${obstacleConflictCount === 1 ? "" : "s"}.`] : []),
+    ],
+  };
+}
+
+function linearMovePathFeatures(project: PivotProject): ProjectMapFeature[] {
+  return (project.mapFeatures ?? []).filter((feature) => feature.kind === "linear_move_path");
+}
+
+function sweptStripForLineString(vertices: XY[], halfWidthMeters: number): MultiPolygonXY {
+  if (vertices.length < 2 || halfWidthMeters <= 0) return [];
+  const polygons: MultiPolygonXY = [];
+  for (let index = 0; index < vertices.length - 1; index += 1) {
+    const rectangle = segmentStripPolygon(vertices[index], vertices[index + 1], halfWidthMeters);
+    if (rectangle.length > 0) polygons.push([rectangle]);
+  }
+  for (const vertex of vertices) {
+    polygons.push([createCirclePolygon(vertex, halfWidthMeters, 48)]);
+  }
+  return unionMultiPolygons(polygons);
+}
+
+function segmentStripPolygon(start: XY, end: XY, halfWidthMeters: number): XY[] {
+  const length = distance(start, end);
+  if (length <= 0) return [];
+  const normal = {
+    x: -(end.y - start.y) / length,
+    y: (end.x - start.x) / length,
+  };
+  const offset = { x: normal.x * halfWidthMeters, y: normal.y * halfWidthMeters };
+  return [
+    { x: start.x + offset.x, y: start.y + offset.y },
+    { x: end.x + offset.x, y: end.y + offset.y },
+    { x: end.x - offset.x, y: end.y - offset.y },
+    { x: start.x - offset.x, y: start.y - offset.y },
+  ];
 }
 
 function generatedFullCircleRadii(currentRadius: number): number[] {
@@ -1254,7 +1436,7 @@ function dedupeMachineStrategyInputs(inputs: AdvisoryMachineStrategyInput[]): Ad
   for (const input of inputs) {
     const radius = input.machine ? machineRadiusMeters(input.machine).toFixed(3) : "unsupported";
     const sweep = input.machine ? JSON.stringify(input.machine.sweep) : input.strategyKind;
-    const key = `${input.strategyKind}:${radius}:${sweep}`;
+    const key = `${input.strategyKind}:${input.pathFeatureId ?? "no-path"}:${radius}:${sweep}`;
     if (!byKey.has(key)) byKey.set(key, input);
   }
   return [...byKey.values()];

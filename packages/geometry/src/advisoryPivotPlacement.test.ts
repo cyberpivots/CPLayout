@@ -277,6 +277,52 @@ assert.ok(strategyComparison.strategies.filter((strategy) => strategy.status ===
 assert.ok(strategyComparison.warnings.some((warning) => warning.includes("does not mutate canonical projected XY")));
 assert.equal(JSON.stringify(strategyProject), strategyProjectBefore);
 
+const linearMovePath: ProjectMapFeature = {
+  id: "linear-path-a",
+  name: "Linear move path A",
+  kind: "linear_move_path",
+  geometry: {
+    type: "LineString",
+    vertices: [
+      { x: 70, y: 110 },
+      { x: 190, y: 110 },
+    ],
+  },
+  confidence: "user_estimated",
+  properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+};
+const linearStrategyProject = makeProject({
+  ...strategyProject,
+  machine: {
+    ...strategyProject.machine,
+    spanLengthsMeters: [35],
+  },
+  mapFeatures: [linearMovePath],
+});
+const linearStrategyBefore = JSON.stringify(linearStrategyProject);
+const linearStrategyComparison = compareAdvisoryMachineStrategies(linearStrategyProject, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  includeGeneratedRadiusStrategies: false,
+  costInput: {
+    fixedMachineCost: 65000,
+    costPerMeter: 400,
+    costPerTower: 2000,
+    currencyCode: "USD",
+  },
+});
+const linearStrategy = linearStrategyComparison.strategies.find((strategy) => strategy.strategyKind === "linear_lateral_move");
+assert.equal(linearStrategyComparison.status, "ready");
+assert.ok(linearStrategy);
+assert.equal(linearStrategy?.status, "ready");
+assert.equal(linearStrategy?.pathFeatureId, "linear-path-a");
+assert.equal(linearStrategy?.bestCandidate, null);
+assert.ok((linearStrategy?.irrigatedAcres ?? 0) > 0);
+assert.equal(linearStrategy?.costAssessment?.status, "complete");
+assert.equal(linearStrategyComparison.strategies.some((strategy) => strategy.strategyKind === "unsupported_linear_lateral"), false);
+assert.ok(linearStrategy?.warnings.some((warning) => warning.includes("Swept-strip coverage assumes")));
+assert.equal(JSON.stringify(linearStrategyProject), linearStrategyBefore);
+
 const missingCostStrategyComparison = compareAdvisoryMachineStrategies(strategyProject, {
   gridDivisions: 5,
   maxCandidates: 2,

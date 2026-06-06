@@ -1774,6 +1774,7 @@ function LineToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode,
   const lineKinds: Array<{ kind: ProjectMapFeatureKind; label: string; meta: string }> = [
     { kind: "underground_pipeline", label: "Pipeline", meta: "Click line vertices for buried main or lateral route." },
     { kind: "underground_wire", label: "Underground Wire", meta: "Click vertices for buried power or control wire route evidence." },
+    { kind: "linear_move_path", label: "Linear Move Path", meta: "Click vertices for an advisory linear/lateral machine travel path." },
     { kind: "measurement_line", label: "Measurement Line", meta: "Click vertices for imported or field-measured reference distance." },
     { kind: "power_line", label: "Power Line", meta: "Click vertices for overhead or buried power path." },
     { kind: "fence", label: "Fence", meta: "Trace fence path as a utility line." },
@@ -2500,6 +2501,7 @@ function DesignAwarenessPanel({
   const planningBoundaries = features.filter((feature) => feature.kind === "planning_boundary").length;
   const machineZones = features.filter((feature) => feature.kind === "machine_zone").length;
   const measurementLines = features.filter((feature) => feature.kind === "measurement_line");
+  const linearMovePaths = features.filter((feature) => feature.kind === "linear_move_path").length;
   const wells = features.filter((feature) => feature.kind === "well_location").length;
   const undergroundWire = features.filter((feature) => feature.kind === "underground_wire").length;
   const pivotEvidence = project.surveyPoints.filter((point) => point.role === "pivot_center" && point.source === "imported").length;
@@ -2524,6 +2526,7 @@ function DesignAwarenessPanel({
         <MetricTile label="Existing pivots" value={`${pivotEvidence}`} tone={pivotEvidence > 0 ? "neutral" : "warn"} />
         <MetricTile label="Wells" value={`${wells}`} />
         <MetricTile label="Underground wire" value={`${undergroundWire}`} />
+        <MetricTile label="Linear paths" value={`${linearMovePaths}`} tone={linearMovePaths > 0 ? "neutral" : "warn"} />
         <MetricTile label="Advisory scenarios" value={`${multiMachineReview.compilation.readyScenarioCount}/${multiMachineReview.compilation.scenarioCount}`} tone={multiMachineReview.compilation.readyScenarioCount > 0 ? "neutral" : "warn"} />
         <MetricTile label="Envelope risks" value={`${multiMachineReview.conflicts.length}`} tone={multiMachineReview.conflicts.length > 0 ? "danger" : "good"} />
         <MetricTile label="Modeled union" value={formatAreaFromAcres(multiMachineReview.compilation.modeledIrrigatedUnionAcres, settings.unitSystem)} />
@@ -2545,7 +2548,7 @@ function DesignAwarenessPanel({
           Best advisory strategy: {strategyComparison.bestStrategy.label} · {formatAreaFromAcres(strategyComparison.bestStrategy.irrigatedAcres, settings.unitSystem)} modeled · cost ranking {strategyComparison.costInputStatus.replaceAll("_", " ")}.
         </Text>
       ) : null}
-      <Text style={styles.mapFeatureMeta}>Awareness evidence supports review and scenario planning only. Additional machine zones, measurement lines, wells, and wire paths do not create pivots or mutate canonical projected XY automatically.</Text>
+      <Text style={styles.mapFeatureMeta}>Awareness evidence supports review and scenario planning only. Additional machine zones, linear paths, measurement lines, wells, and wire paths do not create pivots or mutate canonical projected XY automatically.</Text>
     </View>
   );
 }
@@ -2901,6 +2904,7 @@ function awarenessFeatureCount(project: PivotProject): number {
     feature.kind === "planning_boundary"
     || feature.kind === "machine_zone"
     || feature.kind === "measurement_line"
+    || feature.kind === "linear_move_path"
     || feature.kind === "well_location"
     || feature.kind === "underground_wire"
   )).length;

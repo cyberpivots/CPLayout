@@ -11,6 +11,7 @@ export interface UtilityFeatureOption {
 export const UTILITY_FEATURE_OPTIONS: UtilityFeatureOption[] = [
   { kind: "underground_pipeline", label: "Pipe", geometry: "LineString" },
   { kind: "underground_wire", label: "Wire", geometry: "LineString" },
+  { kind: "linear_move_path", label: "Linear", geometry: "LineString" },
   { kind: "measurement_line", label: "Measure", geometry: "LineString" },
   { kind: "power_line", label: "Power", geometry: "LineString" },
   { kind: "fence", label: "Fence", geometry: "LineString" },

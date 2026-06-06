@@ -151,12 +151,21 @@ const parsedAwarenessMapFeatures = parseProjectDocument({
       geometry: { type: "LineString", vertices: sampleProject.fieldBoundary.slice(1, 3) },
       confidence: "user_estimated",
     },
+    {
+      id: "linear-move-path-a",
+      name: "Linear move path A",
+      kind: "linear_move_path",
+      geometry: { type: "LineString", vertices: sampleProject.fieldBoundary.slice(2, 4) },
+      confidence: "user_estimated",
+      properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+    },
   ],
 });
 assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[0].kind, "machine_zone");
 assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[1].kind, "measurement_line");
 assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[2].kind, "well_location");
 assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[3].kind, "underground_wire");
+assert.equal(parsedAwarenessMapFeatures.mapFeatures?.[4].kind, "linear_move_path");
 
 const cornerArmSourceRef = {
   sourceId: "SRC-VALLEY-VFLEX-CORNER",

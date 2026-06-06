@@ -5,6 +5,7 @@ import type {
   AdvisorySourceReference,
   LayoutMetrics,
   MultiPolygonXY,
+  ObstacleZone,
   PivotMachine,
   PivotProject,
   ProjectMapFeature,
@@ -29,6 +30,12 @@ import { optimizePivotCenter, type PivotCenterAlternative, type PivotCenterSeedK
 type ClipPosition = [number, number];
 type ClipPolygon = ClipPosition[][];
 type ClipMultiPolygon = ClipPolygon[];
+type TowerReview = {
+  nearestTowerIndex: number | null;
+  nearestTowerTrackDistanceMeters: number | null;
+  spanIndex: number | null;
+  towerClearanceBufferMeters: number;
+};
 
 export interface PivotPlacementCandidateOptions {
   gridDivisions?: number;
@@ -337,6 +344,64 @@ export interface AdvisoryCornerArmEvaluation {
   baseAllowedCoverageAcres: number;
 }
 
+export type AdvisoryObstacleInteractionStatus = "ready" | "no_evidence";
+
+export type AdvisoryObstacleInteractionCategory =
+  | "hard_blocking"
+  | "no_spray_exclusion"
+  | "span_clearance_review"
+  | "tower_track_review"
+  | "utility_path_review"
+  | "outside_machine_reach";
+
+export interface AdvisoryObstacleInteractionOptions {
+  sourceRefs?: AdvisorySourceReference[];
+}
+
+export interface AdvisoryObstacleInteractionItem {
+  id: string;
+  name: string;
+  evidenceType: "obstacle_polygon" | "utility_point" | "utility_path";
+  obstacleKind?: ObstacleZone["kind"];
+  featureKind?: ProjectMapFeature["kind"];
+  category: AdvisoryObstacleInteractionCategory;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  inMachineReach: boolean;
+  crossingReviewRequired: boolean;
+  distanceToPivotMeters: number | null;
+  nearestTowerIndex: number | null;
+  nearestTowerTrackDistanceMeters: number | null;
+  spanIndex: number | null;
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
+export interface AdvisoryObstacleInteractionSummary {
+  hardBlockingCount: number;
+  noSprayExclusionCount: number;
+  spanClearanceReviewCount: number;
+  towerTrackReviewCount: number;
+  utilityPathReviewCount: number;
+  outsideMachineReachCount: number;
+}
+
+export interface AdvisoryObstacleInteractionReview {
+  status: AdvisoryObstacleInteractionStatus;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  projectCrs: string;
+  machineRadiusMeters: number;
+  itemCount: number;
+  items: AdvisoryObstacleInteractionItem[];
+  summary: AdvisoryObstacleInteractionSummary;
+  blockers: string[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
 export const DEFAULT_ADVISORY_PLACEMENT_SOURCE_REFS: AdvisorySourceReference[] = [
   {
     sourceId: "SRC-NRCS-NEH-623-CH11",
@@ -394,6 +459,24 @@ export const DEFAULT_BENDER_SECOND_PIVOT_SOURCE_REFS: AdvisorySourceReference[] 
     lineRange: "4118-4170",
     checkedAt: "2026-06-05",
     limit: "Local design-guide summary supports pressure and length review warnings only; it is not hydraulic or mechanical certification.",
+  },
+];
+
+export const DEFAULT_OBSTACLE_INTERACTION_SOURCE_REFS: AdvisorySourceReference[] = [
+  {
+    sourceId: "SRC-NRCS-NEH-623-CH11",
+    title: "USDA NRCS NEH Part 623 Chapter 11 Sprinkler Irrigation",
+    url: "https://www.wcc.nrcs.usda.gov/ftpref/wntsc/waterMgt/irrigation/NEH15/ch11.pdf",
+    checkedAt: "2026-06-05",
+    limit: "Sprinkler irrigation terminology and obstacle review context only; not CPLayout design certification.",
+  },
+  {
+    sourceId: "SRC-LOCAL-PIVOT-DESIGN-SLOPE-LIMIT-REVIEW",
+    guideId: "local-pivot-design-0998236",
+    page: 60,
+    lineRange: "3003-3031",
+    checkedAt: "2026-06-05",
+    limit: "Local design-guide summary supports slope, ridge, profile, pipe, tire, and clearance review warnings only.",
   },
 ];
 
@@ -573,6 +656,42 @@ export function compareAdvisoryMachineStrategies(
       "Generated full-circle strategies are approximate planning templates derived from the current span package; operator/vendor confirmation is required.",
       ...(costInputStatus === "missing_cost_input" ? ["Cost ranking is incomplete because no explicit local cost input was supplied."] : []),
       ...(costInputStatus === "invalid_cost_input" ? ["Cost ranking is blocked because the supplied local cost input is invalid."] : []),
+      ...blockers,
+    ],
+    sourceRefs,
+  };
+}
+
+export function analyzeAdvisoryObstacleInteractions(
+  project: PivotProject,
+  options: AdvisoryObstacleInteractionOptions = {},
+): AdvisoryObstacleInteractionReview {
+  const sourceRefs = options.sourceRefs ?? DEFAULT_OBSTACLE_INTERACTION_SOURCE_REFS;
+  const obstacleItems = project.obstacles.map((obstacle) => obstacleInteractionFromObstacle(project, obstacle, sourceRefs));
+  const utilityItems = (project.mapFeatures ?? [])
+    .filter(isObstacleInteractionMapFeature)
+    .map((feature) => obstacleInteractionFromMapFeature(project, feature, sourceRefs));
+  const items = [...obstacleItems, ...utilityItems].sort(compareObstacleInteractionItems);
+  const summary = summarizeObstacleInteractions(items);
+  const blockers = items.length === 0
+    ? ["Add obstacle polygons, wells, utility points, or utility paths before obstacle interaction review."]
+    : [];
+
+  return {
+    status: items.length > 0 ? "ready" : "no_evidence",
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    projectCrs: project.projectCrs,
+    machineRadiusMeters: round(machineRadiusMeters(project.machine)),
+    itemCount: items.length,
+    items,
+    summary,
+    blockers,
+    warnings: [
+      "Obstacle interaction review is advisory and does not mutate canonical projected XY, obstacle settings, utility features, machine settings, or project storage.",
+      "Span-clearance and utility-path categories are planning prompts only; qualified field and vendor review is required before treating any object as crossable.",
+      "Hard-blocking and no-spray categories still rely on the project obstacle hardConflict/noSpray settings for modeled layout metrics.",
       ...blockers,
     ],
     sourceRefs,
@@ -1794,6 +1913,163 @@ function matchingCrossingProfileIds(
     .map((profile) => profile.obstacleId);
 }
 
+function obstacleInteractionFromObstacle(
+  project: PivotProject,
+  obstacle: ObstacleZone,
+  sourceRefs: AdvisorySourceReference[],
+): AdvisoryObstacleInteractionItem {
+  const representativePoint = centroid(obstacle.polygon);
+  const towerReview = towerReviewForPoint(project, representativePoint);
+  const envelope = machineEnvelopeFor(project, project.pivotCenter);
+  const inMachineReach = multiPolygonAreaSquareMeters(intersectMultiPolygons(envelope, [[obstacle.polygon]])) > 0.000001;
+  const category = obstacleInteractionCategoryForObstacle(obstacle, inMachineReach);
+  const crossingReviewRequired = category !== "outside_machine_reach" && (
+    category === "span_clearance_review"
+    || category === "tower_track_review"
+    || category === "utility_path_review"
+  );
+
+  return {
+    id: obstacle.id,
+    name: obstacle.name,
+    evidenceType: "obstacle_polygon",
+    obstacleKind: obstacle.kind,
+    category,
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    inMachineReach,
+    crossingReviewRequired,
+    distanceToPivotMeters: round(distance(project.pivotCenter, representativePoint)),
+    nearestTowerIndex: towerReview.nearestTowerIndex,
+    nearestTowerTrackDistanceMeters: towerReview.nearestTowerTrackDistanceMeters,
+    spanIndex: towerReview.spanIndex,
+    warnings: obstacleInteractionWarnings(category, obstacle.name, obstacle.kind),
+    sourceRefs,
+  };
+}
+
+function obstacleInteractionFromMapFeature(
+  project: PivotProject,
+  feature: ProjectMapFeature,
+  sourceRefs: AdvisorySourceReference[],
+): AdvisoryObstacleInteractionItem {
+  const representativePoint = representativePointForMapFeature(feature);
+  const towerReview = representativePoint ? towerReviewForPoint(project, representativePoint) : null;
+  const inMachineReach = mapFeatureTouchesMachineReach(project, feature);
+  const category = obstacleInteractionCategoryForMapFeature(feature, inMachineReach, towerReview);
+  const crossingReviewRequired = category !== "outside_machine_reach" && category !== "hard_blocking";
+
+  return {
+    id: feature.id,
+    name: feature.name,
+    evidenceType: feature.geometry.type === "Point" || feature.geometry.type === "Circle" ? "utility_point" : "utility_path",
+    featureKind: feature.kind,
+    category,
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    inMachineReach,
+    crossingReviewRequired,
+    distanceToPivotMeters: representativePoint ? round(distance(project.pivotCenter, representativePoint)) : null,
+    nearestTowerIndex: towerReview?.nearestTowerIndex ?? null,
+    nearestTowerTrackDistanceMeters: towerReview?.nearestTowerTrackDistanceMeters ?? null,
+    spanIndex: towerReview?.spanIndex ?? null,
+    warnings: obstacleInteractionWarnings(category, feature.name, feature.kind),
+    sourceRefs,
+  };
+}
+
+function obstacleInteractionCategoryForObstacle(
+  obstacle: ObstacleZone,
+  inMachineReach: boolean,
+): AdvisoryObstacleInteractionCategory {
+  if (!inMachineReach) return "outside_machine_reach";
+  if (obstacle.hardConflict || obstacle.kind === "building" || obstacle.kind === "tree" || obstacle.kind === "exclusion") {
+    return "hard_blocking";
+  }
+  if (obstacle.noSpray) return "no_spray_exclusion";
+  return "span_clearance_review";
+}
+
+function obstacleInteractionCategoryForMapFeature(
+  feature: ProjectMapFeature,
+  inMachineReach: boolean,
+  towerReview: TowerReview | null,
+): AdvisoryObstacleInteractionCategory {
+  if (!inMachineReach) return "outside_machine_reach";
+  if (feature.kind === "power_pole" || feature.kind === "tree") return "hard_blocking";
+  if (
+    feature.kind === "underground_pipeline"
+    || feature.kind === "underground_wire"
+    || feature.kind === "power_line"
+    || feature.kind === "access_lane"
+    || feature.kind === "ditch"
+    || feature.kind === "canal"
+    || feature.kind === "fence"
+    || feature.kind === "road"
+  ) {
+    return "utility_path_review";
+  }
+  if (
+    towerReview
+    && towerReview.nearestTowerTrackDistanceMeters !== null
+    && towerReview.nearestTowerTrackDistanceMeters <= towerReview.towerClearanceBufferMeters
+  ) {
+    return "tower_track_review";
+  }
+  return "span_clearance_review";
+}
+
+function obstacleInteractionWarnings(
+  category: AdvisoryObstacleInteractionCategory,
+  name: string,
+  kind: string,
+): string[] {
+  if (category === "outside_machine_reach") {
+    return [`${name} is outside the current machine reach; keep it as site evidence for future machine or zone changes.`];
+  }
+  if (category === "hard_blocking") {
+    return [`${name} (${kind}) is treated as a hard blocking review item and should not be assumed crossable by span clearance.`];
+  }
+  if (category === "no_spray_exclusion") {
+    return [`${name} remains a no-spray exclusion in modeled wet coverage; crossing feasibility needs separate review.`];
+  }
+  if (category === "tower_track_review") {
+    return [`${name} is near a modeled tower track; span-over clearance cannot be assumed.`];
+  }
+  if (category === "utility_path_review") {
+    return [`${name} (${kind}) is utility/path evidence inside machine reach; verify burial, height, crossing, and access constraints before treating it as passable.`];
+  }
+  return [`${name} is inside machine reach but away from modeled tower tracks; span-over clearance remains advisory and requires qualified review.`];
+}
+
+function summarizeObstacleInteractions(items: AdvisoryObstacleInteractionItem[]): AdvisoryObstacleInteractionSummary {
+  return {
+    hardBlockingCount: items.filter((item) => item.category === "hard_blocking").length,
+    noSprayExclusionCount: items.filter((item) => item.category === "no_spray_exclusion").length,
+    spanClearanceReviewCount: items.filter((item) => item.category === "span_clearance_review").length,
+    towerTrackReviewCount: items.filter((item) => item.category === "tower_track_review").length,
+    utilityPathReviewCount: items.filter((item) => item.category === "utility_path_review").length,
+    outsideMachineReachCount: items.filter((item) => item.category === "outside_machine_reach").length,
+  };
+}
+
+function compareObstacleInteractionItems(left: AdvisoryObstacleInteractionItem, right: AdvisoryObstacleInteractionItem): number {
+  const rankDelta = obstacleInteractionRank(left.category) - obstacleInteractionRank(right.category);
+  if (rankDelta !== 0) return rankDelta;
+  return left.name.localeCompare(right.name);
+}
+
+function obstacleInteractionRank(category: AdvisoryObstacleInteractionCategory): number {
+  if (category === "hard_blocking") return 0;
+  if (category === "tower_track_review") return 1;
+  if (category === "no_spray_exclusion") return 2;
+  if (category === "utility_path_review") return 3;
+  if (category === "span_clearance_review") return 4;
+  return 5;
+}
+
 function distanceToAccess(point: XY, project: PivotProject): number | null {
   const candidates: number[] = [];
   for (const obstacle of project.obstacles) {
@@ -1813,6 +2089,85 @@ function distanceToMapFeature(point: XY, feature: ProjectMapFeature): number {
   const vertices = feature.geometry.vertices;
   if (feature.geometry.type === "Polygon") return distanceToRing(point, vertices);
   return distanceToLineString(point, vertices);
+}
+
+function isObstacleInteractionMapFeature(feature: ProjectMapFeature): boolean {
+  return feature.kind === "well_location"
+    || feature.kind === "pump_location"
+    || feature.kind === "underground_pipeline"
+    || feature.kind === "underground_wire"
+    || feature.kind === "power_pole"
+    || feature.kind === "power_line"
+    || feature.kind === "tree"
+    || feature.kind === "road"
+    || feature.kind === "access_lane"
+    || feature.kind === "ditch"
+    || feature.kind === "canal"
+    || feature.kind === "fence";
+}
+
+function representativePointForMapFeature(feature: ProjectMapFeature): XY | null {
+  if (feature.geometry.type === "Point") return feature.geometry.point;
+  if (feature.geometry.type === "Circle") return feature.geometry.center;
+  if (feature.geometry.vertices.length === 0) return null;
+  return centroid(feature.geometry.vertices);
+}
+
+function mapFeatureTouchesMachineReach(project: PivotProject, feature: ProjectMapFeature): boolean {
+  const radiusMeters = machineRadiusMeters(project.machine);
+  if (radiusMeters <= 0) return false;
+  if (feature.geometry.type === "Point") return pointInMachineReach(project, feature.geometry.point, radiusMeters);
+  if (feature.geometry.type === "Circle") {
+    return distance(project.pivotCenter, feature.geometry.center) - feature.geometry.radiusMeters <= radiusMeters
+      && sweepContainsPoint(project, feature.geometry.center);
+  }
+  if (feature.geometry.type === "Polygon") {
+    return multiPolygonAreaSquareMeters(intersectMultiPolygons(machineEnvelopeFor(project, project.pivotCenter), [[feature.geometry.vertices]])) > 0.000001;
+  }
+  return feature.geometry.vertices.some((point) => pointInMachineReach(project, point, radiusMeters))
+    || distanceToLineString(project.pivotCenter, feature.geometry.vertices) <= radiusMeters;
+}
+
+function pointInMachineReach(project: PivotProject, point: XY, radiusMeters = machineRadiusMeters(project.machine)): boolean {
+  return distance(project.pivotCenter, point) <= radiusMeters && sweepContainsPoint(project, point);
+}
+
+function sweepContainsPoint(project: PivotProject, point: XY): boolean {
+  if (project.machine.sweep.mode === "full_circle") return true;
+  const angle = angleDegrees(project.pivotCenter, point);
+  const start = normalizeDegrees(project.machine.sweep.startAngleDegrees);
+  const stop = normalizeDegrees(project.machine.sweep.stopAngleDegrees);
+  if (project.machine.sweep.direction === "counterclockwise") {
+    return normalizeDegrees(angle - start) <= normalizeDegrees(stop - start);
+  }
+  return normalizeDegrees(start - angle) <= normalizeDegrees(start - stop);
+}
+
+function towerReviewForPoint(project: PivotProject, point: XY): TowerReview {
+  const radialDistance = distance(project.pivotCenter, point);
+  let towerRadius = 0;
+  let nearestTowerIndex: number | null = null;
+  let nearestTowerTrackDistanceMeters: number | null = null;
+  let spanIndex: number | null = null;
+
+  project.machine.spanLengthsMeters.forEach((spanLength, index) => {
+    towerRadius += spanLength;
+    const trackDistance = Math.abs(radialDistance - towerRadius);
+    if (nearestTowerTrackDistanceMeters === null || trackDistance < nearestTowerTrackDistanceMeters) {
+      nearestTowerIndex = index + 1;
+      nearestTowerTrackDistanceMeters = round(trackDistance);
+    }
+    if (spanIndex === null && radialDistance <= towerRadius) {
+      spanIndex = index + 1;
+    }
+  });
+
+  return {
+    nearestTowerIndex,
+    nearestTowerTrackDistanceMeters,
+    spanIndex,
+    towerClearanceBufferMeters: Math.max(0, project.machine.towerClearanceBufferMeters),
+  };
 }
 
 function mapFeatureBoundary(feature: ProjectMapFeature): XY[] | null {
@@ -1944,6 +2299,14 @@ function distanceToSegment(point: XY, start: XY, end: XY): number {
 
 function distance(left: XY, right: XY): number {
   return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function angleDegrees(center: XY, point: XY): number {
+  return normalizeDegrees((Math.atan2(point.y - center.y, point.x - center.x) * 180) / Math.PI);
+}
+
+function normalizeDegrees(angle: number): number {
+  return ((angle % 360) + 360) % 360;
 }
 
 function round(value: number): number {

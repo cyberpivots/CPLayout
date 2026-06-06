@@ -107,6 +107,7 @@ import {
 import {
   DEFAULT_CORNER_ARM_SOURCE_REFS,
   analyzeAdvisoryMultiMachineLayout,
+  analyzeAdvisoryObstacleInteractions,
   analyzeIdealPivotCenter,
   buildDesignScenarioPreview,
   compareAdvisoryMachineStrategies,
@@ -119,6 +120,7 @@ import {
   type AdvisoryCornerArmEvaluation,
   type AdvisoryMachineStrategyComparison,
   type AdvisoryMultiMachineReview,
+  type AdvisoryObstacleInteractionReview,
   type DesignScenarioPreview,
   type DrawingLayerType,
   type DrawingMode,
@@ -2205,6 +2207,7 @@ function CalculateSheet({
     maxCandidates: 2,
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
+  const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
   const bestStrategy = strategyComparison.bestStrategy;
   const benderStrategy = benderStrategyForReview(strategyComparison);
   return (
@@ -2244,6 +2247,15 @@ function CalculateSheet({
             {formatBenderStrategySummary(benderStrategy, settings)}
           </Text>
         ) : null}
+      </View>
+      <View style={styles.placementReviewPanel} testID="advisory-obstacle-interaction-summary">
+        <View style={styles.scenarioRowHeader}>
+          <Text style={styles.rowTitle}>Obstacle Interaction Review</Text>
+          <Text style={styles.scenarioScore}>{obstacleInteractionReview.status.replaceAll("_", " ")}</Text>
+        </View>
+        <Text style={styles.rowMeta}>{formatObstacleInteractionSummary(obstacleInteractionReview)}</Text>
+        <Text style={styles.mapFeatureMeta}>{formatFirstObstacleInteraction(obstacleInteractionReview)}</Text>
+        <Text style={styles.mapFeatureMeta}>Obstacle interaction review is advisory only and does not mutate canonical projected XY, obstacle settings, utility features, or machine settings.</Text>
       </View>
       <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
@@ -2642,6 +2654,7 @@ function DesignAwarenessPanel({
     maxCandidates: 2,
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
+  const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
   const firstConflict = multiMachineReview.conflicts[0] ?? null;
   const firstConflictReviewAcres = firstConflict
     ? Math.max(firstConflict.collisionZoneAcres, firstConflict.separationReviewZoneAcres)
@@ -2664,6 +2677,8 @@ function DesignAwarenessPanel({
         <MetricTile label="Modeled union" value={formatAreaFromAcres(multiMachineReview.compilation.modeledIrrigatedUnionAcres, settings.unitSystem)} />
         <MetricTile label="Machine strategies" value={`${readyStrategyCount}/${strategyComparison.strategies.length}`} tone={readyStrategyCount > 0 ? "neutral" : "warn"} />
         <MetricTile label="Cost review" value={strategyCostStatus} tone={strategyComparison.costInputStatus === "complete" ? "good" : "warn"} />
+        <MetricTile label="Obstacle review" value={`${obstacleInteractionReview.summary.hardBlockingCount}/${obstacleInteractionReview.itemCount}`} tone={obstacleInteractionReview.summary.hardBlockingCount > 0 ? "danger" : "neutral"} />
+        <MetricTile label="Span reviews" value={`${obstacleInteractionReview.summary.spanClearanceReviewCount + obstacleInteractionReview.summary.towerTrackReviewCount + obstacleInteractionReview.summary.utilityPathReviewCount}`} tone={obstacleInteractionReview.status === "ready" ? "warn" : "neutral"} />
         <MetricTile label="Hard conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
         <MetricTile label="Outside wet" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "warn" : "good"} />
       </View>
@@ -2685,6 +2700,9 @@ function DesignAwarenessPanel({
           {formatBenderStrategySummary(benderStrategy, settings)}
         </Text>
       ) : null}
+      <Text style={styles.mapFeatureMeta} testID="design-awareness-obstacle-review">
+        Obstacle interaction review: {formatObstacleInteractionSummary(obstacleInteractionReview)}
+      </Text>
       <Text style={styles.mapFeatureMeta}>Awareness evidence supports review and scenario planning only. Additional machine zones, linear paths, measurement lines, wells, and wire paths do not create pivots or mutate canonical projected XY automatically.</Text>
     </View>
   );
@@ -3055,6 +3073,23 @@ function formatBenderStrategySummary(
     return `Bender / second-pivot review: ${strategy.label}${tail} · ${formatAreaFromAcres(strategy.irrigatedAcres, settings.unitSystem)} advisory opportunity envelope · unverified kinematics.`;
   }
   return `Bender / second-pivot review: ${strategy.warnings[0] ?? "operator-labeled projected-XY second-pivot evidence is required before advisory scoring."}`;
+}
+
+function formatObstacleInteractionSummary(review: AdvisoryObstacleInteractionReview): string {
+  if (review.status === "no_evidence") return "No obstacle or utility evidence is ready for crossing/blocking review.";
+  const crossingReviews = review.summary.spanClearanceReviewCount
+    + review.summary.towerTrackReviewCount
+    + review.summary.utilityPathReviewCount;
+  return `${review.itemCount} item${review.itemCount === 1 ? "" : "s"} · ${review.summary.hardBlockingCount} hard/blocking · ${review.summary.noSprayExclusionCount} no-spray · ${crossingReviews} crossing/clearance review · ${review.summary.outsideMachineReachCount} outside reach`;
+}
+
+function formatFirstObstacleInteraction(review: AdvisoryObstacleInteractionReview): string {
+  const first = review.items[0];
+  if (!first) return review.blockers[0] ?? "Add wells, utility paths, or obstacle polygons to review crossing and blocking assumptions.";
+  const tower = first.nearestTowerIndex
+    ? ` · nearest tower ${first.nearestTowerIndex}`
+    : "";
+  return `${first.name}: ${first.category.replaceAll("_", " ")}${tower}. ${first.warnings[0]}`;
 }
 
 function advisoryCostInputFromDraft(draft: AdvisoryCostDraft): AdvisoryCostInput | undefined {

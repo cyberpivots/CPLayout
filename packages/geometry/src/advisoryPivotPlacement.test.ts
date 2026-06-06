@@ -4,6 +4,7 @@ import type { ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, Surve
 
 import {
   analyzeAdvisoryMultiMachineLayout,
+  analyzeAdvisoryObstacleInteractions,
   analyzeIdealPivotCenter,
   buildPivotPlacementCandidates,
   compareAdvisoryMachineStrategies,
@@ -142,6 +143,117 @@ assert.equal(zoneAnalysis.machineZoneReviews[0].canonicalGeometryMutation, false
 assert.equal(zoneAnalysis.bestCandidate?.costAssessment.status, "complete");
 assert.ok((zoneAnalysis.bestCandidate?.costAssessment.costPerIrrigatedAcre ?? 0) > 0);
 assert.ok(Number.isFinite(zoneAnalysis.bestCandidate?.scoreBreakdown.costEfficiency));
+
+const obstacleInteractionProject = makeProject({
+  ...readyProject,
+  obstacles: [{
+    id: "pump-house",
+    name: "Pump house",
+    kind: "building",
+    polygon: [
+      { x: 78, y: 96 },
+      { x: 88, y: 96 },
+      { x: 88, y: 106 },
+      { x: 78, y: 106 },
+    ],
+    bufferMeters: 5,
+    hardConflict: true,
+    noSpray: true,
+    confidence: "user_estimated",
+  }, {
+    id: "grassed-ditch",
+    name: "Grassed ditch",
+    kind: "ditch",
+    polygon: [
+      { x: 34, y: 126 },
+      { x: 54, y: 126 },
+      { x: 54, y: 136 },
+      { x: 34, y: 136 },
+    ],
+    bufferMeters: 2,
+    hardConflict: false,
+    noSpray: true,
+    confidence: "user_estimated",
+  }],
+  mapFeatures: [{
+    id: "well-under-span",
+    name: "Well under span",
+    kind: "well_location",
+    geometry: { type: "Point", point: { x: 70, y: 100 } },
+    confidence: "user_estimated",
+  }, {
+    id: "pump-under-span",
+    name: "Pump under span",
+    kind: "pump_location",
+    geometry: { type: "Point", point: { x: 75, y: 115 } },
+    confidence: "user_estimated",
+  }, {
+    id: "tower-track-well",
+    name: "Tower track well",
+    kind: "well_location",
+    geometry: { type: "Point", point: { x: 56, y: 100 } },
+    confidence: "user_estimated",
+  }, {
+    id: "tower-power-pole",
+    name: "Power pole on tower track",
+    kind: "power_pole",
+    geometry: { type: "Point", point: { x: 55, y: 100 } },
+    confidence: "user_estimated",
+  }, {
+    id: "buried-main",
+    name: "Buried main crossing",
+    kind: "underground_pipeline",
+    geometry: { type: "LineString", vertices: [{ x: 20, y: 90 }, { x: 90, y: 90 }] },
+    confidence: "user_estimated",
+  }, {
+    id: "buried-wire",
+    name: "Buried wire crossing",
+    kind: "underground_wire",
+    geometry: { type: "LineString", vertices: [{ x: 20, y: 110 }, { x: 90, y: 110 }] },
+    confidence: "user_estimated",
+  }, {
+    id: "overhead-power",
+    name: "Overhead power crossing",
+    kind: "power_line",
+    geometry: { type: "LineString", vertices: [{ x: 40, y: 70 }, { x: 90, y: 70 }] },
+    confidence: "user_estimated",
+  }, {
+    id: "outside-well",
+    name: "Outside well",
+    kind: "well_location",
+    geometry: { type: "Point", point: { x: 185, y: 185 } },
+    confidence: "user_estimated",
+  }],
+});
+const obstacleInteractionBefore = JSON.stringify(obstacleInteractionProject);
+const obstacleInteractionReview = analyzeAdvisoryObstacleInteractions(obstacleInteractionProject);
+assert.equal(obstacleInteractionReview.status, "ready");
+assert.equal(obstacleInteractionReview.advisoryOnly, true);
+assert.equal(obstacleInteractionReview.canonicalGeometryMutation, false);
+assert.equal(obstacleInteractionReview.qualifiedReviewRequired, true);
+assert.equal(obstacleInteractionReview.itemCount, 10);
+assert.equal(obstacleInteractionReview.summary.hardBlockingCount, 2);
+assert.equal(obstacleInteractionReview.summary.noSprayExclusionCount, 1);
+assert.equal(obstacleInteractionReview.summary.spanClearanceReviewCount, 2);
+assert.equal(obstacleInteractionReview.summary.towerTrackReviewCount, 1);
+assert.equal(obstacleInteractionReview.summary.utilityPathReviewCount, 3);
+assert.equal(obstacleInteractionReview.summary.outsideMachineReachCount, 1);
+assert.equal(obstacleInteractionReview.items.find((item) => item.id === "well-under-span")?.category, "span_clearance_review");
+assert.equal(obstacleInteractionReview.items.find((item) => item.id === "pump-under-span")?.category, "span_clearance_review");
+assert.equal(obstacleInteractionReview.items.find((item) => item.id === "tower-track-well")?.category, "tower_track_review");
+assert.equal(obstacleInteractionReview.items.find((item) => item.id === "tower-power-pole")?.category, "hard_blocking");
+assert.equal(obstacleInteractionReview.items.find((item) => item.id === "buried-main")?.category, "utility_path_review");
+assert.equal(obstacleInteractionReview.items.find((item) => item.id === "buried-wire")?.category, "utility_path_review");
+assert.equal(obstacleInteractionReview.items.find((item) => item.id === "overhead-power")?.category, "utility_path_review");
+assert.equal(obstacleInteractionReview.items.find((item) => item.id === "outside-well")?.category, "outside_machine_reach");
+assert.ok(obstacleInteractionReview.items.find((item) => item.id === "well-under-span")?.warnings[0].includes("span-over clearance"));
+assert.ok(obstacleInteractionReview.items.find((item) => item.id === "tower-track-well")?.warnings[0].includes("near a modeled tower track"));
+assert.ok(obstacleInteractionReview.warnings.some((warning) => warning.includes("does not mutate canonical projected XY")));
+assert.equal(JSON.stringify(obstacleInteractionProject), obstacleInteractionBefore);
+
+const emptyObstacleInteractionReview = analyzeAdvisoryObstacleInteractions(readyProject);
+assert.equal(emptyObstacleInteractionReview.status, "no_evidence");
+assert.ok(emptyObstacleInteractionReview.blockers.some((blocker) => blocker.includes("obstacle polygons")));
 
 const westMachineZone: ProjectMapFeature = {
   id: "zone-west",

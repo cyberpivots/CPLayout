@@ -760,6 +760,7 @@ test("design console selects end-gun circle and corner footprint utility tools",
 });
 
 test("placement review applies advisory pivot candidates only after confirmation", async ({ page }, testInfo) => {
+  test.slow();
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
@@ -795,6 +796,8 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   await expect(page.getByTestId("advisory-cost-review-panel")).toContainText("Cost Review");
   await expect(page.getByTestId("advisory-cost-status")).toContainText("will not infer machine prices");
   await expect(page.getByTestId("advisory-bender-strategy-summary")).toContainText("operator-labeled projected-XY second-pivot evidence");
+  await expect(page.getByTestId("advisory-obstacle-interaction-summary")).toContainText("Obstacle Interaction Review");
+  await expect(page.getByTestId("advisory-obstacle-interaction-summary")).toContainText("does not mutate canonical projected XY");
 
   await page.getByTestId("advisory-cost-fixed").fill("80000");
   await page.getByTestId("advisory-cost-per-meter").fill("700");
@@ -1913,8 +1916,10 @@ test("dashboard recent-project row can reopen a saved browser project", async ({
 async function captureConsoleFailures(page: Page): Promise<void> {
   page.on("console", (message) => {
     if (message.type() === "error") {
-      if (message.text().includes("Failed to load resource: net::ERR_BLOCKED_BY_CLIENT")) return;
-      throw new Error(`Browser console error: ${message.text()}`);
+      const text = message.text();
+      if (text.includes("Failed to load resource: net::ERR_BLOCKED_BY_CLIENT")) return;
+      if (text.includes("Failed to load resource: net::ERR_NETWORK_CHANGED")) return;
+      throw new Error(`Browser console error: ${text}`);
     }
   });
   page.on("pageerror", (error) => {

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { validateImageryEvidencePacket } from "@cplayout/core";
 import { parseCompleteAndroidNativeVerificationReport } from "@cplayout/project-store";
 import {
   collectAndroidToolSnapshot,
@@ -580,6 +581,19 @@ function realPivotFixtureGate(options: RoadmapCompletionOptions, generatedAt: st
 
   const packetPath = join(outputDirectory, "companion-evidence-packet.json");
   const projectedGeoJsonPath = join(outputDirectory, "companion-evidence-packet-projected-xy.geojson");
+  const validation = validateRealPivotEvidencePacket(packetPath);
+  if (!validation.ok) {
+    return {
+      id: "real-pivot-fixture-proof",
+      label: "Operator-approved calibrated real pivot fixture proof",
+      status: validation.blocked ? "blocked" : "fail",
+      reason: validation.reason,
+      command: command.join(" "),
+      exitCode: result.status,
+      evidence: [fixturePath, packetPath, projectedGeoJsonPath],
+      details: validation.details,
+    };
+  }
   const recommendation = firstProjectedPivotRecommendation(packetPath);
   if (!recommendation.ok) {
     return {
@@ -596,7 +610,7 @@ function realPivotFixtureGate(options: RoadmapCompletionOptions, generatedAt: st
     id: "real-pivot-fixture-proof",
     label: "Operator-approved calibrated real pivot fixture proof",
     status: "pass",
-    reason: "Calibrated operator-approved real pivot fixture produced a standalone projected-XY pivot-center candidate report.",
+    reason: "Strict v2 companion packet validation passed and the calibrated operator-approved fixture produced a standalone projected-XY pivot-center candidate report.",
     command: command.join(" "),
     exitCode: result.status,
     evidence: [fixturePath, packetPath, projectedGeoJsonPath],
@@ -977,6 +991,53 @@ function inferRealPivotContext(
     };
   } catch (error) {
     return { error: `Real pivot fixture manifest could not be read: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+export function validateRealPivotEvidencePacket(packetPath: string): { ok: true; details: unknown } | { ok: false; blocked: boolean; reason: string; details: unknown } {
+  try {
+    const packet = JSON.parse(readFileSync(packetPath, "utf8")) as unknown;
+    const result = validateImageryEvidencePacket(packet);
+    const projectedPivotReview = result.candidateReviews.find((review) => review.status === "calibrated_projected_xy");
+    const details = {
+      status: result.status,
+      blockerCount: result.blockerCount,
+      warningCount: result.warningCount,
+      summary: result.summary,
+      candidateReviews: result.candidateReviews.map((review) => ({
+        candidateId: review.candidateId,
+        status: review.status,
+        projectedGeometryPresent: review.projectedGeometryPresent,
+        blockerCount: review.blockerCount,
+        warningCount: review.warningCount,
+      })),
+      blockerCodes: result.blockers.map((issue) => issue.code),
+      warningCodes: result.warnings.map((issue) => issue.code),
+    };
+    if (result.status !== "ready_for_read_only_report") {
+      return {
+        ok: false,
+        blocked: true,
+        reason: `Fixture packet failed strict cplayout-imagery-evidence-v2 validation: ${result.blockers.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}`,
+        details,
+      };
+    }
+    if (!projectedPivotReview) {
+      return {
+        ok: false,
+        blocked: true,
+        reason: "Fixture packet passed v2 metadata checks, but no candidate review is calibrated_projected_xy.",
+        details,
+      };
+    }
+    return { ok: true, details };
+  } catch (error) {
+    return {
+      ok: false,
+      blocked: false,
+      reason: `Fixture packet could not be parsed or validated: ${error instanceof Error ? error.message : String(error)}`,
+      details: {},
+    };
   }
 }
 

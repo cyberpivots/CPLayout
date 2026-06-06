@@ -17,6 +17,7 @@ import {
   runRoadmapCompletion,
   validateGoogleEarthManifest,
   validateNativeMapLibreReport,
+  validateRealPivotEvidencePacket,
 } from "./roadmapCompletion";
 
 const parsed = parseRoadmapArgs(
@@ -252,6 +253,25 @@ writeFileSync(nativeMapLibreReportPath, JSON.stringify({
 }), "utf8");
 assert.equal(validateNativeMapLibreReport(nativeMapLibreReportPath).ok, true);
 
+const realPivotPacketPath = join(proofRoot, "real-pivot-v2-packet.json");
+const realPivotPacket = realPivotEvidencePacketFixture();
+writeFileSync(realPivotPacketPath, JSON.stringify(realPivotPacket), "utf8");
+const realPivotValidation = validateRealPivotEvidencePacket(realPivotPacketPath);
+assert.equal(realPivotValidation.ok, true);
+
+const unsafeRealPivotPacketPath = join(proofRoot, "real-pivot-v2-unsafe-packet.json");
+const unsafeRealPivotPacket = {
+  ...realPivotPacket,
+  cloudUrls: ["https://tiles.example.invalid/unsafe"],
+};
+writeFileSync(unsafeRealPivotPacketPath, JSON.stringify(unsafeRealPivotPacket), "utf8");
+const unsafeRealPivotValidation = validateRealPivotEvidencePacket(unsafeRealPivotPacketPath);
+assert.equal(unsafeRealPivotValidation.ok, false);
+if (!unsafeRealPivotValidation.ok) {
+  assert.equal(unsafeRealPivotValidation.blocked, true);
+  assert.match(unsafeRealPivotValidation.reason, /strict cplayout-imagery-evidence-v2 validation/);
+}
+
 const missingTileServerReportPath = join(proofRoot, "native-maplibre-missing-tile-server-report.json");
 const missingTileServerReport = JSON.parse(readFileSync(nativeMapLibreReportPath, "utf8")) as { tileServer?: unknown };
 delete missingTileServerReport.tileServer;
@@ -276,3 +296,130 @@ assert.equal(resourceUrlErrorValidation.ok, false);
 assert.match(resourceUrlErrorValidation.errors.join("\n"), /logcat\.resourceUrlErrorCount/);
 
 console.log("roadmap completion automation tests passed");
+
+function realPivotEvidencePacketFixture(): Record<string, unknown> {
+  return {
+    schemaVersion: "cplayout-imagery-evidence-v2",
+    packetVersion: "cplayout-imagery-evidence-packet-v2",
+    projectId: "fixture-project",
+    projectCrs: "EPSG:32613",
+    createdAt: "2026-06-06T00:00:00.000Z",
+    calibrationStatus: "valid_projected_xy",
+    canonicalGeometryMutation: false,
+    networkRequired: false,
+    hiddenKeysAllowed: false,
+    keyedService: false,
+    evidenceOnly: true,
+    appImportable: false,
+    writesProjectDatabase: false,
+    paidServiceRequired: false,
+    cloudUrls: [],
+    telemetryUpload: false,
+    bulkPublicTileCaching: false,
+    localProvenance: {
+      canonicalGeometryMutation: false,
+      networkRequired: false,
+      hiddenKeysAllowed: false,
+      keyedService: false,
+      evidenceOnly: true,
+      appImportable: false,
+      writesProjectDatabase: false,
+      paidServiceRequired: false,
+      cloudUrls: [],
+      telemetryUpload: false,
+      bulkPublicTileCaching: false,
+    },
+    sourceArtifactHashes: {
+      mapCanvasCrop: {
+        id: "mapCanvasCrop",
+        type: "map_canvas_crop",
+        path: "reports/real-pivot-fixtures/map-canvas.png",
+        sha256: "a".repeat(64),
+        expectedSha256: "a".repeat(64),
+        byteLength: 4096,
+        attributionId: "operator-local",
+      },
+    },
+    visualEvidence: [{
+      id: "map-canvas-visual",
+      artifactId: "mapCanvasCrop",
+      widthPixels: 800,
+      heightPixels: 600,
+      nonBlankPixelRatio: 0.4,
+      grayVariance: 120,
+      mostlyBlack: false,
+      nearUniform: false,
+      attributionId: "operator-local",
+    }],
+    attribution: [{
+      id: "operator-local",
+      providerName: "Operator supplied local evidence",
+      attribution: "Operator supplied local imagery and truth labels.",
+      licenseText: "Operator supplied local evidence for advisory review.",
+      keyedService: false,
+      offlineCopyAllowed: true,
+    }],
+    calibration: {
+      projectId: "fixture-project",
+      projectCrs: "EPSG:32613",
+      method: "operator truth label",
+      status: "valid_projected_xy",
+    },
+    truthLabels: {
+      TRUE_PIVOT_CENTER: {
+        label: "operator approved pivot center",
+        projectedPoint: { x: 500000, y: 4410000 },
+        calibrationStatus: "valid_projected_xy",
+        operatorApproved: true,
+      },
+    },
+    evidenceRecords: [{
+      id: "fixture-evidence",
+      projectId: "fixture-project",
+      sourceKind: "model_output",
+      createdAt: "2026-06-06T00:00:00.000Z",
+      projectCrs: "EPSG:32613",
+      summary: "Standalone companion evidence only.",
+      reviewStatus: "unreviewed",
+      metrics: {
+        canonicalGeometryMutation: false,
+        evidenceOnly: true,
+        appImportable: false,
+        writesProjectDatabase: false,
+      },
+    }],
+    candidateReports: [{
+      id: "fixture-project:companion:real-pivot",
+      kind: "pivot_center",
+      projectId: "fixture-project",
+      createdAt: "2026-06-06T00:00:00.000Z",
+      projectCrs: "EPSG:32613",
+      calibrationStatus: "valid_projected_xy",
+      confidence: 0.91,
+      proposedGeometry: {
+        projectCrs: "EPSG:32613",
+        pivotCenter: { x: 500000, y: 4410000 },
+      },
+      artifactIds: ["mapCanvasCrop"],
+      truthLabelIds: ["TRUE_PIVOT_CENTER"],
+      evidenceOnly: true,
+      appImportable: false,
+      canonicalGeometryMutation: false,
+      writesProjectDatabase: false,
+      metadata: {
+        scoreBreakdown: { operatorTruth: 1 },
+        hardFailures: [],
+      },
+      warnings: [
+        "Any future geometry change requires a separate CPLayout Files/Map projected-XY workflow and operator action.",
+      ],
+    }],
+    operatorDecisionNotes: [],
+    warnings: [
+      "Companion evidence is read-only and cannot apply, import, or mutate CPLayout project geometry.",
+    ],
+    nonGoals: [
+      "No automatic canonical projected XY mutation from imagery evidence.",
+    ],
+  };
+}

@@ -223,6 +223,14 @@ uv run cplayout-ml build-evidence-packet \
 
 Outputs are `companion-evidence-packet.json`, `companion-evidence-packet-candidates.geojson`, and `companion-evidence-packet-projected-xy.geojson`. The JSON uses `schemaVersion: "cplayout-imagery-evidence-v2"` and is a companion-owned report packet, not a CPLayout project review schema. It records local-only boundary flags, artifact hashes, attribution, calibration metadata, and measured visual evidence when a readable local image artifact is supplied. Candidates without `valid_projected_xy` calibration and projected operator truth remain metadata-only with hard-failure notes.
 
+Validate a strict v2 packet from the repo root before using it as a review or roadmap gate:
+
+```sh
+npm run verify:imagery-evidence -- --packet tools/local-ml-companion/out/evidence-packet/companion-evidence-packet.json
+```
+
+Use `--require-calibrated-projected-candidate` only for gates that must prove at least one candidate reached `calibrated_projected_xy`. The verifier is read-only and does not import packet data, write CPLayout project storage, or mutate canonical projected `XY`.
+
 Run a read-only local Streamlit dashboard dry run:
 
 ```sh

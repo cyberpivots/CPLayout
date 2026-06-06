@@ -6,7 +6,7 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "tsx src/mapOverlayGeoJson.test.ts && tsx src/referenceOverlayStyle.test.ts && tsx src/browserMapInteraction.test.ts",
+    "test": "tsx src/mapOverlayGeoJson.test.ts && tsx src/referenceOverlayStyle.test.ts && tsx src/browserMapInteraction.test.ts && tsx src/projectVertexEditing.test.ts",
     "validate": "npm run typecheck"
   },
   "dependencies": {

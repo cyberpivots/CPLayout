@@ -2,7 +2,7 @@ import { importProjectedGeoJsonToProject, importSurveyCsvToProject } from "./pro
 import { PivotProjectSchema, withWgs84Companion } from "./projectDocument";
 import { validateMapPackageManifest } from "./mapTilePackages";
 import type { ProjectSettings } from "./settings";
-import type { LonLat, MapPackageManifest, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, SourceConfidence, SurveyPoint, UnitSystem, XY } from "./types";
+import type { LonLat, MapPackageManifest, ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, ProjectMapFeatureGeometry, SourceConfidence, SurveyPoint, UnitSystem, XY } from "./types";
 
 export interface ProjectEditorState {
   project: PivotProject;
@@ -32,6 +32,8 @@ export type ProjectEditorAction =
   | { type: "upsert_map_features"; features: ProjectMapFeature[] }
   | { type: "update_map_feature"; feature: ProjectMapFeature }
   | { type: "delete_map_feature"; id: string }
+  | { type: "move_map_feature_vertex"; featureId: string; vertexIndex: number; point: XY }
+  | { type: "delete_map_feature_vertex"; featureId: string; vertexIndex: number }
   | { type: "promote_survey_point"; id: string; target: InfrastructurePoint }
   | { type: "update_machine"; machine: PivotMachine }
   | { type: "upsert_map_package"; mapPackage: MapPackageManifest }
@@ -100,6 +102,10 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
         return updateMapFeature(state, action.feature);
       case "delete_map_feature":
         return deleteMapFeature(state, action.id);
+      case "move_map_feature_vertex":
+        return moveMapFeatureVertex(state, action.featureId, action.vertexIndex, action.point);
+      case "delete_map_feature_vertex":
+        return deleteMapFeatureVertex(state, action.featureId, action.vertexIndex);
       case "promote_survey_point":
         return promoteSurveyPoint(state, action.id, action.target);
       case "update_machine":
@@ -272,6 +278,70 @@ function deleteMapFeature(state: ProjectEditorState, id: string): ProjectEditorS
   });
 }
 
+function moveMapFeatureVertex(state: ProjectEditorState, featureId: string, vertexIndex: number, point: XY): ProjectEditorState {
+  const features = state.project.mapFeatures ?? [];
+  const feature = features.find((candidate) => candidate.id === featureId);
+  if (!feature) throw new Error(`Map feature ${featureId} was not found.`);
+  const geometry = moveMapFeatureGeometryVertex(feature.geometry, vertexIndex, point);
+  return applyProjectChange(state, {
+    ...state.project,
+    mapFeatures: features.map((candidate) => candidate.id === featureId ? { ...candidate, geometry } : candidate),
+  });
+}
+
+function deleteMapFeatureVertex(state: ProjectEditorState, featureId: string, vertexIndex: number): ProjectEditorState {
+  const features = state.project.mapFeatures ?? [];
+  const feature = features.find((candidate) => candidate.id === featureId);
+  if (!feature) throw new Error(`Map feature ${featureId} was not found.`);
+  const geometry = deleteMapFeatureGeometryVertex(feature.geometry, vertexIndex);
+  return applyProjectChange(state, {
+    ...state.project,
+    mapFeatures: features.map((candidate) => candidate.id === featureId ? { ...candidate, geometry } : candidate),
+  });
+}
+
+function moveMapFeatureGeometryVertex(geometry: ProjectMapFeatureGeometry, vertexIndex: number, point: XY): ProjectMapFeatureGeometry {
+  if (geometry.type === "Point") {
+    assertVertexIndex([geometry.point], vertexIndex, "Map feature point");
+    return { ...geometry, point: assertFinitePoint(point, "Map feature point") };
+  }
+  if (geometry.type === "Circle") {
+    assertVertexIndex([geometry.center], vertexIndex, "Map feature center");
+    return { ...geometry, center: assertFinitePoint(point, "Map feature center") };
+  }
+  if (geometry.type === "LineString") {
+    return {
+      ...geometry,
+      vertices: validatedLineString(replaceVertex(geometry.vertices, vertexIndex, point, "Map feature vertex"), "Map feature line"),
+    };
+  }
+  return {
+    ...geometry,
+    vertices: validatedRing(replaceVertex(geometry.vertices, vertexIndex, point, "Map feature vertex"), "Map feature polygon"),
+  };
+}
+
+function deleteMapFeatureGeometryVertex(geometry: ProjectMapFeatureGeometry, vertexIndex: number): ProjectMapFeatureGeometry {
+  if (geometry.type === "Point") {
+    assertVertexIndex([geometry.point], vertexIndex, "Map feature point");
+    throw new Error("Map feature point cannot be deleted; delete the feature instead.");
+  }
+  if (geometry.type === "Circle") {
+    assertVertexIndex([geometry.center], vertexIndex, "Map feature center");
+    throw new Error("Map feature center cannot be deleted; delete the feature instead.");
+  }
+  if (geometry.type === "LineString") {
+    return {
+      ...geometry,
+      vertices: validatedLineString(removeVertex(geometry.vertices, vertexIndex, "Map feature vertex"), "Map feature line"),
+    };
+  }
+  return {
+    ...geometry,
+    vertices: validatedRing(removeVertex(geometry.vertices, vertexIndex, "Map feature vertex"), "Map feature polygon"),
+  };
+}
+
 function upsertMapPackage(state: ProjectEditorState, mapPackage: MapPackageManifest): ProjectEditorState {
   const parsed = validateMapPackageManifest(mapPackage);
   const current = state.project.mapPackages ?? [];
@@ -388,6 +458,19 @@ function validatedRing(vertices: XY[], label: string): XY[] {
     throw new Error(`${label} must not self-intersect.`);
   }
   return ring;
+}
+
+function validatedLineString(vertices: XY[], label: string): XY[] {
+  if (vertices.length < 2) throw new Error(`${label} needs at least two vertices before commit.`);
+  vertices.forEach((vertex) => assertFinitePoint(vertex, label));
+  return vertices;
+}
+
+function assertFinitePoint(point: XY, label: string): XY {
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    throw new Error(`${label} contains a non-finite coordinate.`);
+  }
+  return point;
 }
 
 function removeClosingDuplicate(vertices: XY[]): XY[] {

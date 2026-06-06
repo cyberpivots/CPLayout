@@ -47,11 +47,19 @@ import {
   UTILITY_FEATURE_OPTIONS,
   type UtilityFeatureGeometry,
 } from "./mapTools";
+import {
+  adjacentProjectVertexSelection,
+  firstBoundaryVertexSelection,
+  firstMapFeatureVertexSelection,
+  firstObstacleVertexSelection,
+  hasMapFeatureVertexSelection,
+  hasObstacleVertexSelection,
+  selectedProjectVertexCanDelete,
+  selectedProjectVertexPoint,
+  selectedProjectVertexText,
+  type SelectedProjectVertex,
+} from "./projectVertexEditing";
 import type { MapSurfaceProps } from "./types";
-
-type SelectedVertex =
-  | { layer: "field_boundary"; vertexIndex: number }
-  | { layer: "obstacle"; obstacleId: string; vertexIndex: number };
 
 type MapPalette = ReturnType<typeof paletteForMapStyle>;
 
@@ -81,6 +89,8 @@ export function SvgMapSurface({
   onDeleteBoundaryVertex,
   onMoveObstacleVertex,
   onDeleteObstacleVertex,
+  onMoveMapFeatureVertex,
+  onDeleteMapFeatureVertex,
   onPlacePivot,
   onMoveInfrastructurePoint,
   onAddSurveyPoint,
@@ -125,7 +135,7 @@ export function SvgMapSurface({
   const [mapState, setMapState] = useState<DrawingMapState>(() => createDrawingMapState(initialViewport));
   const [mapPixelWidth, setMapPixelWidth] = useState(900);
   const [mapPixelHeight, setMapPixelHeight] = useState(440);
-  const [selectedVertex, setSelectedVertex] = useState<SelectedVertex | null>(null);
+  const [selectedVertex, setSelectedVertex] = useState<SelectedProjectVertex | null>(null);
   const [localSelectedMapFeatureId, setLocalSelectedMapFeatureId] = useState<string | null>(null);
   const [mapFeatureKind, setMapFeatureKind] = useState<ProjectMapFeatureKind>("underground_pipeline");
   const [lastSnap, setLastSnap] = useState<{ point: XY; kind: "vertex" | "feature" } | null>(null);
@@ -196,6 +206,7 @@ export function SvgMapSurface({
   const canCommitCurrentDraft = designMode && canCommitDraft(mapState);
   const canSaveCurrentMapFeature = designMode && canSaveMapFeature(mapState, mapFeatureOption.geometry);
   const mapClickLayerActive = designMode && mapState.mode !== "pan" && mapState.mode !== "edit_vertices";
+  const canDeleteSelectedVertex = designMode && selectedVertex !== null && selectedProjectVertexCanDelete(project, selectedVertex);
 
   useEffect(() => {
     if (designMode) return;
@@ -306,8 +317,10 @@ export function SvgMapSurface({
     if (mapState.mode === "edit_vertices" && selectedVertex) {
       if (selectedVertex.layer === "field_boundary") {
         onMoveBoundaryVertex?.(selectedVertex.vertexIndex, vertex);
-      } else {
+      } else if (selectedVertex.layer === "obstacle") {
         onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, vertex);
+      } else {
+        onMoveMapFeatureVertex?.(selectedVertex.featureId, selectedVertex.vertexIndex, vertex);
       }
       return;
     }
@@ -370,8 +383,9 @@ export function SvgMapSurface({
     if (mode !== "edit_vertices") setSelectedVertex(null);
   }
 
-  function selectVertex(nextSelectedVertex: SelectedVertex): void {
+  function selectVertex(nextSelectedVertex: SelectedProjectVertex | null): void {
     if (!designMode) return;
+    if (!nextSelectedVertex) return;
     setSelectedVertex(nextSelectedVertex);
     dispatch({ type: "set_mode", mode: "edit_vertices" });
   }
@@ -379,36 +393,57 @@ export function SvgMapSurface({
   function deleteSelectedVertex(): void {
     if (!designMode) return;
     if (!selectedVertex) return;
+    if (!selectedProjectVertexCanDelete(project, selectedVertex)) return;
     if (selectedVertex.layer === "field_boundary") {
       onDeleteBoundaryVertex?.(selectedVertex.vertexIndex);
-    } else {
+    } else if (selectedVertex.layer === "obstacle") {
       onDeleteObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex);
+    } else {
+      onDeleteMapFeatureVertex?.(selectedVertex.featureId, selectedVertex.vertexIndex);
     }
     setSelectedVertex(null);
   }
 
   function selectFirstBoundaryVertex(): void {
     if (!designMode) return;
-    if (project.fieldBoundary.length === 0) return;
-    selectVertex({ layer: "field_boundary", vertexIndex: 0 });
+    selectVertex(firstBoundaryVertexSelection(project));
+  }
+
+  function selectFirstObstacleVertex(): void {
+    if (!designMode) return;
+    selectVertex(firstObstacleVertexSelection(project));
+  }
+
+  function selectFirstMapFeatureVertex(): void {
+    if (!designMode) return;
+    const selectedFeatureVertex: SelectedProjectVertex | null = activeSelectedMapFeatureId
+      ? { layer: "map_feature", featureId: activeSelectedMapFeatureId, vertexIndex: 0 }
+      : null;
+    selectVertex(
+      selectedFeatureVertex && selectedProjectVertexPoint(project, selectedFeatureVertex)
+        ? selectedFeatureVertex
+        : firstMapFeatureVertexSelection(project),
+    );
+  }
+
+  function selectAdjacentVertex(direction: -1 | 1): void {
+    if (!designMode) return;
+    selectVertex(adjacentProjectVertexSelection(project, selectedVertex, direction));
   }
 
   function nudgeSelectedVertex(delta: XY): void {
     if (!designMode) return;
     if (!selectedVertex) return;
-    const currentPoint = selectedVertexPoint(selectedVertex);
+    const currentPoint = selectedProjectVertexPoint(project, selectedVertex);
     if (!currentPoint) return;
     const nextPoint = { x: currentPoint.x + delta.x, y: currentPoint.y + delta.y };
     if (selectedVertex.layer === "field_boundary") {
       onMoveBoundaryVertex?.(selectedVertex.vertexIndex, nextPoint);
-    } else {
+    } else if (selectedVertex.layer === "obstacle") {
       onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, nextPoint);
+    } else {
+      onMoveMapFeatureVertex?.(selectedVertex.featureId, selectedVertex.vertexIndex, nextPoint);
     }
-  }
-
-  function selectedVertexPoint(vertex: SelectedVertex): XY | null {
-    if (vertex.layer === "field_boundary") return project.fieldBoundary[vertex.vertexIndex] ?? null;
-    return project.obstacles.find((obstacle) => obstacle.id === vertex.obstacleId)?.polygon[vertex.vertexIndex] ?? null;
   }
 
   function snapWorldPoint(point: XY): XY {
@@ -590,13 +625,22 @@ export function SvgMapSurface({
                 </React.Fragment>
               ))}
               {mapFeatures.map((feature) => (
-                <MapFeatureSymbol
-                  key={feature.id}
-                  feature={feature}
-                  palette={palette}
-                  selected={activeSelectedMapFeatureId === feature.id}
-                  onSelect={() => selectMapFeature(feature.id)}
-                />
+                <React.Fragment key={feature.id}>
+                  <MapFeatureSymbol
+                    feature={feature}
+                    palette={palette}
+                    selected={activeSelectedMapFeatureId === feature.id}
+                    onSelect={() => selectMapFeature(feature.id)}
+                  />
+                  {designMode ? (
+                    <EditableMapFeatureHandles
+                      feature={feature}
+                      palette={palette}
+                      selected={selectedVertex?.layer === "map_feature" && selectedVertex.featureId === feature.id ? selectedVertex.vertexIndex : null}
+                      onSelect={(vertexIndex) => selectVertex({ layer: "map_feature", featureId: feature.id, vertexIndex })}
+                    />
+                  ) : null}
+                </React.Fragment>
               ))}
               <DraftVertices vertices={mapState.draftVertices} color={palette.draft} />
               {lastSnap ? <SnapMarker point={lastSnap.point} color={palette.snap} label={lastSnap.kind} /> : null}
@@ -656,15 +700,27 @@ export function SvgMapSurface({
         {designMode ? (
         <View style={styles.draftHud}>
           <Text style={styles.draftHudText}>
-            {mapState.activeLayer.replaceAll("_", " ")} · {mapState.draftVertices.length} pts{measureText(mapState.draftVertices)}{selectedVertex ? ` · ${selectedVertexText(selectedVertex)}` : ""}
+            {mapState.activeLayer.replaceAll("_", " ")} · {mapState.draftVertices.length} pts{measureText(mapState.draftVertices)}{selectedVertex ? ` · ${selectedProjectVertexText(project, selectedVertex)}` : ""}
           </Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Add draft vertex at view center" disabled={!designMode} onPress={addDraftVertexAtViewCenter} style={[styles.clearDraftButton, !designMode && styles.disabledDraftButton]}>
             <Text style={styles.clearDraftText}>{mapState.mode === "capture_point" ? "Capture Center" : "Add Center"}</Text>
           </Pressable>
           {mapState.mode === "edit_vertices" ? (
             <>
-              <Pressable accessibilityRole="button" accessibilityLabel="Select first boundary vertex" disabled={!designMode} onPress={selectFirstBoundaryVertex} style={[styles.clearDraftButton, !designMode && styles.disabledDraftButton]}>
-                <Text style={styles.clearDraftText}>First Vertex</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Select first boundary vertex" disabled={project.fieldBoundary.length === 0 || !designMode} onPress={selectFirstBoundaryVertex} style={[styles.clearDraftButton, (project.fieldBoundary.length === 0 || !designMode) && styles.disabledDraftButton]}>
+                <Text style={styles.clearDraftText}>Boundary</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Select first obstacle vertex" disabled={!hasObstacleVertexSelection(project) || !designMode} onPress={selectFirstObstacleVertex} style={[styles.clearDraftButton, (!hasObstacleVertexSelection(project) || !designMode) && styles.disabledDraftButton]}>
+                <Text style={styles.clearDraftText}>Obstacle</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Select first map feature vertex" disabled={!hasMapFeatureVertexSelection(project) || !designMode} onPress={selectFirstMapFeatureVertex} style={[styles.clearDraftButton, (!hasMapFeatureVertexSelection(project) || !designMode) && styles.disabledDraftButton]}>
+                <Text style={styles.clearDraftText}>Feature</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Select previous editable vertex" disabled={!selectedVertex || !designMode} onPress={() => selectAdjacentVertex(-1)} style={[styles.clearDraftButton, (!selectedVertex || !designMode) && styles.disabledDraftButton]}>
+                <Text style={styles.clearDraftText}>Prev</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Select next editable vertex" disabled={!selectedVertex || !designMode} onPress={() => selectAdjacentVertex(1)} style={[styles.clearDraftButton, (!selectedVertex || !designMode) && styles.disabledDraftButton]}>
+                <Text style={styles.clearDraftText}>Next</Text>
               </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel="Move selected vertex east" disabled={!selectedVertex || !designMode} onPress={() => nudgeSelectedVertex({ x: Math.max(1, settings.drawing.panStepMeters / 4), y: 0 })} style={[styles.clearDraftButton, (!selectedVertex || !designMode) && styles.disabledDraftButton]}>
                 <Text style={styles.clearDraftText}>Nudge E</Text>
@@ -677,7 +733,7 @@ export function SvgMapSurface({
           <Pressable accessibilityRole="button" accessibilityLabel="Save utility map feature" disabled={!canSaveCurrentMapFeature} onPress={saveMapFeatureFromHud} style={[styles.clearDraftButton, canSaveCurrentMapFeature && styles.commitDraftButton, !canSaveCurrentMapFeature && styles.disabledDraftButton]}>
             <Text style={[styles.clearDraftText, canSaveCurrentMapFeature && styles.commitDraftText]}>{mapFeatureOption.geometry === "Point" ? "Save Center Feature" : "Save Feature"}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Delete selected vertex" disabled={!selectedVertex || !designMode} onPress={deleteSelectedVertex} style={[styles.clearDraftButton, (!selectedVertex || !designMode) && styles.disabledDraftButton]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Delete selected vertex" disabled={!canDeleteSelectedVertex} onPress={deleteSelectedVertex} style={[styles.clearDraftButton, !canDeleteSelectedVertex && styles.disabledDraftButton]}>
             <Text style={styles.clearDraftText}>Delete Vertex</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Clear draft vertices" onPress={() => dispatch({ type: "clear_draft" })} style={styles.clearDraftButton}>
@@ -824,11 +880,6 @@ function measureText(vertices: XY[]): string {
   if (vertices.length < 2) return "";
   const distance = vertices.slice(1).reduce((sum, vertex, index) => sum + Math.hypot(vertex.x - vertices[index].x, vertex.y - vertices[index].y), 0);
   return ` · ${distance.toFixed(1)} m`;
-}
-
-function selectedVertexText(vertex: SelectedVertex): string {
-  if (vertex.layer === "field_boundary") return `selected boundary vertex ${vertex.vertexIndex + 1}`;
-  return `selected obstacle vertex ${vertex.vertexIndex + 1}`;
 }
 
 function Grid({ minX, maxX, minY, maxY, stroke }: { minX: number; maxX: number; minY: number; maxY: number; stroke: string }): React.JSX.Element {
@@ -1114,6 +1165,44 @@ function MapFeatureSymbol({
         {shortMapFeatureLabel(feature.kind)}
       </SvgText>
     </>
+  );
+}
+
+function EditableMapFeatureHandles({
+  feature,
+  onSelect,
+  palette,
+  selected,
+}: {
+  feature: ProjectMapFeature;
+  onSelect: (vertexIndex: number) => void;
+  palette: MapPalette;
+  selected: number | null;
+}): React.JSX.Element {
+  const color = colorForMapFeature(feature.kind, palette);
+  if (feature.geometry.type === "LineString" || feature.geometry.type === "Polygon") {
+    return (
+      <EditableRing
+        color={color}
+        layerLabel={`${feature.name} map feature`}
+        selected={selected}
+        vertices={feature.geometry.vertices}
+        onSelect={onSelect}
+      />
+    );
+  }
+  const point = feature.geometry.type === "Circle" ? feature.geometry.center : feature.geometry.point;
+  return (
+    <Circle
+      accessibilityLabel={`${feature.name} ${feature.geometry.type === "Circle" ? "center" : "point"}`}
+      cx={point.x}
+      cy={-point.y}
+      fill={selected === 0 ? color : "#fffef8"}
+      r={selected === 0 ? 11 : 7}
+      stroke={color}
+      strokeWidth={4}
+      {...svgElementInteractionProps(() => onSelect(0))}
+    />
   );
 }
 

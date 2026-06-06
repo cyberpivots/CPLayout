@@ -23,6 +23,8 @@ export interface MapSurfaceProps {
   onDeleteBoundaryVertex?: (vertexIndex: number) => void;
   onMoveObstacleVertex?: (obstacleId: string, vertexIndex: number, point: XY) => void;
   onDeleteObstacleVertex?: (obstacleId: string, vertexIndex: number) => void;
+  onMoveMapFeatureVertex?: (featureId: string, vertexIndex: number, point: XY) => void;
+  onDeleteMapFeatureVertex?: (featureId: string, vertexIndex: number) => void;
   onPlacePivot?: (point: XY, wgs84?: LonLat) => void;
   onMoveInfrastructurePoint?: (pointType: InfrastructurePoint, point: XY, wgs84?: LonLat) => void;
   onAddSurveyPoint?: (point: Omit<SurveyPoint, "id" | "observedAt"> & { id?: string; observedAt?: string }) => void;

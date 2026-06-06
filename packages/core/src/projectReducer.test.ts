@@ -129,11 +129,43 @@ state = reduceProjectEditorState(state, {
     id: "pipeline-a",
     name: "Pipeline A",
     kind: "underground_pipeline",
-    geometry: { type: "LineString", vertices: boundary.slice(0, 2) },
+    geometry: { type: "LineString", vertices: boundary.slice(0, 3) },
     confidence: "user_estimated",
   },
 });
 assert.equal(state.project.mapFeatures?.some((feature) => feature.id === "pipeline-a"), true);
+const beforeLineFeatureEditPivotCenter = state.project.pivotCenter;
+state = reduceProjectEditorState(state, {
+  type: "move_map_feature_vertex",
+  featureId: "pipeline-a",
+  vertexIndex: 1,
+  point: { x: 501225, y: 4506005 },
+});
+const movedPipelineGeometry = state.project.mapFeatures?.find((feature) => feature.id === "pipeline-a")?.geometry;
+assert.equal(movedPipelineGeometry?.type, "LineString");
+if (movedPipelineGeometry?.type === "LineString") {
+  assert.deepEqual(movedPipelineGeometry.vertices[1], { x: 501225, y: 4506005 });
+}
+assert.deepEqual(state.project.pivotCenter, beforeLineFeatureEditPivotCenter);
+assert.equal(state.project.wgs84Companion?.mapFeatures?.some((feature) => feature.id === "pipeline-a" && feature.geometry.type === "LineString"), true);
+state = reduceProjectEditorState(state, {
+  type: "delete_map_feature_vertex",
+  featureId: "pipeline-a",
+  vertexIndex: 2,
+});
+const shortenedPipelineGeometry = state.project.mapFeatures?.find((feature) => feature.id === "pipeline-a")?.geometry;
+assert.equal(shortenedPipelineGeometry?.type, "LineString");
+if (shortenedPipelineGeometry?.type === "LineString") {
+  assert.equal(shortenedPipelineGeometry.vertices.length, 2);
+}
+const beforeInvalidLineFeatureDelete = state.project;
+const invalidLineFeatureDelete = reduceProjectEditorState(state, {
+  type: "delete_map_feature_vertex",
+  featureId: "pipeline-a",
+  vertexIndex: 1,
+});
+assert.equal(invalidLineFeatureDelete.lastError, "Map feature line needs at least two vertices before commit.");
+assert.equal(invalidLineFeatureDelete.project, beforeInvalidLineFeatureDelete);
 state = reduceProjectEditorState(state, {
   type: "update_map_feature",
   feature: {
@@ -159,11 +191,28 @@ state = reduceProjectEditorState(state, {
     id: "corner-footprint-a",
     name: "Corner Footprint A",
     kind: "corner_swing_limit",
-    geometry: { type: "Polygon", vertices: boundary.slice(0, 3) },
+    geometry: { type: "Polygon", vertices: boundary },
     confidence: "user_estimated",
   },
 });
 assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "corner-footprint-a")?.geometry.type, "Polygon");
+state = reduceProjectEditorState(state, {
+  type: "delete_map_feature_vertex",
+  featureId: "corner-footprint-a",
+  vertexIndex: 3,
+});
+const shortenedCornerGeometry = state.project.mapFeatures?.find((feature) => feature.id === "corner-footprint-a")?.geometry;
+assert.equal(shortenedCornerGeometry?.type, "Polygon");
+if (shortenedCornerGeometry?.type === "Polygon") {
+  assert.equal(shortenedCornerGeometry.vertices.length, 3);
+}
+const invalidPolygonDelete = reduceProjectEditorState(state, {
+  type: "delete_map_feature_vertex",
+  featureId: "corner-footprint-a",
+  vertexIndex: 2,
+});
+assert.equal(invalidPolygonDelete.lastError, "Map feature polygon needs at least three vertices before commit.");
+assert.equal(invalidPolygonDelete.project, state.project);
 state = reduceProjectEditorState(state, {
   type: "add_map_feature",
   feature: {
@@ -176,6 +225,52 @@ state = reduceProjectEditorState(state, {
 });
 assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "end-gun-circle-a")?.geometry.type, "Circle");
 assert.equal(state.project.wgs84Companion?.mapFeatures?.some((feature) => feature.id === "end-gun-circle-a" && feature.geometry.type === "Circle"), true);
+state = reduceProjectEditorState(state, {
+  type: "move_map_feature_vertex",
+  featureId: "end-gun-circle-a",
+  vertexIndex: 0,
+  point: { x: state.project.pivotCenter.x + 14, y: state.project.pivotCenter.y + 6 },
+});
+const movedEndGunGeometry = state.project.mapFeatures?.find((feature) => feature.id === "end-gun-circle-a")?.geometry;
+assert.equal(movedEndGunGeometry?.type, "Circle");
+if (movedEndGunGeometry?.type === "Circle") {
+  assert.deepEqual(movedEndGunGeometry.center, { x: state.project.pivotCenter.x + 14, y: state.project.pivotCenter.y + 6 });
+}
+const invalidCircleFeatureDelete = reduceProjectEditorState(state, {
+  type: "delete_map_feature_vertex",
+  featureId: "end-gun-circle-a",
+  vertexIndex: 0,
+});
+assert.equal(invalidCircleFeatureDelete.lastError, "Map feature center cannot be deleted; delete the feature instead.");
+assert.equal(invalidCircleFeatureDelete.project, state.project);
+state = reduceProjectEditorState(state, {
+  type: "add_map_feature",
+  feature: {
+    id: "pump-point-a",
+    name: "Pump Point A",
+    kind: "pump_location",
+    geometry: { type: "Point", point: { x: state.project.pivotCenter.x - 8, y: state.project.pivotCenter.y - 9 } },
+    confidence: "user_estimated",
+  },
+});
+state = reduceProjectEditorState(state, {
+  type: "move_map_feature_vertex",
+  featureId: "pump-point-a",
+  vertexIndex: 0,
+  point: { x: state.project.pivotCenter.x - 4, y: state.project.pivotCenter.y - 5 },
+});
+const movedPumpGeometry = state.project.mapFeatures?.find((feature) => feature.id === "pump-point-a")?.geometry;
+assert.equal(movedPumpGeometry?.type, "Point");
+if (movedPumpGeometry?.type === "Point") {
+  assert.deepEqual(movedPumpGeometry.point, { x: state.project.pivotCenter.x - 4, y: state.project.pivotCenter.y - 5 });
+}
+const invalidPointFeatureDelete = reduceProjectEditorState(state, {
+  type: "delete_map_feature_vertex",
+  featureId: "pump-point-a",
+  vertexIndex: 0,
+});
+assert.equal(invalidPointFeatureDelete.lastError, "Map feature point cannot be deleted; delete the feature instead.");
+assert.equal(invalidPointFeatureDelete.project, state.project);
 const beforeUpsertPivotCenter = state.project.pivotCenter;
 const machineZoneUpsertState = reduceProjectEditorState(state, {
   type: "upsert_map_features",

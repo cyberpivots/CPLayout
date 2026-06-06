@@ -981,6 +981,39 @@ test("browser map edit vertices nudges projected boundary through reducer action
   await saveScreen(page, testInfo, "browser-edit-vertices-nudge");
 });
 
+test("browser map edit vertices nudges selected map feature through reducer actions", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  if (testInfo.project.name === "mobile-390") {
+    await saveScreen(page, testInfo, "browser-edit-feature-compact");
+    return;
+  }
+
+  await page.getByTestId("browser-tool-utility").click();
+  await clickWorkbenchMap(page, { x: 170, y: 330 });
+  await clickWorkbenchMap(page, { x: 250, y: 370 });
+  await clickWorkbenchMap(page, { x: 285, y: 342 });
+  await page.getByTestId("browser-action-save-feature").click();
+  await expect(page.getByText("Saved underground pipeline line with 3 projected XY vertices as a map feature.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await page.getByRole("button", { name: /Save.*\*/ }).first().click();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("browser-tool-edit-vertices").click();
+  await page.getByTestId("browser-edit-select-feature").click();
+  await expect(page.getByText("Selected underground pipeline line vertex 1 of 3 for projected XY editing.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("browser-edit-nudge-east").click();
+  await expect(page.getByText("Moved underground pipeline line vertex 1 of 3 in projected XY. Save Local to persist.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "browser-edit-feature-nudge");
+});
+
 test("grouped drawing HUD menus do not clear active drafts", async ({ page }, testInfo) => {
   await page.goto("/");
   await openBaselineSample(page);

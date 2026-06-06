@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { ObstacleZone, PivotMachine, PivotProject, ProjectMapFeature, XY } from "@cplayout/core";
 
 import {
+  analyzeIdealPivotCenter,
   buildPivotPlacementCandidates,
   evaluateAdvisoryCornerArm,
 } from "./advisoryPivotPlacement";
@@ -67,9 +68,65 @@ assert.deepEqual(firstRun.map((candidate) => candidate.id), secondRun.map((candi
 assert.deepEqual(project.pivotCenter, { x: 30, y: 40 });
 assert.ok(firstRun.some((candidate) => candidate.sourceSeed === "maximum_inscribed_circle"));
 assert.ok(firstRun.every((candidate) => candidate.canonicalGeometryMutation === false));
+assert.ok(firstRun.every((candidate) => candidate.insideFieldBoundary === true));
+assert.ok(firstRun.every((candidate) => candidate.boundaryClearanceMeters >= 0));
+assert.ok(firstRun.every((candidate) => Number.isFinite(candidate.distanceFromCurrentMeters)));
 assert.ok(firstRun.every((candidate) => candidate.dryCornerPolygons.length > 0));
 assert.ok(firstRun.every((candidate) => Number.isFinite(candidate.scoreBreakdown.waterSourceProximity)));
 assert.ok(firstRun.some((candidate) => candidate.minimumObstacleClearanceMeters !== null));
+
+const readyProject = makeProject({
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 200 },
+    { x: 0, y: 200 },
+  ],
+  pivotCenter: { x: 25, y: 100 },
+  waterSource: { x: 25, y: 100 },
+  powerSource: { x: 30, y: 95 },
+  obstacles: [],
+  mapFeatures: [],
+});
+const idealAnalysis = analyzeIdealPivotCenter(readyProject, {
+  gridDivisions: 8,
+  maxCandidates: 5,
+  waterSourceWeight: 10,
+  powerSourceWeight: 8,
+  accessWeight: 6,
+});
+assert.equal(idealAnalysis.status, "ready");
+assert.equal(idealAnalysis.advisoryOnly, true);
+assert.equal(idealAnalysis.canonicalGeometryMutation, false);
+assert.equal(idealAnalysis.qualifiedReviewRequired, true);
+assert.equal(idealAnalysis.bestCandidate?.id, idealAnalysis.candidates[0].id);
+assert.equal(idealAnalysis.bestCandidate?.insideFieldBoundary, true);
+assert.ok((idealAnalysis.bestCandidate?.boundaryClearanceMeters ?? -1) >= 0);
+assert.ok(idealAnalysis.warnings.some((warning) => warning.includes("does not mutate canonical projected XY")));
+assert.ok(idealAnalysis.sourceRefs.length > 0);
+assert.deepEqual(readyProject.pivotCenter, { x: 25, y: 100 });
+
+const infeasibleAnalysis = analyzeIdealPivotCenter(makeProject({
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 18, y: 0 },
+    { x: 18, y: 18 },
+    { x: 0, y: 18 },
+  ],
+  pivotCenter: { x: 9, y: 9 },
+  waterSource: { x: 9, y: 9 },
+  powerSource: { x: 9, y: 9 },
+  machine: {
+    ...defaultMachine(),
+    spanLengthsMeters: [60],
+  },
+  obstacles: [],
+  mapFeatures: [],
+}), { gridDivisions: 5, maxCandidates: 3 });
+assert.equal(infeasibleAnalysis.status, "no_feasible_candidate");
+assert.equal(infeasibleAnalysis.bestCandidate, null);
+assert.ok(infeasibleAnalysis.candidates.length > 0);
+assert.ok(infeasibleAnalysis.blockers.some((blocker) => blocker.includes("No generated center candidate")));
 
 const waterWeighted = buildPivotPlacementCandidates(project, {
   gridDivisions: 8,
@@ -150,7 +207,7 @@ function makeProject(overrides: Partial<PivotProject> = {}): PivotProject {
     name: "Advisory placement test",
     projectCrs: "LOCAL:TEST",
     unitSystem: "metric",
-    fieldBoundary: field,
+    fieldBoundary: overrides.fieldBoundary ?? field,
     pivotCenter,
     waterSource: overrides.waterSource ?? { x: 0, y: 0 },
     powerSource: overrides.powerSource ?? { x: 220, y: 140 },

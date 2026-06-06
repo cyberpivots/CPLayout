@@ -106,8 +106,8 @@ import {
 } from "@cplayout/core";
 import {
   DEFAULT_CORNER_ARM_SOURCE_REFS,
+  analyzeIdealPivotCenter,
   buildDesignScenarioPreview,
-  buildPivotPlacementCandidates,
   evaluateAdvisoryCornerArm,
   evaluateLayout,
   exportScenarioGeoJson,
@@ -116,6 +116,7 @@ import {
   type DesignScenarioPreview,
   type DrawingLayerType,
   type DrawingMode,
+  type IdealCenterPointAnalysis,
   type PivotPlacementCandidate,
 } from "@cplayout/geometry";
 import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFeetInches, parseDistanceInput } from "@cplayout/core";
@@ -193,6 +194,7 @@ function AppContent(): React.JSX.Element {
   const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(sampleProject.id));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
   const [designScenarioPreview, setDesignScenarioPreview] = useState<DesignScenarioPreview[] | null>(null);
+  const [idealCenterAnalysis, setIdealCenterAnalysis] = useState<IdealCenterPointAnalysis | null>(null);
   const [placementCandidates, setPlacementCandidates] = useState<PivotPlacementCandidate[] | null>(null);
   const [pendingPlacementAction, setPendingPlacementAction] = useState<PendingPlacementAction | null>(null);
   const [guidedMapTool, setGuidedMapTool] = useState<{
@@ -266,6 +268,7 @@ function AppContent(): React.JSX.Element {
 
   useEffect(() => {
     setDesignScenarioPreview(null);
+    setIdealCenterAnalysis(null);
     setPlacementCandidates(null);
   }, [editor.revision]);
 
@@ -302,8 +305,10 @@ function AppContent(): React.JSX.Element {
   }
 
   function calculateDesignScenarios(): void {
+    const analysis = analyzeIdealPivotCenter(project, { maxCandidates: 4 });
     setDesignScenarioPreview(buildDesignScenarioPreview(project, { maxOptimizedCandidates: 3 }));
-    setPlacementCandidates(buildPivotPlacementCandidates(project, { maxCandidates: 4 }));
+    setIdealCenterAnalysis(analysis);
+    setPlacementCandidates(analysis.candidates);
   }
 
   async function confirmPlacementAction(): Promise<void> {
@@ -1250,6 +1255,7 @@ function AppContent(): React.JSX.Element {
             onRequestSaveCornerArm={(config) => setPendingPlacementAction({ kind: "cornerArm", config })}
             onSettingsChange={commitSettings}
             onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
+            idealCenterAnalysis={idealCenterAnalysis}
             placementCandidates={placementCandidates}
             preview={designScenarioPreview}
             project={runtimeProject}
@@ -1618,6 +1624,7 @@ function DesignConsoleDialog({
   onRequestSaveCornerArm,
   onSettingsChange,
   onUpdateMachine,
+  idealCenterAnalysis,
   placementCandidates,
   preview,
   project,
@@ -1637,6 +1644,7 @@ function DesignConsoleDialog({
   onRequestSaveCornerArm: (config: AdvisoryCornerArmConfig) => void;
   onSettingsChange: (settings: AppSettings) => void;
   onUpdateMachine: (machine: PivotMachine) => boolean;
+  idealCenterAnalysis: IdealCenterPointAnalysis | null;
   placementCandidates: PivotPlacementCandidate[] | null;
   preview: DesignScenarioPreview[] | null;
   project: PivotProject;
@@ -1688,6 +1696,7 @@ function DesignConsoleDialog({
             {activeModal === "calculate" ? (
               <CalculateSheet
                 editorError={editorError}
+                idealCenterAnalysis={idealCenterAnalysis}
                 onCalculate={onCalculate}
                 onRequestApplyPivotCandidate={onRequestApplyPivotCandidate}
                 placementCandidates={placementCandidates}
@@ -2118,6 +2127,7 @@ function CornerArmSheet({
 
 function CalculateSheet({
   editorError,
+  idealCenterAnalysis,
   onCalculate,
   onRequestApplyPivotCandidate,
   placementCandidates,
@@ -2126,6 +2136,7 @@ function CalculateSheet({
   settings,
 }: {
   editorError: string | null;
+  idealCenterAnalysis: IdealCenterPointAnalysis | null;
   onCalculate: () => void;
   onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
   placementCandidates: PivotPlacementCandidate[] | null;
@@ -2145,8 +2156,9 @@ function CalculateSheet({
         <Text style={styles.calculateButtonText}>Calculate Preview</Text>
       </Pressable>
       {editorError ? <Text style={styles.formError}>{editorError}</Text> : null}
+      <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
-      <PlacementReviewPanel candidates={placementCandidates} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
+      <PlacementReviewPanel analysis={idealCenterAnalysis} candidates={placementCandidates} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
     </View>
   );
 }
@@ -2606,11 +2618,70 @@ function ScenarioPreviewList({ preview, settings }: { preview: DesignScenarioPre
   );
 }
 
+function IdealCenterSummary({
+  analysis,
+  onRequestApplyPivotCandidate,
+  settings,
+}: {
+  analysis: IdealCenterPointAnalysis | null;
+  onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
+  settings: AppSettings;
+}): React.JSX.Element {
+  if (!analysis) {
+    return (
+      <View style={styles.placementReviewPanel} testID="ideal-center-summary">
+        <View style={styles.scenarioRowHeader}>
+          <Text style={styles.rowTitle}>Ideal Center Analysis</Text>
+          <Text style={styles.scenarioScore}>Pending</Text>
+        </View>
+        <Text style={styles.mapFeatureMeta}>Run Calculate Preview to analyze field-boundary candidates and rank the best projected-XY pivot center.</Text>
+      </View>
+    );
+  }
+
+  const best = analysis.bestCandidate;
+  return (
+    <View style={styles.placementReviewPanel} testID="ideal-center-summary">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Ideal Center Analysis</Text>
+        <Text style={styles.scenarioScore}>{analysis.status.replaceAll("_", " ")}</Text>
+      </View>
+      <AdvisoryBadgeRow badges={["advisory", "projected XY", "inside boundary", "qualified review required"]} />
+      {best ? (
+        <>
+          <View style={styles.metricGrid}>
+            <MetricTile label="Best score" value={best.score.toFixed(1)} tone="good" />
+            <MetricTile label="Boundary clearance" value={formatDistance(best.boundaryClearanceMeters, settings.unitSystem)} tone={best.boundaryClearanceMeters >= 0 ? "good" : "danger"} />
+            <MetricTile label="Move from current" value={formatDistance(best.distanceFromCurrentMeters, settings.unitSystem)} />
+          </View>
+          <Text style={styles.rowMeta}>
+            XY {best.pivotCenter.x.toFixed(2)}, {best.pivotCenter.y.toFixed(2)} · {formatAreaFromAcres(best.metrics.irrigatedAcres, settings.unitSystem)} irrigated · outside {formatAreaFromAcres(best.metrics.outsideFieldAcres, settings.unitSystem)}
+          </Text>
+          <Text style={styles.scoreBreakdown}>{formatPlacementScoreBreakdown(best)}</Text>
+          <View style={styles.inlineActions}>
+            <SmallActionButton disabled={!best.feasible} label="Apply Ideal Center" onPress={() => onRequestApplyPivotCandidate(best)} testID="ideal-center-apply" />
+          </View>
+        </>
+      ) : (
+        <>
+          {analysis.blockers.map((blocker) => (
+            <Text key={blocker} style={styles.formError}>{blocker}</Text>
+          ))}
+          <Text style={styles.mapFeatureMeta}>{analysis.candidates.length} candidate{analysis.candidates.length === 1 ? "" : "s"} analyzed; none met all automatic feasibility gates.</Text>
+        </>
+      )}
+      <Text style={styles.mapFeatureMeta}>{analysis.warnings[0]}</Text>
+    </View>
+  );
+}
+
 function PlacementReviewPanel({
+  analysis,
   candidates,
   onRequestApplyPivotCandidate,
   settings,
 }: {
+  analysis: IdealCenterPointAnalysis | null;
   candidates: PivotPlacementCandidate[] | null;
   onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
   settings: AppSettings;
@@ -2619,29 +2690,32 @@ function PlacementReviewPanel({
     <View style={styles.placementReviewPanel} testID="placement-review-panel">
       <View style={styles.scenarioRowHeader}>
         <Text style={styles.rowTitle}>Placement Review</Text>
-        <Text style={styles.scenarioScore}>{candidates ? `${candidates.length}` : "0"}</Text>
+        <Text style={styles.scenarioScore}>{analysis ? analysis.status.replaceAll("_", " ") : "0"}</Text>
       </View>
       <AdvisoryBadgeRow badges={["advisory", "source-backed", "qualified review required"]} />
       {!candidates ? (
-        <Text style={styles.mapFeatureMeta}>Candidate review updates after Calculate Preview.</Text>
+        <Text style={styles.mapFeatureMeta}>Automatic center alternatives update after Calculate Preview.</Text>
       ) : null}
       {candidates?.map((candidate, index) => (
         <View key={candidate.id} style={[styles.placementCandidateRow, candidate.feasible ? styles.scenarioRowFeasible : styles.scenarioRowRejected]} testID={`placement-candidate-${index}`}>
           <View style={styles.scenarioRowHeader}>
-            <Text style={styles.rowTitle}>Candidate {index + 1}</Text>
-            <Text style={styles.scenarioScore}>{candidate.score.toFixed(1)}</Text>
+            <Text style={styles.rowTitle}>{index === 0 && candidate.feasible ? "Best candidate" : `Candidate ${index + 1}`}</Text>
+            <Text style={styles.scenarioScore}>{candidate.feasible ? candidate.score.toFixed(1) : "Check"}</Text>
           </View>
           <Text style={styles.rowMeta}>
-            XY {candidate.pivotCenter.x.toFixed(2)}, {candidate.pivotCenter.y.toFixed(2)} · {candidate.sourceSeed.replaceAll("_", " ")}
+            XY {candidate.pivotCenter.x.toFixed(2)}, {candidate.pivotCenter.y.toFixed(2)} · {candidate.insideFieldBoundary ? "inside boundary" : "outside boundary"} · {candidate.sourceSeed.replaceAll("_", " ")}
           </Text>
           <Text style={styles.rowMeta}>
             {formatAreaFromAcres(candidate.metrics.irrigatedAcres, settings.unitSystem)} · outside {formatAreaFromAcres(candidate.metrics.outsideFieldAcres, settings.unitSystem)} · dry corners {formatAreaFromAcres(candidate.dryCornerAcres, settings.unitSystem)}
+          </Text>
+          <Text style={styles.rowMeta}>
+            clearance {formatDistance(candidate.boundaryClearanceMeters, settings.unitSystem)} · move {formatDistance(candidate.distanceFromCurrentMeters, settings.unitSystem)}
           </Text>
           <Text style={styles.scoreBreakdown}>{formatPlacementScoreBreakdown(candidate)}</Text>
           {candidate.disqualificationReasons[0] ? <Text style={styles.formError}>{candidate.disqualificationReasons[0]}</Text> : null}
           {candidate.warnings[0] ? <Text style={styles.mapFeatureMeta}>{candidate.warnings[0]}</Text> : null}
           <View style={styles.inlineActions}>
-            <SmallActionButton label="Apply Pivot Center" onPress={() => onRequestApplyPivotCandidate(candidate)} testID={`placement-candidate-apply-${index}`} />
+            <SmallActionButton disabled={!candidate.insideFieldBoundary} label="Apply Pivot Center" onPress={() => onRequestApplyPivotCandidate(candidate)} testID={`placement-candidate-apply-${index}`} />
           </View>
         </View>
       ))}

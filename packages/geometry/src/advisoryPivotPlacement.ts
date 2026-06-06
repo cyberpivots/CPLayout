@@ -56,11 +56,14 @@ export interface PivotPlacementCandidate {
   score: number;
   scoreBreakdown: PivotPlacementScoreBreakdown;
   feasible: boolean;
+  insideFieldBoundary: boolean;
+  boundaryClearanceMeters: number;
   sourceSeed: PivotCenterSeedKind | "maximum_inscribed_circle";
   dryCornerPolygons: MultiPolygonXY;
   dryCornerAcres: number;
   obstacleBufferMeters: number;
   minimumObstacleClearanceMeters: number | null;
+  distanceFromCurrentMeters: number;
   distanceToWaterSourceMeters: number;
   distanceToPowerSourceMeters: number;
   distanceToAccessMeters: number | null;
@@ -68,6 +71,22 @@ export interface PivotPlacementCandidate {
   disqualificationReasons: string[];
   sourceRefs: AdvisorySourceReference[];
   canonicalGeometryMutation: false;
+}
+
+export type IdealCenterPointAnalysisStatus = "ready" | "no_boundary" | "no_candidates" | "no_feasible_candidate";
+
+export interface IdealCenterPointAnalysis {
+  status: IdealCenterPointAnalysisStatus;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  projectCrs: string;
+  fieldBoundaryVertexCount: number;
+  bestCandidate: PivotPlacementCandidate | null;
+  candidates: PivotPlacementCandidate[];
+  blockers: string[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
 }
 
 export interface AdvisoryCornerArmEvaluationOptions {
@@ -155,6 +174,59 @@ export function buildPivotPlacementCandidates(
   return dedupePlacementCandidates(candidates)
     .sort(comparePlacementCandidates)
     .slice(0, maxCandidates);
+}
+
+export function analyzeIdealPivotCenter(
+  project: PivotProject,
+  options: PivotPlacementCandidateOptions = {},
+): IdealCenterPointAnalysis {
+  const sourceRefs = options.sourceRefs ?? DEFAULT_ADVISORY_PLACEMENT_SOURCE_REFS;
+  const base = {
+    advisoryOnly: true as const,
+    canonicalGeometryMutation: false as const,
+    qualifiedReviewRequired: true as const,
+    projectCrs: project.projectCrs,
+    fieldBoundaryVertexCount: project.fieldBoundary.length,
+    sourceRefs,
+  };
+
+  if (project.fieldBoundary.length < 3) {
+    return {
+      ...base,
+      status: "no_boundary",
+      bestCandidate: null,
+      candidates: [],
+      blockers: ["At least three projected-XY field boundary vertices are required before ideal center-point analysis."],
+      warnings: ["Automatic center-point analysis did not run because the field boundary is incomplete."],
+    };
+  }
+
+  const candidates = buildPivotPlacementCandidates(project, options);
+  const bestCandidate = candidates.find((candidate) => candidate.feasible && candidate.insideFieldBoundary) ?? null;
+  const status: IdealCenterPointAnalysisStatus = bestCandidate
+    ? "ready"
+    : candidates.length === 0
+      ? "no_candidates"
+      : "no_feasible_candidate";
+  const blockers = status === "ready"
+    ? []
+    : status === "no_candidates"
+      ? ["No projected-XY center candidates were generated inside the field boundary."]
+      : ["No generated center candidate satisfied field-boundary, wet-coverage, and obstacle constraints."];
+  const warnings = [
+    "Ideal center-point analysis is advisory and does not mutate canonical projected XY until the operator applies a candidate.",
+    "Qualified review is required before treating the selected pivot center as an engineering design.",
+    ...blockers,
+  ];
+
+  return {
+    ...base,
+    status,
+    bestCandidate,
+    candidates,
+    blockers,
+    warnings,
+  };
 }
 
 export function evaluateAdvisoryCornerArm(
@@ -260,7 +332,10 @@ function candidateFromProject(
   const bounds = boundsForGeometry([originalProject.fieldBoundary]);
   const diagonal = Math.max(1, Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY));
   const obstacleBufferMeters = Math.max(0, options.obstacleBufferMeters ?? maxObstacleBuffer(originalProject));
+  const insideFieldBoundary = pointInPolygon(pivotCenter, originalProject.fieldBoundary);
+  const boundaryClearanceMeters = (insideFieldBoundary ? 1 : -1) * distanceToRing(pivotCenter, originalProject.fieldBoundary);
   const minimumObstacleClearanceMeters = minimumObstacleClearance(pivotCenter, originalProject, obstacleBufferMeters);
+  const distanceFromCurrentMeters = distance(pivotCenter, originalProject.pivotCenter);
   const distanceToWaterSourceMeters = distance(pivotCenter, originalProject.waterSource);
   const distanceToPowerSourceMeters = distance(pivotCenter, originalProject.powerSource);
   const distanceToAccessMeters = distanceToAccess(pivotCenter, originalProject);
@@ -281,6 +356,7 @@ function candidateFromProject(
   const score = totalPlacementScore(scoreBreakdown);
   const disqualificationReasons = [
     ...(alternative?.disqualificationReasons ?? []),
+    ...(!insideFieldBoundary ? ["Candidate pivot center is outside the field boundary."] : []),
     ...(minimumObstacleClearanceMeters !== null && minimumObstacleClearanceMeters < 0 ? [`Candidate is inside obstacle buffer by ${Math.abs(minimumObstacleClearanceMeters).toFixed(2)} meters.`] : []),
   ];
 
@@ -290,12 +366,15 @@ function candidateFromProject(
     metrics: result.metrics,
     score,
     scoreBreakdown,
-    feasible: feasible && disqualificationReasons.length === 0,
+    feasible: feasible && insideFieldBoundary && disqualificationReasons.length === 0,
+    insideFieldBoundary,
+    boundaryClearanceMeters,
     sourceSeed,
     dryCornerPolygons,
     dryCornerAcres,
     obstacleBufferMeters,
     minimumObstacleClearanceMeters,
+    distanceFromCurrentMeters,
     distanceToWaterSourceMeters,
     distanceToPowerSourceMeters,
     distanceToAccessMeters,

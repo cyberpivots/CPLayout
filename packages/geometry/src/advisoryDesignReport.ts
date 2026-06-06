@@ -285,6 +285,9 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
         `Hard/blocking items: ${input.obstacleInteractionReview.summary.hardBlockingCount}`,
         `No-spray exclusions: ${input.obstacleInteractionReview.summary.noSprayExclusionCount}`,
         `Span/tower/utility crossing reviews: ${input.obstacleInteractionReview.summary.spanClearanceReviewCount + input.obstacleInteractionReview.summary.towerTrackReviewCount + input.obstacleInteractionReview.summary.utilityPathReviewCount}`,
+        `Profiled crossing items: ${input.obstacleInteractionReview.summary.profiledItemCount}`,
+        `Profile-blocked items: ${input.obstacleInteractionReview.summary.profileBlockedCount}`,
+        `Profile clearance shortfalls: ${input.obstacleInteractionReview.summary.profileClearanceShortfallCount}`,
         firstObstacle
           ? `First item: ${firstObstacle.name}, ${readable(firstObstacle.category)}, ${firstObstacle.warnings[0] ?? "qualified review required"}`
           : "First item: no obstacle or utility evidence supplied.",

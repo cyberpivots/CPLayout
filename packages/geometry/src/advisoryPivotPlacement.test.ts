@@ -252,6 +252,46 @@ assert.ok(obstacleInteractionReview.items.find((item) => item.id === "tower-trac
 assert.ok(obstacleInteractionReview.warnings.some((warning) => warning.includes("does not mutate canonical projected XY")));
 assert.equal(JSON.stringify(obstacleInteractionProject), obstacleInteractionBefore);
 
+const profiledObstacleInteractionReview = analyzeAdvisoryObstacleInteractions(obstacleInteractionProject, {
+  obstacleCrossingProfiles: [{
+    obstacleId: "well-under-span",
+    crossingAllowed: true,
+    minimumClearanceMeters: 5,
+    reason: "Operator says the well is low enough for span-over review when tower-track clearance is adequate.",
+    advisoryOnly: true,
+  }, {
+    obstacleId: "tower-track-well",
+    crossingAllowed: true,
+    minimumClearanceMeters: 5,
+    reason: "Operator wants this well reviewed as potentially passable only with tower clearance.",
+    advisoryOnly: true,
+  }, {
+    obstacleId: "overhead-power",
+    crossingAllowed: false,
+    reason: "Overhead power crossing is treated as blocking until utility review says otherwise.",
+    advisoryOnly: true,
+  }, {
+    obstacleId: "tower-power-pole",
+    crossingAllowed: true,
+    minimumClearanceMeters: 5,
+    reason: "Operator supplied a profile, but poles remain hard-blocking evidence.",
+    advisoryOnly: true,
+  }],
+});
+assert.equal(profiledObstacleInteractionReview.summary.profiledItemCount, 4);
+assert.equal(profiledObstacleInteractionReview.summary.profileAllowedCount, 3);
+assert.equal(profiledObstacleInteractionReview.summary.profileBlockedCount, 1);
+assert.equal(profiledObstacleInteractionReview.summary.profileClearanceShortfallCount, 1);
+assert.equal(profiledObstacleInteractionReview.summary.hardBlockingCount, 3);
+assert.equal(profiledObstacleInteractionReview.items.find((item) => item.id === "well-under-span")?.crossingProfileReview?.status, "allowed_profile_clearance_met");
+assert.equal(profiledObstacleInteractionReview.items.find((item) => item.id === "tower-track-well")?.crossingProfileReview?.status, "allowed_profile_clearance_shortfall");
+assert.equal(profiledObstacleInteractionReview.items.find((item) => item.id === "overhead-power")?.category, "hard_blocking");
+assert.equal(profiledObstacleInteractionReview.items.find((item) => item.id === "overhead-power")?.crossingProfileReview?.status, "blocked_profile");
+assert.equal(profiledObstacleInteractionReview.items.find((item) => item.id === "tower-power-pole")?.crossingProfileReview?.status, "hard_blocking_profile_not_applied");
+assert.ok(profiledObstacleInteractionReview.items.find((item) => item.id === "tower-track-well")?.warnings.some((warning) => warning.includes("not met by modeled horizontal clearance")));
+assert.ok(profiledObstacleInteractionReview.warnings.some((warning) => warning.includes("do not change obstacle hardConflict/noSpray settings")));
+assert.equal(JSON.stringify(obstacleInteractionProject), obstacleInteractionBefore);
+
 const emptyObstacleInteractionReview = analyzeAdvisoryObstacleInteractions(readyProject);
 assert.equal(emptyObstacleInteractionReview.status, "no_evidence");
 assert.ok(emptyObstacleInteractionReview.blockers.some((blocker) => blocker.includes("obstacle polygons")));

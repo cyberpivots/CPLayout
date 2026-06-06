@@ -119,4 +119,5 @@ assert.match(report.text, /Review-zone audit: \d+ current, \d+ missing, \d+ stal
 assert.match(report.text, /Cost review is local and advisory/);
 assert.match(report.text, /not vendor quotes|vendor quotes|quote equipment/);
 assert.match(report.text, /Crossing\/passability labels are planning prompts only/);
+assert.match(report.text, /Profiled crossing items: 0/);
 assert.deepEqual(sampleProject.pivotCenter, initialPivotCenter);

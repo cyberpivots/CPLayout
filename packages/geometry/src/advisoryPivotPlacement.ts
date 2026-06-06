@@ -88,11 +88,35 @@ export interface AdvisoryCostAssessment {
 
 export interface AdvisoryObstacleCrossingProfile {
   obstacleId: string;
+  evidenceId?: string;
   crossingAllowed: boolean;
   minimumClearanceMeters?: number;
   reason: string;
   sourceRefs?: AdvisorySourceReference[];
   advisoryOnly: true;
+}
+
+export type AdvisoryObstacleCrossingProfileStatus =
+  | "allowed_profile"
+  | "allowed_profile_clearance_met"
+  | "allowed_profile_clearance_shortfall"
+  | "allowed_profile_clearance_unverified"
+  | "blocked_profile"
+  | "hard_blocking_profile_not_applied";
+
+export interface AdvisoryObstacleCrossingProfileReview {
+  profileId: string;
+  crossingAllowed: boolean;
+  status: AdvisoryObstacleCrossingProfileStatus;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  minimumClearanceMeters: number | null;
+  observedTowerTrackClearanceMeters: number | null;
+  clearanceSatisfied: boolean | null;
+  reason: string;
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
 }
 
 export interface PivotPlacementCandidate {
@@ -437,6 +461,7 @@ export type AdvisoryObstacleInteractionCategory =
 
 export interface AdvisoryObstacleInteractionOptions {
   sourceRefs?: AdvisorySourceReference[];
+  obstacleCrossingProfiles?: AdvisoryObstacleCrossingProfile[];
 }
 
 export interface AdvisoryObstacleInteractionItem {
@@ -455,6 +480,7 @@ export interface AdvisoryObstacleInteractionItem {
   nearestTowerIndex: number | null;
   nearestTowerTrackDistanceMeters: number | null;
   spanIndex: number | null;
+  crossingProfileReview: AdvisoryObstacleCrossingProfileReview | null;
   warnings: string[];
   sourceRefs: AdvisorySourceReference[];
 }
@@ -466,6 +492,10 @@ export interface AdvisoryObstacleInteractionSummary {
   towerTrackReviewCount: number;
   utilityPathReviewCount: number;
   outsideMachineReachCount: number;
+  profiledItemCount: number;
+  profileAllowedCount: number;
+  profileBlockedCount: number;
+  profileClearanceShortfallCount: number;
 }
 
 export interface AdvisoryObstacleInteractionReview {
@@ -885,10 +915,11 @@ export function analyzeAdvisoryObstacleInteractions(
   options: AdvisoryObstacleInteractionOptions = {},
 ): AdvisoryObstacleInteractionReview {
   const sourceRefs = options.sourceRefs ?? DEFAULT_OBSTACLE_INTERACTION_SOURCE_REFS;
-  const obstacleItems = project.obstacles.map((obstacle) => obstacleInteractionFromObstacle(project, obstacle, sourceRefs));
+  const profiles = options.obstacleCrossingProfiles ?? [];
+  const obstacleItems = project.obstacles.map((obstacle) => obstacleInteractionFromObstacle(project, obstacle, sourceRefs, profiles));
   const utilityItems = (project.mapFeatures ?? [])
     .filter(isObstacleInteractionMapFeature)
-    .map((feature) => obstacleInteractionFromMapFeature(project, feature, sourceRefs));
+    .map((feature) => obstacleInteractionFromMapFeature(project, feature, sourceRefs, profiles));
   const items = [...obstacleItems, ...utilityItems].sort(compareObstacleInteractionItems);
   const summary = summarizeObstacleInteractions(items);
   const blockers = items.length === 0
@@ -909,6 +940,7 @@ export function analyzeAdvisoryObstacleInteractions(
     warnings: [
       "Obstacle interaction review is advisory and does not mutate canonical projected XY, obstacle settings, utility features, machine settings, or project storage.",
       "Span-clearance and utility-path categories are planning prompts only; qualified field and vendor review is required before treating any object as crossable.",
+      "Crossing profiles are operator/source-backed review labels only; they do not change obstacle hardConflict/noSpray settings, layout metrics, or project geometry.",
       "Hard-blocking and no-spray categories still rely on the project obstacle hardConflict/noSpray settings for modeled layout metrics.",
       ...blockers,
     ],
@@ -2304,17 +2336,30 @@ function obstacleInteractionFromObstacle(
   project: PivotProject,
   obstacle: ObstacleZone,
   sourceRefs: AdvisorySourceReference[],
+  profiles: AdvisoryObstacleCrossingProfile[],
 ): AdvisoryObstacleInteractionItem {
   const representativePoint = centroid(obstacle.polygon);
   const towerReview = towerReviewForPoint(project, representativePoint);
   const envelope = machineEnvelopeFor(project, project.pivotCenter);
   const inMachineReach = multiPolygonAreaSquareMeters(intersectMultiPolygons(envelope, [[obstacle.polygon]])) > 0.000001;
-  const category = obstacleInteractionCategoryForObstacle(obstacle, inMachineReach);
+  const baseCategory = obstacleInteractionCategoryForObstacle(obstacle, inMachineReach);
+  const crossingProfileReview = crossingProfileReviewForItem(
+    obstacle.id,
+    profiles,
+    baseCategory,
+    inMachineReach,
+    towerReview,
+    sourceRefs,
+  );
+  const category = obstacleInteractionCategoryWithProfile(baseCategory, crossingProfileReview, inMachineReach);
   const crossingReviewRequired = category !== "outside_machine_reach" && (
     category === "span_clearance_review"
     || category === "tower_track_review"
     || category === "utility_path_review"
   );
+  const itemSourceRefs = crossingProfileReview
+    ? mergeSourceRefs(sourceRefs, crossingProfileReview.sourceRefs)
+    : sourceRefs;
 
   return {
     id: obstacle.id,
@@ -2331,8 +2376,12 @@ function obstacleInteractionFromObstacle(
     nearestTowerIndex: towerReview.nearestTowerIndex,
     nearestTowerTrackDistanceMeters: towerReview.nearestTowerTrackDistanceMeters,
     spanIndex: towerReview.spanIndex,
-    warnings: obstacleInteractionWarnings(category, obstacle.name, obstacle.kind),
-    sourceRefs,
+    crossingProfileReview,
+    warnings: [
+      ...obstacleInteractionWarnings(category, obstacle.name, obstacle.kind),
+      ...(crossingProfileReview?.warnings ?? []),
+    ],
+    sourceRefs: itemSourceRefs,
   };
 }
 
@@ -2340,12 +2389,25 @@ function obstacleInteractionFromMapFeature(
   project: PivotProject,
   feature: ProjectMapFeature,
   sourceRefs: AdvisorySourceReference[],
+  profiles: AdvisoryObstacleCrossingProfile[],
 ): AdvisoryObstacleInteractionItem {
   const representativePoint = representativePointForMapFeature(feature);
   const towerReview = representativePoint ? towerReviewForPoint(project, representativePoint) : null;
   const inMachineReach = mapFeatureTouchesMachineReach(project, feature);
-  const category = obstacleInteractionCategoryForMapFeature(feature, inMachineReach, towerReview);
+  const baseCategory = obstacleInteractionCategoryForMapFeature(feature, inMachineReach, towerReview);
+  const crossingProfileReview = crossingProfileReviewForItem(
+    feature.id,
+    profiles,
+    baseCategory,
+    inMachineReach,
+    towerReview,
+    sourceRefs,
+  );
+  const category = obstacleInteractionCategoryWithProfile(baseCategory, crossingProfileReview, inMachineReach);
   const crossingReviewRequired = category !== "outside_machine_reach" && category !== "hard_blocking";
+  const itemSourceRefs = crossingProfileReview
+    ? mergeSourceRefs(sourceRefs, crossingProfileReview.sourceRefs)
+    : sourceRefs;
 
   return {
     id: feature.id,
@@ -2362,9 +2424,129 @@ function obstacleInteractionFromMapFeature(
     nearestTowerIndex: towerReview?.nearestTowerIndex ?? null,
     nearestTowerTrackDistanceMeters: towerReview?.nearestTowerTrackDistanceMeters ?? null,
     spanIndex: towerReview?.spanIndex ?? null,
-    warnings: obstacleInteractionWarnings(category, feature.name, feature.kind),
+    crossingProfileReview,
+    warnings: [
+      ...obstacleInteractionWarnings(category, feature.name, feature.kind),
+      ...(crossingProfileReview?.warnings ?? []),
+    ],
+    sourceRefs: itemSourceRefs,
+  };
+}
+
+function crossingProfileReviewForItem(
+  itemId: string,
+  profiles: AdvisoryObstacleCrossingProfile[],
+  baseCategory: AdvisoryObstacleInteractionCategory,
+  inMachineReach: boolean,
+  towerReview: TowerReview | null,
+  defaultSourceRefs: AdvisorySourceReference[],
+): AdvisoryObstacleCrossingProfileReview | null {
+  const profile = profiles.find((candidate) => (
+    candidate.advisoryOnly === true
+    && (candidate.obstacleId === itemId || candidate.evidenceId === itemId)
+  ));
+  if (!profile) return null;
+
+  const profileId = profile.evidenceId ?? profile.obstacleId;
+  const sourceRefs = profile.sourceRefs ?? defaultSourceRefs;
+  const minimumClearanceMeters = profile.minimumClearanceMeters === undefined
+    ? null
+    : Number.isFinite(profile.minimumClearanceMeters)
+      ? Math.max(0, profile.minimumClearanceMeters)
+      : null;
+  const observedTowerTrackClearanceMeters = towerReview?.nearestTowerTrackDistanceMeters ?? null;
+  const isHardBlocking = baseCategory === "hard_blocking";
+  const clearanceSatisfied = profile.crossingAllowed && minimumClearanceMeters !== null && observedTowerTrackClearanceMeters !== null
+    ? observedTowerTrackClearanceMeters >= minimumClearanceMeters
+    : null;
+  const status = crossingProfileStatus({
+    crossingAllowed: profile.crossingAllowed,
+    inMachineReach,
+    isHardBlocking,
+    minimumClearanceMeters,
+    observedTowerTrackClearanceMeters,
+    clearanceSatisfied,
+  });
+  const warnings = crossingProfileWarnings({
+    profileId,
+    status,
+    crossingAllowed: profile.crossingAllowed,
+    minimumClearanceMeters,
+    observedTowerTrackClearanceMeters,
+    clearanceSatisfied,
+    reason: profile.reason,
+  });
+
+  return {
+    profileId,
+    crossingAllowed: profile.crossingAllowed,
+    status,
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    minimumClearanceMeters: minimumClearanceMeters === null ? null : round(minimumClearanceMeters),
+    observedTowerTrackClearanceMeters: observedTowerTrackClearanceMeters === null ? null : round(observedTowerTrackClearanceMeters),
+    clearanceSatisfied,
+    reason: profile.reason,
+    warnings,
     sourceRefs,
   };
+}
+
+function crossingProfileStatus(input: {
+  crossingAllowed: boolean;
+  inMachineReach: boolean;
+  isHardBlocking: boolean;
+  minimumClearanceMeters: number | null;
+  observedTowerTrackClearanceMeters: number | null;
+  clearanceSatisfied: boolean | null;
+}): AdvisoryObstacleCrossingProfileStatus {
+  if (!input.crossingAllowed) return "blocked_profile";
+  if (input.isHardBlocking) return "hard_blocking_profile_not_applied";
+  if (!input.inMachineReach || input.minimumClearanceMeters === null) return "allowed_profile";
+  if (input.observedTowerTrackClearanceMeters === null) return "allowed_profile_clearance_unverified";
+  return input.clearanceSatisfied ? "allowed_profile_clearance_met" : "allowed_profile_clearance_shortfall";
+}
+
+function crossingProfileWarnings(input: {
+  profileId: string;
+  status: AdvisoryObstacleCrossingProfileStatus;
+  crossingAllowed: boolean;
+  minimumClearanceMeters: number | null;
+  observedTowerTrackClearanceMeters: number | null;
+  clearanceSatisfied: boolean | null;
+  reason: string;
+}): string[] {
+  const base = [
+    `Crossing profile ${input.profileId}: ${input.reason}`,
+    "Crossing profile is advisory only; it does not change obstacle settings, machine settings, layout metrics, storage, or canonical projected XY.",
+  ];
+  if (input.status === "blocked_profile") {
+    return [...base, "Operator/source profile marks this item as not crossable for advisory review."];
+  }
+  if (input.status === "hard_blocking_profile_not_applied") {
+    return [...base, "Allowed crossing profile was not applied because the item is still categorized as hard-blocking."];
+  }
+  if (input.status === "allowed_profile_clearance_met") {
+    return [...base, `Profile minimum tower-track clearance ${input.minimumClearanceMeters?.toFixed(2)} m is met by modeled horizontal clearance ${input.observedTowerTrackClearanceMeters?.toFixed(2)} m.`];
+  }
+  if (input.status === "allowed_profile_clearance_shortfall") {
+    return [...base, `Profile minimum tower-track clearance ${input.minimumClearanceMeters?.toFixed(2)} m is not met by modeled horizontal clearance ${input.observedTowerTrackClearanceMeters?.toFixed(2)} m.`];
+  }
+  if (input.status === "allowed_profile_clearance_unverified") {
+    return [...base, "Profile includes a minimum clearance, but modeled tower-track clearance could not be computed."];
+  }
+  return [...base, "Profile permits crossing review, but qualified field/vendor review remains required."];
+}
+
+function obstacleInteractionCategoryWithProfile(
+  baseCategory: AdvisoryObstacleInteractionCategory,
+  crossingProfileReview: AdvisoryObstacleCrossingProfileReview | null,
+  inMachineReach: boolean,
+): AdvisoryObstacleInteractionCategory {
+  if (!inMachineReach || !crossingProfileReview) return baseCategory;
+  if (crossingProfileReview.status === "blocked_profile") return "hard_blocking";
+  return baseCategory;
 }
 
 function obstacleInteractionCategoryForObstacle(
@@ -2432,6 +2614,9 @@ function obstacleInteractionWarnings(
 }
 
 function summarizeObstacleInteractions(items: AdvisoryObstacleInteractionItem[]): AdvisoryObstacleInteractionSummary {
+  const profileReviews = items
+    .map((item) => item.crossingProfileReview)
+    .filter((review): review is AdvisoryObstacleCrossingProfileReview => Boolean(review));
   return {
     hardBlockingCount: items.filter((item) => item.category === "hard_blocking").length,
     noSprayExclusionCount: items.filter((item) => item.category === "no_spray_exclusion").length,
@@ -2439,6 +2624,10 @@ function summarizeObstacleInteractions(items: AdvisoryObstacleInteractionItem[])
     towerTrackReviewCount: items.filter((item) => item.category === "tower_track_review").length,
     utilityPathReviewCount: items.filter((item) => item.category === "utility_path_review").length,
     outsideMachineReachCount: items.filter((item) => item.category === "outside_machine_reach").length,
+    profiledItemCount: profileReviews.length,
+    profileAllowedCount: profileReviews.filter((review) => review.crossingAllowed).length,
+    profileBlockedCount: profileReviews.filter((review) => !review.crossingAllowed).length,
+    profileClearanceShortfallCount: profileReviews.filter((review) => review.status === "allowed_profile_clearance_shortfall").length,
   };
 }
 

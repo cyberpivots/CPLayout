@@ -186,15 +186,22 @@ export interface AdvisoryMachineEnvelopeConflict {
   leftZoneName: string;
   rightZoneName: string;
   status: "machine_envelope_overlap" | "separation_buffer_warning";
+  severity: "critical_overlap" | "buffer_intrusion";
   advisoryOnly: true;
   canonicalGeometryMutation: false;
   qualifiedReviewRequired: true;
+  operatorCollisionReviewRequired: true;
   centerDistanceMeters: number;
   leftMachineRadiusMeters: number;
   rightMachineRadiusMeters: number;
   collisionBufferMeters: number;
   minimumRequiredSeparationMeters: number;
   separationDeficitMeters: number;
+  separationReviewBufferMeters: number;
+  collisionZone: MultiPolygonXY;
+  collisionZoneAcres: number;
+  separationReviewZone: MultiPolygonXY;
+  separationReviewZoneAcres: number;
   envelopeOverlapAcres: number;
   warnings: string[];
 }
@@ -457,7 +464,7 @@ export function analyzeAdvisoryMultiMachineLayout(
   const scenarioFeatures = machineZones.length > 0 ? machineZones : planningBoundaries;
   const scenarios = scenarioFeatures.map((feature) => buildAdvisoryMachineScenario(project, feature, options, sourceRefs));
   const readyScenarios = scenarios.filter((scenario) => scenario.status === "ready" && scenario.bestCandidate);
-  const conflicts = buildMachineEnvelopeConflicts(readyScenarios, options);
+  const conflicts = buildMachineEnvelopeConflicts(project, readyScenarios, options);
   const compilation = buildBoundaryCompilation(project, planningBoundaries, machineZones, scenarios);
   const blockers = scenarioFeatures.length === 0
     ? ["Add at least one advisory machine zone or planning boundary before multi-machine layout review."]
@@ -962,13 +969,14 @@ function buildAdvisoryMachineScenario(
   };
 }
 
-function machineEnvelopeFor(project: PivotProject, pivotCenter: XY): MultiPolygonXY {
-  const radius = machineRadiusMeters(project.machine);
+function machineEnvelopeFor(project: PivotProject, pivotCenter: XY, radiusMeters = machineRadiusMeters(project.machine)): MultiPolygonXY {
+  const radius = radiusMeters;
   if (radius <= 0) return [];
   return [[createSectorPolygon(pivotCenter, radius, project.machine.sweep)]];
 }
 
 function buildMachineEnvelopeConflicts(
+  project: PivotProject,
   scenarios: AdvisoryMachineScenario[],
   options: AdvisoryMultiMachineReviewOptions,
 ): AdvisoryMachineEnvelopeConflict[] {
@@ -993,13 +1001,23 @@ function buildMachineEnvelopeConflicts(
       const separationDeficitMeters = minimumRequiredSeparationMeters - centerDistanceMeters;
       if (separationDeficitMeters <= 0) continue;
 
-      const envelopeOverlapAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(intersectMultiPolygons(
+      const collisionZone = intersectMultiPolygons(
         left.machineEnvelope,
         right.machineEnvelope,
-      )));
-      const status = centerDistanceMeters < envelopeSeparation || envelopeOverlapAcres > 0.001
+      );
+      const envelopeOverlapAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(collisionZone));
+      const separationReviewBufferMeters = Math.max(0, (minimumRequiredSeparationMeters - envelopeSeparation) / 2);
+      const separationReviewZone = separationReviewBufferMeters > 0
+        ? intersectMultiPolygons(
+          machineEnvelopeFor(project, leftCenter, left.machineRadiusMeters + separationReviewBufferMeters),
+          machineEnvelopeFor(project, rightCenter, right.machineRadiusMeters + separationReviewBufferMeters),
+        )
+        : collisionZone;
+      const separationReviewZoneAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(separationReviewZone));
+      const status = envelopeOverlapAcres > 0.001
         ? "machine_envelope_overlap"
         : "separation_buffer_warning";
+      const severity = status === "machine_envelope_overlap" ? "critical_overlap" : "buffer_intrusion";
 
       conflicts.push({
         id: `conflict-${left.id}-${right.id}`,
@@ -1008,18 +1026,26 @@ function buildMachineEnvelopeConflicts(
         leftZoneName: left.zoneName,
         rightZoneName: right.zoneName,
         status,
+        severity,
         advisoryOnly: true,
         canonicalGeometryMutation: false,
         qualifiedReviewRequired: true,
+        operatorCollisionReviewRequired: true,
         centerDistanceMeters: round(centerDistanceMeters),
         leftMachineRadiusMeters: round(left.machineRadiusMeters),
         rightMachineRadiusMeters: round(right.machineRadiusMeters),
         collisionBufferMeters: round(collisionBufferMeters),
         minimumRequiredSeparationMeters: round(minimumRequiredSeparationMeters),
         separationDeficitMeters: round(Math.max(0, separationDeficitMeters)),
+        separationReviewBufferMeters: round(separationReviewBufferMeters),
+        collisionZone,
+        collisionZoneAcres: round(envelopeOverlapAcres),
+        separationReviewZone,
+        separationReviewZoneAcres: round(separationReviewZoneAcres),
         envelopeOverlapAcres: round(envelopeOverlapAcres),
         warnings: [
-          "Conflict is a conservative envelope warning only; it does not model real tower timing, controls, or field operations.",
+          "Conflict includes projected-XY collision/review zone evidence only; it does not mutate saved project geometry.",
+          "Conflict does not model real tower timing, controls, interlocks, or field operations.",
           "Qualified review is required before using this warning for machine placement decisions.",
         ],
       });

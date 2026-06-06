@@ -208,8 +208,149 @@ assert.ok(multiMachineReview.scenarios.every((scenario) => scenario.status === "
 assert.ok(multiMachineReview.scenarios.every((scenario) => scenario.canonicalGeometryMutation === false));
 assert.ok(multiMachineReview.conflicts.some((conflict) => conflict.status === "machine_envelope_overlap"));
 assert.ok(multiMachineReview.conflicts.every((conflict) => conflict.separationDeficitMeters > 0));
+const overlapConflict = multiMachineReview.conflicts.find((conflict) => conflict.status === "machine_envelope_overlap");
+assert.equal(overlapConflict?.severity, "critical_overlap");
+assert.equal(overlapConflict?.operatorCollisionReviewRequired, true);
+assert.ok((overlapConflict?.collisionZone.length ?? 0) > 0);
+assert.ok((overlapConflict?.collisionZoneAcres ?? 0) > 0);
+assert.ok((overlapConflict?.separationReviewZoneAcres ?? 0) >= (overlapConflict?.collisionZoneAcres ?? 0));
+assert.ok(overlapConflict?.warnings.some((warning) => warning.includes("projected-XY collision/review zone evidence")));
 assert.ok(multiMachineReview.warnings.some((warning) => warning.includes("does not create pivots")));
 assert.equal(JSON.stringify(multiZoneProject), multiZoneBefore);
+
+const bufferWestMachineZone: ProjectMapFeature = {
+  id: "zone-buffer-west",
+  name: "Buffer west machine zone",
+  kind: "machine_zone",
+  geometry: {
+    type: "Polygon",
+    vertices: [
+      { x: 0, y: 0 },
+      { x: 140, y: 0 },
+      { x: 140, y: 140 },
+      { x: 0, y: 140 },
+    ],
+  },
+  confidence: "user_estimated",
+  properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+};
+const bufferEastMachineZone: ProjectMapFeature = {
+  id: "zone-buffer-east",
+  name: "Buffer east machine zone",
+  kind: "machine_zone",
+  geometry: {
+    type: "Polygon",
+    vertices: [
+      { x: 210, y: 0 },
+      { x: 350, y: 0 },
+      { x: 350, y: 140 },
+      { x: 210, y: 140 },
+    ],
+  },
+  confidence: "user_estimated",
+  properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+};
+const bufferOnlyProject = makeProject({
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 350, y: 0 },
+    { x: 350, y: 140 },
+    { x: 0, y: 140 },
+  ],
+  pivotCenter: { x: 70, y: 70 },
+  waterSource: { x: 20, y: 70 },
+  powerSource: { x: 330, y: 70 },
+  obstacles: [],
+  mapFeatures: [bufferWestMachineZone, bufferEastMachineZone],
+});
+const bufferOnlyBefore = JSON.stringify(bufferOnlyProject);
+const bufferOnlyReview = analyzeAdvisoryMultiMachineLayout(bufferOnlyProject, {
+  gridDivisions: 6,
+  maxCandidates: 3,
+  collisionBufferMeters: 0,
+  minimumMachineSeparationMeters: 280,
+});
+const bufferConflict = bufferOnlyReview.conflicts.find((conflict) => conflict.status === "separation_buffer_warning");
+assert.equal(bufferOnlyReview.status, "ready");
+assert.ok(bufferConflict);
+assert.equal(bufferConflict?.severity, "buffer_intrusion");
+assert.equal(bufferConflict?.collisionZoneAcres, 0);
+assert.equal(bufferConflict?.collisionZone.length, 0);
+assert.ok((bufferConflict?.separationReviewBufferMeters ?? 0) > 0);
+assert.ok((bufferConflict?.separationReviewZone.length ?? 0) > 0);
+assert.ok((bufferConflict?.separationReviewZoneAcres ?? 0) > 0);
+assert.equal(JSON.stringify(bufferOnlyProject), bufferOnlyBefore);
+
+const partialSweepNoOverlapReview = analyzeAdvisoryMultiMachineLayout({
+  ...bufferOnlyProject,
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 260, y: 0 },
+    { x: 260, y: 140 },
+    { x: 0, y: 140 },
+  ],
+  mapFeatures: [bufferWestMachineZone, {
+    ...bufferEastMachineZone,
+    geometry: {
+      type: "Polygon",
+      vertices: [
+        { x: 100, y: 0 },
+        { x: 180, y: 0 },
+        { x: 180, y: 140 },
+        { x: 100, y: 140 },
+      ],
+    },
+  }],
+  machine: {
+    ...bufferOnlyProject.machine,
+    spanLengthsMeters: [60],
+    sweep: {
+      mode: "partial_circle",
+      startAngleDegrees: 80,
+      stopAngleDegrees: 100,
+      direction: "counterclockwise",
+    },
+  },
+}, {
+  gridDivisions: 6,
+  maxCandidates: 3,
+  collisionBufferMeters: 0,
+});
+const partialSweepConflict = partialSweepNoOverlapReview.conflicts[0];
+assert.equal(partialSweepNoOverlapReview.status, "ready");
+assert.ok(partialSweepConflict);
+assert.equal(partialSweepConflict.status, "separation_buffer_warning");
+assert.equal(partialSweepConflict.severity, "buffer_intrusion");
+assert.equal(partialSweepConflict.collisionZoneAcres, 0);
+assert.equal(partialSweepConflict.collisionZone.length, 0);
+
+const separatedReview = analyzeAdvisoryMultiMachineLayout({
+  ...bufferOnlyProject,
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 430, y: 0 },
+    { x: 430, y: 140 },
+    { x: 0, y: 140 },
+  ],
+  mapFeatures: [bufferWestMachineZone, {
+    ...bufferEastMachineZone,
+    geometry: {
+      type: "Polygon",
+      vertices: [
+        { x: 290, y: 0 },
+        { x: 430, y: 0 },
+        { x: 430, y: 140 },
+        { x: 290, y: 140 },
+      ],
+    },
+  }],
+}, {
+  gridDivisions: 6,
+  maxCandidates: 3,
+  collisionBufferMeters: 0,
+});
+assert.equal(separatedReview.status, "ready");
+assert.equal(separatedReview.conflicts.length, 0);
 
 const missingZoneReview = analyzeAdvisoryMultiMachineLayout(readyProject, { gridDivisions: 5, maxCandidates: 2 });
 assert.equal(missingZoneReview.status, "missing_zones");

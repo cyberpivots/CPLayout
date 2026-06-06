@@ -2515,6 +2515,9 @@ function DesignAwarenessPanel({
     includeUnsupportedConceptPlaceholders: false,
   }), [project]);
   const firstConflict = multiMachineReview.conflicts[0] ?? null;
+  const firstConflictReviewAcres = firstConflict
+    ? Math.max(firstConflict.collisionZoneAcres, firstConflict.separationReviewZoneAcres)
+    : 0;
   const readyStrategyCount = strategyComparison.strategies.filter((strategy) => strategy.status === "ready").length;
   const strategyCostStatus = costStatusShortLabel(strategyComparison.costInputStatus);
   return (
@@ -2540,7 +2543,7 @@ function DesignAwarenessPanel({
       </Text>
       {firstConflict ? (
         <Text style={styles.formError}>
-          {firstConflict.leftZoneName} / {firstConflict.rightZoneName}: {formatDistance(firstConflict.separationDeficitMeters, settings.unitSystem)} envelope separation deficit.
+          {firstConflict.leftZoneName} / {firstConflict.rightZoneName}: {firstConflict.severity.replaceAll("_", " ")} · {formatAreaFromAcres(firstConflictReviewAcres, settings.unitSystem)} review zone · {formatDistance(firstConflict.separationDeficitMeters, settings.unitSystem)} separation deficit.
         </Text>
       ) : null}
       {strategyComparison.bestStrategy ? (

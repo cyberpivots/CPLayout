@@ -180,6 +180,9 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     : "blocked";
   const reviewZoneAudit = input.reviewZoneAudit ?? auditGeneratedFieldPivotReviewZones(input.project, input.fieldPivotPlan);
   const bestStrategy = input.strategyComparison.bestStrategy;
+  const generatedRadiusStrategies = input.strategyComparison.strategies
+    .filter((strategy) => strategy.strategyKind === "full_circle_radius")
+    .sort((left, right) => left.machineRadiusMeters - right.machineRadiusMeters || left.label.localeCompare(right.label));
   const firstConflict = input.multiMachineReview.conflicts[0] ?? null;
   const firstObstacle = input.obstacleInteractionReview.items[0] ?? null;
   const sourceRefs = dedupeSourceRefs([
@@ -272,6 +275,10 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
           : "Best advisory strategy: none ready.",
         ...input.strategyComparison.strategies.slice(0, 5).map((strategy) => (
           `${strategy.label}: ${readable(strategy.status)}, ${formatAcres(strategy.irrigatedAcres)}, ${formatPercent(strategy.coveragePercent)} coverage, ${strategy.costAssessment ? readable(strategy.costAssessment.status) : "cost pending"}`
+        )),
+        `Generated radius alternatives: ${generatedRadiusStrategies.length}`,
+        ...generatedRadiusStrategies.map((strategy) => (
+          `${strategy.label}: radius ${formatMeters(strategy.machineRadiusMeters)}, ${readable(strategy.status)}, ${formatAcres(strategy.irrigatedAcres)}, ${formatStrategyCostLabel(strategy)}`
         )),
         "Cost review is local and advisory; CPLayout does not infer prices, quote equipment, or recommend purchases automatically.",
       ],
@@ -411,6 +418,15 @@ function formatAcres(value: number): string {
 
 function formatPercent(value: number): string {
   return `${formatNumber(value)}%`;
+}
+
+function formatStrategyCostLabel(strategy: { costAssessment: { status: string; currencyCode: string; costPerIrrigatedAcre: number | null } | null }): string {
+  const assessment = strategy.costAssessment;
+  if (!assessment) return "cost pending";
+  if (assessment.status === "complete" && assessment.costPerIrrigatedAcre !== null) {
+    return `${assessment.currencyCode} ${formatNumber(assessment.costPerIrrigatedAcre)}/ac`;
+  }
+  return readable(assessment.status);
 }
 
 function formatNumber(value: number): string {

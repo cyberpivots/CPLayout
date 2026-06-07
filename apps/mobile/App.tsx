@@ -2309,6 +2309,10 @@ function CalculateSheet({
           settings={settings}
           strategies={strategyComparison.strategies}
         />
+        <AdvisoryRadiusSensitivityTable
+          settings={settings}
+          strategies={strategyComparison.strategies}
+        />
         {benderStrategy ? (
           <Text style={styles.mapFeatureMeta} testID="advisory-bender-strategy-summary">
             {formatBenderStrategySummary(benderStrategy, settings)}
@@ -2433,6 +2437,68 @@ function advisoryCostComparisonRows(
     { key: "bender-second-pivot", label: "Bender", strategy: readyOrFirst("bender_second_pivot") },
   ];
   return rows.filter((row): row is { key: string; label: string; strategy: AdvisoryMachineStrategyResult } => Boolean(row.strategy));
+}
+
+function AdvisoryRadiusSensitivityTable({
+  settings,
+  strategies,
+}: {
+  settings: AppSettings;
+  strategies: AdvisoryMachineStrategyResult[];
+}): React.JSX.Element {
+  const rows = advisoryRadiusSensitivityRows(strategies);
+
+  if (rows.length === 0) {
+    return (
+      <Text style={styles.mapFeatureMeta} testID="advisory-radius-sensitivity-table">
+        Radius alternatives need a current machine radius before generated full-circle rows can be shown.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.radiusSensitivityTable} testID="advisory-radius-sensitivity-table">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Radius Alternatives</Text>
+        <Text style={styles.scenarioScore}>{rows.filter((row) => row.strategy.strategyKind === "full_circle_radius").length} generated</Text>
+      </View>
+      <Text style={[styles.mapFeatureMeta, styles.radiusSensitivityMeta]}>
+        Radius alternatives compare generated full-circle planning templates only. They do not change machine settings, create a quote, or mutate canonical projected XY.
+      </Text>
+      <View style={styles.costComparisonHeader}>
+        <Text style={styles.costComparisonHeaderText}>Alternative</Text>
+        <Text style={styles.costComparisonHeaderText}>Radius</Text>
+        <Text style={styles.costComparisonHeaderText}>Cost / acre</Text>
+      </View>
+      {rows.map((row) => (
+        <View key={row.key} style={styles.costComparisonRow} testID={`advisory-radius-row-${row.key}`}>
+          <View style={styles.costComparisonStrategyCell}>
+            <Text style={styles.costComparisonStrategy}>{row.label}</Text>
+            <Text style={styles.costComparisonMeta}>{formatAreaFromAcres(row.strategy.irrigatedAcres, settings.unitSystem)} · {row.strategy.status.replaceAll("_", " ")} · {row.strategy.coveragePercent.toFixed(1)}%</Text>
+          </View>
+          <Text style={styles.costComparisonValue}>{formatDistance(row.strategy.machineRadiusMeters, settings.unitSystem)}</Text>
+          <Text style={styles.costComparisonValue}>{formatStrategyCostPerAcre(row.strategy)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function advisoryRadiusSensitivityRows(
+  strategies: AdvisoryMachineStrategyResult[],
+): Array<{ key: string; label: string; strategy: AdvisoryMachineStrategyResult }> {
+  const current = strategies.find((strategy) => strategy.strategyKind === "current_machine");
+  const radiusStrategies = strategies
+    .filter((strategy) => strategy.strategyKind === "full_circle_same_radius" || strategy.strategyKind === "full_circle_radius")
+    .sort((left, right) => left.machineRadiusMeters - right.machineRadiusMeters || left.label.localeCompare(right.label));
+  return [
+    ...(current ? [{ key: "current-machine", label: "Current", strategy: current }] : []),
+    ...radiusStrategies.map((strategy) => ({
+      key: slugIdPart(strategy.id),
+      label: strategy.strategyKind === "full_circle_same_radius" ? "Full circle current radius" : strategy.label,
+      strategy,
+    })),
+  ];
 }
 
 function formatStrategyCostPerAcre(strategy: AdvisoryMachineStrategyResult): string {
@@ -5896,6 +5962,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 1,
     overflow: "hidden",
+  },
+  radiusSensitivityTable: {
+    backgroundColor: "#eef4ef",
+    borderColor: "#c8d6cb",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    overflow: "hidden",
+    paddingTop: 10,
+  },
+  radiusSensitivityMeta: {
+    paddingHorizontal: 9,
   },
   costComparisonHeader: {
     backgroundColor: "#dfe9e1",

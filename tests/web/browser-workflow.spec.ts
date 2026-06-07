@@ -889,6 +889,10 @@ test("full-scope demo compares cost versus acres across advisory strategies", as
   await expect(page.getByTestId("advisory-cost-row-current-machine")).toContainText("USD");
   await expect(page.getByTestId("advisory-cost-row-full-circle")).toContainText("Full circle");
   await expect(page.getByTestId("advisory-cost-row-full-circle")).toContainText("/ac");
+  await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("Radius Alternatives");
+  await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("canonical projected XY");
+  await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("Full circle");
+  await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("/ac");
   await expect(page.getByTestId("advisory-cost-row-linear-lateral")).toContainText("Linear/lateral");
   await expect(page.getByTestId("advisory-cost-row-linear-lateral")).toContainText("/ac");
   await expect(page.getByTestId("advisory-cost-row-bender-second-pivot")).toContainText("Bender");
@@ -906,6 +910,7 @@ test("full-scope demo compares cost versus acres across advisory strategies", as
   expect(reportText).toContain("Full-Scope");
   expect(reportText).toContain("Generated Field-Pivot Review");
   expect(reportText).toContain("Machine Strategy And Cost Review");
+  expect(reportText).toContain("Generated radius alternatives:");
   expect(reportText).toContain("Obstacle And Utility Review");
   expect(reportText).toContain("Canonical geometry mutation: false");
   await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });

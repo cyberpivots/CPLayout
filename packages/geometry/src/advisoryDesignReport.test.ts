@@ -36,6 +36,7 @@ const strategyComparison = compareAdvisoryMachineStrategies(sampleProject, {
   maxCandidates: 2,
   costInput,
 });
+assert.ok(strategyComparison.strategies.some((strategy) => strategy.strategyKind === "full_circle_radius"));
 const obstacleInteractionReview = analyzeAdvisoryObstacleInteractions(sampleProject);
 const firstCandidate = fieldPivotPlan.candidates[0];
 assert.ok(firstCandidate, "expected at least one generated field-pivot candidate");
@@ -116,6 +117,8 @@ assert.match(report.text, /Advisory Design Report/);
 assert.match(report.text, /Canonical geometry mutation: false/);
 assert.match(report.text, /Qualified review required: true/);
 assert.match(report.text, /Review-zone audit: \d+ current, \d+ missing, \d+ stale/);
+assert.match(report.text, /Generated radius alternatives: [1-9]\d*/);
+assert.match(report.text, /Full circle .* radius: radius .* m/);
 assert.match(report.text, /Cost review is local and advisory/);
 assert.match(report.text, /not vendor quotes|vendor quotes|quote equipment/);
 assert.match(report.text, /Crossing\/passability labels are planning prompts only/);

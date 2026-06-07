@@ -26,10 +26,11 @@ Use this reference when a prompt asks for specialist routing, agent panels, sour
 
 The `UserPromptSubmit` hook should emit a compact contract for non-trivial prompts:
 
-- matched specialist routes with route id, configured agent, score, complexity band, reasoning effort, spawn policy, and routing reason,
+- matched specialist routes with route id, configured agent, score, coordinator complexity band, coordinator reasoning effort, task-selected subagent reasoning guidance, spawn policy, and routing reason,
 - required preflight: re-read `AGENTS.md`, run `git status --short`, and preserve unrelated dirty work,
 - auditable subagent decision: `required`, `optional`, or `not useful`, with a short reason,
-- complexity band and reasoning effort from route metadata when a route matches,
+- coordinator complexity band and coordinator reasoning effort from route metadata when a route matches,
+- per-subagent effort selected from each delegated task, not inherited automatically from the coordinator route band,
 - no hidden global fallback: if no route or clear complexity signal exists, emit `complexity analysis required before mutation`,
 - optimized re-prompt that preserves CPLayout no-cost/offline-first, projected/local `XY`, and evidence-only KML/KMZ/imagery boundaries,
 - validation expectations merged from base hook checks and matched routes.
@@ -38,7 +39,7 @@ Route matching should be token/phrase-aware rather than raw substring matching s
 
 Complexity bands:
 
-- `xhigh`: CPLayout architecture, managed policy, storage/native/runtime claims, Google Earth proof, release gates, multi-package mutation, and process enforcement.
+- `xhigh`: CPLayout architecture, managed policy, storage/native/runtime claims, Google Earth proof, release gates, multi-package mutation, and process enforcement. Treat route-data `xhigh` as coordinator guidance; subagents still get task-selected effort in their own prompt.
 - `high`: hook, skill, and agent implementation or review.
 - `medium`: fixture-only route tests, docs-only registry updates, and bounded read-only scans.
 - `low`: trivial status or formatting only when the user explicitly requests a narrow low-effort task.

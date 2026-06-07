@@ -15,6 +15,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { AppSettings, ProjectMapFeatureKind } from "@cplayout/core";
 import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
+import { MAP_TOOL_CATALOG, type MapToolCatalogItem, type MapToolId } from "@cplayout/map-adapters";
 
 export type DrawingToolPaletteModal = "point" | "line" | "polygon" | "circle" | "pivot" | "obstacle" | "machine" | "endGun" | "cornerArm" | "calculate" | "layers" | null;
 
@@ -24,28 +25,6 @@ type ActiveTool = {
   mode: DrawingMode;
   requestId: number;
 } | null;
-
-type GroupId = "pan" | "draw" | "points" | "utilities" | "coverage" | "machine";
-
-type PaletteOption =
-  | {
-    id: string;
-    label: string;
-    testID: string;
-    legacyTestID?: string;
-    kind: "activate";
-    mode: DrawingMode;
-    layer: DrawingLayerType;
-    featureKind?: ProjectMapFeatureKind;
-  }
-  | {
-    id: string;
-    label: string;
-    testID: string;
-    legacyTestID?: string;
-    kind: "modal";
-    modal: Exclude<DrawingToolPaletteModal, null>;
-  };
 
 interface DrawingToolPaletteProps {
   activeModal: DrawingToolPaletteModal;
@@ -67,62 +46,31 @@ export function DrawingToolPalette({
   settings,
 }: DrawingToolPaletteProps): React.JSX.Element {
   const [expandedHud, setExpandedHud] = useState(false);
-  const [openGroup, setOpenGroup] = useState<GroupId | null>(null);
   const designMode = settings.mappingWorkflowMode === "design";
-  const groups = useMemo(() => paletteGroups(), []);
-  const activeOptions = openGroup ? groups[openGroup] : [];
+  const activeToolId = useMemo(() => activeMapToolId(activeModal, activeTool), [activeModal, activeTool]);
+  const statusText = activeToolStatus(activeModal, activeTool, designMode);
 
-  function toggleGroup(groupId: GroupId): void {
-    setOpenGroup((current) => current === groupId ? null : groupId);
-  }
-
-  function selectOption(option: PaletteOption): void {
-    setOpenGroup(null);
-    if (option.kind === "activate") {
-      onActivateTool(option.mode, option.layer, option.featureKind);
+  function runTool(tool: MapToolCatalogItem): void {
+    const action = tool.action;
+    if (action.type === "activate") {
+      onActivateTool(action.mode, action.layer, action.featureKind);
       return;
     }
-    onOpenModal(option.modal);
-  }
-
-  function runDirect(action: () => void): void {
-    setOpenGroup(null);
-    action();
+    if (action.type === "open_panel") {
+      onOpenModal(action.panel);
+      return;
+    }
+    if (action.command === "calculate") {
+      onCalculate();
+      return;
+    }
+    onToggleLayers();
   }
 
   return (
-    <View style={[styles.bottomHud, expandedHud && styles.bottomHudExpanded, openGroup && styles.bottomHudExpanded]} testID="map-bottom-hud">
+    <View style={styles.bottomHud} testID="map-bottom-hud">
       <View style={styles.shell} testID="design-action-hud">
-        {openGroup ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.optionScroll}
-            contentContainerStyle={styles.optionRow}
-            testID={`drawing-tool-menu-${openGroup}`}
-          >
-            {activeOptions.map((option) => (
-              <View key={option.id} testID={option.testID}>
-                <Pressable
-                  accessibilityLabel={option.label}
-                  accessibilityRole="button"
-                  onPress={() => selectOption(option)}
-                  style={styles.optionButton}
-                  testID={option.legacyTestID}
-                >
-                  <Text style={styles.optionText}>{option.label}</Text>
-                </Pressable>
-              </View>
-            ))}
-          </ScrollView>
-        ) : null}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={expandedHud}
-          style={styles.groupScroll}
-          contentContainerStyle={styles.groupRow}
-          testID="design-action-scroll"
-        >
+        <View style={styles.statusRow}>
           <Pressable
             accessibilityLabel={expandedHud ? "Collapse map HUD" : "Expand map HUD"}
             accessibilityRole="button"
@@ -133,80 +81,31 @@ export function DrawingToolPalette({
           >
             {expandedHud ? <ChevronDown size={18} color="#173428" /> : <ChevronUp size={18} color="#173428" />}
           </Pressable>
-          <PaletteGroupButton
-            active={activeTool?.mode === "pan"}
-            groupTestID="drawing-tool-group-pan"
-            icon={(color) => <MousePointer2 size={19} color={color} />}
-            label="Pan"
-            legacyTestID="design-action-pan"
-            onPress={() => runDirect(() => onActivateTool("pan", "field_boundary"))}
-            showLabel={expandedHud}
-          />
-          <PaletteGroupButton
-            active={activeModal === "polygon" || activeModal === "obstacle" || activeTool?.mode === "draw_boundary" || activeTool?.mode === "edit_vertices" || activeTool?.mode === "mark_obstacle"}
-            groupTestID="drawing-tool-group-draw"
-            icon={(color) => <Pentagon size={19} color={color} />}
-            label="Polygon"
-            onPress={() => toggleGroup("draw")}
-            open={openGroup === "draw"}
-            showLabel={expandedHud}
-          />
-          <PaletteGroupButton
-            active={activeModal === "point" || activeModal === "pivot" || activeTool?.mode === "capture_point" || activeTool?.mode === "place_pivot"}
-            groupTestID="drawing-tool-group-points"
-            icon={(color) => <MapPin size={19} color={color} />}
-            label="Placemark"
-            onPress={() => toggleGroup("points")}
-            open={openGroup === "points"}
-            showLabel={expandedHud}
-          />
-          <PaletteGroupButton
-            active={activeModal === "line" || (activeTool?.mode === "measure" && !isCoverageFeature(activeTool.featureKind))}
-            groupTestID="drawing-tool-group-utilities"
-            icon={(color) => <UtilityPole size={19} color={color} />}
-            label="Path"
-            onPress={() => toggleGroup("utilities")}
-            open={openGroup === "utilities"}
-            showLabel={expandedHud}
-          />
-          <PaletteGroupButton
-            active={activeModal === "circle" || activeModal === "endGun" || activeModal === "cornerArm" || isCoverageFeature(activeTool?.featureKind)}
-            groupTestID="drawing-tool-group-coverage"
-            icon={(color) => <Ruler size={19} color={color} />}
-            label="Ruler"
-            onPress={() => toggleGroup("coverage")}
-            open={openGroup === "coverage"}
-            showLabel={expandedHud}
-          />
-          <PaletteGroupButton
-            active={activeModal === "machine"}
-            groupTestID="drawing-tool-group-machine"
-            icon={(color) => <Wrench size={19} color={color} />}
-            label="Machine"
-            onPress={() => toggleGroup("machine")}
-            open={openGroup === "machine"}
-            showLabel={expandedHud}
-          />
-          <PaletteGroupButton
-            active={activeModal === "layers"}
-            groupTestID="drawing-tool-group-layers"
-            icon={(color) => <Layers size={19} color={color} />}
-            label="Places/Layers"
-            legacyTestID="design-action-layers"
-            onPress={() => runDirect(onToggleLayers)}
-            showLabel={expandedHud}
-          />
-          <PaletteGroupButton
-            active={activeModal === "calculate"}
-            groupTestID="drawing-tool-group-calculate"
-            icon={(color) => <Calculator size={19} color={color} />}
-            label="Calculate"
-            legacyTestID="design-action-calculate"
-            onPress={() => runDirect(onCalculate)}
-            showLabel={expandedHud}
-          />
+          <View style={styles.activeChip} testID="map-hud-active-tool-chip">
+            <Text numberOfLines={1} style={styles.activeChipText}>{statusText}</Text>
+          </View>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={expandedHud}
+          style={styles.toolScroll}
+          contentContainerStyle={styles.toolRow}
+          testID="design-action-scroll"
+        >
+          {MAP_TOOL_CATALOG.map((tool) => (
+            <ToolButton
+              key={tool.id}
+              active={activeToolId === tool.id}
+              expanded={expandedHud}
+              icon={toolIcon(tool.id, activeToolId === tool.id)}
+              legacyTestID={legacyTestId(tool.id)}
+              onPress={() => runTool(tool)}
+              testID={groupTestId(tool.id)}
+              tool={tool}
+            />
+          ))}
         </ScrollView>
-        {!designMode && (expandedHud || openGroup) ? (
+        {!designMode && expandedHud ? (
           <Text style={styles.notice}>Layout mode is read-only for pointer edits.</Text>
         ) : null}
       </View>
@@ -214,108 +113,146 @@ export function DrawingToolPalette({
   );
 }
 
-function PaletteGroupButton({
+function ToolButton({
   active,
-  groupTestID,
+  expanded,
   icon,
-  label,
   legacyTestID,
   onPress,
-  open = false,
-  showLabel = true,
+  testID,
+  tool,
 }: {
   active: boolean;
-  groupTestID: string;
-  icon: (color: string) => React.ReactNode;
-  label: string;
+  expanded: boolean;
+  icon: React.ReactNode;
   legacyTestID?: string;
   onPress: () => void;
-  open?: boolean;
-  showLabel?: boolean;
+  testID: string;
+  tool: MapToolCatalogItem;
 }): React.JSX.Element {
-  const selected = active || open;
-  const color = selected ? "#ffffff" : "#173428";
   return (
-    <View testID={groupTestID}>
+    <View testID={testID}>
       <Pressable
-        accessibilityLabel={label}
+        accessibilityLabel={tool.label}
         accessibilityRole="button"
-        accessibilityState={{ selected }}
-        aria-pressed={selected}
+        accessibilityState={{ selected: active }}
+        aria-pressed={active}
         onPress={onPress}
-        style={[styles.groupButton, selected && styles.groupButtonActive]}
+        style={[styles.toolButton, expanded && styles.toolButtonExpanded, active && styles.toolButtonActive]}
         testID={legacyTestID}
       >
-        {icon(color)}
-        {showLabel ? <Text style={[styles.groupText, selected && styles.groupTextActive]}>{label}</Text> : null}
+        {icon}
+        {expanded ? <Text style={[styles.toolText, active && styles.toolTextActive]}>{tool.shortLabel}</Text> : null}
       </Pressable>
     </View>
   );
 }
 
-function paletteGroups(): Record<GroupId, PaletteOption[]> {
-  return {
-    pan: [],
-    draw: [
-      { id: "boundary", label: "Boundary Polygon", testID: "drawing-tool-option-boundary", legacyTestID: "design-action-polygon", kind: "activate", mode: "draw_boundary", layer: "field_boundary" },
-      { id: "edit-boundary", label: "Edit Vertices", testID: "drawing-tool-option-edit-boundary", kind: "activate", mode: "edit_vertices", layer: "field_boundary" },
-      { id: "no-spray", label: "No-Spray Polygon", testID: "drawing-tool-option-no-spray", legacyTestID: "design-action-obstacles", kind: "activate", mode: "mark_obstacle", layer: "exclusion" },
-      { id: "road", label: "Road Polygon", testID: "drawing-tool-option-road", kind: "activate", mode: "mark_obstacle", layer: "road" },
-      { id: "building", label: "Building Polygon", testID: "drawing-tool-option-building", kind: "activate", mode: "mark_obstacle", layer: "building" },
-      { id: "planning-boundary", label: "Planning Boundary", testID: "drawing-tool-option-planning-boundary", kind: "activate", mode: "measure", layer: "control_point", featureKind: "planning_boundary" },
-      { id: "machine-zone", label: "Machine Zone", testID: "drawing-tool-option-machine-zone", kind: "activate", mode: "measure", layer: "control_point", featureKind: "machine_zone" },
-      { id: "polygon-panel", label: "More Polygons", testID: "drawing-tool-option-polygon-panel", kind: "modal", modal: "polygon" },
-    ],
-    points: [
-      { id: "pivot-panel", label: "Pivot GPS", testID: "drawing-tool-option-pivot-panel", legacyTestID: "design-action-pivot", kind: "modal", modal: "pivot" },
-      { id: "pivot-click", label: "Pivot Placemark", testID: "drawing-tool-option-pivot-click", kind: "activate", mode: "place_pivot", layer: "pivot_center" },
-      { id: "water", label: "Water Placemark", testID: "drawing-tool-option-water", kind: "activate", mode: "place_pivot", layer: "water_source" },
-      { id: "power", label: "Power Placemark", testID: "drawing-tool-option-power", kind: "activate", mode: "place_pivot", layer: "power_source" },
-      { id: "pump-feature", label: "Pump Feature", testID: "drawing-tool-option-pump-feature", kind: "activate", mode: "measure", layer: "control_point", featureKind: "pump_location" },
-      { id: "well-feature", label: "Well Feature", testID: "drawing-tool-option-well-feature", kind: "activate", mode: "measure", layer: "control_point", featureKind: "well_location" },
-      { id: "power-pole", label: "Power Pole", testID: "drawing-tool-option-power-pole", kind: "activate", mode: "measure", layer: "control_point", featureKind: "power_pole" },
-      { id: "control", label: "Control Placemark", testID: "drawing-tool-option-control", kind: "activate", mode: "capture_point", layer: "control_point" },
-      { id: "note", label: "Note Placemark", testID: "drawing-tool-option-note", kind: "activate", mode: "capture_point", layer: "note_point" },
-      { id: "point-panel", label: "More Points", testID: "drawing-tool-option-point-panel", legacyTestID: "design-action-point", kind: "modal", modal: "point" },
-    ],
-    utilities: [
-      { id: "pipeline", label: "Pipeline Path", testID: "drawing-tool-option-pipeline", legacyTestID: "design-action-line", kind: "activate", mode: "measure", layer: "control_point", featureKind: "underground_pipeline" },
-      { id: "underground-wire", label: "Wire Path", testID: "drawing-tool-option-underground-wire", kind: "activate", mode: "measure", layer: "control_point", featureKind: "underground_wire" },
-      { id: "linear-move-path", label: "Linear Path", testID: "drawing-tool-option-linear-move-path", kind: "activate", mode: "measure", layer: "control_point", featureKind: "linear_move_path" },
-      { id: "measurement-line", label: "Measure Line", testID: "drawing-tool-option-measurement-line", kind: "activate", mode: "measure", layer: "control_point", featureKind: "measurement_line" },
-      { id: "power-line", label: "Power Path", testID: "drawing-tool-option-power-line", kind: "activate", mode: "measure", layer: "control_point", featureKind: "power_line" },
-      { id: "access-lane", label: "Access Path", testID: "drawing-tool-option-access-lane", kind: "activate", mode: "measure", layer: "control_point", featureKind: "access_lane" },
-      { id: "ditch", label: "Ditch Path", testID: "drawing-tool-option-ditch", kind: "activate", mode: "measure", layer: "control_point", featureKind: "ditch" },
-      { id: "canal", label: "Canal Path", testID: "drawing-tool-option-canal", kind: "activate", mode: "measure", layer: "control_point", featureKind: "canal" },
-      { id: "line-panel", label: "More Paths", testID: "drawing-tool-option-line-panel", kind: "modal", modal: "line" },
-    ],
-    coverage: [
-      { id: "end-gun-circle", label: "End-Gun Ruler", testID: "drawing-tool-option-end-gun-circle", legacyTestID: "design-action-circle", kind: "activate", mode: "measure", layer: "control_point", featureKind: "end_gun_arc" },
-      { id: "corner-footprint", label: "Corner Footprint", testID: "drawing-tool-option-corner-footprint", kind: "activate", mode: "measure", layer: "control_point", featureKind: "corner_swing_limit" },
-      { id: "end-gun-panel", label: "End Gun Settings", testID: "drawing-tool-option-end-gun-panel", legacyTestID: "design-action-end-gun", kind: "modal", modal: "endGun" },
-      { id: "corner-panel", label: "Corner Arm Panel", testID: "drawing-tool-option-corner-panel", legacyTestID: "design-action-corner-arm", kind: "modal", modal: "cornerArm" },
-      { id: "circle-panel", label: "Measure Circle", testID: "drawing-tool-option-circle-panel", kind: "modal", modal: "circle" },
-    ],
-    machine: [
-      { id: "machine-settings", label: "Machine Settings", testID: "drawing-tool-option-machine-settings", legacyTestID: "design-action-machine", kind: "modal", modal: "machine" },
-      { id: "end-gun-settings", label: "End Gun", testID: "drawing-tool-option-machine-end-gun", kind: "modal", modal: "endGun" },
-      { id: "corner-arm-settings", label: "Corner Arm", testID: "drawing-tool-option-machine-corner-arm", kind: "modal", modal: "cornerArm" },
-      { id: "calculate-settings", label: "Calculate", testID: "drawing-tool-option-machine-calculate", kind: "modal", modal: "calculate" },
-    ],
-  };
+function activeMapToolId(activeModal: DrawingToolPaletteModal, activeTool: ActiveTool): MapToolId {
+  if (activeModal === "point" || activeModal === "pivot") return "point";
+  if (activeModal === "line") return "line";
+  if (activeModal === "polygon" || activeModal === "obstacle") return "polygon";
+  if (activeModal === "circle" || activeModal === "endGun" || activeModal === "cornerArm") return "circle";
+  if (activeModal === "machine") return "machine";
+  if (activeModal === "layers") return "layers";
+  if (activeModal === "calculate") return "calculate";
+  if (activeTool?.mode === "pan") return "pan";
+  if (activeTool?.mode === "edit_vertices") return "edit";
+  if (activeTool?.mode === "place_pivot" || activeTool?.mode === "capture_point") return "point";
+  if (activeTool?.featureKind === "end_gun_arc") return "circle";
+  if (activeTool?.featureKind === "corner_swing_limit") return "polygon";
+  if (activeTool?.mode === "measure") {
+    const kind = activeTool.featureKind ?? "";
+    if (kind.includes("line") || kind.includes("pipeline") || kind.includes("wire") || kind === "ditch" || kind === "canal" || kind === "fence" || kind === "road" || kind === "access_lane") return "line";
+    if (kind.includes("boundary") || kind.includes("zone")) return "polygon";
+    return "point";
+  }
+  if (activeTool?.mode === "draw_boundary" || activeTool?.mode === "mark_obstacle") return "polygon";
+  return "pan";
 }
 
-function isCoverageFeature(featureKind?: ProjectMapFeatureKind): boolean {
-  return featureKind === "end_gun_arc" || featureKind === "corner_swing_limit";
+function activeToolStatus(activeModal: DrawingToolPaletteModal, activeTool: ActiveTool, designMode: boolean): string {
+  if (!designMode) return "Layout: inspect";
+  if (activeModal) return `${activeModal.replaceAll("_", " ")} sheet`;
+  if (!activeTool) return "Pan";
+  const layer = activeTool.featureKind ?? activeTool.activeLayer;
+  return `${activeTool.mode.replaceAll("_", " ")} · ${layer.replaceAll("_", " ")}`;
+}
+
+function groupTestId(id: MapToolId): string {
+  switch (id) {
+    case "pan":
+      return "drawing-tool-group-pan";
+    case "edit":
+      return "drawing-tool-group-edit";
+    case "point":
+      return "drawing-tool-group-points";
+    case "line":
+      return "drawing-tool-group-utilities";
+    case "polygon":
+      return "drawing-tool-group-draw";
+    case "circle":
+      return "drawing-tool-group-coverage";
+    case "machine":
+      return "drawing-tool-group-machine";
+    case "layers":
+      return "drawing-tool-group-layers";
+    case "calculate":
+      return "drawing-tool-group-calculate";
+  }
+}
+
+function legacyTestId(id: MapToolId): string | undefined {
+  switch (id) {
+    case "pan":
+      return "design-action-pan";
+    case "line":
+      return "design-action-line";
+    case "polygon":
+      return "design-action-polygon";
+    case "point":
+      return "design-action-point";
+    case "circle":
+      return "design-action-circle";
+    case "machine":
+      return "design-action-machine";
+    case "layers":
+      return "design-action-layers";
+    case "calculate":
+      return "design-action-calculate";
+    case "edit":
+      return "design-action-edit";
+  }
+}
+
+function toolIcon(id: MapToolId, active: boolean): React.ReactNode {
+  const color = active ? "#ffffff" : "#173428";
+  switch (id) {
+    case "pan":
+      return <MousePointer2 size={19} color={color} />;
+    case "edit":
+      return <MousePointer2 size={19} color={color} />;
+    case "point":
+      return <MapPin size={19} color={color} />;
+    case "line":
+      return <UtilityPole size={19} color={color} />;
+    case "polygon":
+      return <Pentagon size={19} color={color} />;
+    case "circle":
+      return <Ruler size={19} color={color} />;
+    case "machine":
+      return <Wrench size={19} color={color} />;
+    case "layers":
+      return <Layers size={19} color={color} />;
+    case "calculate":
+      return <Calculator size={19} color={color} />;
+  }
 }
 
 const styles = StyleSheet.create({
   bottomHud: {
     alignSelf: "center",
     maxWidth: "100%",
-    width: "100%",
-  },
-  bottomHudExpanded: {
     width: "100%",
   },
   shell: {
@@ -330,40 +267,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 7,
   },
-  optionScroll: {
-    flexGrow: 0,
-    minWidth: 0,
-  },
-  optionRow: {
+  statusRow: {
     alignItems: "center",
+    flexDirection: "row",
     gap: 7,
-    paddingRight: 2,
-  },
-  optionButton: {
-    alignItems: "center",
-    backgroundColor: "#fffef8",
-    borderColor: "#b9c8bd",
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: "center",
-    minHeight: 38,
-    minWidth: 96,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  optionText: {
-    color: "#173428",
-    fontSize: 11,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  groupScroll: {
     minWidth: 0,
-  },
-  groupRow: {
-    alignItems: "center",
-    gap: 7,
-    paddingRight: 2,
   },
   hudToggleButton: {
     alignItems: "center",
@@ -371,11 +279,36 @@ const styles = StyleSheet.create({
     borderColor: "#b9c8bd",
     borderRadius: 8,
     borderWidth: 1,
-    height: 44,
+    height: 38,
     justifyContent: "center",
-    width: 44,
+    width: 42,
   },
-  groupButton: {
+  activeChip: {
+    backgroundColor: "#edf4ef",
+    borderColor: "#cbd8ce",
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 38,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  activeChipText: {
+    color: "#173428",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "capitalize",
+  },
+  toolScroll: {
+    minWidth: 0,
+  },
+  toolRow: {
+    alignItems: "center",
+    gap: 7,
+    paddingRight: 2,
+  },
+  toolButton: {
     alignItems: "center",
     backgroundColor: "#eef4ef",
     borderColor: "#cbd8ce",
@@ -383,24 +316,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexShrink: 0,
     gap: 4,
+    height: 44,
     justifyContent: "center",
-    minHeight: 44,
     paddingHorizontal: 7,
     paddingVertical: 7,
-    minWidth: 44,
+    width: 44,
+  },
+  toolButtonExpanded: {
+    minWidth: 72,
     width: "auto",
   },
-  groupButtonActive: {
+  toolButtonActive: {
     backgroundColor: "#173428",
     borderColor: "#173428",
   },
-  groupText: {
+  toolText: {
     color: "#173428",
     fontSize: 10,
     fontWeight: "900",
     textAlign: "center",
   },
-  groupTextActive: {
+  toolTextActive: {
     color: "#ffffff",
   },
   notice: {

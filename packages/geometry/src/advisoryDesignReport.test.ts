@@ -6,6 +6,7 @@ import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeAdvisoryObstacleInteractions,
   buildAdvisoryEndGunSensitivityReview,
+  buildAdvisoryRadiusSensitivityReview,
   buildAdvisorySweepEfficiencyReview,
   compareAdvisoryMachineStrategies,
   planAdvisoryFieldPivots,
@@ -40,6 +41,13 @@ const strategyComparison = compareAdvisoryMachineStrategies(sampleProject, {
 });
 assert.ok(strategyComparison.strategies.some((strategy) => strategy.strategyKind === "full_circle_radius"));
 const obstacleInteractionReview = analyzeAdvisoryObstacleInteractions(sampleProject);
+const radiusSensitivityReview = buildAdvisoryRadiusSensitivityReview(sampleProject, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  maxMachines: 2,
+  costInput,
+  radiiMeters: [70, 90],
+});
 const endGunSensitivityReview = buildAdvisoryEndGunSensitivityReview(sampleProject, {
   throwDistancesMeters: [0, sampleProject.machine.endGunThrowMeters],
 });
@@ -102,6 +110,7 @@ const report = buildAdvisoryDesignReport({
   multiMachineReview,
   strategyComparison,
   obstacleInteractionReview,
+  radiusSensitivityReview,
   endGunSensitivityReview,
   sweepEfficiencyReview,
   reviewZoneAudit: currentZoneAudit,
@@ -121,6 +130,7 @@ assert.ok(report.headline.includes("generated centers"));
 assert.ok(report.sections.some((section) => section.id === "generated-pivots"));
 assert.ok(report.sections.some((section) => section.id === "generated-multi-pivot-scenario"));
 assert.ok(report.sections.some((section) => section.id === "strategy-cost"));
+assert.ok(report.sections.some((section) => section.id === "radius-sensitivity"));
 assert.ok(report.sections.some((section) => section.id === "sweep-efficiency"));
 assert.ok(report.sections.some((section) => section.id === "end-gun-sensitivity"));
 assert.ok(report.sections.some((section) => section.id === "obstacles-utilities"));
@@ -135,6 +145,9 @@ assert.match(report.text, /Selected centers: \d+\/\d+/);
 assert.match(report.text, /Generated multi-pivot scenario review is advisory only/);
 assert.match(report.text, /Generated radius alternatives: [1-9]\d*/);
 assert.match(report.text, /Full circle .* radius: radius .* m/);
+assert.match(report.text, /Radius Sensitivity Review/);
+assert.match(report.text, /Best cost-per-acre radius/);
+assert.match(report.text, /Radius sensitivity is advisory only/);
 assert.match(report.text, /Sweep Efficiency Review/);
 assert.match(report.text, /Sweep-efficiency review is advisory only/);
 assert.match(report.text, /End-Gun Throw Sensitivity/);

@@ -1,6 +1,98 @@
 import type { ProjectMapFeature, ProjectMapFeatureKind, XY } from "@cplayout/core";
+import type { DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 
 export type UtilityFeatureGeometry = ProjectMapFeature["geometry"]["type"];
+
+export type MapToolPanelId = "point" | "line" | "polygon" | "circle" | "machine";
+export type MapToolCommandId = "layers" | "calculate";
+export type MapToolId = "pan" | "edit" | MapToolPanelId | MapToolCommandId;
+
+export type MapToolCatalogItem = {
+  id: MapToolId;
+  label: string;
+  shortLabel: string;
+  statusLabel: string;
+  testID: string;
+  action:
+    | { type: "activate"; mode: DrawingMode; layer: DrawingLayerType; featureKind?: ProjectMapFeatureKind }
+    | { type: "open_panel"; panel: MapToolPanelId }
+    | { type: "command"; command: MapToolCommandId };
+};
+
+export const MAP_TOOL_CATALOG: MapToolCatalogItem[] = [
+  {
+    id: "pan",
+    label: "Pan",
+    shortLabel: "Pan",
+    statusLabel: "Pan",
+    testID: "map-tool-pan",
+    action: { type: "activate", mode: "pan", layer: "field_boundary" },
+  },
+  {
+    id: "edit",
+    label: "Edit",
+    shortLabel: "Edit",
+    statusLabel: "Edit vertices",
+    testID: "map-tool-edit",
+    action: { type: "activate", mode: "edit_vertices", layer: "field_boundary" },
+  },
+  {
+    id: "point",
+    label: "Point",
+    shortLabel: "Point",
+    statusLabel: "Point tools",
+    testID: "map-tool-point",
+    action: { type: "open_panel", panel: "point" },
+  },
+  {
+    id: "line",
+    label: "Line",
+    shortLabel: "Line",
+    statusLabel: "Line tools",
+    testID: "map-tool-line",
+    action: { type: "open_panel", panel: "line" },
+  },
+  {
+    id: "polygon",
+    label: "Polygon",
+    shortLabel: "Poly",
+    statusLabel: "Polygon tools",
+    testID: "map-tool-polygon",
+    action: { type: "open_panel", panel: "polygon" },
+  },
+  {
+    id: "circle",
+    label: "Circle/Measure",
+    shortLabel: "Circle",
+    statusLabel: "Circle and measure tools",
+    testID: "map-tool-circle",
+    action: { type: "open_panel", panel: "circle" },
+  },
+  {
+    id: "machine",
+    label: "Pivot/Machine",
+    shortLabel: "Machine",
+    statusLabel: "Pivot and machine",
+    testID: "map-tool-machine",
+    action: { type: "open_panel", panel: "machine" },
+  },
+  {
+    id: "layers",
+    label: "Layers",
+    shortLabel: "Layers",
+    statusLabel: "Layers",
+    testID: "map-tool-layers",
+    action: { type: "command", command: "layers" },
+  },
+  {
+    id: "calculate",
+    label: "Calculate",
+    shortLabel: "Calc",
+    statusLabel: "Calculate",
+    testID: "map-tool-calculate",
+    action: { type: "command", command: "calculate" },
+  },
+];
 
 export interface UtilityFeatureOption {
   kind: ProjectMapFeatureKind;

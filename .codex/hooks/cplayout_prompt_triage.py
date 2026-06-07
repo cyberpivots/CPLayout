@@ -30,6 +30,7 @@ class RouteDefinition:
     note: str
     complexity_band: str
     reasoning_effort: str
+    subagent_reasoning_effort: str
     spawn_policy: str
     routing_reason: str
     validation_expectations: tuple[str, ...]
@@ -48,6 +49,7 @@ ROUTE_DATA_FILENAME = "cplayout_route_data.json"
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 COMPLEXITY_ORDER = {"low": 0, "medium": 1, "high": 2, "xhigh": 3}
 REASONING_EFFORTS = frozenset(("minimal", "low", "medium", "high", "xhigh"))
+SUBAGENT_REASONING_EFFORTS = frozenset(("task_selected",))
 SPAWN_POLICIES = frozenset(("required", "optional", "not_useful"))
 EXPLICIT_MULTI_AGENT_TERMS = (
     "multi-agent",
@@ -158,6 +160,7 @@ def load_route_data(path: Path | None = None) -> RouteData:
         note = raw_route.get("note")
         complexity_band = raw_route.get("complexityBand")
         reasoning_effort = raw_route.get("reasoningEffort")
+        subagent_reasoning_effort = raw_route.get("subagentReasoningEffort")
         spawn_policy = raw_route.get("spawnPolicy")
         routing_reason = raw_route.get("routingReason")
         priority = raw_route.get("priority")
@@ -173,6 +176,8 @@ def load_route_data(path: Path | None = None) -> RouteData:
             raise ValueError(f"{route_id}: complexityBand must be one of low, medium, high, xhigh")
         if reasoning_effort not in REASONING_EFFORTS:
             raise ValueError(f"{route_id}: reasoningEffort must be a supported reasoning effort")
+        if subagent_reasoning_effort not in SUBAGENT_REASONING_EFFORTS:
+            raise ValueError(f"{route_id}: subagentReasoningEffort must be task_selected")
         if spawn_policy not in SPAWN_POLICIES:
             raise ValueError(f"{route_id}: spawnPolicy must be required, optional, or not_useful")
         if not isinstance(routing_reason, str) or not routing_reason.strip():
@@ -187,6 +192,7 @@ def load_route_data(path: Path | None = None) -> RouteData:
                 note=note,
                 complexity_band=complexity_band,
                 reasoning_effort=reasoning_effort,
+                subagent_reasoning_effort=subagent_reasoning_effort,
                 spawn_policy=spawn_policy,
                 routing_reason=routing_reason,
                 validation_expectations=_string_list(
@@ -336,12 +342,13 @@ def optimized_reprompt(
     decision, _reason = subagent_decision(prompt, matches)
     specialists = ", ".join(match.route.agent for match in matches) if matches else "coordinator only"
     if matches:
-        opening = f"Use {reasoning} reasoning ({complexity})."
+        opening = f"Use {reasoning} coordinator reasoning (route band {complexity})."
     else:
         opening = "Perform complexity analysis before mutation; select reasoning effort from task scope."
     return (
         f"{opening} Start with AGENTS.md plus git status. "
         f"Route through {specialists}. Subagent decision: {decision}. "
+        "Assign each subagent task-selected reasoning and a bounded no-overlap scope. "
         "Keep hooks advisory unless installed through managed requirements. "
         "Preserve offline/no-cost operation, projected/local XY canonical geometry, and evidence-only KML/KMZ/imagery boundaries."
     )
@@ -357,7 +364,7 @@ def _context(prompt: str, matches: list[RouteMatch], shape_unknown: bool) -> str
         "CPLayout coordinator contract:",
         "- Preflight: AGENTS.md plus git status --short; preserve unrelated dirty work.",
         "- Hooks: advisory context only, not enforcement or runtime proof.",
-        f"- Complexity: {complexity}; reasoning: {reasoning}.",
+        f"- Complexity: {complexity}; coordinator reasoning: {reasoning}; subagent reasoning: task-selected per delegated scope.",
         f"- Subagents: {decision}. {decision_reason}",
     ]
     if matches:
@@ -367,7 +374,8 @@ def _context(prompt: str, matches: list[RouteMatch], shape_unknown: bool) -> str
             lines.append(
                 "  - "
                 f"{route.route_id} -> {route.agent} "
-                f"(score {match.score}; {route.complexity_band}/{route.reasoning_effort}; "
+                f"(score {match.score}; coordinator {route.complexity_band}/{route.reasoning_effort}; "
+                f"subagent {route.subagent_reasoning_effort}; "
                 f"{route.spawn_policy}): {route.routing_reason}"
             )
     else:

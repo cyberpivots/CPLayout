@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { PROJECT_DOCUMENT_VERSION, parseProjectDocument, serializeProjectDocument } from "./projectDocument";
-import { sampleProject } from "./sampleProject";
+import { sampleProject, willRheaJasonHarmelinkExampleProject } from "./sampleProject";
 
 const serialized = serializeProjectDocument(sampleProject);
 assert.match(serialized, new RegExp(PROJECT_DOCUMENT_VERSION));
@@ -21,6 +21,26 @@ assert.equal("referenceOverlay" in (parsed.settings ?? {}), false);
 assert.doesNotMatch(serialized, /onlineImagery|referenceOverlay|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 assert.equal(parsed.settings?.mappingWorkflowMode, "design");
 assert.deepEqual(parsed.mapFeatures, []);
+
+const parsedWillRhea = parseProjectDocument(serializeProjectDocument(willRheaJasonHarmelinkExampleProject));
+assert.equal(parsedWillRhea.id, "will-rhea-jason-harmelink-example");
+assert.equal(parsedWillRhea.projectCrs, "EPSG:32614");
+assert.deepEqual(parsedWillRhea.fieldBoundary, willRheaJasonHarmelinkExampleProject.fieldBoundary);
+assert.deepEqual(parsedWillRhea.pivotCenter, willRheaJasonHarmelinkExampleProject.pivotCenter);
+assert.equal(parsedWillRhea.wgs84Companion?.source, "derived_from_project_xy");
+assert.equal(parsedWillRhea.mapFeatures?.filter((feature) => feature.kind === "machine_zone").length, 3);
+assert.equal(
+  parsedWillRhea.mapFeatures?.find((feature) => feature.id === "will-rhea-full-scope-field-boundary-evidence")?.kind,
+  "planning_boundary",
+);
+assert.equal(
+  parsedWillRhea.mapFeatures?.find((feature) => feature.id === "will-rhea-middle-machine-field-boundary")?.properties?.sourceKmlEntryName,
+  "doc.kml",
+);
+assert.equal(
+  parsedWillRhea.mapFeatures?.find((feature) => feature.id === "will-rhea-south-machine-field-boundary")?.properties?.canonicalGeometryMutation,
+  false,
+);
 
 const parsedWithStaleCompanion = parseProjectDocument({
   documentVersion: PROJECT_DOCUMENT_VERSION,

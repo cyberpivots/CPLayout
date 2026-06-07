@@ -18,7 +18,7 @@ import {
   metricsToCsv,
   surveyPointsToCsv,
 } from "./projectArchive";
-import { realCenterPivotProofProject, sampleProject, type PivotProject } from "@cplayout/core";
+import { realCenterPivotProofProject, sampleProject, willRheaJasonHarmelinkExampleProject, type PivotProject } from "@cplayout/core";
 
 const result = evaluateLayout(sampleProject);
 const bundle = buildProjectArchiveBundle(sampleProject, result, exportScenarioGeoJson(sampleProject, result), "2026-05-19T12:00:00.000Z");
@@ -238,6 +238,33 @@ assert.equal(importedMapFeatureProject.mapFeatures?.[3].geometry.type, "Circle")
 assert.equal(importedMapFeatureProject.mapFeatures?.[4].kind, "machine_zone");
 assert.equal(importedMapFeatureProject.mapFeatures?.[4].geometry.type, "Circle");
 assert.deepEqual(importedMapFeatureProject.pivotCenter, sampleProject.pivotCenter);
+
+const willRheaBundle = buildProjectArchiveBundle(
+  willRheaJasonHarmelinkExampleProject,
+  evaluateLayout(willRheaJasonHarmelinkExampleProject),
+  exportScenarioGeoJson(willRheaJasonHarmelinkExampleProject, evaluateLayout(willRheaJasonHarmelinkExampleProject)),
+  "2026-06-06T00:00:00.000Z",
+);
+const importedWillRhea = importProjectArchiveZip(exportProjectArchiveZip(willRheaBundle));
+const importedWillRheaFeatureCounts = (importedWillRhea.mapFeatures ?? []).reduce<Record<string, number>>((counts, feature) => {
+  counts[feature.kind] = (counts[feature.kind] ?? 0) + 1;
+  return counts;
+}, {});
+assert.equal(importedWillRhea.id, "will-rhea-jason-harmelink-example");
+assert.equal(importedWillRhea.projectCrs, "EPSG:32614");
+assert.equal(importedWillRhea.wgs84Companion?.source, "derived_from_project_xy");
+assert.deepEqual(importedWillRhea.fieldBoundary, willRheaJasonHarmelinkExampleProject.fieldBoundary);
+assert.equal(importedWillRheaFeatureCounts.planning_boundary, 1);
+assert.equal(importedWillRheaFeatureCounts.machine_zone, 3);
+assert.equal(importedWillRheaFeatureCounts.measurement_line, 1);
+assert.equal(
+  importedWillRhea.mapFeatures?.find((feature) => feature.id === "will-rhea-middle-machine-field-boundary")?.properties?.sourceKmzSha256,
+  "895e9367fd07c730572618d5ed01b96a66519de725faab082d6f1714ef827401",
+);
+assert.equal(
+  importedWillRhea.mapFeatures?.find((feature) => feature.id === "will-rhea-lrdu-distance")?.properties?.derivedLengthMeters,
+  462.9,
+);
 
 const projectWithCornerArm = {
   ...sampleProject,

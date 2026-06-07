@@ -91,6 +91,14 @@ class PromptTriageTests(unittest.TestCase):
             ],
         )
 
+    def test_hud_will_rhea_prompt_routes_interface_and_imagery(self) -> None:
+        routes = self.route_ids("HUD-first map workspace and Will Rhea advisory demo.")
+        self.assertEqual(routes[:2], ["cplayout_interface_developer", "cplayout_imagery_mapper"])
+
+    def test_token_efficient_subagent_reasoning_prompt_routes_curator(self) -> None:
+        routes = self.route_ids("Token efficient subagent reasoning with advisory hooks and xhigh coordinator route band.")
+        self.assertEqual(routes[0], "cplayout_kb_curator")
+
     def test_route_metadata_is_loaded(self) -> None:
         route_data = triage.load_route_data()
         curator = next(route for route in route_data.routes if route.route_id == "cplayout_kb_curator")
@@ -99,6 +107,7 @@ class PromptTriageTests(unittest.TestCase):
         self.assertEqual(curator.agent, "cplayout_kb_curator")
         self.assertEqual(curator.complexity_band, "xhigh")
         self.assertEqual(curator.reasoning_effort, "xhigh")
+        self.assertEqual(curator.subagent_reasoning_effort, "task_selected")
         self.assertEqual(curator.spawn_policy, "required")
         self.assertTrue(curator.routing_reason)
         self.assertTrue(curator.validation_expectations)
@@ -106,15 +115,18 @@ class PromptTriageTests(unittest.TestCase):
     def test_coordinator_contract_includes_complexity_and_reprompt(self) -> None:
         context = self.hook_context("Implement multi-agent managed hook enforcement with prompt triage.")
         self.assertIn("CPLayout coordinator contract:", context)
-        self.assertIn("Complexity: xhigh; reasoning: xhigh.", context)
+        self.assertIn("Complexity: xhigh; coordinator reasoning: xhigh; subagent reasoning: task-selected", context)
         self.assertIn("Subagents: required.", context)
         self.assertIn("Optimized re-prompt:", context)
         self.assertIn("cplayout_kb_curator", context)
+        self.assertIn("subagent task_selected", context)
 
     def test_optimized_reprompt_text_carries_subagent_decision(self) -> None:
         prompt = "Use multi-agent managed hooks for CPLayout route classification."
         reprompt = triage.optimized_reprompt(prompt, triage.match_routes(prompt))
+        self.assertIn("coordinator reasoning", reprompt)
         self.assertIn("Subagent decision: required.", reprompt)
+        self.assertIn("task-selected reasoning", reprompt)
         self.assertIn("projected/local XY", reprompt)
         self.assertIn("managed requirements", reprompt)
 
@@ -141,7 +153,7 @@ class PromptTriageTests(unittest.TestCase):
         context = self.hook_context("Format this sentence with no CPLayout domain change.")
         self.assertIn("Routes: none; complexity analysis required before mutation.", context)
         self.assertIn("Complexity: complexity analysis required before mutation", context)
-        self.assertIn("reasoning: select reasoning effort after task complexity analysis", context)
+        self.assertIn("coordinator reasoning: select reasoning effort after task complexity analysis", context)
         self.assertIn("Subagents: not useful.", context)
         self.assertIn("Perform complexity analysis before mutation", context)
 

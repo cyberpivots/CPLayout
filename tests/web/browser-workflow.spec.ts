@@ -34,7 +34,8 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await page.goto("/");
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("CPLayout");
-  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
+  await expect(page.getByText("EPSG:32614").first()).toBeVisible();
   await expectTopToolbarSingleRow(page);
   await expectPassiveBottomStatusBar(page);
   await expect(page.getByTestId("workspace-nav-review")).toHaveCount(0);
@@ -63,29 +64,28 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await openInspectorIfCollapsed(page);
   await expect(page.getByTestId("design-console-status")).toContainText("Use the bottom HUD");
   await closeInspectorIfOpen(page);
-  await page.getByTestId("design-action-calculate").click();
+  await clickHudAction(page, "design-action-calculate");
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByTestId("design-builder-scenarios")).toContainText("Current layout");
   await page.getByTestId("design-console-close").click();
   await expect(page.getByText("Saved")).toBeVisible();
-  await page.getByTestId("browser-reference-layers-button").click();
-  await expect(page.getByTestId("browser-reference-layers-panel")).toContainText("USGS The National Map Imagery Topo");
-  await expect(page.getByTestId("browser-reference-layers-panel")).toContainText("public no-key raster");
-  await expect(page.getByTestId("reference-layer-roads")).toBeEnabled();
-  await expect(page.getByTestId("reference-layer-borders")).toBeEnabled();
-  await expect(page.getByTestId("reference-layer-labels")).toBeEnabled();
-  await page.getByTestId("browser-reference-layers-button").click();
+  await openLayersSheet(page);
+  await expect(page.getByTestId("places-layers-summary")).toContainText("Live Preview Imagery");
+  await expect(page.getByTestId("places-layers-summary")).toContainText("Reference Overlays");
+  await expect(page.getByRole("button", { name: "USGS Only", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /Overlay (On|Off)/ })).toBeEnabled();
+  await page.getByTestId("design-console-close").click();
   await expect(page.getByText("Saved")).toBeVisible();
   await expect(page.getByTestId("browser-workflow-design")).toBeVisible();
-  await page.getByTestId("browser-tool-boundary").click();
+  await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 180, y: 180 });
   await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
-  await page.getByTestId("browser-tool-pan").click();
+  await selectPanTool(page);
   await expect(page.getByText("pan · 0 draft pts")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
-  await page.getByTestId("browser-tool-utility").click();
+  await selectPipelineTool(page);
   await expect(page.getByText("measure · 0 draft pts · line needs 2 pts")).toBeVisible();
-  await page.getByRole("button", { name: "Pump" }).click();
+  await selectPumpFeatureTool(page);
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   if (testInfo.project.name === "mobile-390") {
     await expect(page.getByText("Saved")).toBeVisible();
@@ -95,7 +95,7 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
     await saveScreen(page, testInfo, "mobile-map-route-sweep-compact");
     return;
   }
-  await page.getByTestId("browser-tool-pan").click();
+  await selectPanTool(page);
   await page.getByTestId("browser-workflow-layout").click();
   await expect(page.getByText("Layout mode: RTK-only geometry changes; pointer gestures inspect only.")).toBeVisible();
   await clickWorkbenchMap(page, { x: 120, y: 160 });
@@ -170,6 +170,7 @@ test("workspace command menu routes preserve existing views and local boundaries
 
 test("catalog home readiness replaces global count metrics", async ({ page }, testInfo) => {
   await page.goto("/");
+  await openCatalogFromFile(page);
   await openInspectorIfCollapsed(page);
   const readiness = page.getByTestId("catalog-home-readiness");
   await expect(readiness).toContainText("Storage");
@@ -206,20 +207,21 @@ test("file menu opens curated sample designs with projected xy status", async ({
 
 test("catalog blank design starts a drawable boundary workflow", async ({ page }, testInfo) => {
   await page.goto("/");
+  await openCatalogFromFile(page);
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
   await openInspectorIfCollapsed(page);
   await expect(page.getByText("Use Start Blank Design or open a saved design from the tree to enable drawing. Catalog maps are navigation-only.")).toBeVisible();
   await closeInspectorIfOpen(page);
-  await expect(page.getByTestId("browser-tool-boundary")).toBeHidden();
+  await expect(page.getByTestId("design-action-polygon")).toHaveCount(0);
 
   await startBlankDesignFromFile(page);
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Blank Field Design");
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByTestId("design-action-hud")).toBeVisible();
   await expect(page.getByTestId("design-builder-panel")).toHaveCount(0);
-  await expect(page.getByTestId("browser-tool-boundary")).toBeVisible();
+  await expect(page.getByTestId("design-action-polygon")).toBeVisible();
 
-  await page.getByTestId("browser-tool-boundary").click();
+  await selectBoundaryTool(page);
   const mapBox = await page.getByLabel("CPLayout MapLibre imagery workbench").boundingBox();
   expect(mapBox).not.toBeNull();
   const boundaryClicks = [
@@ -250,8 +252,7 @@ test("design console pivot entry defaults to decimal GPS with expert XY hidden",
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("design-action-hud")).toBeVisible();
-  await page.getByTestId("drawing-tool-group-points").click();
-  await page.getByTestId("drawing-tool-option-pivot-panel").click();
+  await openPivotGpsSheet(page);
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByLabel("Pivot latitude and longitude decimal degrees")).toBeVisible();
   await expect(page.getByTestId("pivot-gps-input")).toHaveValue(/^-?\d+\.\d+, -?\d+\.\d+/);
@@ -271,6 +272,7 @@ test("map-first catalog tree creates client projects and field maps without hidd
   });
 
   await page.goto("/");
+  await openCatalogFromFile(page);
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
   await openInspectorIfCollapsed(page);
   await expect(page.getByTestId("catalog-home-status")).toContainText(/Browser local storage/);
@@ -290,7 +292,7 @@ test("map-first catalog tree creates client projects and field maps without hidd
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
   await expect(page.getByText("North America Map")).toBeVisible();
   await expect(page.getByTestId("browser-workflow-layout")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("browser-tool-boundary")).toBeHidden();
+  await expect(page.getByTestId("design-action-polygon")).toHaveCount(0);
   await expect(page.getByText("North Quarter Concept Layout")).toBeHidden();
   await expect(page.getByText("Base Design")).toBeHidden();
   await expect(page.getByTestId("project-tree-rail")).toContainText("0 designs");
@@ -315,7 +317,7 @@ test("map-first catalog tree creates client projects and field maps without hidd
   await openBaselineSample(page);
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await page.getByTestId("workspace-nav-map").click();
-  await expect(page.getByTestId("browser-tool-boundary")).toBeVisible();
+  await expect(page.getByTestId("design-action-polygon")).toBeVisible();
   expect(nativeDialogs).toEqual([]);
   await saveScreen(page, testInfo, "map-first-catalog-tree-create");
 });
@@ -658,7 +660,7 @@ test("browser boundary commit keeps projected geometry status explicit", async (
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await page.getByTestId("browser-tool-boundary").click();
+  await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await clickWorkbenchMap(page, { x: 240, y: 180 });
   await clickWorkbenchMap(page, { x: 220, y: 250 });
@@ -675,7 +677,7 @@ test("browser utility line save keeps projected feature status explicit", async 
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await page.getByTestId("browser-tool-utility").click();
+  await selectPipelineTool(page);
   await clickWorkbenchMap(page, { x: 170, y: 330 });
   await clickWorkbenchMap(page, { x: 250, y: 370 });
   await expect(page.getByText(/measure .* 2 draft pts .* line needs 2 pts/)).toBeVisible();
@@ -696,8 +698,7 @@ test("browser utility point save keeps projected feature status explicit", async
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await page.getByTestId("browser-tool-utility").click();
-  await page.getByRole("button", { name: "Pump" }).click();
+  await selectPumpFeatureTool(page);
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   await clickWorkbenchMap(page, { x: 190, y: 220 });
   if (testInfo.project.name === "mobile-390") {
@@ -716,11 +717,9 @@ test("design console selects end-gun circle and corner footprint utility tools",
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
 
   const map = page.getByLabel("CPLayout MapLibre imagery workbench");
-  await page.getByTestId("drawing-tool-group-coverage").click();
-  await page.getByTestId("drawing-tool-option-end-gun-circle").click();
+  await selectEndGunCircleTool(page);
   await map.scrollIntoViewIfNeeded();
-  await expect(page.getByTestId("browser-tool-utility")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: "End gun", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("design-action-circle")).toHaveAttribute("aria-pressed", "true");
   await clickWorkbenchMap(page, { x: 180, y: 330 });
   await clickWorkbenchMap(page, { x: 250, y: 370 });
   await expect(page.getByText(/measure .* 2 draft pts .* circle needs center \+ radius/)).toBeVisible();
@@ -733,17 +732,14 @@ test("design console selects end-gun circle and corner footprint utility tools",
   await expect(page.getByText("Saved end gun arc circle with projected XY center and radius points as a map feature.")).toBeVisible();
 
   await closeInspectorIfOpen(page);
-  await page.getByTestId("browser-tool-pan").click();
-  await page.getByTestId("drawing-tool-group-coverage").click();
-  await page.getByTestId("drawing-tool-option-end-gun-circle").click();
+  await selectPanTool(page);
+  await selectEndGunCircleTool(page);
   await map.scrollIntoViewIfNeeded();
-  await expect(page.getByTestId("browser-tool-utility")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: "End gun", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("design-action-circle")).toHaveAttribute("aria-pressed", "true");
 
-  await page.getByTestId("drawing-tool-group-coverage").click();
-  await page.getByTestId("drawing-tool-option-corner-footprint").click();
+  await selectCornerFootprintTool(page);
   await map.scrollIntoViewIfNeeded();
-  await expect(page.getByTestId("browser-map-frame").getByRole("button", { name: "Corner", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "true");
   if (testInfo.project.name === "mobile-390") {
     await expect(page.getByText("measure · 0 draft pts · polygon needs 3 pts")).toBeVisible();
     await expect(page.getByText("Unsaved edits")).toBeVisible();
@@ -767,7 +763,7 @@ test("placement review applies advisory pivot candidates only after confirmation
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-advisory-generated-field-pivot-layer")).toContainText("Generated advisory plan");
   await expect(page.getByTestId("browser-advisory-generated-field-pivot-layer")).toContainText("review only");
-  await page.getByTestId("design-action-calculate").click();
+  await clickHudAction(page, "design-action-calculate");
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await page.getByTestId("design-console-calculate").click();
   await expect(page.getByTestId("placement-review-panel")).toContainText("Placement Review");
@@ -794,7 +790,7 @@ test("generated field pivot plan saves advisory machine-zone review features aft
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await page.getByTestId("design-action-calculate").click();
+  await clickHudAction(page, "design-action-calculate");
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("Generated Field Pivot Plan");
   await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("does not create saved pivots");
@@ -820,7 +816,7 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await page.getByTestId("design-action-calculate").click();
+  await clickHudAction(page, "design-action-calculate");
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByTestId("advisory-cost-review-panel")).toContainText("Cost Review");
   await expect(page.getByTestId("advisory-cost-status")).toContainText("will not infer machine prices");
@@ -884,7 +880,7 @@ test("full-scope demo compares cost versus acres across advisory strategies", as
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
 
-  await page.getByTestId("design-action-calculate").click();
+  await clickHudAction(page, "design-action-calculate");
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await page.getByTestId("advisory-cost-fixed").fill("85000");
   await page.getByTestId("advisory-cost-per-meter").fill("650");
@@ -937,7 +933,7 @@ test("partial-sweep sample exposes advisory sweep efficiency comparison", async 
   await page.goto("/");
   await openPartialSweepSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await page.getByTestId("design-action-calculate").click();
+  await clickHudAction(page, "design-action-calculate");
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
 
   await page.getByTestId("advisory-cost-fixed").fill("90000");
@@ -966,8 +962,7 @@ test("corner arm advisory save requires confirmation and remains advisory", asyn
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await page.getByTestId("drawing-tool-group-coverage").click();
-  await page.getByTestId("drawing-tool-option-corner-panel").click();
+  await openCornerArmAdvisorySheet(page);
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByTestId("corner-arm-advisory-badges")).toContainText("advisory");
   await expect(page.getByTestId("corner-arm-advisory-badges")).toContainText("unverified kinematics");
@@ -992,14 +987,14 @@ test("browser map tool buttons expose active state", async ({ page }, testInfo) 
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await expect(page.getByTestId("browser-tool-pan")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "false");
-  await page.getByTestId("browser-tool-boundary").click();
-  await expect(page.getByTestId("browser-tool-pan")).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "true");
-  await page.getByTestId("browser-tool-utility").click();
-  await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByTestId("browser-tool-utility")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("design-action-pan")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "false");
+  await selectBoundaryTool(page);
+  await expect(page.getByTestId("design-action-pan")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "true");
+  await selectPipelineTool(page);
+  await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("design-action-line")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "browser-map-tool-active-state");
 });
@@ -1011,8 +1006,8 @@ test("browser map edit vertices nudges projected boundary through reducer action
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
 
-  await page.getByTestId("browser-tool-edit-vertices").click();
-  await expect(page.getByTestId("browser-tool-edit-vertices")).toHaveAttribute("aria-pressed", "true");
+  await selectEditTool(page);
+  await expect(page.getByTestId("design-action-edit")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("edit vertices · 0 draft pts")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
 
@@ -1043,7 +1038,7 @@ test("browser map edit vertices nudges selected map feature through reducer acti
     return;
   }
 
-  await page.getByTestId("browser-tool-utility").click();
+  await selectPipelineTool(page);
   await clickWorkbenchMap(page, { x: 170, y: 330 });
   await clickWorkbenchMap(page, { x: 250, y: 370 });
   await clickWorkbenchMap(page, { x: 285, y: 342 });
@@ -1053,7 +1048,7 @@ test("browser map edit vertices nudges selected map feature through reducer acti
   await page.getByRole("button", { name: /Save.*\*/ }).first().click();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
 
-  await page.getByTestId("browser-tool-edit-vertices").click();
+  await selectEditTool(page);
   await page.getByTestId("browser-edit-select-feature").click();
   await expect(page.getByText("Selected underground pipeline line vertex 1 of 3 for projected XY editing.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
@@ -1076,8 +1071,7 @@ test("browser map edit vertices resizes selected circle map feature through radi
     return;
   }
 
-  await page.getByTestId("browser-tool-utility").click();
-  await page.getByRole("button", { name: "End gun", exact: true }).click();
+  await selectEndGunCircleTool(page);
   await clickWorkbenchMap(page, { x: 180, y: 330 });
   await clickWorkbenchMap(page, { x: 250, y: 370 });
   await page.getByTestId("browser-action-save-feature").click();
@@ -1086,7 +1080,7 @@ test("browser map edit vertices resizes selected circle map feature through radi
   await page.getByRole("button", { name: /Save.*\*/ }).first().click();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
 
-  await page.getByTestId("browser-tool-edit-vertices").click();
+  await selectEditTool(page);
   await page.getByTestId("browser-edit-select-feature").click();
   await expect(page.getByText("Selected end gun arc circle center 1 of 2 for projected XY editing.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
@@ -1104,16 +1098,16 @@ test("grouped drawing HUD menus do not clear active drafts", async ({ page }, te
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await page.getByTestId("browser-tool-boundary").click();
-  await expect(page.getByTestId("browser-tool-boundary")).toHaveAttribute("aria-pressed", "true");
+  await selectBoundaryTool(page);
+  await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "true");
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
 
-  await page.getByTestId("drawing-tool-group-draw").click();
-  await expect(page.getByTestId("drawing-tool-option-boundary")).toBeVisible();
+  await openDesignToolPanel(page, "polygon");
+  await expect(page.getByRole("button", { name: "Field Boundary", exact: true })).toBeVisible();
   await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
-  await page.getByTestId("drawing-tool-group-draw").click();
-  await expect(page.getByTestId("drawing-tool-option-boundary")).toHaveCount(0);
+  await page.getByTestId("design-console-close").click();
+  await expect(page.getByTestId("design-console-dialog")).toHaveCount(0);
   await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "grouped-drawing-hud-draft-preserved");
@@ -1133,18 +1127,15 @@ test("browser map workflow modes expose active state", async ({ page }, testInfo
   await saveScreen(page, testInfo, "browser-map-workflow-active-state");
 });
 
-test("browser map utility option chips expose active state", async ({ page }, testInfo) => {
+test("browser map utility sheets expose active state", async ({ page }, testInfo) => {
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await page.getByTestId("browser-tool-utility").click();
-  const pipe = page.getByRole("button", { name: "Pipe", exact: true });
-  const pump = page.getByRole("button", { name: "Pump", exact: true });
-  await expect(pipe).toHaveAttribute("aria-pressed", "true");
-  await expect(pump).toHaveAttribute("aria-pressed", "false");
-  await pump.click();
-  await expect(pipe).toHaveAttribute("aria-pressed", "false");
-  await expect(pump).toHaveAttribute("aria-pressed", "true");
+  await selectPipelineTool(page);
+  await expect(page.getByTestId("design-action-line")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("map-hud-active-tool-chip")).toContainText("underground pipeline");
+  await selectPumpFeatureTool(page);
+  await expect(page.getByTestId("design-action-point")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "browser-map-chip-active-state");
@@ -1161,7 +1152,7 @@ test("browser map HUD actions expose disabled state", async ({ page }, testInfo)
   await expect(saveFeature).toHaveAttribute("aria-disabled", "true");
   await expect(clear).toHaveAttribute("aria-disabled", "true");
 
-  await page.getByTestId("browser-tool-boundary").click();
+  await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await expect(clear).not.toHaveAttribute("aria-disabled", "true");
   await expect(clear).toBeEnabled();
@@ -1173,7 +1164,7 @@ test("browser map HUD actions expose disabled state", async ({ page }, testInfo)
   await expect(saveFeature).toHaveAttribute("aria-disabled", "true");
 
   await page.getByTestId("browser-action-clear").click();
-  await page.getByTestId("browser-tool-utility").click();
+  await selectPipelineTool(page);
   await clickWorkbenchMap(page, { x: 160, y: 330 });
   await clickWorkbenchMap(page, { x: 220, y: 370 });
   await expect(commit).toHaveAttribute("aria-disabled", "true");
@@ -1187,7 +1178,7 @@ test("browser map compact HUD actions stay inside the status panel", async ({ pa
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await page.getByTestId("browser-tool-boundary").click();
+  await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await clickWorkbenchMap(page, { x: 200, y: 240 });
   await clickWorkbenchMap(page, { x: 230, y: 185 });
@@ -1250,7 +1241,7 @@ test("offline browser map workbench stays usable with external requests blocked"
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
   await expect(page.getByText("EPSG:32613 canonical geometry · offline overlay")).toBeVisible();
   await expect(page.getByText(/Aerial imagery is off/)).toBeVisible();
-  await page.getByTestId("browser-tool-boundary").click();
+  await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
   expect(externalRequests).toEqual([]);
@@ -1585,7 +1576,7 @@ test("dashboard export readiness reflects unsaved browser geometry edits", async
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await page.getByTestId("browser-tool-boundary").click();
+  await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await clickWorkbenchMap(page, { x: 240, y: 180 });
   await clickWorkbenchMap(page, { x: 220, y: 250 });
@@ -2024,7 +2015,7 @@ test("dashboard dirty geometry priority outranks imagery-off guidance", async ({
   await page.getByTestId("workspace-nav-settings").click();
   await page.getByRole("button", { name: "Aerial Off" }).click();
   await page.getByTestId("workspace-nav-map").click();
-  await page.getByTestId("browser-tool-boundary").click();
+  await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await clickWorkbenchMap(page, { x: 240, y: 180 });
   await clickWorkbenchMap(page, { x: 220, y: 250 });
@@ -2067,20 +2058,23 @@ test("dashboard walkthrough modules expose checkbox state and keyboard activatio
 
 test("dashboard walkthrough progress is scoped to the active project", async ({ page }, testInfo) => {
   await page.goto("/");
-  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-dashboard").click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
   await page.getByTestId("walkthrough-module-imagery").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
   await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Real Proof" }).click();
   await expect(page.getByText("Public Adams County Center Pivot Proof", { exact: true }).first()).toBeVisible();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("0/7 modules")).toBeVisible();
   await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-walkthrough-project-scope");
 });
 
 test("dashboard walkthrough reset only clears the active project", async ({ page }, testInfo) => {
   await page.goto("/");
-  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-dashboard").click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
   await page.getByTestId("walkthrough-module-imagery").click();
   await page.getByTestId("walkthrough-module-boundary").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
@@ -2090,6 +2084,7 @@ test("dashboard walkthrough reset only clears the active project", async ({ page
   await page.getByRole("button", { name: "Reset walkthrough progress for active project" }).click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("0/7 modules")).toBeVisible();
   await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Open Sample" }).click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-walkthrough-reset-project-scope");
 });
@@ -2417,6 +2412,75 @@ async function saveScreen(page: Page, testInfo: TestInfo, label: string): Promis
     fullPage: true,
     path: testInfo.outputPath(`${label}.png`),
   });
+}
+
+async function clickHudAction(page: Page, testId: string): Promise<void> {
+  const action = page.getByTestId(testId);
+  await action.evaluate((node) => {
+    (node as HTMLElement).scrollIntoView({ block: "nearest", inline: "center" });
+  });
+  await action.scrollIntoViewIfNeeded();
+  await action.click();
+}
+
+async function openDesignToolPanel(page: Page, action: "point" | "line" | "polygon" | "circle" | "machine" | "layers" | "calculate"): Promise<void> {
+  await clickHudAction(page, `design-action-${action}`);
+  await expect(page.getByTestId("design-console-dialog")).toBeVisible();
+}
+
+async function chooseDesignConsoleTool(page: Page, label: string): Promise<void> {
+  await page.getByRole("button", { name: label, exact: true }).click();
+  await expect(page.getByTestId("design-console-dialog")).toHaveCount(0);
+}
+
+async function openLayersSheet(page: Page): Promise<void> {
+  await openDesignToolPanel(page, "layers");
+  await expect(page.getByTestId("places-layers-summary")).toBeVisible();
+}
+
+async function openPivotGpsSheet(page: Page): Promise<void> {
+  await openDesignToolPanel(page, "point");
+  await page.getByRole("button", { name: "Pivot GPS Entry", exact: true }).click();
+  await expect(page.getByLabel("Pivot latitude and longitude decimal degrees")).toBeVisible();
+}
+
+async function openCornerArmAdvisorySheet(page: Page): Promise<void> {
+  await openDesignToolPanel(page, "machine");
+  await page.getByRole("button", { name: "Corner Arm Advisory", exact: true }).click();
+  await expect(page.getByTestId("corner-arm-advisory-badges")).toBeVisible();
+}
+
+async function selectBoundaryTool(page: Page): Promise<void> {
+  await openDesignToolPanel(page, "polygon");
+  await chooseDesignConsoleTool(page, "Field Boundary");
+}
+
+async function selectPipelineTool(page: Page): Promise<void> {
+  await openDesignToolPanel(page, "line");
+  await chooseDesignConsoleTool(page, "Pipeline");
+}
+
+async function selectPumpFeatureTool(page: Page): Promise<void> {
+  await openDesignToolPanel(page, "point");
+  await chooseDesignConsoleTool(page, "Pump Feature");
+}
+
+async function selectEndGunCircleTool(page: Page): Promise<void> {
+  await openDesignToolPanel(page, "circle");
+  await chooseDesignConsoleTool(page, "End-Gun Circle");
+}
+
+async function selectCornerFootprintTool(page: Page): Promise<void> {
+  await openDesignToolPanel(page, "polygon");
+  await chooseDesignConsoleTool(page, "Corner-Arm Footprint");
+}
+
+async function selectPanTool(page: Page): Promise<void> {
+  await clickHudAction(page, "design-action-pan");
+}
+
+async function selectEditTool(page: Page): Promise<void> {
+  await clickHudAction(page, "design-action-edit");
 }
 
 async function clickWorkbenchMap(page: Page, position: { x: number; y: number }): Promise<void> {

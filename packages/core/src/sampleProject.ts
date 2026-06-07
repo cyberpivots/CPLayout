@@ -488,7 +488,254 @@ export const fullScopeMultiPivotCostDemoProject: PivotProject = {
   ],
 };
 
+const willRheaObservedAt = "2026-06-06T00:00:00.000Z";
+const willRheaProjectCrs = "EPSG:32614";
+const willRheaSourceFileName = "Will Rhea.kmz";
+const willRheaSourceKind = "operator_supplied_local_kmz";
+const willRheaSourceKmzSha256 = "895e9367fd07c730572618d5ed01b96a66519de725faab082d6f1714ef827401";
+const willRheaSourceKmlEntryName = "doc.kml";
+const willRheaSourceDocKmlSha256 = "aa2b577569c7bdf52197761bdcfadcc2c8e87afe60294c0151409a785645d97e";
+
+function wr(longitude: number, latitude: number): XY {
+  return projectLonLatToXy({ longitude, latitude }, willRheaProjectCrs);
+}
+
+function xyDistanceMeters(a: XY, b: XY): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function spanSetForRadius(radiusMeters: number): number[] {
+  const spanCount = Math.max(1, Math.ceil(radiusMeters / 54));
+  const spanLength = Math.round((radiusMeters / spanCount) * 10) / 10;
+  const spans = Array.from({ length: spanCount }, () => spanLength);
+  spans[spanCount - 1] = Math.round((radiusMeters - spanLength * (spanCount - 1)) * 10) / 10;
+  return spans;
+}
+
+function willRheaEvidenceProperties(sourcePlacemark: string, extras: Record<string, string | number | boolean | null> = {}): Record<string, string | number | boolean | null> {
+  return {
+    sourceKind: willRheaSourceKind,
+    sourceFileName: willRheaSourceFileName,
+    sourceKmzSha256: willRheaSourceKmzSha256,
+    sourceKmlEntryName: willRheaSourceKmlEntryName,
+    sourceDocKmlSha256: willRheaSourceDocKmlSha256,
+    sourcePlacemark,
+    canonicalGeometryMutation: false,
+    evidenceOnly: true,
+    ...extras,
+  };
+}
+
+const willRheaMiddleBoundary = [
+  wr(-97.28372565832038, 42.90112203521912),
+  wr(-97.2862454518893, 42.9010278780816),
+  wr(-97.2887908719384, 42.90096814284777),
+  wr(-97.28876150484578, 42.89839218174122),
+  wr(-97.28876293138067, 42.89834712799657),
+  wr(-97.28872773453419, 42.89820846081622),
+  wr(-97.28842376578737, 42.89818377946268),
+  wr(-97.28388495944927, 42.8982043706849),
+  wr(-97.28387323674161, 42.89522253500184),
+  wr(-97.27789599859895, 42.89543170815415),
+  wr(-97.27839707263755, 42.89668505834992),
+  wr(-97.27865524622686, 42.89714454967947),
+  wr(-97.27910976500326, 42.89769216178609),
+  wr(-97.27922653017752, 42.89783875969702),
+  wr(-97.27928333047915, 42.89801511761743),
+  wr(-97.27952225620592, 42.89815443962794),
+  wr(-97.27962594955291, 42.89837563853295),
+  wr(-97.27972172894511, 42.89863476983267),
+  wr(-97.27976267501315, 42.89874608122614),
+  wr(-97.27978932425383, 42.89886869343957),
+  wr(-97.280010517598, 42.89931971801695),
+  wr(-97.28011644560567, 42.89971818260744),
+  wr(-97.28027373414896, 42.90004444913738),
+  wr(-97.28040591617304, 42.90033535031048),
+  wr(-97.28047666688161, 42.90067462359451),
+  wr(-97.28089277693144, 42.90098308921548),
+  wr(-97.28097785510678, 42.90122533322885),
+];
+
+const willRheaSouthBoundary = [
+  wr(-97.28388437532014, 42.89525334942844),
+  wr(-97.28380429489741, 42.89089247448032),
+  wr(-97.27663164569952, 42.89106532952891),
+  wr(-97.27646780945, 42.89124097905972),
+  wr(-97.27649191460577, 42.89149607189767),
+  wr(-97.27647229171482, 42.89217380143266),
+  wr(-97.27652787380126, 42.89367150833588),
+  wr(-97.27657931941707, 42.8939118875367),
+  wr(-97.27666074478617, 42.8943118503139),
+  wr(-97.2771158868576, 42.89515341832646),
+  wr(-97.27715617189897, 42.89520478794139),
+  wr(-97.27746554623401, 42.89529574543461),
+  wr(-97.27762561353225, 42.89530987937744),
+  wr(-97.27789599859895, 42.89543170815415),
+];
+
+const willRheaFullScopeBoundary = [
+  wr(-97.29369262615309, 42.90167661000692),
+  wr(-97.29363852869064, 42.9016761929968),
+  wr(-97.29363711665349, 42.90171717823377),
+  wr(-97.28879322597311, 42.90182383122026),
+  wr(-97.28876150484578, 42.89839218174122),
+  wr(-97.28876293138067, 42.89834712799657),
+  wr(-97.28872773453419, 42.89820846081622),
+  wr(-97.28842376578737, 42.89818377946268),
+  wr(-97.28388495944927, 42.8982043706849),
+  wr(-97.28384055778417, 42.89812087328995),
+  wr(-97.28380429489741, 42.89089247448032),
+  wr(-97.27663164569952, 42.89106532952891),
+  wr(-97.27646780945, 42.89124097905972),
+  wr(-97.27649191460577, 42.89149607189767),
+  wr(-97.27647229171482, 42.89217380143266),
+  wr(-97.27652787380126, 42.89367150833588),
+  wr(-97.27657931941707, 42.8939118875367),
+  wr(-97.27666074478617, 42.8943118503139),
+  wr(-97.2771158868576, 42.89515341832646),
+  wr(-97.27715617189897, 42.89520478794139),
+  wr(-97.27746554623401, 42.89529574543461),
+  wr(-97.27762561353225, 42.89530987937744),
+  wr(-97.27789599859895, 42.89543170815415),
+  wr(-97.27839707263755, 42.89668505834992),
+  wr(-97.27865524622686, 42.89714454967947),
+  wr(-97.27910976500326, 42.89769216178609),
+  wr(-97.27922653017752, 42.89783875969702),
+  wr(-97.27928333047915, 42.89801511761743),
+  wr(-97.27952225620592, 42.89815443962794),
+  wr(-97.27962594955291, 42.89837563853295),
+  wr(-97.27972172894511, 42.89863476983267),
+  wr(-97.27976267501315, 42.89874608122614),
+  wr(-97.27978932425383, 42.89886869343957),
+  wr(-97.280010517598, 42.89931971801695),
+  wr(-97.28011644560567, 42.89971818260744),
+  wr(-97.28027373414896, 42.90004444913738),
+  wr(-97.28040591617304, 42.90033535031048),
+  wr(-97.28047666688161, 42.90067462359451),
+  wr(-97.28089277693144, 42.90098308921548),
+  wr(-97.28096966856215, 42.90129914758626),
+  wr(-97.28194271897232, 42.90204565342629),
+  wr(-97.28327490123333, 42.90288877730912),
+  wr(-97.28433603906792, 42.90348510329863),
+  wr(-97.28505436725519, 42.90393116954889),
+  wr(-97.28628917986541, 42.90466094711623),
+  wr(-97.2873890198224, 42.90544371025065),
+  wr(-97.28982153886321, 42.90654394487177),
+  wr(-97.29085596905851, 42.90671745496059),
+  wr(-97.29223851508645, 42.90700060741206),
+  wr(-97.29309439731216, 42.90707490183578),
+  wr(-97.29446501889933, 42.9072671764559),
+  wr(-97.29513441695509, 42.90734629685587),
+  wr(-97.29581164228108, 42.90742238326278),
+  wr(-97.29641179828211, 42.90750987121181),
+  wr(-97.29718846145255, 42.90755849646914),
+  wr(-97.29786740535421, 42.90760060686129),
+  wr(-97.29830210478293, 42.9075824935513),
+  wr(-97.29818205474636, 42.90105068056278),
+  wr(-97.29814763123508, 42.90092818118597),
+  wr(-97.29801118020967, 42.90085991315835),
+  wr(-97.29370569396534, 42.90093016444332),
+];
+
+const willRheaPivotPoint = wr(-97.28375260755031, 42.89522534846535);
+const willRheaLrduMeasurementLine = [
+  wr(-97.28375170532335, 42.89522705985541),
+  wr(-97.27808731710788, 42.89538423309978),
+];
+const willRheaLastWheelRadiusMeters = Math.round(xyDistanceMeters(willRheaLrduMeasurementLine[0], willRheaLrduMeasurementLine[1]) * 10) / 10;
+
+export const willRheaJasonHarmelinkExampleProject: PivotProject = {
+  id: "will-rhea-jason-harmelink-example",
+  name: "Will Rhea / Jason Harmelink Example Map",
+  projectCrs: willRheaProjectCrs,
+  unitSystem: "us_survey_feet",
+  settings: defaultProjectSettings(),
+  fieldBoundary: willRheaFullScopeBoundary,
+  pivotCenter: willRheaPivotPoint,
+  waterSource: willRheaPivotPoint,
+  powerSource: willRheaPivotPoint,
+  machine: {
+    id: "will-rhea-lrdu-radius-template",
+    name: "LRDU last-wheel radius template",
+    spanLengthsMeters: spanSetForRadius(willRheaLastWheelRadiusMeters),
+    overhangMeters: 0,
+    endGunThrowMeters: 0,
+    towerClearanceBufferMeters: 5,
+    machineClearanceBufferMeters: 8,
+    sweep: { mode: "full_circle" },
+  },
+  obstacles: [],
+  surveyPoints: [
+    {
+      id: "will-rhea-pivot-point",
+      label: "Pivot Point",
+      role: "pivot_center",
+      projected: willRheaPivotPoint,
+      wgs84: { longitude: -97.28375260755031, latitude: 42.89522534846535 },
+      observedAt: willRheaObservedAt,
+      source: "imported",
+      confidence: "imagery_digitized",
+      notes: "Operator-supplied local KMZ point evidence; advisory example only.",
+    },
+  ],
+  mapPackages: [],
+  mapFeatures: [
+    {
+      id: "will-rhea-full-scope-field-boundary-evidence",
+      name: "Full Scope Field Boundary Evidence",
+      kind: "planning_boundary",
+      geometry: { type: "Polygon", vertices: willRheaFullScopeBoundary },
+      confidence: "imagery_digitized",
+      notes: "Parallel evidence feature for the active full-scope field boundary from local KMZ; advisory example only.",
+      properties: willRheaEvidenceProperties("Full_Scope_Field Boundary"),
+    },
+    {
+      id: "will-rhea-middle-machine-field-boundary",
+      name: "Middle Machine Field Boundary",
+      kind: "machine_zone",
+      geometry: { type: "Polygon", vertices: willRheaMiddleBoundary },
+      confidence: "imagery_digitized",
+      notes: "Derived from local tmp/Will Rhea.kmz placemark; advisory example only.",
+      properties: willRheaEvidenceProperties("Middle_Machine_Field_Boundary"),
+    },
+    {
+      id: "will-rhea-south-machine-field-boundary",
+      name: "South Machine Field Boundary",
+      kind: "machine_zone",
+      geometry: { type: "Polygon", vertices: willRheaSouthBoundary },
+      confidence: "imagery_digitized",
+      notes: "Derived from local tmp/Will Rhea.kmz placemark; advisory example only.",
+      properties: willRheaEvidenceProperties("South_Machine_Field_Boundary"),
+    },
+    {
+      id: "will-rhea-lrdu-distance",
+      name: "LRDU Distance",
+      kind: "measurement_line",
+      geometry: { type: "LineString", vertices: willRheaLrduMeasurementLine },
+      confidence: "imagery_digitized",
+      notes: "Google Earth length-to-last-wheel evidence from local KMZ; not an overhang/end-boom measurement.",
+      properties: willRheaEvidenceProperties("LRDU Distance", { derivedLengthMeters: willRheaLastWheelRadiusMeters }),
+    },
+    {
+      id: "will-rhea-existing-machine-zone",
+      name: "Existing machine radius review",
+      kind: "machine_zone",
+      geometry: { type: "Circle", center: willRheaPivotPoint, radiusMeters: willRheaLastWheelRadiusMeters },
+      confidence: "imagery_digitized",
+      notes: "Advisory machine-zone visualization from the imported LRDU distance line.",
+      properties: willRheaEvidenceProperties("LRDU Distance", { derivedLengthMeters: willRheaLastWheelRadiusMeters, generatedFromImportedMeasurement: true }),
+    },
+  ],
+};
+
 export const sampleDesignProjects: SampleDesignProject[] = [
+  {
+    id: "will-rhea-jason-harmelink-example",
+    label: "Will Rhea Example",
+    description: "Operator-supplied Jason Harmelink field boundaries, pivot point, and LRDU distance evidence for all development loads.",
+    reviewStatus: "needs_review",
+    project: willRheaJasonHarmelinkExampleProject,
+  },
   {
     id: "sample-baseline-needs-review",
     label: "Needs Review Baseline",

@@ -78,6 +78,7 @@ export function SvgMapSurface({
   activeToolRequestId,
   advisoryFieldPivotPlan,
   bottomOverlay,
+  controlLayout = "internalRows",
   homeView = false,
   project,
   result,
@@ -102,6 +103,7 @@ export function SvgMapSurface({
   const { width: windowWidth } = useWindowDimensions();
   const compactLayout = windowWidth < 760;
   const catalogHomeView = homeView === true;
+  const externalHudLayout = controlLayout === "externalHud";
   const designMode = settings.mappingWorkflowMode === "design" && !catalogHomeView;
   const showProjectGeometry = !catalogHomeView;
   const mapFeatures = project.mapFeatures ?? [];
@@ -547,19 +549,21 @@ export function SvgMapSurface({
           mode={settings.mappingWorkflowMode}
           onChange={(mode) => onMappingWorkflowModeChange?.(mode)}
         />
-        <View style={[styles.modeRow, compactLayout && styles.modeRowCompact]}>
-          <ToolButton active={mapState.mode === "pan"} icon={<Hand size={18} />} label="Pan" onPress={() => setToolMode("pan")} />
-          {designMode ? (
-            <>
-              <ToolButton active={mapState.mode === "draw_boundary"} icon={<PencilLine size={18} />} label="Boundary" onPress={() => setToolMode("draw_boundary", "field_boundary")} />
-              <ToolButton active={mapState.mode === "mark_obstacle"} icon={<Crosshair size={18} />} label="Obstacle" onPress={() => setToolMode("mark_obstacle", "obstacle")} />
-              <ToolButton active={mapState.mode === "edit_vertices"} icon={<Crosshair size={18} />} label="Edit" onPress={() => dispatch({ type: "set_mode", mode: "edit_vertices" })} />
-              <ToolButton active={mapState.mode === "capture_point"} icon={<Satellite size={18} />} label="Survey" onPress={() => setToolMode("capture_point", "control_point")} />
-              <ToolButton active={mapState.mode === "measure"} icon={<Ruler size={18} />} label="Measure" onPress={() => setToolMode("measure")} />
-              <ToolButton active={mapState.mode === "place_pivot"} icon={<LocateFixed size={18} />} label="Pivot" onPress={() => setToolMode("place_pivot", "pivot_center")} />
-            </>
-          ) : null}
-        </View>
+        {!externalHudLayout ? (
+          <View style={[styles.modeRow, compactLayout && styles.modeRowCompact]}>
+            <ToolButton active={mapState.mode === "pan"} icon={<Hand size={18} />} label="Pan" onPress={() => setToolMode("pan")} />
+            {designMode ? (
+              <>
+                <ToolButton active={mapState.mode === "draw_boundary"} icon={<PencilLine size={18} />} label="Boundary" onPress={() => setToolMode("draw_boundary", "field_boundary")} />
+                <ToolButton active={mapState.mode === "mark_obstacle"} icon={<Crosshair size={18} />} label="Obstacle" onPress={() => setToolMode("mark_obstacle", "obstacle")} />
+                <ToolButton active={mapState.mode === "edit_vertices"} icon={<Crosshair size={18} />} label="Edit" onPress={() => dispatch({ type: "set_mode", mode: "edit_vertices" })} />
+                <ToolButton active={mapState.mode === "capture_point"} icon={<Satellite size={18} />} label="Survey" onPress={() => setToolMode("capture_point", "control_point")} />
+                <ToolButton active={mapState.mode === "measure"} icon={<Ruler size={18} />} label="Measure" onPress={() => setToolMode("measure")} />
+                <ToolButton active={mapState.mode === "place_pivot"} icon={<LocateFixed size={18} />} label="Pivot" onPress={() => setToolMode("place_pivot", "pivot_center")} />
+              </>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       <View
@@ -704,7 +708,7 @@ export function SvgMapSurface({
           <IconControl icon={<ArrowDown size={20} />} label="Pan south" onPress={() => dispatch({ type: "pan", delta: { x: 0, y: -settings.drawing.panStepMeters } })} />
         </View>
         {designMode ? (
-        <View style={styles.draftHud}>
+        <View style={[styles.draftHud, externalHudLayout && styles.draftHudExternal]}>
           <Text style={styles.draftHudText}>
             {mapState.activeLayer.replaceAll("_", " ")} · {mapState.draftVertices.length} pts{measureText(mapState.draftVertices)}{selectedVertex ? ` · ${selectedProjectVertexText(project, selectedVertex)}` : ""}
           </Text>
@@ -747,7 +751,7 @@ export function SvgMapSurface({
           </Pressable>
         </View>
         ) : (
-          <View style={styles.draftHud}>
+          <View style={[styles.draftHud, externalHudLayout && styles.draftHudExternal]}>
             <Text style={styles.draftHudText}>{catalogHomeView ? "Catalog view · open a saved design to edit projected XY geometry" : "Layout · RTK-only mutation · pointer editing controls hidden"}</Text>
           </View>
         )}
@@ -773,6 +777,14 @@ export function SvgMapSurface({
             <Text style={styles.imageryBadgeSubtext}>{referenceOverlayNotice.reason}</Text>
           </View>
         ) : null}
+        {!catalogHomeView && externalHudLayout ? (
+          <View pointerEvents="none" style={styles.compactLegendBadge} testID="svg-map-compact-legend">
+            <LegendSwatch color="#6cb6df" label="Wet" />
+            <LegendSwatch color="#e68b58" label="Outside" />
+            <LegendSwatch color="#c64f43" label="Obstacle" />
+            <LegendSwatch color={palette.utility} label="Feature" />
+          </View>
+        ) : null}
         {bottomOverlay ? (
           <View pointerEvents="box-none" style={styles.bottomOverlaySlot}>
             {bottomOverlay}
@@ -787,7 +799,7 @@ export function SvgMapSurface({
         visible={shouldShowMapLibrePreview}
       />
 
-      {designMode ? (
+      {designMode && !externalHudLayout ? (
       <View style={styles.layerRow}>
         {UTILITY_FEATURE_OPTIONS.map((option) => (
           <FeatureKindButton
@@ -804,7 +816,7 @@ export function SvgMapSurface({
       </View>
       ) : null}
 
-      {designMode ? (
+      {designMode && !externalHudLayout ? (
       <View style={styles.layerRow}>
         <LayerButton active={mapState.activeLayer === "field_boundary"} disabled={!designMode} label="Boundary" layer="field_boundary" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
         <LayerButton active={mapState.activeLayer === "obstacle"} disabled={!designMode} label="Obstacle" layer="obstacle" onPress={(layer) => dispatch({ type: "set_active_layer", activeLayer: layer })} />
@@ -820,7 +832,7 @@ export function SvgMapSurface({
       </View>
       ) : null}
 
-      {!catalogHomeView ? (
+      {!catalogHomeView && !externalHudLayout ? (
         <View style={styles.legend}>
           <LegendSwatch color="#6cb6df" label="Allowed wet area" />
           <LegendSwatch color="#63c7cf" label="End gun" />
@@ -1781,6 +1793,11 @@ const styles = StyleSheet.create({
     right: 12,
     zIndex: 2,
   },
+  draftHudExternal: {
+    bottom: 70,
+    maxHeight: 70,
+    overflow: "hidden",
+  },
   imageryBadge: {
     backgroundColor: "rgba(255, 254, 248, 0.92)",
     borderColor: "#b9c5b6",
@@ -1904,6 +1921,23 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
     padding: 12,
+  },
+  compactLegendBadge: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 254, 248, 0.9)",
+    borderColor: "#b9c5b6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    left: 12,
+    maxWidth: 360,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    position: "absolute",
+    top: 12,
+    zIndex: 2,
   },
   legendItem: {
     alignItems: "center",

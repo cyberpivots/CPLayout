@@ -8,6 +8,7 @@ import type {
   AdvisoryMachineStrategyComparison,
   AdvisoryMultiMachineReview,
   AdvisoryObstacleInteractionReview,
+  AdvisoryRadiusSensitivityReview,
   AdvisorySweepEfficiencyReview,
 } from "./advisoryPivotPlacement";
 
@@ -56,6 +57,7 @@ export interface AdvisoryDesignReportInput {
   multiMachineReview: AdvisoryMultiMachineReview;
   strategyComparison: AdvisoryMachineStrategyComparison;
   obstacleInteractionReview: AdvisoryObstacleInteractionReview;
+  radiusSensitivityReview?: AdvisoryRadiusSensitivityReview | null;
   endGunSensitivityReview?: AdvisoryEndGunSensitivityReview;
   sweepEfficiencyReview?: AdvisorySweepEfficiencyReview;
   generatedMultiPivotScenarioReview?: AdvisoryGeneratedMultiPivotScenarioReview;
@@ -190,6 +192,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
   const generatedRadiusStrategies = input.strategyComparison.strategies
     .filter((strategy) => strategy.strategyKind === "full_circle_radius")
     .sort((left, right) => left.machineRadiusMeters - right.machineRadiusMeters || left.label.localeCompare(right.label));
+  const radiusSensitivityReview = input.radiusSensitivityReview ?? null;
   const endGunSensitivityReview = input.endGunSensitivityReview;
   const sweepEfficiencyReview = input.sweepEfficiencyReview;
   const generatedMultiPivotScenarioReview = input.generatedMultiPivotScenarioReview
@@ -202,6 +205,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     ...input.multiMachineReview.sourceRefs,
     ...input.strategyComparison.sourceRefs,
     ...input.obstacleInteractionReview.sourceRefs,
+    ...(radiusSensitivityReview?.sourceRefs ?? []),
     ...(endGunSensitivityReview?.sourceRefs ?? []),
     ...(sweepEfficiencyReview?.sourceRefs ?? []),
     ...input.strategyComparison.strategies.flatMap((strategy) => strategy.sourceRefs),
@@ -209,7 +213,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
   ]);
   const warnings = dedupeStrings([
     "Advisory report only; qualified field, hydraulic, electrical, and vendor review is required before construction or operation.",
-    "Report generation does not mutate canonical projected XY, active pivot, field boundary, machine settings, project schemas, archives, or storage.",
+    "Report generation does not change project geometry, machine settings, storage, archives, or KML/KMZ; canonical projected XY, active pivot, field boundary, and project schemas remain unchanged.",
     "Cost values use explicit operator-supplied local assumptions only and are not vendor quotes or purchase recommendations.",
     "Collision, bender, corner-arm, linear/lateral, and obstacle-crossing results are planning prompts only, not certified runtime behavior.",
     ...reviewZoneAudit.warnings,
@@ -217,6 +221,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     ...input.multiMachineReview.warnings,
     ...input.strategyComparison.warnings,
     ...input.obstacleInteractionReview.warnings,
+    ...(radiusSensitivityReview?.warnings ?? []),
     ...generatedMultiPivotScenarioReview.warnings,
     ...(endGunSensitivityReview?.warnings ?? []),
     ...(sweepEfficiencyReview?.warnings ?? []),
@@ -327,6 +332,25 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
         "Cost review is local and advisory; CPLayout does not infer prices, quote equipment, or recommend purchases automatically.",
       ],
     },
+    ...(radiusSensitivityReview ? [{
+      id: "radius-sensitivity",
+      title: "Radius Sensitivity Review",
+      lines: [
+        `Review source: ${readable(radiusSensitivityReview.source)}`,
+        `Imported/current radius: ${formatMeters(radiusSensitivityReview.importedRadiusMeters)}`,
+        `Rows reviewed: ${radiusSensitivityReview.readyRowCount}/${radiusSensitivityReview.rowCount}`,
+        radiusSensitivityReview.bestByCostPerAcre
+          ? `Best cost-per-acre radius: ${formatMeters(radiusSensitivityReview.bestByCostPerAcre.radiusMeters)}, ${formatStrategyCostLabel({ costAssessment: radiusSensitivityReview.bestByCostPerAcre.cost })}`
+          : "Best cost-per-acre radius: none with complete local cost evidence.",
+        radiusSensitivityReview.bestByFullScopeCoverage
+          ? `Best full-scope coverage radius: ${formatMeters(radiusSensitivityReview.bestByFullScopeCoverage.radiusMeters)}, ${formatPercent(radiusSensitivityReview.bestByFullScopeCoverage.fullScopeCoveragePercent)} full-scope coverage`
+          : "Best full-scope coverage radius: none with positive coverage evidence.",
+        ...radiusSensitivityReview.rows.slice(0, 6).map((row) => (
+          `${row.label}: radius ${formatMeters(row.radiusMeters)}, ${formatAcres(row.irrigatedAcres)} current, ${formatPercent(row.fullScopeCoveragePercent)} full-scope, ${row.selectedMachineCount} generated centers, ${row.readyScenarioCount}/${row.scenarioCount} ready zones, ${formatStrategyCostLabel({ costAssessment: row.cost })}`
+        )),
+        "Radius sensitivity is advisory only; rows do not change machine settings, create quotes, write storage, export KML/KMZ, or mutate canonical projected XY.",
+      ],
+    }] : []),
     ...(sweepEfficiencyReview ? [{
       id: "sweep-efficiency",
       title: "Sweep Efficiency Review",

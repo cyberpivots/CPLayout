@@ -84,6 +84,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     activeToolRequestId,
     advisoryFieldPivotPlan,
     bottomOverlay,
+    controlLayout = "internalRows",
     project,
     result,
     settings,
@@ -108,6 +109,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const homeView = props.homeView === true;
   const { width } = useWindowDimensions();
   const compactLayout = width < 760;
+  const externalHudLayout = controlLayout === "externalHud";
   const designMode = settings.mappingWorkflowMode === "design";
   const canEditOnMap = designMode && !homeView;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -648,22 +650,24 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           ref: containerRef,
           style: mapContainerStyle,
         })}
-        <View style={[styles.toolHud, compactLayout && styles.toolHudCompact]}>
-          <ToolButton active={mode === "pan"} compact={compactLayout} icon={<Hand size={17} color={mode === "pan" ? "#ffffff" : "#173428"} />} label="Pan" onPress={() => setTool("pan")} testID="browser-tool-pan" />
-          <ToolButton active={layersPanelOpen} compact={compactLayout} icon={<Layers size={17} color={layersPanelOpen ? "#ffffff" : "#173428"} />} label="Layers" onPress={() => setLayersPanelOpen((open) => !open)} testID="browser-reference-layers-button" />
-          {canEditOnMap ? (
-            <>
-              <ToolButton active={mode === "measure"} compact={compactLayout} icon={<UtilityPole size={17} color={mode === "measure" ? "#ffffff" : "#173428"} />} label="Utility" onPress={() => setTool("measure")} testID="browser-tool-utility" />
-              <ToolButton active={mode === "draw_boundary"} compact={compactLayout} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} testID="browser-tool-boundary" />
-              <ToolButton active={mode === "mark_obstacle"} compact={compactLayout} icon={<Layers size={17} color={mode === "mark_obstacle" ? "#ffffff" : "#173428"} />} label="Obstacle" onPress={() => setTool("mark_obstacle", "obstacle")} testID="browser-tool-obstacle" />
-              <ToolButton active={mode === "edit_vertices"} compact={compactLayout} icon={<MousePointer2 size={17} color={mode === "edit_vertices" ? "#ffffff" : "#173428"} />} label="Edit" onPress={() => setTool("edit_vertices", "field_boundary")} testID="browser-tool-edit-vertices" />
-              <ToolButton active={mode === "place_pivot"} compact={compactLayout} icon={<LocateFixed size={17} color={mode === "place_pivot" ? "#ffffff" : "#173428"} />} label="Pivot" onPress={() => setTool("place_pivot", "pivot_center")} testID="browser-tool-pivot" />
-              <ToolButton active={mode === "capture_point"} compact={compactLayout} icon={<Crosshair size={17} color={mode === "capture_point" ? "#ffffff" : "#173428"} />} label="Survey" onPress={() => setTool("capture_point", "control_point")} testID="browser-tool-survey" />
-            </>
-          ) : null}
-        </View>
+        {!externalHudLayout ? (
+          <View style={[styles.toolHud, compactLayout && styles.toolHudCompact]}>
+            <ToolButton active={mode === "pan"} compact={compactLayout} icon={<Hand size={17} color={mode === "pan" ? "#ffffff" : "#173428"} />} label="Pan" onPress={() => setTool("pan")} testID="browser-tool-pan" />
+            <ToolButton active={layersPanelOpen} compact={compactLayout} icon={<Layers size={17} color={layersPanelOpen ? "#ffffff" : "#173428"} />} label="Layers" onPress={() => setLayersPanelOpen((open) => !open)} testID="browser-reference-layers-button" />
+            {canEditOnMap ? (
+              <>
+                <ToolButton active={mode === "measure"} compact={compactLayout} icon={<UtilityPole size={17} color={mode === "measure" ? "#ffffff" : "#173428"} />} label="Utility" onPress={() => setTool("measure")} testID="browser-tool-utility" />
+                <ToolButton active={mode === "draw_boundary"} compact={compactLayout} icon={<Fence size={17} color={mode === "draw_boundary" ? "#ffffff" : "#173428"} />} label="Boundary" onPress={() => setTool("draw_boundary", "field_boundary")} testID="browser-tool-boundary" />
+                <ToolButton active={mode === "mark_obstacle"} compact={compactLayout} icon={<Layers size={17} color={mode === "mark_obstacle" ? "#ffffff" : "#173428"} />} label="Obstacle" onPress={() => setTool("mark_obstacle", "obstacle")} testID="browser-tool-obstacle" />
+                <ToolButton active={mode === "edit_vertices"} compact={compactLayout} icon={<MousePointer2 size={17} color={mode === "edit_vertices" ? "#ffffff" : "#173428"} />} label="Edit" onPress={() => setTool("edit_vertices", "field_boundary")} testID="browser-tool-edit-vertices" />
+                <ToolButton active={mode === "place_pivot"} compact={compactLayout} icon={<LocateFixed size={17} color={mode === "place_pivot" ? "#ffffff" : "#173428"} />} label="Pivot" onPress={() => setTool("place_pivot", "pivot_center")} testID="browser-tool-pivot" />
+                <ToolButton active={mode === "capture_point"} compact={compactLayout} icon={<Crosshair size={17} color={mode === "capture_point" ? "#ffffff" : "#173428"} />} label="Survey" onPress={() => setTool("capture_point", "control_point")} testID="browser-tool-survey" />
+              </>
+            ) : null}
+          </View>
+        ) : null}
 
-        {canEditOnMap && mode === "mark_obstacle" ? (
+        {canEditOnMap && mode === "mark_obstacle" && !externalHudLayout ? (
           <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["obstacle", "road", "ditch", "fence", "tree", "building", "canal", "exclusion"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
@@ -710,7 +714,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        {canEditOnMap && mode === "place_pivot" ? (
+        {canEditOnMap && mode === "place_pivot" && !externalHudLayout ? (
           <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["pivot_center", "water_source", "power_source"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
@@ -718,7 +722,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        {canEditOnMap && mode === "capture_point" ? (
+        {canEditOnMap && mode === "capture_point" && !externalHudLayout ? (
           <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {(["control_point", "field_boundary", "obstacle", "note_point"] as DrawingLayerType[]).map((layer) => (
               <Chip key={layer} active={activeLayer === layer} label={layer.replaceAll("_", " ")} onPress={() => setActiveLayer(layer)} />
@@ -726,7 +730,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        {canEditOnMap && mode === "measure" ? (
+        {canEditOnMap && mode === "measure" && !externalHudLayout ? (
           <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {UTILITY_FEATURE_OPTIONS.map((option) => (
               <Chip
@@ -761,12 +765,12 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
               {activeImagery ? `${activeImagery.attribution} · ${activeImagery.licenseText}` : aerialImagery.reason}
             </Text>
           </View>
-          <View pointerEvents={compactLayout && !canCommitDraft && !canSaveFeature ? "none" : "box-none"} style={[styles.statusHud, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
+          <View pointerEvents={compactLayout && !canCommitDraft && !canSaveFeature ? "none" : "box-none"} style={[styles.statusHud, externalHudLayout && styles.statusHudExternal, compactLayout && styles.statusHudCompact]} testID="browser-map-status-hud">
             <View pointerEvents="none" style={styles.statusTextGroup}>
               <Text style={styles.statusText}>{status}</Text>
               <Text style={styles.statusMeta}>{statusMetaText}</Text>
             </View>
-            <View pointerEvents="box-none" style={styles.hudActions} testID="browser-map-hud-actions">
+            <View pointerEvents="box-none" style={[styles.hudActions, compactLayout && styles.hudActionsCompact]} testID="browser-map-hud-actions">
               <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="browser-action-commit" />
               <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="browser-action-save-feature" />
               {canEditOnMap && mode === "edit_vertices" ? (
@@ -1212,8 +1216,18 @@ const styles = StyleSheet.create({
     padding: 10,
     width: "100%",
   },
+  statusHudExternal: {
+    maxHeight: 78,
+    overflow: "hidden",
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+  },
   statusHudCompact: {
-    alignItems: "flex-start",
+    alignItems: "stretch",
+    flexDirection: "column",
+    flexWrap: "nowrap",
+    gap: 6,
+    maxHeight: 124,
     maxWidth: "100%",
   },
   statusTextGroup: {
@@ -1237,6 +1251,11 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 6,
     maxWidth: "100%",
+  },
+  hudActionsCompact: {
+    alignSelf: "stretch",
+    minWidth: 0,
+    width: "100%",
   },
   hudButton: {
     alignItems: "center",

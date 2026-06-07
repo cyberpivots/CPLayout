@@ -8,11 +8,13 @@ import {
   partialSweepNearRoadSampleProject,
   sampleDesignProjects,
   sampleProject,
+  willRheaJasonHarmelinkExampleProject,
 } from "@cplayout/core";
 
 import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeAdvisoryObstacleInteractions,
+  buildAdvisoryRadiusSensitivityReview,
   compareAdvisoryMachineStrategies,
   planAdvisoryFieldPivots,
 } from "./advisoryPivotPlacement";
@@ -23,11 +25,52 @@ import { rankLayoutAlternatives } from "./layoutScoring";
 
 const before = JSON.stringify(sampleDesignProjects.map((entry) => entry.project));
 
-assert.equal(sampleDesignProjects.length, 6);
-assert.equal(sampleDesignProjects[0].project, sampleProject);
+assert.equal(sampleDesignProjects.length, 7);
+assert.equal(sampleDesignProjects[0].project, willRheaJasonHarmelinkExampleProject);
 assert.equal(sampleDesignProjects[0].reviewStatus, "needs_review");
-assert.ok(sampleDesignProjects.slice(1).every((entry) => entry.reviewStatus === "curated"));
-assert.ok(sampleDesignProjects.every((entry) => entry.project.projectCrs === "EPSG:32613"));
+assert.equal(sampleDesignProjects[1].project, sampleProject);
+assert.equal(sampleDesignProjects[1].reviewStatus, "needs_review");
+assert.ok(sampleDesignProjects.slice(2).every((entry) => entry.reviewStatus === "curated"));
+assert.ok(sampleDesignProjects.every((entry) => entry.project.projectCrs === "EPSG:32613" || entry.project.projectCrs === "EPSG:32614"));
+
+const willRhea = evaluateLayout(willRheaJasonHarmelinkExampleProject);
+assert.equal(willRheaJasonHarmelinkExampleProject.id, "will-rhea-jason-harmelink-example");
+assert.equal(willRheaJasonHarmelinkExampleProject.projectCrs, "EPSG:32614");
+assert.equal(willRheaJasonHarmelinkExampleProject.wgs84Companion, undefined);
+assert.ok(willRheaJasonHarmelinkExampleProject.fieldBoundary.length > 50);
+assert.ok(willRhea.metrics.fieldAcres > 100);
+const willRheaFeatureCounts = (willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).reduce<Record<string, number>>((counts, feature) => {
+  counts[feature.kind] = (counts[feature.kind] ?? 0) + 1;
+  return counts;
+}, {});
+assert.equal(willRheaFeatureCounts.planning_boundary, 1);
+assert.equal(willRheaFeatureCounts.measurement_line, 1);
+assert.equal(willRheaFeatureCounts.machine_zone, 3);
+assert.ok((willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).every((feature) => feature.properties?.canonicalGeometryMutation === false));
+assert.ok((willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).every((feature) => feature.properties?.evidenceOnly === true));
+assert.ok((willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).every((feature) => feature.properties?.sourceKmzSha256 === "895e9367fd07c730572618d5ed01b96a66519de725faab082d6f1714ef827401"));
+assert.ok((willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).every((feature) => feature.properties?.sourceDocKmlSha256 === "aa2b577569c7bdf52197761bdcfadcc2c8e87afe60294c0151409a785645d97e"));
+assert.equal(
+  (willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).find((feature) => feature.id === "will-rhea-middle-machine-field-boundary")?.kind,
+  "machine_zone",
+);
+assert.equal(
+  (willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).find((feature) => feature.id === "will-rhea-south-machine-field-boundary")?.kind,
+  "machine_zone",
+);
+const willRheaLrduFeature = (willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).find((feature) => feature.id === "will-rhea-lrdu-distance");
+assert.equal(willRheaLrduFeature?.properties?.derivedLengthMeters, 462.9);
+assert.ok(willRheaJasonHarmelinkExampleProject.surveyPoints.some((point) => point.role === "pivot_center" && point.label === "Pivot Point"));
+const willRheaRadiusSensitivity = buildAdvisoryRadiusSensitivityReview(willRheaJasonHarmelinkExampleProject, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  maxMachines: 3,
+  radiiMeters: [185.168],
+});
+assert.equal(willRheaRadiusSensitivity.importedRadiusMeters, 462.9);
+assert.equal(willRheaRadiusSensitivity.rows[0]?.requestedRadiusMeters, 185.168);
+assert.equal(willRheaRadiusSensitivity.rows[0]?.canonicalGeometryMutation, false);
+assert.equal(JSON.stringify(willRheaJasonHarmelinkExampleProject).includes("wgs84Companion"), false);
 
 const baseline = evaluateLayout(sampleProject);
 assert.ok(baseline.metrics.obstacleConflictCount > 0);

@@ -24,8 +24,6 @@ import {
   compareAdvisoryMachineStrategies,
   evaluateLayout,
   planAdvisoryFieldPivots,
-  type AdvisoryCostAssessment,
-  type AdvisoryRadiusSensitivityReview,
 } from "@cplayout/geometry";
 import { strFromU8, unzipSync } from "fflate";
 
@@ -106,7 +104,7 @@ export function generateClientKmzAdvisoryReport(
     sourceId: `local-client-kmz-${sourceSha256.slice(0, 12)}`,
     title: "Operator-supplied local KMZ/KML evidence",
     checkedAt: generatedAt,
-    limit: "Local ignored client artifact for advisory review only; not committed, not a final design, not Google Earth render proof, and not automatic canonical geometry mutation.",
+    limit: "Operator-supplied client artifact for advisory review only; commit/checkpoint only with explicit owner-selected scope, not a final design, not Google Earth render proof, and not automatic canonical geometry mutation.",
   }];
   const costInput = costInputFromOptions(options, sourceRefs);
   const reviewOptions = {
@@ -139,6 +137,7 @@ export function generateClientKmzAdvisoryReport(
     multiMachineReview,
     strategyComparison,
     obstacleInteractionReview,
+    radiusSensitivityReview: radiusSensitivity,
     generatedMultiPivotScenarioReview,
     reviewZoneAudit,
     generatedAt,
@@ -146,7 +145,7 @@ export function generateClientKmzAdvisoryReport(
 
   const reportPath = join(outputDir, "advisory-design-report.txt");
   const manifestPath = join(outputDir, "advisory-design-summary.json");
-  writeFileSync(reportPath, appendRadiusSensitivityReport(report.text, radiusSensitivity), "utf8");
+  writeFileSync(reportPath, report.text, "utf8");
   writeFileSync(manifestPath, JSON.stringify({
     schemaVersion: "cplayout-client-kmz-advisory-report-v1",
     generatedAt,
@@ -446,36 +445,6 @@ function buildMachineFromRadius(radiusMeters: number, options: ClientKmzAdvisory
 
 function machineRadiusMeters(machine: PivotMachine): number {
   return machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0) + machine.overhangMeters;
-}
-
-function appendRadiusSensitivityReport(reportText: string, review: AdvisoryRadiusSensitivityReview): string {
-  const lines = [
-    "",
-    "Radius Sensitivity Review",
-    `- Advisory only: ${review.advisoryOnly}`,
-    `- Canonical geometry mutation: ${review.canonicalGeometryMutation}`,
-    `- Imported radius: ${review.importedRadiusMeters.toFixed(1)} m`,
-    `- Rows reviewed: ${review.rowCount}`,
-    `- Ready rows: ${review.readyRowCount}`,
-    review.bestByCostPerAcre
-      ? `- Best cost-per-acre radius: ${review.bestByCostPerAcre.radiusMeters.toFixed(1)} m at ${review.bestByCostPerAcre.cost.currencyCode} ${review.bestByCostPerAcre.cost.costPerIrrigatedAcre?.toFixed(0)}/ac`
-      : "- Best cost-per-acre radius: none",
-    review.bestByFullScopeCoverage
-      ? `- Best full-scope coverage radius: ${review.bestByFullScopeCoverage.radiusMeters.toFixed(1)} m at ${review.bestByFullScopeCoverage.fullScopeCoveragePercent.toFixed(1)}% full-scope coverage`
-      : "- Best full-scope coverage radius: none",
-    ...review.rows.map((row) => (
-      `- Radius ${row.radiusMeters.toFixed(1)} m: ${row.irrigatedAcres.toFixed(1)} ac current, ${row.coveragePercent.toFixed(1)}% current coverage, ${row.fullScopeCoveragePercent.toFixed(1)}% full-scope coverage, ${row.readyScenarioCount}/${row.scenarioCount} ready zones, ${formatSensitivityCost(row.cost)}`
-    )),
-    ...review.warnings.map((warning) => `- ${warning}`),
-  ];
-  return `${reportText.trimEnd()}\n${lines.join("\n")}\n`;
-}
-
-function formatSensitivityCost(cost: AdvisoryCostAssessment): string {
-  if (cost.status === "complete" && cost.costPerIrrigatedAcre !== null) {
-    return `${cost.currencyCode} ${cost.costPerIrrigatedAcre.toFixed(0)}/ac`;
-  }
-  return cost.status.replaceAll("_", " ");
 }
 
 function costInputFromOptions(

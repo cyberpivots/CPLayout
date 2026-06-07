@@ -12,6 +12,7 @@ export interface MapSurfaceProps {
   activeToolRequestId?: number;
   advisoryFieldPivotPlan?: AdvisoryFieldPivotPlan;
   bottomOverlay?: ReactNode;
+  controlLayout?: "internalRows" | "externalHud";
   draftVertices?: XY[];
   homeView?: boolean;
   selectedMapFeatureId?: string | null;

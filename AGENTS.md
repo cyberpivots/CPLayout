@@ -24,7 +24,7 @@
 - Start every non-trivial pass with a current-worktree preflight: re-read this file, check `git status --short`, identify pre-existing changes, and avoid reverting work you did not make.
 - Prefer pure TypeScript domain logic with tests before UI wiring.
 - Keep repo-local Codex defaults in `.codex/config.toml`; use `AGENTS.md` for durable engineering rules and verify loaded instructions before long-running passes.
-- The CPLayout owner has persistently requested and authorized subagent use for non-trivial CPLayout planning, review, implementation, validation, and knowledge-curation work. The coordinator must state `Subagent decision: required/optional/not useful`; spawn bounded read-only or worker subagents when runtime tools are available and scopes are independent; otherwise record `Accepted fallback:` with the reason. Keep the main agent on the critical path and avoid overlapping write scopes.
+- The CPLayout owner has persistently requested and authorized subagent use for non-trivial CPLayout planning, review, implementation, validation, and knowledge-curation work. The coordinator must state `Subagent decision: required/optional/not useful`; spawn bounded read-only or worker subagents when runtime tools are available and scopes are independent; otherwise record `Accepted fallback:` with the reason. Assign every subagent its own task-selected reasoning level, read/write scope, expected output shape, and no-overlap boundary. Keep the main agent on the critical path and avoid overlapping write scopes.
 - Keep native dependencies minimal and installed through Expo when an Expo SDK package is available.
 - SQLite is the preferred scalable local store for projects, survey logs, vertices, map package metadata, scenarios, and exports.
 - Use the platform repository split: native persistence goes through `packages/project-store/src/projectRepository.native.ts` and Expo SQLite; web MVP persistence goes through `packages/project-store/src/projectRepository.ts` until Expo SQLite web WASM/COOP/COEP deployment is configured.
@@ -49,7 +49,7 @@
   - selected reasoning effort
   - `Subagent decision: required/optional/not useful` or `Accepted fallback:`
   - validation gates selected from the task scope
-- Select reasoning effort from the task, not from a global default. Use `xhigh` only when the complexity analysis warrants it, including native/runtime proof, architecture or package/platform changes, storage contracts, release gates, managed Codex policy, Google Earth proof, broad cross-module mutation, or unresolved reviewer disagreement.
+- Select reasoning effort from the task, not from a global default. Use `xhigh` only when the complexity analysis warrants it, including native/runtime proof, architecture or package/platform changes, storage contracts, release gates, managed Codex policy, Google Earth proof, broad cross-module mutation, or unresolved reviewer disagreement. A route-data `xhigh` value is coordinator guidance for the current task; it is not automatic inheritance for every subagent.
 - Use `high` for bounded implementation or review with meaningful behavior risk, `medium` for narrow docs/tests/fixtures or read-only scans, and `low` only for trivial status or formatting work.
 - Hooks may inject advisory routing context, but they cannot prove enforcement or change an already-running session's model settings.
 

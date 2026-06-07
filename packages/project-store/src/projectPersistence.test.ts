@@ -8,7 +8,7 @@ import {
   buildSaveProjectStatementPlan,
 } from "./projectPersistence";
 import { LOAD_ACTIVE_PROJECT_BY_ID_SQL } from "./projectRepositorySql";
-import { sampleProject } from "@cplayout/core";
+import { sampleProject, willRheaJasonHarmelinkExampleProject } from "@cplayout/core";
 
 const rows = buildProjectGeometryRows(sampleProject);
 assert.equal(rows.length, 1 + sampleProject.obstacles.length);
@@ -68,6 +68,22 @@ assert.equal(mapFeatureRows[2].vertices.length, 3);
 assert.equal(mapFeatureRows[3].properties.geometryType, "Circle");
 assert.equal(mapFeatureRows[3].properties.radiusMeters, 24);
 assert.ok(mapFeatureRows[3].vertices.length > 8);
+
+const willRheaRows = buildProjectGeometryRows(willRheaJasonHarmelinkExampleProject);
+const willRheaMapFeatureRows = willRheaRows.filter((row) => row.layerType === "map_feature");
+const willRheaMachineZoneRows = willRheaMapFeatureRows.filter((row) => row.featureKind === "machine_zone");
+assert.equal(willRheaMachineZoneRows.length, 3);
+assert.equal(willRheaMapFeatureRows.some((row) => row.featureKind === "planning_boundary"), true);
+assert.ok(willRheaMachineZoneRows.every((row) => row.properties.canonicalGeometryMutation === false));
+assert.ok(willRheaMachineZoneRows.every((row) => row.properties.evidenceOnly === true));
+assert.ok(willRheaMapFeatureRows.every((row) => row.properties.sourceKmzSha256 === "895e9367fd07c730572618d5ed01b96a66519de725faab082d6f1714ef827401"));
+assert.ok(willRheaMachineZoneRows.every((row) => row.vertices.every((vertex) => Math.abs(vertex.x) > 100000 && Math.abs(vertex.y) > 100000)));
+const willRheaMachineZoneStatement = buildSaveProjectStatementPlan(willRheaJasonHarmelinkExampleProject)
+  .find((statement) => statement.params[0] === "will-rhea-jason-harmelink-example:map-feature:will-rhea-middle-machine-field-boundary");
+assert.ok(willRheaMachineZoneStatement);
+assert.equal(willRheaMachineZoneStatement.params[2], "map_feature");
+assert.equal(willRheaMachineZoneStatement.params[3], "machine_zone");
+assert.match(String(willRheaMachineZoneStatement.params[6]), /"sourceKmzSha256":"895e9367fd07c730572618d5ed01b96a66519de725faab082d6f1714ef827401"/);
 
 const plan = buildSaveProjectStatementPlan(sampleProject, evaluateLayout(sampleProject));
 assert.ok(plan.some((statement) => statement.sql.includes("INSERT INTO project_snapshots")));

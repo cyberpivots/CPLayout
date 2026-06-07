@@ -48,7 +48,19 @@ REQUIRED_ROUTE_IDS = {
 
 COMPLEXITY_BANDS = {"low", "medium", "high", "xhigh"}
 REASONING_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
+SUBAGENT_REASONING_EFFORTS = {"task_selected"}
 SPAWN_POLICIES = {"required", "optional", "not_useful"}
+REQUIRED_ROUTE_KEYWORDS = {
+    "cplayout_imagery_mapper": {"will rhea", "jason harmelink"},
+    "cplayout_interface_developer": {"hud", "bottom hud", "map workspace"},
+    "cplayout_kb_curator": {
+        "advisory hooks",
+        "coordinator route band",
+        "subagent reasoning",
+        "token efficient",
+        "xhigh coordinator",
+    },
+}
 
 HOOK_SAMPLES = (
     (
@@ -287,6 +299,8 @@ def validate_route_data() -> list[str]:
             errors.append(f"cplayout_route_data.json: {route_id}.complexityBand is invalid")
         if route.get("reasoningEffort") not in REASONING_EFFORTS:
             errors.append(f"cplayout_route_data.json: {route_id}.reasoningEffort is invalid")
+        if route.get("subagentReasoningEffort") not in SUBAGENT_REASONING_EFFORTS:
+            errors.append(f"cplayout_route_data.json: {route_id}.subagentReasoningEffort must be task_selected")
         if route.get("spawnPolicy") not in SPAWN_POLICIES:
             errors.append(f"cplayout_route_data.json: {route_id}.spawnPolicy is invalid")
         for field in ("note", "routingReason"):
@@ -303,6 +317,15 @@ def validate_route_data() -> list[str]:
             if not isinstance(keywords, list):
                 errors.append(f"cplayout_route_data.json: {route_id}.{field} must be a list")
                 continue
+            if field == "positiveKeywords" and isinstance(route_id, str) and route_id in REQUIRED_ROUTE_KEYWORDS:
+                terms = {
+                    keyword.get("term")
+                    for keyword in keywords
+                    if isinstance(keyword, dict) and isinstance(keyword.get("term"), str)
+                }
+                missing_keywords = sorted(REQUIRED_ROUTE_KEYWORDS[route_id] - terms)
+                for missing_keyword in missing_keywords:
+                    errors.append(f"cplayout_route_data.json: {route_id}.positiveKeywords missing {missing_keyword}")
             for keyword in keywords:
                 weight = keyword.get("weight") if isinstance(keyword, dict) else None
                 if not isinstance(weight, int) or weight <= 0:

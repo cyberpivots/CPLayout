@@ -90,7 +90,7 @@ import {
   improvedCenterPivotProofProject,
   realCenterPivotProofProject,
   sampleDesignProjects,
-  sampleProject,
+  willRheaJasonHarmelinkExampleProject,
   type AppSettings,
   type GoogleEarthKmlImportResult,
   type AdvisoryCornerArmConfig,
@@ -146,6 +146,8 @@ import {
   type PivotPlacementCandidate,
 } from "@cplayout/geometry";
 import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFeetInches, parseDistanceInput } from "@cplayout/core";
+
+const defaultDevelopmentProject = willRheaJasonHarmelinkExampleProject;
 
 type WorkspaceView = "dashboard" | "map" | "survey" | "files" | "settings" | "help";
 type Screen = "projects" | "workspace";
@@ -219,7 +221,7 @@ export default function App(): React.JSX.Element {
 function AppContent(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>("workspace");
   const [activeView, setActiveView] = useState<WorkspaceView>("map");
-  const [editor, dispatchProject] = useReducer(reduceProjectEditorState, sampleProject, createProjectEditorState);
+  const [editor, dispatchProject] = useReducer(reduceProjectEditorState, defaultDevelopmentProject, createProjectEditorState);
   const project = editor.project;
   const [runtimeMapPackages, setRuntimeMapPackages] = useState<MapPackageManifest[]>([]);
   const projectLoadSequenceRef = useRef(0);
@@ -228,9 +230,9 @@ function AppContent(): React.JSX.Element {
     mapPackages: mergeMapPackageManifests(project.mapPackages ?? [], runtimeMapPackages),
   }), [project, runtimeMapPackages]);
   const [savedRevision, setSavedRevision] = useState(0);
-  const [settings, setSettings] = useState<AppSettings>(() => browserLocalSettings(sampleProject.settings));
+  const [settings, setSettings] = useState<AppSettings>(() => browserLocalSettings(defaultDevelopmentProject.settings));
   const [rtkReceiverStatus, setRtkReceiverStatus] = useState<BrowserRtkReceiverStatus | null>(null);
-  const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(sampleProject.id));
+  const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(defaultDevelopmentProject.id));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
   const [designScenarioPreview, setDesignScenarioPreview] = useState<DesignScenarioPreview[] | null>(null);
   const [idealCenterAnalysis, setIdealCenterAnalysis] = useState<IdealCenterPointAnalysis | null>(null);
@@ -244,7 +246,7 @@ function AppContent(): React.JSX.Element {
     requestId: number;
   } | null>(null);
   const [designConsoleModal, setDesignConsoleModal] = useState<DesignConsoleModal>(null);
-  const [homeMapView, setHomeMapView] = useState(true);
+  const [homeMapView, setHomeMapView] = useState(false);
   const [activeCatalogContext, setActiveCatalogContext] = useState<{
     clientId: string | null;
     projectId: string | null;
@@ -905,7 +907,7 @@ function AppContent(): React.JSX.Element {
               }}
               onOpenProject={openSavedProject}
               onOpenRealProof={() => loadProjectDashboard(realCenterPivotProofProject)}
-              onOpenSample={() => loadProjectDashboard(sampleProject)}
+              onOpenSample={() => loadProjectDashboard(defaultDevelopmentProject)}
               project={project}
               repository={repository}
               result={result}
@@ -985,7 +987,7 @@ function AppContent(): React.JSX.Element {
             onOpenProject={(projectId) => {
               selectProjectCatalogOnly(projectId);
             }}
-            onOpenSample={() => loadProjectDashboard(sampleProject, { clientId: null, projectId: null, fieldMapId: null, designId: null })}
+            onOpenSample={() => loadProjectDashboard(defaultDevelopmentProject, { clientId: null, projectId: null, fieldMapId: null, designId: null })}
             onStartBlankDesign={startBlankDesign}
             onSelectClient={selectClientFolder}
             onSelectProject={selectProjectCatalogOnly}
@@ -1013,7 +1015,7 @@ function AppContent(): React.JSX.Element {
               onOpenMap={() => setActiveView("map")}
               onOpenProject={openSavedProject}
               onOpenRealProof={() => loadProjectDashboard(realCenterPivotProofProject)}
-              onOpenSample={() => loadProjectDashboard(sampleProject)}
+              onOpenSample={() => loadProjectDashboard(defaultDevelopmentProject)}
               project={project}
               repository={repository}
               result={result}
@@ -1033,6 +1035,7 @@ function AppContent(): React.JSX.Element {
                   activeToolMode={guidedMapTool?.mode}
                   activeToolRequestId={guidedMapTool?.requestId}
                   advisoryFieldPivotPlan={!homeMapView ? advisoryFieldPivotPlan : undefined}
+                  controlLayout="externalHud"
                   bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled ? (
                     <DesignActionHud
                       activeModal={designConsoleModal}
@@ -1319,6 +1322,7 @@ function AppContent(): React.JSX.Element {
             onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
             onCalculate={calculateDesignScenarios}
             onClose={() => setDesignConsoleModal(null)}
+            onOpenModal={setDesignConsoleModal}
             onOpenFiles={() => {
               setDesignConsoleModal(null);
               setActiveView("files");
@@ -1696,6 +1700,7 @@ function DesignConsoleDialog({
   onApplyPivot,
   onCalculate,
   onClose,
+  onOpenModal,
   onOpenFiles,
   onRequestApplyPivotCandidate,
   onRequestSaveCornerArm,
@@ -1721,6 +1726,7 @@ function DesignConsoleDialog({
   onApplyPivot: (point: XY, wgs84?: LonLat) => boolean;
   onCalculate: () => void;
   onClose: () => void;
+  onOpenModal: (modal: DesignConsoleModal) => void;
   onOpenFiles: () => void;
   onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
   onRequestSaveCornerArm: (config: AdvisoryCornerArmConfig) => void;
@@ -1754,14 +1760,19 @@ function DesignConsoleDialog({
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" style={styles.consoleDialogBody} contentContainerStyle={styles.consoleDialogBodyContent}>
-            {activeModal === "point" ? <PointToolSheet onActivateTool={onActivateTool} /> : null}
+            {activeModal === "point" ? <PointToolSheet onActivateTool={onActivateTool} onOpenModal={onOpenModal} /> : null}
             {activeModal === "line" ? <LineToolSheet onActivateTool={onActivateTool} /> : null}
             {activeModal === "polygon" ? <PolygonToolSheet onActivateTool={onActivateTool} /> : null}
             {activeModal === "circle" ? <CircleToolSheet onActivateTool={onActivateTool} /> : null}
             {activeModal === "obstacle" ? <ObstacleToolSheet onActivateTool={onActivateTool} /> : null}
             {activeModal === "pivot" ? <PivotGpsCoordinateForm onApply={onApplyPivot} project={project} /> : null}
             {activeModal === "machine" ? (
-              <MachineSettingsForm machine={project.machine} onChange={onUpdateMachine} unitSystem={settings.unitSystem} />
+              <MachineToolSheet
+                machine={project.machine}
+                onChange={onUpdateMachine}
+                onOpenModal={onOpenModal}
+                unitSystem={settings.unitSystem}
+              />
             ) : null}
             {activeModal === "endGun" ? (
               <EndGunSettingsForm machine={project.machine} onChange={onUpdateMachine} result={result} unitSystem={settings.unitSystem} />
@@ -1839,9 +1850,16 @@ function designConsoleCopy(modal: NonNullable<DesignConsoleModal>): { icon: Reac
   }
 }
 
-function PointToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
+function PointToolSheet({
+  onActivateTool,
+  onOpenModal,
+}: {
+  onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
+  onOpenModal: (modal: DesignConsoleModal) => void;
+}): React.JSX.Element {
   return (
     <View style={styles.consoleChoiceGrid}>
+      <ConsoleChoiceButton label="Pivot GPS Entry" meta="Type decimal GPS or expert projected XY for the pivot center." onPress={() => onOpenModal("pivot")} />
       <ConsoleChoiceButton label="Pivot Map Click" meta="Click the map to place pivot center." onPress={() => onActivateTool("place_pivot", "pivot_center")} />
       <ConsoleChoiceButton label="Water Source" meta="Click the map to move the water source." onPress={() => onActivateTool("place_pivot", "water_source")} />
       <ConsoleChoiceButton label="Power Source" meta="Click the map to move the power source." onPress={() => onActivateTool("place_pivot", "power_source")} />
@@ -1851,6 +1869,28 @@ function PointToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode
       <ConsoleChoiceButton label="Well Feature" meta="Save a well or water-source evidence point from one click." onPress={() => onActivateTool("measure", "control_point", "well_location")} />
       <ConsoleChoiceButton label="Power Pole" meta="Save a utility pole map feature from one click." onPress={() => onActivateTool("measure", "control_point", "power_pole")} />
       <ConsoleChoiceButton label="Tree Point" meta="Save a tree map feature from one click." onPress={() => onActivateTool("measure", "control_point", "tree")} />
+    </View>
+  );
+}
+
+function MachineToolSheet({
+  machine,
+  onChange,
+  onOpenModal,
+  unitSystem,
+}: {
+  machine: PivotMachine;
+  onChange: (machine: PivotMachine) => boolean | void;
+  onOpenModal: (modal: DesignConsoleModal) => void;
+  unitSystem: PivotProject["unitSystem"];
+}): React.JSX.Element {
+  return (
+    <View style={styles.machineForm}>
+      <MachineSettingsForm machine={machine} onChange={onChange} unitSystem={unitSystem} />
+      <View style={styles.consoleChoiceGrid}>
+        <ConsoleChoiceButton label="End Gun Settings" meta="Set throw distance and optional shutoff angle ranges." onPress={() => onOpenModal("endGun")} />
+        <ConsoleChoiceButton label="Corner Arm Advisory" meta="Review and save advisory corner-arm evidence settings." onPress={() => onOpenModal("cornerArm")} />
+      </View>
     </View>
   );
 }
@@ -2291,11 +2331,12 @@ function CalculateSheet({
     multiMachineReview,
     strategyComparison,
     obstacleInteractionReview,
+    radiusSensitivityReview,
     endGunSensitivityReview,
     sweepEfficiencyReview,
     generatedMultiPivotScenarioReview,
     reviewZoneAudit,
-  }), [endGunSensitivityReview, fieldPivotPlan, generatedMultiPivotScenarioReview, multiMachineReview, obstacleInteractionReview, project, result, reviewZoneAudit, strategyComparison, sweepEfficiencyReview]);
+  }), [endGunSensitivityReview, fieldPivotPlan, generatedMultiPivotScenarioReview, multiMachineReview, obstacleInteractionReview, project, radiusSensitivityReview, result, reviewZoneAudit, strategyComparison, sweepEfficiencyReview]);
 
   async function exportAdvisoryDesignReport(): Promise<void> {
     try {

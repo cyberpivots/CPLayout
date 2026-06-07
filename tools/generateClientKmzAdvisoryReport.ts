@@ -17,10 +17,13 @@ import {
 import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeAdvisoryObstacleInteractions,
+  buildAdvisoryRadiusSensitivityReview,
   buildAdvisoryDesignReport,
   compareAdvisoryMachineStrategies,
   evaluateLayout,
   planAdvisoryFieldPivots,
+  type AdvisoryCostAssessment,
+  type AdvisoryRadiusSensitivityReview,
 } from "@cplayout/geometry";
 import { strFromU8, unzipSync } from "fflate";
 
@@ -71,48 +74,6 @@ interface LonLat {
   latitude: number;
 }
 
-interface RadiusSensitivityCost {
-  status: "complete" | "missing_cost_input" | "invalid_cost_input" | "no_irrigated_acres";
-  estimatedCost: number | null;
-  costPerIrrigatedAcre: number | null;
-  currencyCode: string;
-}
-
-interface RadiusSensitivityRow {
-  advisoryOnly: true;
-  canonicalGeometryMutation: false;
-  qualifiedReviewRequired: true;
-  radiusMeters: number;
-  spanCount: number;
-  irrigatedAcres: number;
-  coveragePercent: number;
-  outsideFieldAcres: number;
-  fieldPivotStatus: string;
-  selectedMachineCount: number;
-  readyScenarioCount: number;
-  scenarioCount: number;
-  fullScopeCoveragePercent: number;
-  fullScopeUnirrigatedAcres: number;
-  strategyStatus: string;
-  readyStrategyCount: number;
-  cost: RadiusSensitivityCost;
-  warnings: string[];
-}
-
-interface RadiusSensitivityReview {
-  advisoryOnly: true;
-  canonicalGeometryMutation: false;
-  qualifiedReviewRequired: true;
-  source: "imported_radius_sensitivity";
-  importedRadiusMeters: number;
-  rowCount: number;
-  readyRowCount: number;
-  bestByCostPerAcre: RadiusSensitivityRow | null;
-  bestByFullScopeCoverage: RadiusSensitivityRow | null;
-  rows: RadiusSensitivityRow[];
-  warnings: string[];
-}
-
 const DEFAULT_INPUT_PATH = "tmp/Will Rhea.kmz";
 const DEFAULT_OUTPUT_ROOT = "reports/client-kmz-advisory";
 
@@ -159,7 +120,14 @@ export function generateClientKmzAdvisoryReport(
   const multiMachineReview = analyzeAdvisoryMultiMachineLayout(analysisProject, reviewOptions);
   const strategyComparison = compareAdvisoryMachineStrategies(analysisProject, reviewOptions);
   const obstacleInteractionReview = analyzeAdvisoryObstacleInteractions(analysisProject, { sourceRefs });
-  const radiusSensitivity = buildRadiusSensitivityReview(analysisProject, options, sourceRefs);
+  const radiusSensitivity = buildAdvisoryRadiusSensitivityReview(analysisProject, {
+    maxMachines: Math.max(1, Math.floor(options.maxMachines ?? 3)),
+    costInput,
+    sourceRefs,
+    radiiMeters: options.radiusSensitivityRadiiMeters,
+    source: "imported_radius_sensitivity",
+    buildMachineForRadius: (_project, radiusMeters) => buildMachineFromRadius(radiusMeters, options),
+  });
   const report = buildAdvisoryDesignReport({
     project: analysisProject,
     result: layoutResult,
@@ -369,154 +337,11 @@ function buildMachineFromRadius(radiusMeters: number, options: ClientKmzAdvisory
   };
 }
 
-function buildRadiusSensitivityReview(
-  project: PivotProject,
-  options: ClientKmzAdvisoryReportOptions,
-  sourceRefs: AdvisorySourceReference[],
-): RadiusSensitivityReview {
-  const importedRadiusMeters = machineRadiusMeters(project.machine);
-  const radii = options.radiusSensitivityRadiiMeters ?? defaultRadiusSensitivityRadii(importedRadiusMeters);
-  const rows = radii.map((radiusMeters): RadiusSensitivityRow => {
-    const variantProject: PivotProject = {
-      ...project,
-      machine: buildMachineFromRadius(radiusMeters, options),
-    };
-    const costInput = costInputFromOptions(options, sourceRefs);
-    const reviewOptions = {
-      maxMachines: Math.max(1, Math.floor(options.maxMachines ?? 3)),
-      costInput,
-      sourceRefs,
-      includeMachineZoneReviews: true,
-      includeGeneratedRadiusStrategies: false,
-      includeUnsupportedConceptPlaceholders: false,
-    };
-    const layout = evaluateLayout(variantProject);
-    const fieldPlan = planAdvisoryFieldPivots(variantProject, reviewOptions);
-    const multiMachine = analyzeAdvisoryMultiMachineLayout(variantProject, reviewOptions);
-    const strategies = compareAdvisoryMachineStrategies(variantProject, reviewOptions);
-    const readyStrategyCount = strategies.strategies.filter((strategy) => strategy.status === "ready").length;
-    const cost = estimateRadiusSensitivityCost(variantProject, layout.metrics.irrigatedAcres, options);
-    return {
-      advisoryOnly: true,
-      canonicalGeometryMutation: false,
-      qualifiedReviewRequired: true,
-      radiusMeters: round(machineRadiusMeters(variantProject.machine)),
-      spanCount: variantProject.machine.spanLengthsMeters.length,
-      irrigatedAcres: round(layout.metrics.irrigatedAcres),
-      coveragePercent: round(layout.metrics.coveragePercent),
-      outsideFieldAcres: round(layout.metrics.outsideFieldAcres),
-      fieldPivotStatus: fieldPlan.status,
-      selectedMachineCount: fieldPlan.selectedMachineCount,
-      readyScenarioCount: multiMachine.compilation.readyScenarioCount,
-      scenarioCount: multiMachine.compilation.scenarioCount,
-      fullScopeCoveragePercent: round(multiMachine.compilation.fullScopeCoveragePercent),
-      fullScopeUnirrigatedAcres: round(multiMachine.compilation.fullScopeUnirrigatedAcres),
-      strategyStatus: strategies.status,
-      readyStrategyCount,
-      cost,
-      warnings: [
-        ...(multiMachine.compilation.readyScenarioCount === 0 ? ["No machine-zone scenario was ready for this radius under the current conservative screening."] : []),
-        ...(fieldPlan.selectedMachineCount === 0 ? ["Generated field-pivot screening selected no separated advisory centers for this radius."] : []),
-        ...(cost.status !== "complete" ? [`Cost-per-acre status is ${cost.status}.`] : []),
-      ],
-    };
-  });
-  const completeCostRows = rows.filter((row) => row.cost.status === "complete" && row.cost.costPerIrrigatedAcre !== null);
-  const coverageRows = rows.filter((row) => row.coveragePercent > 0 || row.fullScopeCoveragePercent > 0);
-  const bestByCostPerAcre = completeCostRows.length > 0
-    ? [...completeCostRows].sort((a, b) => (a.cost.costPerIrrigatedAcre ?? Infinity) - (b.cost.costPerIrrigatedAcre ?? Infinity))[0]
-    : null;
-  const bestByFullScopeCoverage = coverageRows.length > 0
-    ? [...coverageRows].sort((a, b) => (
-      b.fullScopeCoveragePercent - a.fullScopeCoveragePercent
-      || b.coveragePercent - a.coveragePercent
-      || a.radiusMeters - b.radiusMeters
-    ))[0]
-    : null;
-  return {
-    advisoryOnly: true,
-    canonicalGeometryMutation: false,
-    qualifiedReviewRequired: true,
-    source: "imported_radius_sensitivity",
-    importedRadiusMeters: round(importedRadiusMeters),
-    rowCount: rows.length,
-    readyRowCount: rows.filter((row) => row.readyScenarioCount > 0 || row.readyStrategyCount > 0 || row.irrigatedAcres > 0).length,
-    bestByCostPerAcre,
-    bestByFullScopeCoverage,
-    rows,
-    warnings: [
-      "Radius sensitivity is a local advisory comparison over machine-length assumptions only; it does not change project geometry, machine settings, storage, archives, or KML/KMZ.",
-      "Rows use the imported pivot and full-scope/machine-zone evidence as ephemeral projected-XY analysis inputs; qualified design review is required before relying on any radius.",
-      ...(bestByCostPerAcre ? [] : ["No radius row had complete cost-per-acre evidence."]),
-    ],
-  };
-}
-
-function defaultRadiusSensitivityRadii(importedRadiusMeters: number): number[] {
-  return [0.25, 0.4, 0.55, 0.7, 0.85, 1]
-    .map((ratio) => round(importedRadiusMeters * ratio))
-    .filter((radius) => Number.isFinite(radius) && radius > 0)
-    .filter((radius, index, radii) => radii.indexOf(radius) === index);
-}
-
-function estimateRadiusSensitivityCost(
-  project: PivotProject,
-  irrigatedAcres: number,
-  options: ClientKmzAdvisoryReportOptions,
-): RadiusSensitivityCost {
-  const fixedMachineCost = options.fixedMachineCost;
-  const costPerMeter = options.costPerMeter;
-  const costPerTower = options.costPerTower;
-  const currencyCode = options.currencyCode ?? "USD";
-  if (fixedMachineCost === undefined && costPerMeter === undefined && costPerTower === undefined) {
-    return {
-      status: "missing_cost_input",
-      estimatedCost: null,
-      costPerIrrigatedAcre: null,
-      currencyCode,
-    };
-  }
-  const fixed = fixedMachineCost ?? 0;
-  const perMeter = costPerMeter ?? 0;
-  const perTower = costPerTower ?? 0;
-  if (
-    !Number.isFinite(fixed)
-    || !Number.isFinite(perMeter)
-    || !Number.isFinite(perTower)
-    || fixed < 0
-    || perMeter < 0
-    || perTower < 0
-    || fixed + perMeter + perTower <= 0
-  ) {
-    return {
-      status: "invalid_cost_input",
-      estimatedCost: null,
-      costPerIrrigatedAcre: null,
-      currencyCode,
-    };
-  }
-  const estimatedCost = fixed + machineRadiusMeters(project.machine) * perMeter + project.machine.spanLengthsMeters.length * perTower;
-  if (irrigatedAcres <= 0) {
-    return {
-      status: "no_irrigated_acres",
-      estimatedCost: round(estimatedCost),
-      costPerIrrigatedAcre: null,
-      currencyCode,
-    };
-  }
-  return {
-    status: "complete",
-    estimatedCost: round(estimatedCost),
-    costPerIrrigatedAcre: round(estimatedCost / irrigatedAcres),
-    currencyCode,
-  };
-}
-
 function machineRadiusMeters(machine: PivotMachine): number {
   return machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0) + machine.overhangMeters;
 }
 
-function appendRadiusSensitivityReport(reportText: string, review: RadiusSensitivityReview): string {
+function appendRadiusSensitivityReport(reportText: string, review: AdvisoryRadiusSensitivityReview): string {
   const lines = [
     "",
     "Radius Sensitivity Review",
@@ -539,7 +364,7 @@ function appendRadiusSensitivityReport(reportText: string, review: RadiusSensiti
   return `${reportText.trimEnd()}\n${lines.join("\n")}\n`;
 }
 
-function formatSensitivityCost(cost: RadiusSensitivityCost): string {
+function formatSensitivityCost(cost: AdvisoryCostAssessment): string {
   if (cost.status === "complete" && cost.costPerIrrigatedAcre !== null) {
     return `${cost.currencyCode} ${cost.costPerIrrigatedAcre.toFixed(0)}/ac`;
   }

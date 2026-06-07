@@ -6,6 +6,7 @@ import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeAdvisoryObstacleInteractions,
   analyzeIdealPivotCenter,
+  buildAdvisoryRadiusSensitivityReview,
   buildPivotPlacementCandidates,
   compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
@@ -695,6 +696,61 @@ assert.ok(strategyComparison.strategies.filter((strategy) => strategy.status ===
 assert.ok(strategyComparison.strategies.filter((strategy) => strategy.status === "ready").every((strategy) => Number.isFinite(strategy.advisoryScore)));
 assert.ok(strategyComparison.warnings.some((warning) => warning.includes("does not mutate canonical projected XY")));
 assert.equal(JSON.stringify(strategyProject), strategyProjectBefore);
+
+const radiusSensitivityProjectBefore = JSON.stringify(strategyProject);
+const radiusSensitivityReview = buildAdvisoryRadiusSensitivityReview(strategyProject, {
+  gridDivisions: 6,
+  maxCandidates: 3,
+  maxMachines: 2,
+  radiiMeters: [55, 55, 75, 95, -1, 0, Number.NaN],
+  costInput: {
+    fixedMachineCost: 80000,
+    costPerMeter: 700,
+    costPerTower: 3000,
+    currencyCode: "USD",
+  },
+});
+assert.equal(radiusSensitivityReview.advisoryOnly, true);
+assert.equal(radiusSensitivityReview.canonicalGeometryMutation, false);
+assert.equal(radiusSensitivityReview.qualifiedReviewRequired, true);
+assert.equal(radiusSensitivityReview.source, "generated_radius_sensitivity");
+assert.equal(radiusSensitivityReview.rowCount, 3);
+assert.ok(radiusSensitivityReview.readyRowCount > 0);
+assert.ok(radiusSensitivityReview.importedRadiusMeters > 0);
+assert.ok(radiusSensitivityReview.bestByCostPerAcre);
+assert.equal(radiusSensitivityReview.bestByCostPerAcre?.cost.status, "complete");
+assert.ok(radiusSensitivityReview.bestByFullScopeCoverage);
+assert.deepEqual(radiusSensitivityReview.rows.map((row) => row.requestedRadiusMeters), [55, 75, 95]);
+assert.ok(radiusSensitivityReview.rows.every((row) => row.advisoryOnly === true));
+assert.ok(radiusSensitivityReview.rows.every((row) => row.canonicalGeometryMutation === false));
+assert.ok(radiusSensitivityReview.rows.every((row) => row.cost.status === "complete"));
+assert.ok(radiusSensitivityReview.rows.every((row) => Number.isFinite(row.fullScopeCoveragePercent)));
+assert.ok(radiusSensitivityReview.warnings.some((warning) => warning.includes("does not change project geometry")));
+assert.equal(JSON.stringify(strategyProject), radiusSensitivityProjectBefore);
+
+const missingCostRadiusReview = buildAdvisoryRadiusSensitivityReview(strategyProject, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  radiiMeters: [75],
+});
+assert.equal(missingCostRadiusReview.bestByCostPerAcre, null);
+assert.equal(missingCostRadiusReview.rows[0].cost.status, "missing_cost_input");
+assert.ok(missingCostRadiusReview.warnings.some((warning) => warning.includes("No radius row had complete cost-per-acre evidence")));
+
+const customRadiusReview = buildAdvisoryRadiusSensitivityReview(strategyProject, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+  radiiMeters: [60],
+  buildMachineForRadius: (_project, radiusMeters) => ({
+    ...defaultMachine(),
+    spanLengthsMeters: [radiusMeters],
+    overhangMeters: 10,
+  }),
+});
+assert.equal(customRadiusReview.rowCount, 1);
+assert.equal(customRadiusReview.rows[0].requestedRadiusMeters, 60);
+assert.equal(customRadiusReview.rows[0].radiusMeters, 70);
+assert.equal(customRadiusReview.rows[0].spanCount, 1);
 
 const ordinaryPivotEvidence: SurveyPoint = {
   id: "existing-pivot-evidence",

@@ -111,6 +111,7 @@ import {
   analyzeIdealPivotCenter,
   auditGeneratedFieldPivotReviewZones,
   buildAdvisoryDesignReport,
+  buildAdvisoryRadiusSensitivityReview,
   buildDesignScenarioPreview,
   compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
@@ -128,6 +129,8 @@ import {
   type AdvisoryMachineStrategyResult,
   type AdvisoryMultiMachineReview,
   type AdvisoryObstacleInteractionReview,
+  type AdvisoryRadiusSensitivityReview,
+  type AdvisoryRadiusSensitivityRow,
   type DesignScenarioPreview,
   type DrawingLayerType,
   type DrawingMode,
@@ -2244,6 +2247,15 @@ function CalculateSheet({
     maxCandidates: 2,
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
+  const radiusSensitivityReview = useMemo<AdvisoryRadiusSensitivityReview | null>(() => {
+    if (!advisoryCostInput || !advisoryCostDraftReadyForRadiusSensitivity(advisoryCostDraft)) return null;
+    return buildAdvisoryRadiusSensitivityReview(project, {
+      maxCandidates: 1,
+      maxMachines: 2,
+      costInput: advisoryCostInput,
+      radiiMeters: appRadiusSensitivityRadii(project),
+    });
+  }, [advisoryCostDraft, advisoryCostInput, project]);
   const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
   const multiMachineReview = useMemo<AdvisoryMultiMachineReview>(() => analyzeAdvisoryMultiMachineLayout(project, {
     maxCandidates: 3,
@@ -2310,8 +2322,8 @@ function CalculateSheet({
           strategies={strategyComparison.strategies}
         />
         <AdvisoryRadiusSensitivityTable
+          review={radiusSensitivityReview}
           settings={settings}
-          strategies={strategyComparison.strategies}
         />
         {benderStrategy ? (
           <Text style={styles.mapFeatureMeta} testID="advisory-bender-strategy-summary">
@@ -2440,18 +2452,26 @@ function advisoryCostComparisonRows(
 }
 
 function AdvisoryRadiusSensitivityTable({
+  review,
   settings,
-  strategies,
 }: {
+  review: AdvisoryRadiusSensitivityReview | null;
   settings: AppSettings;
-  strategies: AdvisoryMachineStrategyResult[];
 }): React.JSX.Element {
-  const rows = advisoryRadiusSensitivityRows(strategies);
+  if (!review) {
+    return (
+      <Text style={styles.mapFeatureMeta} testID="advisory-radius-sensitivity-table">
+        Radius alternatives need fixed, per-meter, and per-tower local cost assumptions before shared advisory sensitivity rows can be shown.
+      </Text>
+    );
+  }
+
+  const rows = review.rows;
 
   if (rows.length === 0) {
     return (
       <Text style={styles.mapFeatureMeta} testID="advisory-radius-sensitivity-table">
-        Radius alternatives need a current machine radius before generated full-circle rows can be shown.
+        Radius alternatives need a current machine radius before advisory rows can be shown.
       </Text>
     );
   }
@@ -2460,45 +2480,46 @@ function AdvisoryRadiusSensitivityTable({
     <View style={styles.radiusSensitivityTable} testID="advisory-radius-sensitivity-table">
       <View style={styles.scenarioRowHeader}>
         <Text style={styles.rowTitle}>Radius Alternatives</Text>
-        <Text style={styles.scenarioScore}>{rows.filter((row) => row.strategy.strategyKind === "full_circle_radius").length} generated</Text>
+        <Text style={styles.scenarioScore}>{review.readyRowCount}/{review.rowCount} ready</Text>
       </View>
       <Text style={[styles.mapFeatureMeta, styles.radiusSensitivityMeta]}>
-        Radius alternatives compare generated full-circle planning templates only. They do not change machine settings, create a quote, or mutate canonical projected XY.
+        Radius alternatives compare generated full-circle planning templates against current, full-scope, zone, and local cost evidence. They do not change machine settings, create a quote, or mutate canonical projected XY.
       </Text>
+      {review.bestByCostPerAcre ? (
+        <Text style={[styles.mapFeatureMeta, styles.radiusSensitivityMeta]}>
+          Best local cost row: {formatDistance(review.bestByCostPerAcre.radiusMeters, settings.unitSystem)} at {formatRadiusSensitivityCostPerAcre(review.bestByCostPerAcre)}.
+        </Text>
+      ) : null}
       <View style={styles.costComparisonHeader}>
-        <Text style={styles.costComparisonHeaderText}>Alternative</Text>
+        <Text style={styles.costComparisonHeaderText}>Radius Review</Text>
         <Text style={styles.costComparisonHeaderText}>Radius</Text>
         <Text style={styles.costComparisonHeaderText}>Cost / acre</Text>
       </View>
       {rows.map((row) => (
-        <View key={row.key} style={styles.costComparisonRow} testID={`advisory-radius-row-${row.key}`}>
+        <View key={radiusSensitivityRowKey(row)} style={styles.costComparisonRow} testID={`advisory-radius-row-${radiusSensitivityRowKey(row)}`}>
           <View style={styles.costComparisonStrategyCell}>
             <Text style={styles.costComparisonStrategy}>{row.label}</Text>
-            <Text style={styles.costComparisonMeta}>{formatAreaFromAcres(row.strategy.irrigatedAcres, settings.unitSystem)} · {row.strategy.status.replaceAll("_", " ")} · {row.strategy.coveragePercent.toFixed(1)}%</Text>
+            <Text style={styles.costComparisonMeta}>
+              {formatAreaFromAcres(row.irrigatedAcres, settings.unitSystem)} · current {row.coveragePercent.toFixed(1)}% · full-scope {row.fullScopeCoveragePercent.toFixed(1)}% · zones {row.readyScenarioCount}/{row.scenarioCount}
+            </Text>
           </View>
-          <Text style={styles.costComparisonValue}>{formatDistance(row.strategy.machineRadiusMeters, settings.unitSystem)}</Text>
-          <Text style={styles.costComparisonValue}>{formatStrategyCostPerAcre(row.strategy)}</Text>
+          <Text style={styles.costComparisonValue}>{formatDistance(row.radiusMeters, settings.unitSystem)}</Text>
+          <Text style={styles.costComparisonValue}>{formatRadiusSensitivityCostPerAcre(row)}</Text>
         </View>
       ))}
     </View>
   );
 }
 
-function advisoryRadiusSensitivityRows(
-  strategies: AdvisoryMachineStrategyResult[],
-): Array<{ key: string; label: string; strategy: AdvisoryMachineStrategyResult }> {
-  const current = strategies.find((strategy) => strategy.strategyKind === "current_machine");
-  const radiusStrategies = strategies
-    .filter((strategy) => strategy.strategyKind === "full_circle_same_radius" || strategy.strategyKind === "full_circle_radius")
-    .sort((left, right) => left.machineRadiusMeters - right.machineRadiusMeters || left.label.localeCompare(right.label));
-  return [
-    ...(current ? [{ key: "current-machine", label: "Current", strategy: current }] : []),
-    ...radiusStrategies.map((strategy) => ({
-      key: slugIdPart(strategy.id),
-      label: strategy.strategyKind === "full_circle_same_radius" ? "Full circle current radius" : strategy.label,
-      strategy,
-    })),
-  ];
+function radiusSensitivityRowKey(row: AdvisoryRadiusSensitivityRow): string {
+  return `radius-${row.radiusMeters.toFixed(2).replace(".", "-")}`;
+}
+
+function formatRadiusSensitivityCostPerAcre(row: AdvisoryRadiusSensitivityRow): string {
+  if (row.cost.status === "complete" && row.cost.costPerIrrigatedAcre !== null) {
+    return `${row.cost.currencyCode} ${row.cost.costPerIrrigatedAcre.toFixed(0)}/ac`;
+  }
+  return costStatusShortLabel(row.cost.status);
 }
 
 function formatStrategyCostPerAcre(strategy: AdvisoryMachineStrategyResult): string {
@@ -3425,6 +3446,20 @@ function advisoryCostDraftStatus(draft: AdvisoryCostDraft): AdvisoryCostAssessme
   ].map((value) => value ?? 0);
   if (values.some((value) => !Number.isFinite(value) || value < 0)) return "invalid_cost_input";
   return values.reduce((sum, value) => sum + value, 0) > 0 ? "complete" : "invalid_cost_input";
+}
+
+function advisoryCostDraftReadyForRadiusSensitivity(draft: AdvisoryCostDraft): boolean {
+  return [draft.fixedMachineCost, draft.costPerMeter, draft.costPerTower]
+    .map((value) => optionalDraftCostNumber(value))
+    .every((value) => value !== undefined && Number.isFinite(value) && value >= 0);
+}
+
+function appRadiusSensitivityRadii(project: PivotProject): number[] {
+  const currentRadius = machineRadiusMeters(project.machine);
+  return [0.6, 1]
+    .map((ratio) => Math.round(currentRadius * ratio * 1000) / 1000)
+    .filter((radius) => Number.isFinite(radius) && radius > 0)
+    .filter((radius, index, radii) => radii.indexOf(radius) === index);
 }
 
 function advisoryCostDraftMessage(draft: AdvisoryCostDraft, status: AdvisoryCostAssessment["status"]): string {

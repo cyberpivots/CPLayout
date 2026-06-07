@@ -428,6 +428,55 @@ export interface AdvisoryMachineStrategyComparison {
   sourceRefs: AdvisorySourceReference[];
 }
 
+export type AdvisoryRadiusSensitivityReviewSource =
+  | "generated_radius_sensitivity"
+  | "imported_radius_sensitivity";
+
+export interface AdvisoryRadiusSensitivityReviewOptions extends PivotPlacementCandidateOptions {
+  radiiMeters?: number[];
+  maxMachines?: number;
+  source?: AdvisoryRadiusSensitivityReviewSource;
+  buildMachineForRadius?: (project: PivotProject, radiusMeters: number) => PivotMachine;
+}
+
+export interface AdvisoryRadiusSensitivityRow {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  requestedRadiusMeters: number;
+  radiusMeters: number;
+  spanCount: number;
+  label: string;
+  irrigatedAcres: number;
+  coveragePercent: number;
+  outsideFieldAcres: number;
+  fieldPivotStatus: AdvisoryFieldPivotPlanStatus;
+  selectedMachineCount: number;
+  readyScenarioCount: number;
+  scenarioCount: number;
+  fullScopeCoveragePercent: number;
+  fullScopeUnirrigatedAcres: number;
+  strategyStatus: AdvisoryMachineStrategyComparisonStatus;
+  readyStrategyCount: number;
+  cost: AdvisoryCostAssessment;
+  warnings: string[];
+}
+
+export interface AdvisoryRadiusSensitivityReview {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  source: AdvisoryRadiusSensitivityReviewSource;
+  importedRadiusMeters: number;
+  rowCount: number;
+  readyRowCount: number;
+  bestByCostPerAcre: AdvisoryRadiusSensitivityRow | null;
+  bestByFullScopeCoverage: AdvisoryRadiusSensitivityRow | null;
+  rows: AdvisoryRadiusSensitivityRow[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
 export interface AdvisoryCornerArmEvaluationOptions {
   sourceRefs?: AdvisorySourceReference[];
 }
@@ -905,6 +954,101 @@ export function compareAdvisoryMachineStrategies(
       ...(costInputStatus === "missing_cost_input" ? ["Cost ranking is incomplete because no explicit local cost input was supplied."] : []),
       ...(costInputStatus === "invalid_cost_input" ? ["Cost ranking is blocked because the supplied local cost input is invalid."] : []),
       ...blockers,
+    ],
+    sourceRefs,
+  };
+}
+
+export function buildAdvisoryRadiusSensitivityReview(
+  project: PivotProject,
+  options: AdvisoryRadiusSensitivityReviewOptions = {},
+): AdvisoryRadiusSensitivityReview {
+  const sourceRefs = options.sourceRefs ?? DEFAULT_ADVISORY_PLACEMENT_SOURCE_REFS;
+  const importedRadiusMeters = Math.max(0, machineRadiusMeters(project.machine));
+  const radii = normalizeRadiusSensitivityRadii(options.radiiMeters ?? defaultRadiusSensitivityRadii(importedRadiusMeters));
+  const buildMachineForRadius = options.buildMachineForRadius
+    ?? ((sourceProject: PivotProject, radiusMeters: number) => approximateFullCircleMachine(sourceProject.machine, radiusMeters));
+  const maxMachines = Math.max(1, Math.floor(options.maxMachines ?? 3));
+  const rows = radii.map((radiusMeters): AdvisoryRadiusSensitivityRow => {
+    const variantMachine = buildMachineForRadius(project, radiusMeters);
+    const variantProject: PivotProject = {
+      ...project,
+      machine: variantMachine,
+    };
+    const reviewOptions = {
+      ...options,
+      maxMachines,
+      sourceRefs,
+      includeMachineZoneReviews: true,
+    };
+    const layout = evaluateLayout(variantProject);
+    const fieldPlan = planAdvisoryFieldPivots(variantProject, reviewOptions);
+    const multiMachine = analyzeAdvisoryMultiMachineLayout(variantProject, reviewOptions);
+    const strategies = compareAdvisoryMachineStrategies(variantProject, {
+      ...reviewOptions,
+      includeGeneratedRadiusStrategies: false,
+      includeUnsupportedConceptPlaceholders: false,
+    });
+    const readyStrategyCount = strategies.strategies.filter((strategy) => strategy.status === "ready").length;
+    const cost = assessAdvisoryCost(variantProject, layout.metrics.irrigatedAcres, options.costInput, sourceRefs);
+    const resolvedRadiusMeters = machineRadiusMeters(variantMachine);
+    const currentRadius = Math.abs(resolvedRadiusMeters - importedRadiusMeters) < 0.001;
+    return {
+      advisoryOnly: true,
+      canonicalGeometryMutation: false,
+      qualifiedReviewRequired: true,
+      requestedRadiusMeters: round(radiusMeters),
+      radiusMeters: round(resolvedRadiusMeters),
+      spanCount: variantMachine.spanLengthsMeters.length,
+      label: currentRadius ? "Imported/current radius" : `Full circle ${resolvedRadiusMeters.toFixed(0)} m radius`,
+      irrigatedAcres: round(layout.metrics.irrigatedAcres),
+      coveragePercent: round(layout.metrics.coveragePercent),
+      outsideFieldAcres: round(layout.metrics.outsideFieldAcres),
+      fieldPivotStatus: fieldPlan.status,
+      selectedMachineCount: fieldPlan.selectedMachineCount,
+      readyScenarioCount: multiMachine.compilation.readyScenarioCount,
+      scenarioCount: multiMachine.compilation.scenarioCount,
+      fullScopeCoveragePercent: round(multiMachine.compilation.fullScopeCoveragePercent),
+      fullScopeUnirrigatedAcres: round(multiMachine.compilation.fullScopeUnirrigatedAcres),
+      strategyStatus: strategies.status,
+      readyStrategyCount,
+      cost,
+      warnings: [
+        ...(multiMachine.compilation.readyScenarioCount === 0 ? ["No machine-zone scenario was ready for this radius under the current conservative screening."] : []),
+        ...(fieldPlan.selectedMachineCount === 0 ? ["Generated field-pivot screening selected no separated advisory centers for this radius."] : []),
+        ...(cost.status !== "complete" ? [`Cost-per-acre status is ${cost.status}.`] : []),
+      ],
+    };
+  });
+  const completeCostRows = rows.filter((row) => row.cost.status === "complete" && row.cost.costPerIrrigatedAcre !== null);
+  const coverageRows = rows.filter((row) => row.coveragePercent > 0 || row.fullScopeCoveragePercent > 0);
+  const bestByCostPerAcre = completeCostRows.length > 0
+    ? [...completeCostRows].sort((left, right) => (left.cost.costPerIrrigatedAcre ?? Infinity) - (right.cost.costPerIrrigatedAcre ?? Infinity))[0]
+    : null;
+  const bestByFullScopeCoverage = coverageRows.length > 0
+    ? [...coverageRows].sort((left, right) => (
+      right.fullScopeCoveragePercent - left.fullScopeCoveragePercent
+      || right.coveragePercent - left.coveragePercent
+      || left.radiusMeters - right.radiusMeters
+    ))[0]
+    : null;
+
+  return {
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    source: options.source ?? "generated_radius_sensitivity",
+    importedRadiusMeters: round(importedRadiusMeters),
+    rowCount: rows.length,
+    readyRowCount: rows.filter((row) => row.readyScenarioCount > 0 || row.readyStrategyCount > 0 || row.irrigatedAcres > 0).length,
+    bestByCostPerAcre,
+    bestByFullScopeCoverage,
+    rows,
+    warnings: [
+      "Radius sensitivity is a local advisory comparison over machine-length assumptions only; it does not change project geometry, machine settings, storage, archives, or KML/KMZ.",
+      "Rows use projected-XY field, pivot, machine-zone, and cost evidence as ephemeral analysis inputs; qualified design review is required before relying on any radius.",
+      ...(bestByCostPerAcre ? [] : ["No radius row had complete cost-per-acre evidence."]),
+      ...(rows.length === 0 ? ["No positive radius rows were available for sensitivity review."] : []),
     ],
     sourceRefs,
   };
@@ -2194,6 +2338,18 @@ function generatedFullCircleRadii(currentRadius: number): number[] {
   return [0.6, 0.8, 1, 1.2]
     .map((ratio) => round(currentRadius * ratio))
     .filter((radius, index, radii) => radius > 0 && radii.indexOf(radius) === index);
+}
+
+function defaultRadiusSensitivityRadii(importedRadiusMeters: number): number[] {
+  return [0.25, 0.4, 0.55, 0.7, 0.85, 1]
+    .map((ratio) => round(importedRadiusMeters * ratio));
+}
+
+function normalizeRadiusSensitivityRadii(radiiMeters: number[]): number[] {
+  return radiiMeters
+    .map((radius) => round(radius))
+    .filter((radius) => Number.isFinite(radius) && radius > 0)
+    .filter((radius, index, radii) => radii.indexOf(radius) === index);
 }
 
 function approximateFullCircleMachine(machine: PivotMachine, radiusMeters: number): PivotMachine {

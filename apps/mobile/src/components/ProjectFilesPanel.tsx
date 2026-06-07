@@ -15,7 +15,7 @@ import {
   installMapPackageArchiveZipAsync,
   readGoogleEarthKmlFile,
 } from "@cplayout/project-store";
-import { exportProjectGoogleEarthKml, type GoogleEarthKmlImportResult, type LayoutResult, type MapPackageManifest, type PivotProject } from "@cplayout/core";
+import { exportProjectGoogleEarthKml, type CornerGpsMapBpfImportPreview, type GoogleEarthKmlImportResult, type LayoutResult, type MapPackageManifest, type PivotProject } from "@cplayout/core";
 import type { ProjectWorkspaceStatus } from "../hooks/useProjectRepository";
 import { GoogleEarthImportWizard } from "./GoogleEarthImportWizard";
 
@@ -29,6 +29,8 @@ interface ProjectFilesPanelProps {
   onMapPackageImported: (manifest: MapPackageManifest, runtimeManifest: MapPackageManifest) => string;
   onPreviewGoogleEarthKml: (kmlText: string, selectedItemIds?: string[]) => GoogleEarthKmlImportResult;
   onApplyGoogleEarthKmlImport: (project: PivotProject) => void;
+  onPreviewCornerGpsMapBpf: (bpfText: string, selectedItemIds?: string[]) => CornerGpsMapBpfImportPreview;
+  onApplyCornerGpsMapBpfImport: (project: PivotProject) => void;
   onProjectLoaded: (project: PivotProject) => void;
   onSaveProject: () => void | Promise<void>;
   onOpenProject: (projectId: string) => void | Promise<void>;
@@ -51,6 +53,12 @@ interface PendingKmlImport {
   archiveWarnings: string[];
 }
 
+interface PendingBpfImport {
+  filename: string;
+  bpfText: string;
+  result: CornerGpsMapBpfImportPreview;
+}
+
 export function ProjectFilesPanel({
   dirty,
   project,
@@ -61,6 +69,8 @@ export function ProjectFilesPanel({
   onMapPackageImported,
   onPreviewGoogleEarthKml,
   onApplyGoogleEarthKmlImport,
+  onPreviewCornerGpsMapBpf,
+  onApplyCornerGpsMapBpfImport,
   onProjectLoaded,
   onSaveProject,
   onOpenProject,
@@ -70,6 +80,8 @@ export function ProjectFilesPanel({
   const [status, setStatus] = useState<PanelStatus>({ tone: "info", text: "Project ZIP is the canonical project package." });
   const [pendingKmlImport, setPendingKmlImport] = useState<PendingKmlImport | null>(null);
   const [selectedKmlImportItemIds, setSelectedKmlImportItemIds] = useState<string[]>([]);
+  const [pendingBpfImport, setPendingBpfImport] = useState<PendingBpfImport | null>(null);
+  const [selectedBpfImportItemIds, setSelectedBpfImportItemIds] = useState<string[]>([]);
   const [geoJsonImport, setGeoJsonImport] = useState("");
   const [surveyCsvImport, setSurveyCsvImport] = useState("");
 
@@ -191,6 +203,35 @@ export function ProjectFilesPanel({
     }
   }
 
+  async function importCornerGpsMapBpf(): Promise<void> {
+    try {
+      const file = await importFileAsync({
+        accept: ".bpf,text/plain,text/xml,application/xml",
+        errorLabel: "CornerGPSMap BPF",
+      });
+      if (!file) {
+        setStatus({ tone: "info", text: "No CornerGPSMap BPF selected." });
+        return;
+      }
+      const bpfText = decodeUtf8(file.bytes);
+      const result = onPreviewCornerGpsMapBpf(bpfText);
+      setPendingKmlImport(null);
+      setSelectedKmlImportItemIds([]);
+      setPendingBpfImport({
+        filename: file.filename,
+        bpfText,
+        result,
+      });
+      setSelectedBpfImportItemIds(result.items.filter((item) => item.selected).map((item) => item.id));
+      setStatus({
+        tone: result.canApply && result.warnings.length === 0 ? "info" : "warning",
+        text: `${file.filename} is ready for BPF import review. ${bpfImportSummary(result)}${formatWarnings(result.warnings)}`,
+      });
+    } catch (error) {
+      setStatus({ tone: "error", text: errorMessage(error) });
+    }
+  }
+
   function applyGeoJsonImport(): void {
     try {
       const message = onImportProjectedGeoJson(geoJsonImport);
@@ -223,14 +264,48 @@ export function ProjectFilesPanel({
     setSelectedKmlImportItemIds([]);
   }
 
+  function applyPendingBpfImport(): void {
+    if (!pendingBpfImport) return;
+    const selectedResult = onPreviewCornerGpsMapBpf(pendingBpfImport.bpfText, selectedBpfImportItemIds);
+    if (!selectedResult.canApply) {
+      setStatus({
+        tone: "warning",
+        text: `Could not apply ${pendingBpfImport.filename}. ${bpfImportSummary(selectedResult)}${formatWarnings(selectedResult.warnings)}`,
+      });
+      return;
+    }
+    onApplyCornerGpsMapBpfImport(selectedResult.project);
+    setStatus({
+      tone: "success",
+      text: `Applied ${pendingBpfImport.filename}. ${bpfImportSummary(selectedResult)}`,
+    });
+    setPendingBpfImport(null);
+    setSelectedBpfImportItemIds([]);
+  }
+
   function cancelPendingKmlImport(): void {
     setPendingKmlImport(null);
     setSelectedKmlImportItemIds([]);
     setStatus({ tone: "info", text: "Canceled Google Earth import selection." });
   }
 
+  function cancelPendingBpfImport(): void {
+    setPendingBpfImport(null);
+    setSelectedBpfImportItemIds([]);
+    setStatus({ tone: "info", text: "Canceled CornerGPSMap BPF import selection." });
+  }
+
   function toggleKmlImportItem(itemId: string): void {
     setSelectedKmlImportItemIds((current) =>
+      current.includes(itemId)
+        ? current.filter((candidate) => candidate !== itemId)
+        : [...current, itemId],
+    );
+  }
+
+  function toggleBpfImportItem(itemId: string): void {
+    if (!pendingBpfImport?.result.canApply) return;
+    setSelectedBpfImportItemIds((current) =>
       current.includes(itemId)
         ? current.filter((candidate) => candidate !== itemId)
         : [...current, itemId],
@@ -279,6 +354,7 @@ export function ProjectFilesPanel({
       <View style={styles.gisExchangeGrid}>
         <View style={styles.gisActionBox}>
           <View style={styles.actionRow}>
+            <FileAction accessibilityLabel="Import CornerGPSMap BPF" icon={<Upload size={18} color="#254234" />} label="Import BPF" onPress={importCornerGpsMapBpf} testID="files-action-import-bpf" />
             <FileAction accessibilityLabel="Import KML or KMZ" icon={<Upload size={18} color="#254234" />} label="Import KML/KMZ" onPress={importKmlOrKmz} testID="files-action-import-kml-kmz" />
             <FileAction accessibilityLabel="Export KML" icon={<Download size={18} color="#254234" />} label="Export KML" onPress={exportKml} testID="files-action-export-kml" />
             <FileAction accessibilityLabel="Export KMZ" icon={<Download size={18} color="#254234" />} label="Export KMZ" onPress={exportKmz} testID="files-action-export-kmz" />
@@ -322,6 +398,44 @@ export function ProjectFilesPanel({
           <View style={styles.actionRow}>
             <FileAction accessibilityLabel="Apply KML KMZ import" icon={<Upload size={18} color="#ffffff" />} label="Apply Import" primary onPress={applyPendingKmlImport} testID="files-action-apply-kml-kmz-import" />
             <FileAction accessibilityLabel="Cancel KML KMZ import" icon={<Trash2 size={18} color="#254234" />} label="Cancel" onPress={cancelPendingKmlImport} testID="files-action-cancel-kml-kmz-import" />
+          </View>
+        </View>
+      ) : null}
+      {pendingBpfImport ? (
+        <View style={styles.importPreviewBox}>
+          <View>
+            <Text style={styles.importTitle}>Select BPF Import Evidence</Text>
+            <Text style={styles.importPreviewText}>
+              {pendingBpfImport.filename} · {bpfImportSummary(pendingBpfImport.result)}
+            </Text>
+            <View style={styles.importPreviewItemGrid}>
+              {bpfImportItems(pendingBpfImport.result).map((item) => {
+                const selected = selectedBpfImportItemIds.includes(item.id);
+                return (
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="button"
+                    disabled={!pendingBpfImport.result.canApply || item.id === "none"}
+                    onPress={() => toggleBpfImportItem(item.id)}
+                    style={[styles.importPreviewItem, selected && styles.importPreviewItemSelected, (!pendingBpfImport.result.canApply || item.id === "none") && styles.importPreviewItemDisabled]}
+                  >
+                    <Text style={[styles.importPreviewItemTitle, selected && styles.importPreviewItemTitleSelected]}>{item.title}</Text>
+                    <Text style={[styles.importPreviewItemMeta, selected && styles.importPreviewItemMetaSelected]}>{item.detail}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {pendingBpfImport.result.importedBoundary ? (
+              <Text style={styles.importPreviewWarning}>Selected BPF boundary will replace the active field boundary after projection into {project.projectCrs}.</Text>
+            ) : null}
+            <Text style={styles.importPreviewWarning}>BPF center point evidence imports as a survey point only; it does not move the active pivot center.</Text>
+            {pendingBpfImport.result.warnings.map((warning) => (
+              <Text key={warning} style={styles.importPreviewWarning}>{warning}</Text>
+            ))}
+          </View>
+          <View style={styles.actionRow}>
+            <FileAction accessibilityLabel="Apply CornerGPSMap BPF import" disabled={!pendingBpfImport.result.canApply || selectedBpfImportItemIds.length === 0} icon={<Upload size={18} color="#ffffff" />} label="Apply BPF" primary onPress={applyPendingBpfImport} testID="files-action-apply-bpf-import" />
+            <FileAction accessibilityLabel="Cancel CornerGPSMap BPF import" icon={<Trash2 size={18} color="#254234" />} label="Cancel" onPress={cancelPendingBpfImport} testID="files-action-cancel-bpf-import" />
           </View>
         </View>
       ) : null}
@@ -388,6 +502,7 @@ function BackendTile({ label, value }: { label: string; value: string }): React.
 
 function FileAction({
   accessibilityLabel,
+  disabled = false,
   icon,
   label,
   onPress,
@@ -396,6 +511,7 @@ function FileAction({
   testID,
 }: {
   accessibilityLabel?: string;
+  disabled?: boolean;
   icon: React.ReactNode;
   label: string;
   onPress: () => void | Promise<void>;
@@ -408,12 +524,13 @@ function FileAction({
       accessibilityHint={accessibilityLabel}
       accessibilityLabel={label}
       accessibilityRole="button"
-      onPress={onPress}
-      style={[styles.actionButton, primary && styles.actionButtonPrimary, danger && styles.actionButtonDanger]}
+      disabled={disabled}
+      onPress={disabled ? undefined : onPress}
+      style={[styles.actionButton, primary && styles.actionButtonPrimary, danger && styles.actionButtonDanger, disabled && styles.actionButtonDisabled]}
       testID={testID}
     >
       {icon}
-      <Text style={[styles.actionText, primary && styles.actionTextPrimary, danger && styles.actionTextDanger]}>{label}</Text>
+      <Text style={[styles.actionText, primary && styles.actionTextPrimary, danger && styles.actionTextDanger, disabled && styles.actionTextDisabled]}>{label}</Text>
     </Pressable>
   );
 }
@@ -454,6 +571,38 @@ function kmlImportItems(result: GoogleEarthKmlImportResult): { id: string; title
       title: "No imported project geometry",
       detail: "The parser did not return selectable boundary, obstacle, survey, or map-feature candidates.",
     }];
+}
+
+function bpfImportSummary(result: CornerGpsMapBpfImportPreview): string {
+  const parts = [
+    result.importedBoundary ? "1 boundary" : "no boundary",
+    `${result.importedSurveyPointCount} pivot point${result.importedSurveyPointCount === 1 ? "" : "s"}`,
+  ];
+  if (!result.canApply) parts.push("blocked");
+  if (result.evidence.duplicateClosingPointRemoved) parts.push("duplicate closure normalized");
+  parts.push(`${result.evidence.normalizedBorderPoints.length} boundary point${result.evidence.normalizedBorderPoints.length === 1 ? "" : "s"}`);
+  return parts.join(", ");
+}
+
+function bpfImportItems(result: CornerGpsMapBpfImportPreview): { id: string; title: string; detail: string }[] {
+  const items = result.items.map((item) => ({
+    id: item.id,
+    title: item.name,
+    detail: `${item.classification.replaceAll("_", " ")} · ${item.geometryType}${item.warning ? ` · ${item.warning}` : ""}`,
+  }));
+  return items.length > 0
+    ? items
+    : [{
+      id: "none",
+      title: "No importable BPF evidence",
+      detail: "The BPF did not return a usable projected boundary or pivot-center evidence item.",
+    }];
+}
+
+function decodeUtf8(bytes: Uint8Array): string {
+  if (typeof TextDecoder !== "undefined") return new TextDecoder("utf-8").decode(bytes);
+  if (typeof Buffer !== "undefined") return Buffer.from(bytes).toString("utf8");
+  throw new Error("This runtime cannot decode the selected text file.");
 }
 
 function formatWarnings(warnings: string[]): string {
@@ -530,6 +679,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff0ee",
     borderColor: "#dfa59d",
   },
+  actionButtonDisabled: {
+    backgroundColor: "#eef1ec",
+    borderColor: "#d9dfd6",
+    opacity: 0.65,
+  },
   actionText: {
     color: "#254234",
     fontSize: 13,
@@ -540,6 +694,9 @@ const styles = StyleSheet.create({
   },
   actionTextDanger: {
     color: "#8b1e18",
+  },
+  actionTextDisabled: {
+    color: "#7f8b83",
   },
   statusBox: {
     alignItems: "flex-start",
@@ -679,6 +836,9 @@ const styles = StyleSheet.create({
   importPreviewItemSelected: {
     backgroundColor: "#254234",
     borderColor: "#254234",
+  },
+  importPreviewItemDisabled: {
+    opacity: 0.62,
   },
   importPreviewItemTitle: {
     color: "#26372c",

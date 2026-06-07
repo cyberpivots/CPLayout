@@ -87,11 +87,13 @@ import {
   importGoogleEarthKmlToProject,
   importProjectedGeoJsonToProject,
   importSurveyCsvToProject,
+  previewCornerGpsMapBpfImport,
   improvedCenterPivotProofProject,
   realCenterPivotProofProject,
   sampleDesignProjects,
   willRheaJasonHarmelinkExampleProject,
   type AppSettings,
+  type CornerGpsMapBpfImportPreview,
   type GoogleEarthKmlImportResult,
   type AdvisoryCornerArmConfig,
   type LonLat,
@@ -509,6 +511,14 @@ function AppContent(): React.JSX.Element {
   }
 
   function applyGoogleEarthKmlImport(nextProject: PivotProject): void {
+    dispatchProject({ type: "apply_project_import", project: nextProject });
+  }
+
+  function previewCornerGpsMapBpf(bpfText: string, selectedItemIds?: string[]): CornerGpsMapBpfImportPreview {
+    return previewCornerGpsMapBpfImport(project, bpfText, { selectedItemIds });
+  }
+
+  function applyCornerGpsMapBpfImport(nextProject: PivotProject): void {
     dispatchProject({ type: "apply_project_import", project: nextProject });
   }
 
@@ -1267,6 +1277,7 @@ function AppContent(): React.JSX.Element {
             <Section title="Files and GIS Exchange" icon={<ClipboardList size={20} color="#254234" />} testID="files-view">
               <ProjectFilesPanel
                 dirty={isDirty}
+                onApplyCornerGpsMapBpfImport={applyCornerGpsMapBpfImport}
                 onApplyGoogleEarthKmlImport={applyGoogleEarthKmlImport}
                 onDeleteProject={(projectId) => {
                   setDeletingProjectId(projectId);
@@ -1276,6 +1287,7 @@ function AppContent(): React.JSX.Element {
                 onImportSurveyCsv={importSurveyCsv}
                 onMapPackageImported={importMapPackage}
                 onOpenProject={openSavedProject}
+                onPreviewCornerGpsMapBpf={previewCornerGpsMapBpf}
                 onPreviewGoogleEarthKml={previewGoogleEarthKml}
                 onProjectLoaded={loadProject}
                 onRefreshProjects={repository.refreshProjects}

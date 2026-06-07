@@ -4,6 +4,7 @@ import type {
   AdvisoryCornerArmConfig,
   AdvisorySourceReference,
   LayoutMetrics,
+  LayoutResult,
   MultiPolygonXY,
   ObstacleZone,
   PivotMachine,
@@ -525,6 +526,65 @@ export interface AdvisoryEndGunSensitivityReview {
   sourceRefs: AdvisorySourceReference[];
 }
 
+export type AdvisorySweepEfficiencyReviewStatus =
+  | "ready"
+  | "current_full_circle"
+  | "no_machine_radius"
+  | "no_boundary";
+
+export type AdvisorySweepEfficiencyRowKind =
+  | "current_sweep"
+  | "full_circle_same_radius"
+  | "generated_shorter_full_circle";
+
+export interface AdvisorySweepEfficiencyReviewOptions {
+  comparisonRadiiMeters?: number[];
+  costInput?: AdvisoryCostInput;
+  source?: "generated_sweep_efficiency" | "imported_sweep_efficiency";
+  sourceRefs?: AdvisorySourceReference[];
+}
+
+export interface AdvisorySweepEfficiencyRow {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  kind: AdvisorySweepEfficiencyRowKind;
+  label: string;
+  sweepMode: PivotMachine["sweep"]["mode"];
+  radiusMeters: number;
+  spanCount: number;
+  irrigatedAcres: number;
+  irrigatedAcresDeltaFromCurrent: number;
+  coveragePercent: number;
+  outsideFieldAcres: number;
+  obstacleConflictCount: number;
+  hardMechanicalConflictCount: number;
+  estimatedCostDeltaFromCurrent: number | null;
+  costPerAcreDeltaFromCurrent: number | null;
+  comparableToCurrentAcres: boolean;
+  cost: AdvisoryCostAssessment;
+  warnings: string[];
+}
+
+export interface AdvisorySweepEfficiencyReview {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  source: "generated_sweep_efficiency" | "imported_sweep_efficiency";
+  status: AdvisorySweepEfficiencyReviewStatus;
+  importedSweepMode: PivotMachine["sweep"]["mode"];
+  currentMachineRadiusMeters: number;
+  rowCount: number;
+  readyRowCount: number;
+  sameRadiusFullCircleRow: AdvisorySweepEfficiencyRow | null;
+  bestShorterComparableFullCircleRow: AdvisorySweepEfficiencyRow | null;
+  bestCostPerAcreRow: AdvisorySweepEfficiencyRow | null;
+  rows: AdvisorySweepEfficiencyRow[];
+  blockers: string[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
 export interface AdvisoryCornerArmEvaluationOptions {
   sourceRefs?: AdvisorySourceReference[];
 }
@@ -685,6 +745,23 @@ export const DEFAULT_END_GUN_SENSITIVITY_SOURCE_REFS: AdvisorySourceReference[] 
     lineRange: "4118-4170",
     checkedAt: "2026-06-05",
     limit: "Local design-guide summary supports pressure and length review warnings only; it is not hydraulic or mechanical certification.",
+  },
+];
+
+export const DEFAULT_SWEEP_EFFICIENCY_SOURCE_REFS: AdvisorySourceReference[] = [
+  {
+    sourceId: "SRC-NRCS-NEH-623-CH11",
+    title: "USDA NRCS NEH Part 623 Chapter 11 Sprinkler Irrigation",
+    url: "https://www.wcc.nrcs.usda.gov/ftpref/wntsc/waterMgt/irrigation/NEH15/ch11.pdf",
+    checkedAt: "2026-06-05",
+    limit: "Sprinkler irrigation planning terminology and review criteria only; not CPLayout design certification.",
+  },
+  {
+    sourceId: "SRC-WSU-CENTER-PIVOT-AREA-CALCULATOR",
+    title: "WSU Center Pivot Area Calculator",
+    url: "https://irrigation.wsu.edu/Secondary_Pages/Irr_Calculators/CenterPivot/CP_PivotAcreage.php",
+    checkedAt: "2026-06-05",
+    limit: "Simple center-pivot acreage context only; CPLayout still clips to supplied projected-XY field and obstacle evidence.",
   },
 ];
 
@@ -1228,6 +1305,166 @@ export function buildAdvisoryEndGunSensitivityReview(
   };
 }
 
+export function buildAdvisorySweepEfficiencyReview(
+  project: PivotProject,
+  options: AdvisorySweepEfficiencyReviewOptions = {},
+): AdvisorySweepEfficiencyReview {
+  const sourceRefs = options.sourceRefs ?? DEFAULT_SWEEP_EFFICIENCY_SOURCE_REFS;
+  const currentMachineRadiusMeters = machineRadiusMeters(project.machine);
+  const blockers = [
+    ...(project.fieldBoundary.length < 3 ? ["Add a field boundary before sweep-efficiency review."] : []),
+    ...(currentMachineRadiusMeters <= 0 ? ["Add positive span or overhang length before sweep-efficiency review."] : []),
+  ];
+  const source = options.source ?? "generated_sweep_efficiency";
+  if (blockers.length > 0) {
+    return {
+      advisoryOnly: true,
+      canonicalGeometryMutation: false,
+      qualifiedReviewRequired: true,
+      source,
+      status: project.fieldBoundary.length < 3 ? "no_boundary" : "no_machine_radius",
+      importedSweepMode: project.machine.sweep.mode,
+      currentMachineRadiusMeters: round(Math.max(0, currentMachineRadiusMeters)),
+      rowCount: 0,
+      readyRowCount: 0,
+      sameRadiusFullCircleRow: null,
+      bestShorterComparableFullCircleRow: null,
+      bestCostPerAcreRow: null,
+      rows: [],
+      blockers,
+      warnings: [
+        "Sweep-efficiency review is advisory and does not mutate canonical projected XY, machine settings, storage, archives, or exports.",
+        ...blockers,
+      ],
+      sourceRefs,
+    };
+  }
+
+  const currentLayout = evaluateLayout(project);
+  const currentCost = assessAdvisoryCost(project, currentLayout.metrics.irrigatedAcres, options.costInput, sourceRefs);
+  const currentRow = sweepEfficiencyRowFromProject({
+    kind: "current_sweep",
+    label: project.machine.sweep.mode === "partial_circle" ? "Current part-circle sweep" : "Current full-circle sweep",
+    project,
+    layout: currentLayout,
+    currentLayout,
+    currentCost,
+    costInput: options.costInput,
+    sourceRefs,
+    warnings: [
+      "Current sweep row models the active projected-XY pivot, field, obstacles, machine radius, and sweep settings without saving changes.",
+    ],
+  });
+  const rows: AdvisorySweepEfficiencyRow[] = [currentRow];
+
+  if (project.machine.sweep.mode === "partial_circle") {
+    const sameRadiusFullCircleProject: PivotProject = {
+      ...project,
+      machine: {
+        ...project.machine,
+        id: `${project.machine.id}-sweep-efficiency-full-circle`,
+        name: `${project.machine.name} full-circle sweep-efficiency template`,
+        sweep: { mode: "full_circle" },
+        endGunAngleRanges: undefined,
+      },
+    };
+    rows.push(sweepEfficiencyRowFromProject({
+      kind: "full_circle_same_radius",
+      label: "Same radius full circle",
+      project: sameRadiusFullCircleProject,
+      layout: evaluateLayout(sameRadiusFullCircleProject),
+      currentLayout,
+      currentCost,
+      costInput: options.costInput,
+      sourceRefs,
+      warnings: [
+        "Same-radius full-circle row compares sweep coverage at the current machine length only; it is not a vendor conversion recommendation.",
+      ],
+    }));
+
+    const comparisonRadii = normalizeRadiusSensitivityRadii(
+      options.comparisonRadiiMeters ?? defaultSweepEfficiencyComparisonRadii(currentMachineRadiusMeters),
+    ).filter((radiusMeters) => radiusMeters < currentMachineRadiusMeters - 0.001);
+    for (const radiusMeters of comparisonRadii) {
+      const machine = approximateFullCircleMachine(project.machine, radiusMeters);
+      const comparisonProject: PivotProject = {
+        ...project,
+        machine: {
+          ...machine,
+          id: `${project.machine.id}-sweep-efficiency-${radiusMeters.toFixed(2)}`,
+          name: `${project.machine.name} ${radiusMeters.toFixed(0)} m full-circle sweep-efficiency template`,
+          sweep: { mode: "full_circle" },
+          endGunAngleRanges: undefined,
+        },
+      };
+      rows.push(sweepEfficiencyRowFromProject({
+        kind: "generated_shorter_full_circle",
+        label: `Shorter full circle ${radiusMeters.toFixed(0)} m`,
+        project: comparisonProject,
+        layout: evaluateLayout(comparisonProject),
+        currentLayout,
+        currentCost,
+        costInput: options.costInput,
+        sourceRefs,
+        warnings: [
+          "Shorter full-circle row is a generated planning template from the current span package; applying it requires explicit operator edits and qualified review.",
+        ],
+      }));
+    }
+  }
+
+  const sameRadiusFullCircleRow = rows.find((row) => row.kind === "full_circle_same_radius") ?? null;
+  const shorterComparableRows = rows.filter((row) => row.kind === "generated_shorter_full_circle" && row.comparableToCurrentAcres);
+  const completeCostRows = rows.filter((row) => row.cost.status === "complete" && row.cost.costPerIrrigatedAcre !== null);
+  const bestShorterComparableFullCircleRow = shorterComparableRows.length > 0
+    ? [...shorterComparableRows].sort((left, right) => (
+      (left.cost.costPerIrrigatedAcre ?? Infinity) - (right.cost.costPerIrrigatedAcre ?? Infinity)
+      || Math.abs(left.irrigatedAcresDeltaFromCurrent) - Math.abs(right.irrigatedAcresDeltaFromCurrent)
+      || left.radiusMeters - right.radiusMeters
+    ))[0]
+    : null;
+  const bestCostPerAcreRow = completeCostRows.length > 0
+    ? [...completeCostRows].sort((left, right) => (
+      (left.cost.costPerIrrigatedAcre ?? Infinity) - (right.cost.costPerIrrigatedAcre ?? Infinity)
+      || right.irrigatedAcres - left.irrigatedAcres
+      || left.radiusMeters - right.radiusMeters
+    ))[0]
+    : null;
+  const status: AdvisorySweepEfficiencyReviewStatus = project.machine.sweep.mode === "partial_circle"
+    ? "ready"
+    : "current_full_circle";
+
+  return {
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    source,
+    status,
+    importedSweepMode: project.machine.sweep.mode,
+    currentMachineRadiusMeters: round(currentMachineRadiusMeters),
+    rowCount: rows.length,
+    readyRowCount: rows.filter((row) => row.irrigatedAcres > 0).length,
+    sameRadiusFullCircleRow,
+    bestShorterComparableFullCircleRow,
+    bestCostPerAcreRow,
+    rows,
+    blockers: [],
+    warnings: [
+      "Sweep-efficiency review is a local advisory comparison over sweep and generated full-circle radius assumptions only; it does not change project geometry, machine settings, storage, archives, or KML/KMZ.",
+      "Rows use the current projected-XY pivot, field, obstacle, and local cost evidence as ephemeral analysis inputs; qualified design and vendor review is required before relying on any machine choice.",
+      "Cost rows use operator-supplied assumptions only and are not vendor quotes, financing guidance, purchase recommendations, hydraulic design, or construction estimates.",
+      ...(project.machine.sweep.mode === "partial_circle" ? [
+        "Part-circle rows can show same-machine cost spread across fewer modeled acres; shorter full-circle rows are planning prompts only.",
+      ] : [
+        "Current machine is already full circle, so part-circle sweep-efficiency comparison is informational only.",
+      ]),
+      ...(bestShorterComparableFullCircleRow ? [] : ["No shorter generated full-circle row reached at least 95% of current modeled irrigated acres."]),
+      ...(bestCostPerAcreRow ? [] : ["No sweep-efficiency row had complete cost-per-acre evidence."]),
+    ],
+    sourceRefs,
+  };
+}
+
 export function analyzeAdvisoryObstacleInteractions(
   project: PivotProject,
   options: AdvisoryObstacleInteractionOptions = {},
@@ -1534,6 +1771,60 @@ function assessAdvisoryCost(
     warnings: [
       "Cost efficiency uses operator-supplied local cost inputs only and is not a price quote.",
       ...(input.notes ? [input.notes] : []),
+    ],
+  };
+}
+
+function sweepEfficiencyRowFromProject(input: {
+  kind: AdvisorySweepEfficiencyRowKind;
+  label: string;
+  project: PivotProject;
+  layout: LayoutResult;
+  currentLayout: LayoutResult;
+  currentCost: AdvisoryCostAssessment;
+  costInput: AdvisoryCostInput | undefined;
+  sourceRefs: AdvisorySourceReference[];
+  warnings: string[];
+}): AdvisorySweepEfficiencyRow {
+  const cost = input.kind === "current_sweep"
+    ? input.currentCost
+    : assessAdvisoryCost(input.project, input.layout.metrics.irrigatedAcres, input.costInput, input.sourceRefs);
+  const currentIrrigatedAcres = input.currentLayout.metrics.irrigatedAcres;
+  const irrigatedAcresDeltaFromCurrent = input.layout.metrics.irrigatedAcres - currentIrrigatedAcres;
+  const estimatedCostDeltaFromCurrent = cost.estimatedCost !== null && input.currentCost.estimatedCost !== null
+    ? round(cost.estimatedCost - input.currentCost.estimatedCost)
+    : null;
+  const costPerAcreDeltaFromCurrent = cost.costPerIrrigatedAcre !== null && input.currentCost.costPerIrrigatedAcre !== null
+    ? round(cost.costPerIrrigatedAcre - input.currentCost.costPerIrrigatedAcre)
+    : null;
+  const comparableToCurrentAcres = input.kind === "current_sweep"
+    ? true
+    : currentIrrigatedAcres > 0 && input.layout.metrics.irrigatedAcres >= currentIrrigatedAcres * 0.95;
+  const radiusMeters = machineRadiusMeters(input.project.machine);
+
+  return {
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    kind: input.kind,
+    label: input.label,
+    sweepMode: input.project.machine.sweep.mode,
+    radiusMeters: round(radiusMeters),
+    spanCount: input.project.machine.spanLengthsMeters.length,
+    irrigatedAcres: round(input.layout.metrics.irrigatedAcres),
+    irrigatedAcresDeltaFromCurrent: round(irrigatedAcresDeltaFromCurrent),
+    coveragePercent: round(input.layout.metrics.coveragePercent),
+    outsideFieldAcres: round(input.layout.metrics.outsideFieldAcres),
+    obstacleConflictCount: input.layout.metrics.obstacleConflictCount,
+    hardMechanicalConflictCount: input.layout.metrics.hardMechanicalConflictCount,
+    estimatedCostDeltaFromCurrent,
+    costPerAcreDeltaFromCurrent,
+    comparableToCurrentAcres,
+    cost,
+    warnings: [
+      ...input.warnings,
+      ...(comparableToCurrentAcres ? [] : ["This row does not reach 95% of current modeled irrigated acres."]),
+      ...(cost.status !== "complete" ? [`Cost-per-acre status is ${cost.status}.`] : []),
     ],
   };
 }
@@ -2525,6 +2816,11 @@ function defaultEndGunThrowSensitivityDistances(importedThrowMeters: number): nu
       .map((ratio) => round(importedThrowMeters * ratio));
   }
   return [0, 15, 30, 45];
+}
+
+function defaultSweepEfficiencyComparisonRadii(currentRadiusMeters: number): number[] {
+  return [0.5, 0.6, 0.7, 0.8, 0.9]
+    .map((ratio) => round(currentRadiusMeters * ratio));
 }
 
 function normalizeRadiusSensitivityRadii(radiiMeters: number[]): number[] {

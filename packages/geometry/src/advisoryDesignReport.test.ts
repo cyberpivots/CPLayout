@@ -6,6 +6,7 @@ import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeAdvisoryObstacleInteractions,
   buildAdvisoryEndGunSensitivityReview,
+  buildAdvisorySweepEfficiencyReview,
   compareAdvisoryMachineStrategies,
   planAdvisoryFieldPivots,
 } from "./advisoryPivotPlacement";
@@ -41,6 +42,9 @@ assert.ok(strategyComparison.strategies.some((strategy) => strategy.strategyKind
 const obstacleInteractionReview = analyzeAdvisoryObstacleInteractions(sampleProject);
 const endGunSensitivityReview = buildAdvisoryEndGunSensitivityReview(sampleProject, {
   throwDistancesMeters: [0, sampleProject.machine.endGunThrowMeters],
+});
+const sweepEfficiencyReview = buildAdvisorySweepEfficiencyReview(sampleProject, {
+  costInput,
 });
 const firstCandidate = fieldPivotPlan.candidates[0];
 assert.ok(firstCandidate, "expected at least one generated field-pivot candidate");
@@ -99,6 +103,7 @@ const report = buildAdvisoryDesignReport({
   strategyComparison,
   obstacleInteractionReview,
   endGunSensitivityReview,
+  sweepEfficiencyReview,
   reviewZoneAudit: currentZoneAudit,
   generatedAt: "2026-06-06T12:00:00.000Z",
 });
@@ -115,6 +120,7 @@ assert.equal(report.reviewZoneAudit.currentCount, currentZoneAudit.currentCount)
 assert.ok(report.headline.includes("generated centers"));
 assert.ok(report.sections.some((section) => section.id === "generated-pivots"));
 assert.ok(report.sections.some((section) => section.id === "strategy-cost"));
+assert.ok(report.sections.some((section) => section.id === "sweep-efficiency"));
 assert.ok(report.sections.some((section) => section.id === "end-gun-sensitivity"));
 assert.ok(report.sections.some((section) => section.id === "obstacles-utilities"));
 assert.ok(report.sourceRefs.length > 0);
@@ -125,6 +131,8 @@ assert.match(report.text, /Qualified review required: true/);
 assert.match(report.text, /Review-zone audit: \d+ current, \d+ missing, \d+ stale/);
 assert.match(report.text, /Generated radius alternatives: [1-9]\d*/);
 assert.match(report.text, /Full circle .* radius: radius .* m/);
+assert.match(report.text, /Sweep Efficiency Review/);
+assert.match(report.text, /Sweep-efficiency review is advisory only/);
 assert.match(report.text, /End-Gun Throw Sensitivity/);
 assert.match(report.text, /End-gun review is advisory only/);
 assert.match(report.text, /Cost review is local and advisory/);

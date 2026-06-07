@@ -6,6 +6,7 @@ import type {
   AdvisoryMachineStrategyComparison,
   AdvisoryMultiMachineReview,
   AdvisoryObstacleInteractionReview,
+  AdvisorySweepEfficiencyReview,
 } from "./advisoryPivotPlacement";
 
 export type AdvisoryDesignReportReadiness = "blocked" | "ready_for_review";
@@ -54,6 +55,7 @@ export interface AdvisoryDesignReportInput {
   strategyComparison: AdvisoryMachineStrategyComparison;
   obstacleInteractionReview: AdvisoryObstacleInteractionReview;
   endGunSensitivityReview?: AdvisoryEndGunSensitivityReview;
+  sweepEfficiencyReview?: AdvisorySweepEfficiencyReview;
   reviewZoneAudit?: AdvisoryGeneratedReviewZoneAudit;
   generatedAt?: string;
 }
@@ -186,6 +188,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     .filter((strategy) => strategy.strategyKind === "full_circle_radius")
     .sort((left, right) => left.machineRadiusMeters - right.machineRadiusMeters || left.label.localeCompare(right.label));
   const endGunSensitivityReview = input.endGunSensitivityReview;
+  const sweepEfficiencyReview = input.sweepEfficiencyReview;
   const firstConflict = input.multiMachineReview.conflicts[0] ?? null;
   const firstObstacle = input.obstacleInteractionReview.items[0] ?? null;
   const sourceRefs = dedupeSourceRefs([
@@ -194,6 +197,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     ...input.strategyComparison.sourceRefs,
     ...input.obstacleInteractionReview.sourceRefs,
     ...(endGunSensitivityReview?.sourceRefs ?? []),
+    ...(sweepEfficiencyReview?.sourceRefs ?? []),
     ...input.strategyComparison.strategies.flatMap((strategy) => strategy.sourceRefs),
     ...input.obstacleInteractionReview.items.flatMap((item) => item.sourceRefs),
   ]);
@@ -208,6 +212,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     ...input.strategyComparison.warnings,
     ...input.obstacleInteractionReview.warnings,
     ...(endGunSensitivityReview?.warnings ?? []),
+    ...(sweepEfficiencyReview?.warnings ?? []),
   ]);
   const sections: AdvisoryDesignReportSection[] = [
     {
@@ -288,6 +293,26 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
         "Cost review is local and advisory; CPLayout does not infer prices, quote equipment, or recommend purchases automatically.",
       ],
     },
+    ...(sweepEfficiencyReview ? [{
+      id: "sweep-efficiency",
+      title: "Sweep Efficiency Review",
+      lines: [
+        `Review status: ${readable(sweepEfficiencyReview.status)}`,
+        `Imported/current sweep: ${readable(sweepEfficiencyReview.importedSweepMode)}`,
+        `Current machine radius: ${formatMeters(sweepEfficiencyReview.currentMachineRadiusMeters)}`,
+        `Rows reviewed: ${sweepEfficiencyReview.readyRowCount}/${sweepEfficiencyReview.rowCount}`,
+        sweepEfficiencyReview.sameRadiusFullCircleRow
+          ? `Same-radius full circle: ${formatAcres(sweepEfficiencyReview.sameRadiusFullCircleRow.irrigatedAcres)}, delta ${formatAcres(sweepEfficiencyReview.sameRadiusFullCircleRow.irrigatedAcresDeltaFromCurrent)}, ${formatSweepEfficiencyCostDelta(sweepEfficiencyReview.sameRadiusFullCircleRow)}`
+          : "Same-radius full circle: not applicable for the current sweep.",
+        sweepEfficiencyReview.bestShorterComparableFullCircleRow
+          ? `Shorter comparable full circle: ${sweepEfficiencyReview.bestShorterComparableFullCircleRow.label}, ${formatAcres(sweepEfficiencyReview.bestShorterComparableFullCircleRow.irrigatedAcres)}, ${formatSweepEfficiencyCostDelta(sweepEfficiencyReview.bestShorterComparableFullCircleRow)}`
+          : "Shorter comparable full circle: no generated row reached 95% of current modeled irrigated acres.",
+        ...sweepEfficiencyReview.rows.slice(0, 5).map((row) => (
+          `${row.label}: ${readable(row.sweepMode)}, radius ${formatMeters(row.radiusMeters)}, ${formatAcres(row.irrigatedAcres)}, ${formatStrategyCostLabel({ costAssessment: row.cost })}`
+        )),
+        "Sweep-efficiency review is advisory only; cost rows are operator assumptions, not vendor quotes or purchase recommendations.",
+      ],
+    }] : []),
     ...(endGunSensitivityReview ? [{
       id: "end-gun-sensitivity",
       title: "End-Gun Throw Sensitivity",
@@ -450,6 +475,19 @@ function formatStrategyCostLabel(strategy: { costAssessment: { status: string; c
     return `${assessment.currencyCode} ${formatNumber(assessment.costPerIrrigatedAcre)}/ac`;
   }
   return readable(assessment.status);
+}
+
+function formatSweepEfficiencyCostDelta(row: { cost: { status: string; currencyCode: string }; estimatedCostDeltaFromCurrent: number | null; costPerAcreDeltaFromCurrent: number | null }): string {
+  if (row.cost.status !== "complete" || row.estimatedCostDeltaFromCurrent === null || row.costPerAcreDeltaFromCurrent === null) {
+    return readable(row.cost.status);
+  }
+  const totalDelta = row.estimatedCostDeltaFromCurrent >= 0
+    ? `+${row.cost.currencyCode} ${formatNumber(row.estimatedCostDeltaFromCurrent)}`
+    : `-${row.cost.currencyCode} ${formatNumber(Math.abs(row.estimatedCostDeltaFromCurrent))}`;
+  const acreDelta = row.costPerAcreDeltaFromCurrent >= 0
+    ? `+${row.cost.currencyCode} ${formatNumber(row.costPerAcreDeltaFromCurrent)}/ac`
+    : `-${row.cost.currencyCode} ${formatNumber(Math.abs(row.costPerAcreDeltaFromCurrent))}/ac`;
+  return `${totalDelta}, ${acreDelta}`;
 }
 
 function formatNumber(value: number): string {

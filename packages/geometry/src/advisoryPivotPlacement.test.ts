@@ -8,6 +8,7 @@ import {
   analyzeIdealPivotCenter,
   buildAdvisoryEndGunSensitivityReview,
   buildAdvisoryRadiusSensitivityReview,
+  buildAdvisorySweepEfficiencyReview,
   buildPivotPlacementCandidates,
   compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
@@ -933,6 +934,63 @@ const partialStrategyComparison = compareAdvisoryMachineStrategies({
   includeUnsupportedConceptPlaceholders: false,
 });
 assert.ok(partialStrategyComparison.strategies.some((strategy) => strategy.strategyKind === "full_circle_same_radius"));
+
+const sweepEfficiencyProject = makeProject({
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 320, y: 0 },
+    { x: 320, y: 320 },
+    { x: 0, y: 320 },
+  ],
+  pivotCenter: { x: 160, y: 160 },
+  waterSource: { x: 150, y: 160 },
+  powerSource: { x: 170, y: 160 },
+  machine: {
+    ...defaultMachine(),
+    spanLengthsMeters: [45, 45],
+    sweep: {
+      mode: "partial_circle",
+      startAngleDegrees: 0,
+      stopAngleDegrees: 180,
+      direction: "clockwise",
+    },
+  },
+});
+const sweepEfficiencyProjectBefore = JSON.stringify(sweepEfficiencyProject);
+const sweepEfficiencyReview = buildAdvisorySweepEfficiencyReview(sweepEfficiencyProject, {
+  comparisonRadiiMeters: [45, 54, 63, 72, 81, 90, 90, Number.NaN, -1],
+  costInput: {
+    fixedMachineCost: 90000,
+    costPerMeter: 650,
+    costPerTower: 2500,
+    currencyCode: "USD",
+  },
+});
+assert.equal(sweepEfficiencyReview.advisoryOnly, true);
+assert.equal(sweepEfficiencyReview.canonicalGeometryMutation, false);
+assert.equal(sweepEfficiencyReview.qualifiedReviewRequired, true);
+assert.equal(sweepEfficiencyReview.status, "ready");
+assert.equal(sweepEfficiencyReview.importedSweepMode, "partial_circle");
+assert.equal(sweepEfficiencyReview.rowCount, 7);
+assert.ok(sweepEfficiencyReview.sameRadiusFullCircleRow);
+assert.equal(sweepEfficiencyReview.sameRadiusFullCircleRow?.kind, "full_circle_same_radius");
+assert.ok((sweepEfficiencyReview.sameRadiusFullCircleRow?.irrigatedAcres ?? 0) > sweepEfficiencyReview.rows[0].irrigatedAcres);
+assert.ok(sweepEfficiencyReview.bestShorterComparableFullCircleRow);
+assert.equal(sweepEfficiencyReview.bestShorterComparableFullCircleRow?.kind, "generated_shorter_full_circle");
+assert.ok((sweepEfficiencyReview.bestShorterComparableFullCircleRow?.radiusMeters ?? 999) < sweepEfficiencyReview.currentMachineRadiusMeters);
+assert.ok((sweepEfficiencyReview.bestShorterComparableFullCircleRow?.irrigatedAcres ?? 0) >= sweepEfficiencyReview.rows[0].irrigatedAcres * 0.95);
+assert.ok((sweepEfficiencyReview.bestShorterComparableFullCircleRow?.estimatedCostDeltaFromCurrent ?? 1) < 0);
+assert.ok(sweepEfficiencyReview.bestCostPerAcreRow);
+assert.ok(sweepEfficiencyReview.rows.every((row) => row.advisoryOnly === true));
+assert.ok(sweepEfficiencyReview.rows.every((row) => row.canonicalGeometryMutation === false));
+assert.ok(sweepEfficiencyReview.rows.every((row) => row.cost.status === "complete"));
+assert.ok(sweepEfficiencyReview.warnings.some((warning) => warning.includes("same-machine cost spread across fewer modeled acres")));
+assert.equal(JSON.stringify(sweepEfficiencyProject), sweepEfficiencyProjectBefore);
+
+const fullCircleSweepEfficiencyReview = buildAdvisorySweepEfficiencyReview(strategyProject);
+assert.equal(fullCircleSweepEfficiencyReview.status, "current_full_circle");
+assert.equal(fullCircleSweepEfficiencyReview.rowCount, 1);
+assert.ok(fullCircleSweepEfficiencyReview.warnings.some((warning) => warning.includes("already full circle")));
 
 const noBoundaryStrategyComparison = compareAdvisoryMachineStrategies(makeProject({
   fieldBoundary: [],

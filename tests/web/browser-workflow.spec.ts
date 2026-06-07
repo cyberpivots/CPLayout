@@ -922,6 +922,36 @@ test("full-scope demo compares cost versus acres across advisory strategies", as
   await saveScreen(page, testInfo, "full-scope-cost-demo-comparison");
 });
 
+test("partial-sweep sample exposes advisory sweep efficiency comparison", async ({ page }, testInfo) => {
+  test.slow();
+  await page.goto("/");
+  await openPartialSweepSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await page.getByTestId("design-action-calculate").click();
+  await expect(page.getByTestId("design-console-dialog")).toBeVisible();
+
+  await page.getByTestId("advisory-cost-fixed").fill("90000");
+  await page.getByTestId("advisory-cost-per-meter").fill("650");
+  await page.getByTestId("advisory-cost-per-tower").fill("2500");
+  await expect(page.getByTestId("advisory-cost-review-panel")).toContainText("Complete");
+  await expect(page.getByTestId("advisory-sweep-efficiency-table")).toContainText("Sweep Efficiency");
+  await expect(page.getByTestId("advisory-sweep-efficiency-table")).toContainText("Same radius full circle");
+  await expect(page.getByTestId("advisory-sweep-efficiency-table")).toContainText("Shorter full circle");
+  await expect(page.getByTestId("advisory-sweep-efficiency-table")).toContainText("does not create a quote");
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
+
+  const reportDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-advisory-design-report").click();
+  const reportDownload = await reportDownloadPromise;
+  const reportPath = await reportDownload.path();
+  expect(reportPath, "report download path").not.toBeNull();
+  const reportText = await readFile(reportPath!, "utf8");
+  expect(reportText).toContain("Sweep Efficiency Review");
+  expect(reportText).toContain("Sweep-efficiency review is advisory only");
+  expect(reportText).toContain("Canonical geometry mutation: false");
+  await saveScreen(page, testInfo, "partial-sweep-efficiency-comparison");
+});
+
 test("corner arm advisory save requires confirmation and remains advisory", async ({ page }, testInfo) => {
   await page.goto("/");
   await openBaselineSample(page);
@@ -2200,6 +2230,12 @@ async function openFullScopeCostDemoSample(page: Page): Promise<void> {
   await openCommandMenu(page, "file");
   await page.getByTestId("command-file-sample-full-scope-multi-pivot-cost-demo").click();
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Full-Scope Multi-Pivot Cost Demo");
+}
+
+async function openPartialSweepSample(page: Page): Promise<void> {
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-sample-partial-sweep-road-structure").click();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Partial Sweep Near Road And Pad");
 }
 
 async function openCatalogFromFile(page: Page): Promise<void> {

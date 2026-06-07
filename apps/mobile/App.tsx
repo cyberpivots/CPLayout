@@ -113,6 +113,7 @@ import {
   buildAdvisoryDesignReport,
   buildAdvisoryEndGunSensitivityReview,
   buildAdvisoryRadiusSensitivityReview,
+  buildAdvisorySweepEfficiencyReview,
   buildDesignScenarioPreview,
   compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
@@ -134,6 +135,8 @@ import {
   type AdvisoryObstacleInteractionReview,
   type AdvisoryRadiusSensitivityReview,
   type AdvisoryRadiusSensitivityRow,
+  type AdvisorySweepEfficiencyReview,
+  type AdvisorySweepEfficiencyRow,
   type DesignScenarioPreview,
   type DrawingLayerType,
   type DrawingMode,
@@ -2262,6 +2265,10 @@ function CalculateSheet({
   const endGunSensitivityReview = useMemo<AdvisoryEndGunSensitivityReview>(() => buildAdvisoryEndGunSensitivityReview(project, {
     throwDistancesMeters: appEndGunThrowSensitivityThrows(project),
   }), [project]);
+  const sweepEfficiencyReview = useMemo<AdvisorySweepEfficiencyReview>(() => buildAdvisorySweepEfficiencyReview(project, {
+    comparisonRadiiMeters: appSweepEfficiencyRadii(project),
+    costInput: advisoryCostInput,
+  }), [advisoryCostInput, project]);
   const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
   const multiMachineReview = useMemo<AdvisoryMultiMachineReview>(() => analyzeAdvisoryMultiMachineLayout(project, {
     maxCandidates: 3,
@@ -2279,8 +2286,9 @@ function CalculateSheet({
     strategyComparison,
     obstacleInteractionReview,
     endGunSensitivityReview,
+    sweepEfficiencyReview,
     reviewZoneAudit,
-  }), [endGunSensitivityReview, fieldPivotPlan, multiMachineReview, obstacleInteractionReview, project, result, reviewZoneAudit, strategyComparison]);
+  }), [endGunSensitivityReview, fieldPivotPlan, multiMachineReview, obstacleInteractionReview, project, result, reviewZoneAudit, strategyComparison, sweepEfficiencyReview]);
 
   async function exportAdvisoryDesignReport(): Promise<void> {
     try {
@@ -2334,6 +2342,10 @@ function CalculateSheet({
         />
         <AdvisoryEndGunSensitivityTable
           review={endGunSensitivityReview}
+          settings={settings}
+        />
+        <AdvisorySweepEfficiencyTable
+          review={sweepEfficiencyReview}
           settings={settings}
         />
         {benderStrategy ? (
@@ -2574,12 +2586,80 @@ function AdvisoryEndGunSensitivityTable({
   );
 }
 
+function AdvisorySweepEfficiencyTable({
+  review,
+  settings,
+}: {
+  review: AdvisorySweepEfficiencyReview;
+  settings: AppSettings;
+}): React.JSX.Element {
+  if (review.status === "no_boundary" || review.status === "no_machine_radius") {
+    return (
+      <Text style={styles.mapFeatureMeta} testID="advisory-sweep-efficiency-table">
+        Sweep-efficiency review needs a field boundary and positive machine radius before advisory rows can be shown.
+      </Text>
+    );
+  }
+
+  if (review.status === "current_full_circle") {
+    return (
+      <Text style={styles.mapFeatureMeta} testID="advisory-sweep-efficiency-table">
+        Sweep Efficiency: current machine is already full circle; part-circle cost-per-acre comparison is informational only and does not change machine settings.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.radiusSensitivityTable} testID="advisory-sweep-efficiency-table">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Sweep Efficiency</Text>
+        <Text style={styles.scenarioScore}>{review.readyRowCount}/{review.rowCount} ready</Text>
+      </View>
+      <Text style={[styles.mapFeatureMeta, styles.radiusSensitivityMeta]}>
+        Sweep efficiency compares the current part-circle machine with same-radius and shorter full-circle planning rows. It uses local cost assumptions only and does not create a quote, purchase recommendation, hydraulic design, or machine-setting change.
+      </Text>
+      {review.bestShorterComparableFullCircleRow ? (
+        <Text style={[styles.mapFeatureMeta, styles.radiusSensitivityMeta]}>
+          Shorter comparable row: {review.bestShorterComparableFullCircleRow.label} at {formatAreaFromAcres(review.bestShorterComparableFullCircleRow.irrigatedAcres, settings.unitSystem)} modeled and {formatSweepEfficiencyDelta(review.bestShorterComparableFullCircleRow)}.
+        </Text>
+      ) : null}
+      <View style={styles.costComparisonHeader}>
+        <Text style={styles.costComparisonHeaderText}>Sweep Review</Text>
+        <Text style={styles.costComparisonHeaderText}>Radius</Text>
+        <Text style={styles.costComparisonHeaderText}>Cost / acre</Text>
+      </View>
+      {review.rows.map((row) => (
+        <View key={sweepEfficiencyRowKey(row)} style={styles.costComparisonRow} testID={`advisory-sweep-row-${sweepEfficiencyRowKey(row)}`}>
+          <View style={styles.costComparisonStrategyCell}>
+            <Text style={styles.costComparisonStrategy}>{row.label}</Text>
+            <Text style={styles.costComparisonMeta}>
+              {formatAreaFromAcres(row.irrigatedAcres, settings.unitSystem)} · delta {formatAreaFromAcres(row.irrigatedAcresDeltaFromCurrent, settings.unitSystem)} · outside {formatAreaFromAcres(row.outsideFieldAcres, settings.unitSystem)} · {row.comparableToCurrentAcres ? "comparable acres" : "below 95% current acres"}
+            </Text>
+          </View>
+          <Text style={styles.costComparisonValue}>{formatDistance(row.radiusMeters, settings.unitSystem)}</Text>
+          <Text style={styles.costComparisonValue}>{formatCostPerAcreAssessment(row.cost)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function radiusSensitivityRowKey(row: AdvisoryRadiusSensitivityRow): string {
   return `radius-${row.radiusMeters.toFixed(2).replace(".", "-")}`;
 }
 
 function endGunSensitivityRowKey(row: AdvisoryEndGunSensitivityRow): string {
   return `throw-${row.throwMeters.toFixed(2).replace(".", "-")}`;
+}
+
+function sweepEfficiencyRowKey(row: AdvisorySweepEfficiencyRow): string {
+  return `${row.kind}-${row.radiusMeters.toFixed(2).replace(".", "-")}`;
+}
+
+function formatSweepEfficiencyDelta(row: AdvisorySweepEfficiencyRow): string {
+  if (row.estimatedCostDeltaFromCurrent === null) return costStatusShortLabel(row.cost.status);
+  const sign = row.estimatedCostDeltaFromCurrent >= 0 ? "+" : "-";
+  return `${sign}${row.cost.currencyCode} ${Math.abs(row.estimatedCostDeltaFromCurrent).toFixed(0)} total`;
 }
 
 function formatRadiusSensitivityCostPerAcre(row: AdvisoryRadiusSensitivityRow): string {
@@ -2590,7 +2670,10 @@ function formatRadiusSensitivityCostPerAcre(row: AdvisoryRadiusSensitivityRow): 
 }
 
 function formatStrategyCostPerAcre(strategy: AdvisoryMachineStrategyResult): string {
-  const assessment = strategy.costAssessment;
+  return formatCostPerAcreAssessment(strategy.costAssessment);
+}
+
+function formatCostPerAcreAssessment(assessment: AdvisoryCostAssessment | null | undefined): string {
   if (assessment?.status === "complete" && assessment.costPerIrrigatedAcre !== null) {
     return `${assessment.currencyCode} ${assessment.costPerIrrigatedAcre.toFixed(0)}/ac`;
   }
@@ -3538,6 +3621,14 @@ function appEndGunThrowSensitivityThrows(project: PivotProject): number[] {
     .map((throwMeters) => Math.round(throwMeters * 1000) / 1000)
     .filter((throwMeters) => Number.isFinite(throwMeters) && throwMeters >= 0)
     .filter((throwMeters, index, throwDistances) => throwDistances.indexOf(throwMeters) === index);
+}
+
+function appSweepEfficiencyRadii(project: PivotProject): number[] {
+  const currentRadius = machineRadiusMeters(project.machine);
+  return [0.6, 0.75, 0.9]
+    .map((ratio) => Math.round(currentRadius * ratio * 1000) / 1000)
+    .filter((radius) => Number.isFinite(radius) && radius > 0)
+    .filter((radius, index, radii) => radii.indexOf(radius) === index);
 }
 
 function advisoryCostDraftMessage(draft: AdvisoryCostDraft, status: AdvisoryCostAssessment["status"]): string {

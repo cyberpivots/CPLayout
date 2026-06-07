@@ -34,6 +34,7 @@ export type ProjectEditorAction =
   | { type: "delete_map_feature"; id: string }
   | { type: "move_map_feature_vertex"; featureId: string; vertexIndex: number; point: XY }
   | { type: "delete_map_feature_vertex"; featureId: string; vertexIndex: number }
+  | { type: "move_map_feature_circle_radius_handle"; featureId: string; point: XY }
   | { type: "promote_survey_point"; id: string; target: InfrastructurePoint }
   | { type: "update_machine"; machine: PivotMachine }
   | { type: "upsert_map_package"; mapPackage: MapPackageManifest }
@@ -106,6 +107,8 @@ export function reduceProjectEditorState(state: ProjectEditorState, action: Proj
         return moveMapFeatureVertex(state, action.featureId, action.vertexIndex, action.point);
       case "delete_map_feature_vertex":
         return deleteMapFeatureVertex(state, action.featureId, action.vertexIndex);
+      case "move_map_feature_circle_radius_handle":
+        return moveMapFeatureCircleRadiusHandle(state, action.featureId, action.point);
       case "promote_survey_point":
         return promoteSurveyPoint(state, action.id, action.target);
       case "update_machine":
@@ -297,6 +300,24 @@ function deleteMapFeatureVertex(state: ProjectEditorState, featureId: string, ve
   return applyProjectChange(state, {
     ...state.project,
     mapFeatures: features.map((candidate) => candidate.id === featureId ? { ...candidate, geometry } : candidate),
+  });
+}
+
+function moveMapFeatureCircleRadiusHandle(state: ProjectEditorState, featureId: string, point: XY): ProjectEditorState {
+  const features = state.project.mapFeatures ?? [];
+  const feature = features.find((candidate) => candidate.id === featureId);
+  if (!feature) throw new Error(`Map feature ${featureId} was not found.`);
+  if (feature.geometry.type !== "Circle") throw new Error(`Map feature ${featureId} is not a circle.`);
+  const handle = assertFinitePoint(point, "Map feature radius handle");
+  const radiusMeters = Math.hypot(handle.x - feature.geometry.center.x, handle.y - feature.geometry.center.y);
+  if (!Number.isFinite(radiusMeters) || radiusMeters <= 0) {
+    throw new Error("Map feature circle radius must be positive.");
+  }
+  return applyProjectChange(state, {
+    ...state.project,
+    mapFeatures: features.map((candidate) => candidate.id === featureId
+      ? { ...candidate, geometry: { ...feature.geometry, radiusMeters } }
+      : candidate),
   });
 }
 

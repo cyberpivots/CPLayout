@@ -55,6 +55,7 @@ import {
   hasMapFeatureVertexSelection,
   hasObstacleVertexSelection,
   selectedProjectVertexCanDelete,
+  selectedProjectVertexIsMapFeatureCircleRadius,
   selectedProjectVertexPoint,
   selectedProjectVertexText,
   type SelectedProjectVertex,
@@ -91,6 +92,7 @@ export function SvgMapSurface({
   onDeleteObstacleVertex,
   onMoveMapFeatureVertex,
   onDeleteMapFeatureVertex,
+  onMoveMapFeatureCircleRadiusHandle,
   onPlacePivot,
   onMoveInfrastructurePoint,
   onAddSurveyPoint,
@@ -319,6 +321,8 @@ export function SvgMapSurface({
         onMoveBoundaryVertex?.(selectedVertex.vertexIndex, vertex);
       } else if (selectedVertex.layer === "obstacle") {
         onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, vertex);
+      } else if (selectedProjectVertexIsMapFeatureCircleRadius(project, selectedVertex)) {
+        onMoveMapFeatureCircleRadiusHandle?.(selectedVertex.featureId, vertex);
       } else {
         onMoveMapFeatureVertex?.(selectedVertex.featureId, selectedVertex.vertexIndex, vertex);
       }
@@ -441,6 +445,8 @@ export function SvgMapSurface({
       onMoveBoundaryVertex?.(selectedVertex.vertexIndex, nextPoint);
     } else if (selectedVertex.layer === "obstacle") {
       onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, nextPoint);
+    } else if (selectedProjectVertexIsMapFeatureCircleRadius(project, selectedVertex)) {
+      onMoveMapFeatureCircleRadiusHandle?.(selectedVertex.featureId, nextPoint);
     } else {
       onMoveMapFeatureVertex?.(selectedVertex.featureId, selectedVertex.vertexIndex, nextPoint);
     }
@@ -1191,10 +1197,39 @@ function EditableMapFeatureHandles({
       />
     );
   }
-  const point = feature.geometry.type === "Circle" ? feature.geometry.center : feature.geometry.point;
+  if (feature.geometry.type === "Circle") {
+    const center = feature.geometry.center;
+    const radiusHandle = { x: center.x + feature.geometry.radiusMeters, y: center.y };
+    return (
+      <>
+        <Circle
+          accessibilityLabel={`${feature.name} center`}
+          cx={center.x}
+          cy={-center.y}
+          fill={selected === 0 ? color : "#fffef8"}
+          r={selected === 0 ? 11 : 7}
+          stroke={color}
+          strokeWidth={4}
+          {...svgElementInteractionProps(() => onSelect(0))}
+        />
+        <Circle
+          accessibilityLabel={`${feature.name} radius handle`}
+          cx={radiusHandle.x}
+          cy={-radiusHandle.y}
+          fill={selected === 1 ? color : "#fffef8"}
+          r={selected === 1 ? 11 : 7}
+          stroke={color}
+          strokeDasharray="6 4"
+          strokeWidth={4}
+          {...svgElementInteractionProps(() => onSelect(1))}
+        />
+      </>
+    );
+  }
+  const point = feature.geometry.point;
   return (
     <Circle
-      accessibilityLabel={`${feature.name} ${feature.geometry.type === "Circle" ? "center" : "point"}`}
+      accessibilityLabel={`${feature.name} point`}
       cx={point.x}
       cy={-point.y}
       fill={selected === 0 ? color : "#fffef8"}

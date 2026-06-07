@@ -1050,6 +1050,7 @@ function AppContent(): React.JSX.Element {
                   onDeleteObstacleVertex={(obstacleId, vertexIndex) => dispatchProject({ type: "delete_obstacle_vertex", obstacleId, vertexIndex })}
                   onMoveMapFeatureVertex={(featureId, vertexIndex, point) => dispatchProject({ type: "move_map_feature_vertex", featureId, vertexIndex, point })}
                   onDeleteMapFeatureVertex={(featureId, vertexIndex) => dispatchProject({ type: "delete_map_feature_vertex", featureId, vertexIndex })}
+                  onMoveMapFeatureCircleRadiusHandle={(featureId, point) => dispatchProject({ type: "move_map_feature_circle_radius_handle", featureId, point })}
                   onPlacePivot={(point, wgs84) => dispatchProject({ type: "place_pivot", point, wgs84 })}
                   onMoveInfrastructurePoint={(pointType, point, wgs84) => dispatchProject({ type: "move_infrastructure", pointType, point, wgs84 })}
                   onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}

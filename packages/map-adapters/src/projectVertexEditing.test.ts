@@ -7,6 +7,7 @@ import {
   firstMapFeatureVertexSelection,
   hasMapFeatureVertexSelection,
   selectedProjectVertexCanDelete,
+  selectedProjectVertexIsMapFeatureCircleRadius,
   selectedProjectVertexPoint,
   selectedProjectVertexText,
   type SelectedProjectVertex,
@@ -75,8 +76,16 @@ assert.equal(selectedProjectVertexCanDelete(project, pointSelection), false);
 
 const circleSelection: SelectedProjectVertex = { layer: "map_feature", featureId: "circle-feature", vertexIndex: 0 };
 assert.deepEqual(selectedProjectVertexPoint(project, circleSelection), { x: 501075, y: 4506075 });
-assert.equal(selectedProjectVertexText(project, circleSelection), "End Gun Circle center 1 of 1");
+assert.equal(selectedProjectVertexText(project, circleSelection), "End Gun Circle center 1 of 2");
 assert.equal(selectedProjectVertexCanDelete(project, circleSelection), false);
+assert.equal(selectedProjectVertexIsMapFeatureCircleRadius(project, circleSelection), false);
+const circleRadiusSelection: SelectedProjectVertex = { layer: "map_feature", featureId: "circle-feature", vertexIndex: 1 };
+assert.deepEqual(selectedProjectVertexPoint(project, circleRadiusSelection), { x: 501105, y: 4506075 });
+assert.equal(selectedProjectVertexText(project, circleRadiusSelection), "End Gun Circle radius handle 2 of 2");
+assert.equal(selectedProjectVertexCanDelete(project, circleRadiusSelection), false);
+assert.equal(selectedProjectVertexIsMapFeatureCircleRadius(project, circleRadiusSelection), true);
+assert.deepEqual(adjacentProjectVertexSelection(project, circleSelection, 1), circleRadiusSelection);
+assert.deepEqual(adjacentProjectVertexSelection(project, circleRadiusSelection, 1), circleSelection);
 
 assert.deepEqual(firstMapFeatureVertexSelection({ ...sampleProject, mapFeatures: [] }), null);
 assert.equal(hasMapFeatureVertexSelection({ ...sampleProject, mapFeatures: [] }), false);

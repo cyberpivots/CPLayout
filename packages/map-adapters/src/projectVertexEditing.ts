@@ -66,6 +66,12 @@ export function selectedProjectVertexCanDelete(project: PivotProject, selected: 
   return false;
 }
 
+export function selectedProjectVertexIsMapFeatureCircleRadius(project: PivotProject, selected: SelectedProjectVertex): boolean {
+  if (selected.layer !== "map_feature") return false;
+  const feature = (project.mapFeatures ?? []).find((candidate) => candidate.id === selected.featureId);
+  return feature?.geometry.type === "Circle" && selected.vertexIndex === 1;
+}
+
 export function selectedProjectVertexText(project: PivotProject, selected: SelectedProjectVertex): string {
   const count = selectedProjectVertexCount(project, selected);
   const ordinal = selected.vertexIndex + 1;
@@ -77,7 +83,7 @@ export function selectedProjectVertexText(project: PivotProject, selected: Selec
   }
   const feature = (project.mapFeatures ?? []).find((candidate) => candidate.id === selected.featureId);
   const name = feature?.name?.trim() ? feature.name.trim() : "map feature";
-  const label = feature ? mapFeatureVertexLabel(feature) : "vertex";
+  const label = feature ? mapFeatureVertexLabel(feature, selected.vertexIndex) : "vertex";
   return `${name} ${label} ${ordinal} of ${Math.max(count, ordinal)}`;
 }
 
@@ -85,18 +91,22 @@ type EditableMapFeature = NonNullable<PivotProject["mapFeatures"]>[number];
 
 function mapFeatureVertexCount(feature: EditableMapFeature): number {
   if (feature.geometry.type === "Point") return 1;
-  if (feature.geometry.type === "Circle") return 1;
+  if (feature.geometry.type === "Circle") return 2;
   return feature.geometry.vertices.length;
 }
 
 function mapFeatureVertexPoint(feature: EditableMapFeature, vertexIndex: number): XY | null {
   if (feature.geometry.type === "Point") return vertexIndex === 0 ? feature.geometry.point : null;
-  if (feature.geometry.type === "Circle") return vertexIndex === 0 ? feature.geometry.center : null;
+  if (feature.geometry.type === "Circle") {
+    if (vertexIndex === 0) return feature.geometry.center;
+    if (vertexIndex === 1) return { x: feature.geometry.center.x + feature.geometry.radiusMeters, y: feature.geometry.center.y };
+    return null;
+  }
   return feature.geometry.vertices[vertexIndex] ?? null;
 }
 
-function mapFeatureVertexLabel(feature: EditableMapFeature): string {
+function mapFeatureVertexLabel(feature: EditableMapFeature, vertexIndex: number): string {
   if (feature.geometry.type === "Point") return "point";
-  if (feature.geometry.type === "Circle") return "center";
+  if (feature.geometry.type === "Circle") return vertexIndex === 1 ? "radius handle" : "center";
   return "vertex";
 }

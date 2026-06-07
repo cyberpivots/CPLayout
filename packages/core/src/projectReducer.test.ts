@@ -244,6 +244,24 @@ const invalidCircleFeatureDelete = reduceProjectEditorState(state, {
 assert.equal(invalidCircleFeatureDelete.lastError, "Map feature center cannot be deleted; delete the feature instead.");
 assert.equal(invalidCircleFeatureDelete.project, state.project);
 state = reduceProjectEditorState(state, {
+  type: "move_map_feature_circle_radius_handle",
+  featureId: "end-gun-circle-a",
+  point: { x: state.project.pivotCenter.x + 64, y: state.project.pivotCenter.y + 6 },
+});
+const resizedEndGunGeometry = state.project.mapFeatures?.find((feature) => feature.id === "end-gun-circle-a")?.geometry;
+assert.equal(resizedEndGunGeometry?.type, "Circle");
+if (resizedEndGunGeometry?.type === "Circle") {
+  assert.equal(Math.round(resizedEndGunGeometry.radiusMeters), 50);
+}
+assert.equal(state.project.wgs84Companion?.mapFeatures?.some((feature) => feature.id === "end-gun-circle-a" && feature.geometry.type === "Circle" && Math.round(feature.geometry.radiusMeters) === 50), true);
+const invalidCircleRadius = reduceProjectEditorState(state, {
+  type: "move_map_feature_circle_radius_handle",
+  featureId: "end-gun-circle-a",
+  point: resizedEndGunGeometry?.type === "Circle" ? resizedEndGunGeometry.center : state.project.pivotCenter,
+});
+assert.equal(invalidCircleRadius.lastError, "Map feature circle radius must be positive.");
+assert.equal(invalidCircleRadius.project, state.project);
+state = reduceProjectEditorState(state, {
   type: "add_map_feature",
   feature: {
     id: "pump-point-a",
@@ -271,6 +289,13 @@ const invalidPointFeatureDelete = reduceProjectEditorState(state, {
 });
 assert.equal(invalidPointFeatureDelete.lastError, "Map feature point cannot be deleted; delete the feature instead.");
 assert.equal(invalidPointFeatureDelete.project, state.project);
+const invalidPointRadiusHandle = reduceProjectEditorState(state, {
+  type: "move_map_feature_circle_radius_handle",
+  featureId: "pump-point-a",
+  point: { x: state.project.pivotCenter.x + 20, y: state.project.pivotCenter.y },
+});
+assert.equal(invalidPointRadiusHandle.lastError, "Map feature pump-point-a is not a circle.");
+assert.equal(invalidPointRadiusHandle.project, state.project);
 const beforeUpsertPivotCenter = state.project.pivotCenter;
 const machineZoneUpsertState = reduceProjectEditorState(state, {
   type: "upsert_map_features",

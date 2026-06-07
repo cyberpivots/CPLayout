@@ -1014,6 +1014,41 @@ test("browser map edit vertices nudges selected map feature through reducer acti
   await saveScreen(page, testInfo, "browser-edit-feature-nudge");
 });
 
+test("browser map edit vertices resizes selected circle map feature through radius handle", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await openBaselineSample(page);
+  await page.getByTestId("workspace-nav-map").click();
+  await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  if (testInfo.project.name === "mobile-390") {
+    await saveScreen(page, testInfo, "browser-edit-feature-radius-compact");
+    return;
+  }
+
+  await page.getByTestId("browser-tool-utility").click();
+  await page.getByRole("button", { name: "End gun", exact: true }).click();
+  await clickWorkbenchMap(page, { x: 180, y: 330 });
+  await clickWorkbenchMap(page, { x: 250, y: 370 });
+  await page.getByTestId("browser-action-save-feature").click();
+  await expect(page.getByText("Saved end gun arc circle with projected XY center and radius points as a map feature.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await page.getByRole("button", { name: /Save.*\*/ }).first().click();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("browser-tool-edit-vertices").click();
+  await page.getByTestId("browser-edit-select-feature").click();
+  await expect(page.getByText("Selected end gun arc circle center 1 of 2 for projected XY editing.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+
+  await page.getByTestId("browser-edit-next-vertex").click();
+  await expect(page.getByText("Selected end gun arc circle radius handle 2 of 2 for projected XY editing.")).toBeVisible();
+  await page.getByTestId("browser-edit-nudge-east").click();
+  await expect(page.getByText("Moved end gun arc circle radius handle 2 of 2 in projected XY. Save Local to persist.")).toBeVisible();
+  await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
+  await saveScreen(page, testInfo, "browser-edit-feature-radius-nudge");
+});
+
 test("grouped drawing HUD menus do not clear active drafts", async ({ page }, testInfo) => {
   await page.goto("/");
   await openBaselineSample(page);

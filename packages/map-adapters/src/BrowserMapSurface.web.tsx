@@ -58,6 +58,7 @@ import {
   hasMapFeatureVertexSelection,
   hasObstacleVertexSelection,
   selectedProjectVertexCanDelete,
+  selectedProjectVertexIsMapFeatureCircleRadius,
   selectedProjectVertexPoint,
   selectedProjectVertexText,
   type SelectedProjectVertex,
@@ -96,6 +97,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onMappingWorkflowModeChange,
     onMoveBoundaryVertex,
     onMoveInfrastructurePoint,
+    onMoveMapFeatureCircleRadiusHandle,
     onMoveMapFeatureVertex,
     onMoveObstacleVertex,
     onPlacePivot,
@@ -120,6 +122,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onDeleteObstacleVertex,
     onMoveBoundaryVertex,
     onMoveInfrastructurePoint,
+    onMoveMapFeatureCircleRadiusHandle,
     onMoveMapFeatureVertex,
     onMoveObstacleVertex,
     onPlacePivot,
@@ -239,6 +242,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       onDeleteObstacleVertex,
       onMoveBoundaryVertex,
       onMoveInfrastructurePoint,
+      onMoveMapFeatureCircleRadiusHandle,
       onMoveMapFeatureVertex,
       onMoveObstacleVertex,
       onPlacePivot,
@@ -254,6 +258,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onDeleteObstacleVertex,
     onMoveBoundaryVertex,
     onMoveInfrastructurePoint,
+    onMoveMapFeatureCircleRadiusHandle,
     onMoveMapFeatureVertex,
     onMoveObstacleVertex,
     onPlacePivot,
@@ -565,6 +570,8 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       callbacksRef.current.onMoveBoundaryVertex?.(selectedVertex.vertexIndex, nextPoint);
     } else if (selectedVertex.layer === "obstacle") {
       callbacksRef.current.onMoveObstacleVertex?.(selectedVertex.obstacleId, selectedVertex.vertexIndex, nextPoint);
+    } else if (selectedProjectVertexIsMapFeatureCircleRadius(project, selectedVertex)) {
+      callbacksRef.current.onMoveMapFeatureCircleRadiusHandle?.(selectedVertex.featureId, nextPoint);
     } else {
       callbacksRef.current.onMoveMapFeatureVertex?.(selectedVertex.featureId, selectedVertex.vertexIndex, nextPoint);
     }

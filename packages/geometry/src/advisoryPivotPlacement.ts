@@ -477,6 +477,54 @@ export interface AdvisoryRadiusSensitivityReview {
   sourceRefs: AdvisorySourceReference[];
 }
 
+export type AdvisoryEndGunSensitivityReviewSource =
+  | "generated_end_gun_sensitivity"
+  | "imported_end_gun_sensitivity";
+
+export interface AdvisoryEndGunSensitivityReviewOptions {
+  throwDistancesMeters?: number[];
+  source?: AdvisoryEndGunSensitivityReviewSource;
+  sourceRefs?: AdvisorySourceReference[];
+}
+
+export interface AdvisoryEndGunSensitivityRow {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  requestedThrowMeters: number;
+  throwMeters: number;
+  baseMachineRadiusMeters: number;
+  wetRadiusMeters: number;
+  label: string;
+  endGunAngleRangeCount: number;
+  irrigatedAcres: number;
+  baselineIrrigatedAcres: number;
+  incrementalIrrigatedAcres: number;
+  coveragePercent: number;
+  incrementalCoveragePercent: number;
+  endGunAcres: number;
+  outsideFieldAcres: number;
+  obstacleConflictCount: number;
+  noSprayConflictCount: number;
+  hardMechanicalConflictCount: number;
+  warnings: string[];
+}
+
+export interface AdvisoryEndGunSensitivityReview {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  source: AdvisoryEndGunSensitivityReviewSource;
+  importedThrowMeters: number;
+  rowCount: number;
+  readyRowCount: number;
+  bestByIncrementalAcres: AdvisoryEndGunSensitivityRow | null;
+  bestByLowOutsideFieldAcres: AdvisoryEndGunSensitivityRow | null;
+  rows: AdvisoryEndGunSensitivityRow[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
 export interface AdvisoryCornerArmEvaluationOptions {
   sourceRefs?: AdvisorySourceReference[];
 }
@@ -611,6 +659,24 @@ export const DEFAULT_BENDER_SECOND_PIVOT_SOURCE_REFS: AdvisorySourceReference[] 
     lineRange: "131-190",
     checkedAt: "2026-06-05",
     limit: "Local design-guide summary identifies swing tower, sequencing, GPS guidance, and terrain-compensation context; CPLayout uses it only for advisory second-pivot review notes.",
+  },
+  {
+    sourceId: "SRC-LOCAL-PIVOT-DESIGN-PRESSURE-LOSS",
+    guideId: "local-pivot-design-0998236",
+    page: 74,
+    lineRange: "4118-4170",
+    checkedAt: "2026-06-05",
+    limit: "Local design-guide summary supports pressure and length review warnings only; it is not hydraulic or mechanical certification.",
+  },
+];
+
+export const DEFAULT_END_GUN_SENSITIVITY_SOURCE_REFS: AdvisorySourceReference[] = [
+  {
+    sourceId: "SRC-NRCS-NEH-623-CH11",
+    title: "USDA NRCS NEH Part 623 Chapter 11 Sprinkler Irrigation",
+    url: "https://www.wcc.nrcs.usda.gov/ftpref/wntsc/waterMgt/irrigation/NEH15/ch11.pdf",
+    checkedAt: "2026-06-05",
+    limit: "Sprinkler irrigation terminology and review criteria only; not CPLayout design certification.",
   },
   {
     sourceId: "SRC-LOCAL-PIVOT-DESIGN-PRESSURE-LOSS",
@@ -1049,6 +1115,114 @@ export function buildAdvisoryRadiusSensitivityReview(
       "Rows use projected-XY field, pivot, machine-zone, and cost evidence as ephemeral analysis inputs; qualified design review is required before relying on any radius.",
       ...(bestByCostPerAcre ? [] : ["No radius row had complete cost-per-acre evidence."]),
       ...(rows.length === 0 ? ["No positive radius rows were available for sensitivity review."] : []),
+    ],
+    sourceRefs,
+  };
+}
+
+export function buildAdvisoryEndGunSensitivityReview(
+  project: PivotProject,
+  options: AdvisoryEndGunSensitivityReviewOptions = {},
+): AdvisoryEndGunSensitivityReview {
+  const sourceRefs = options.sourceRefs ?? DEFAULT_END_GUN_SENSITIVITY_SOURCE_REFS;
+  const importedThrowMeters = Math.max(0, project.machine.endGunThrowMeters);
+  const baseMachineRadiusMeters = machineRadiusMeters(project.machine);
+  const throwDistances = normalizeEndGunThrowSensitivityDistances(
+    options.throwDistancesMeters ?? defaultEndGunThrowSensitivityDistances(importedThrowMeters),
+  );
+  const baselineProject: PivotProject = {
+    ...project,
+    machine: {
+      ...project.machine,
+      endGunThrowMeters: 0,
+    },
+  };
+  const baselineLayout = evaluateLayout(baselineProject);
+  const baselineIrrigatedAcres = baselineLayout.metrics.irrigatedAcres;
+  const baselineCoveragePercent = baselineLayout.metrics.coveragePercent;
+  const baselineOutsideFieldAcres = baselineLayout.metrics.outsideFieldAcres;
+  const baselineObstacleConflictCount = baselineLayout.metrics.obstacleConflictCount;
+  const baselineNoSprayConflictCount = baselineLayout.metrics.noSprayConflictCount;
+  const baselineHardMechanicalConflictCount = baselineLayout.metrics.hardMechanicalConflictCount;
+  const endGunAngleRangeCount = project.machine.endGunAngleRanges?.length ?? 0;
+  const rows = throwDistances.map((throwMeters): AdvisoryEndGunSensitivityRow => {
+    const variantProject: PivotProject = {
+      ...project,
+      machine: {
+        ...project.machine,
+        endGunThrowMeters: throwMeters,
+      },
+    };
+    const layout = evaluateLayout(variantProject);
+    const currentThrow = Math.abs(throwMeters - importedThrowMeters) < 0.001;
+    const wetRadiusMeters = baseMachineRadiusMeters + throwMeters;
+    const incrementalIrrigatedAcres = layout.metrics.irrigatedAcres - baselineIrrigatedAcres;
+    const incrementalCoveragePercent = layout.metrics.coveragePercent - baselineCoveragePercent;
+    return {
+      advisoryOnly: true,
+      canonicalGeometryMutation: false,
+      qualifiedReviewRequired: true,
+      requestedThrowMeters: round(throwMeters),
+      throwMeters: round(throwMeters),
+      baseMachineRadiusMeters: round(baseMachineRadiusMeters),
+      wetRadiusMeters: round(wetRadiusMeters),
+      label: throwMeters <= 0 ? "No end gun baseline" : currentThrow ? "Imported/current throw" : `${throwMeters.toFixed(0)} m end-gun throw`,
+      endGunAngleRangeCount,
+      irrigatedAcres: round(layout.metrics.irrigatedAcres),
+      baselineIrrigatedAcres: round(baselineIrrigatedAcres),
+      incrementalIrrigatedAcres: round(incrementalIrrigatedAcres),
+      coveragePercent: round(layout.metrics.coveragePercent),
+      incrementalCoveragePercent: round(incrementalCoveragePercent),
+      endGunAcres: round(layout.metrics.endGunAcres),
+      outsideFieldAcres: round(layout.metrics.outsideFieldAcres),
+      obstacleConflictCount: layout.metrics.obstacleConflictCount,
+      noSprayConflictCount: layout.metrics.noSprayConflictCount,
+      hardMechanicalConflictCount: layout.metrics.hardMechanicalConflictCount,
+      warnings: [
+        ...(throwMeters <= 0 ? ["Zero-throw row is a modeled baseline with end-gun throw disabled."] : []),
+        ...(endGunAngleRangeCount > 0 ? [`Current end-gun shutoff angle ranges are reused for this row (${endGunAngleRangeCount}).`] : ["No end-gun shutoff angle ranges are modeled for this row."]),
+        ...(layout.metrics.outsideFieldAcres > baselineOutsideFieldAcres + 0.000001 ? ["This throw increases modeled outside-field wet acres relative to the zero-throw baseline."] : []),
+        ...(layout.metrics.obstacleConflictCount > baselineObstacleConflictCount ? ["This throw increases modeled obstacle intersections relative to the zero-throw baseline."] : []),
+        ...(layout.metrics.noSprayConflictCount > baselineNoSprayConflictCount ? ["This throw reaches at least one additional no-spray obstacle relative to the zero-throw baseline."] : []),
+        ...(layout.metrics.hardMechanicalConflictCount > baselineHardMechanicalConflictCount ? ["This throw increases modeled hard mechanical conflicts relative to the zero-throw baseline."] : []),
+      ],
+    };
+  });
+  const addedAcreRows = rows.filter((row) => row.incrementalIrrigatedAcres > 0);
+  const bestByIncrementalAcres = addedAcreRows.length > 0
+    ? [...addedAcreRows].sort((left, right) => (
+      right.incrementalIrrigatedAcres - left.incrementalIrrigatedAcres
+      || left.outsideFieldAcres - right.outsideFieldAcres
+      || left.hardMechanicalConflictCount - right.hardMechanicalConflictCount
+      || left.throwMeters - right.throwMeters
+    ))[0]
+    : null;
+  const bestByLowOutsideFieldAcres = rows.length > 0
+    ? [...rows].sort((left, right) => (
+      left.outsideFieldAcres - right.outsideFieldAcres
+      || left.hardMechanicalConflictCount - right.hardMechanicalConflictCount
+      || right.incrementalIrrigatedAcres - left.incrementalIrrigatedAcres
+      || left.throwMeters - right.throwMeters
+    ))[0]
+    : null;
+
+  return {
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    source: options.source ?? "generated_end_gun_sensitivity",
+    importedThrowMeters: round(importedThrowMeters),
+    rowCount: rows.length,
+    readyRowCount: rows.filter((row) => row.irrigatedAcres > 0).length,
+    bestByIncrementalAcres,
+    bestByLowOutsideFieldAcres,
+    rows,
+    warnings: [
+      "End-gun sensitivity is a local advisory comparison over throw-distance assumptions only; it does not change project geometry, machine settings, storage, archives, or KML/KMZ.",
+      "Rows reuse the current projected-XY field, pivot, obstacle, sweep, and shutoff-range evidence as ephemeral analysis inputs; qualified design review is required before relying on any throw distance.",
+      "Pressure, wind, nozzle package, hydraulic limits, trajectory, application uniformity, controls, and vendor shutoff constraints are not modeled or certified by this review.",
+      ...(bestByIncrementalAcres ? [] : ["No end-gun row added modeled irrigated acres relative to the zero-throw baseline."]),
+      ...(rows.length === 0 ? ["No nonnegative end-gun throw rows were available for sensitivity review."] : []),
     ],
     sourceRefs,
   };
@@ -2345,11 +2519,26 @@ function defaultRadiusSensitivityRadii(importedRadiusMeters: number): number[] {
     .map((ratio) => round(importedRadiusMeters * ratio));
 }
 
+function defaultEndGunThrowSensitivityDistances(importedThrowMeters: number): number[] {
+  if (importedThrowMeters > 0) {
+    return [0, 0.5, 1, 1.5]
+      .map((ratio) => round(importedThrowMeters * ratio));
+  }
+  return [0, 15, 30, 45];
+}
+
 function normalizeRadiusSensitivityRadii(radiiMeters: number[]): number[] {
   return radiiMeters
     .map((radius) => round(radius))
     .filter((radius) => Number.isFinite(radius) && radius > 0)
     .filter((radius, index, radii) => radii.indexOf(radius) === index);
+}
+
+function normalizeEndGunThrowSensitivityDistances(throwDistancesMeters: number[]): number[] {
+  return throwDistancesMeters
+    .map((throwMeters) => round(throwMeters))
+    .filter((throwMeters) => Number.isFinite(throwMeters) && throwMeters >= 0)
+    .filter((throwMeters, index, throwDistances) => throwDistances.indexOf(throwMeters) === index);
 }
 
 function approximateFullCircleMachine(machine: PivotMachine, radiusMeters: number): PivotMachine {

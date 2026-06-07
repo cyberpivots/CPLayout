@@ -6,6 +6,7 @@ import {
   analyzeAdvisoryMultiMachineLayout,
   analyzeAdvisoryObstacleInteractions,
   analyzeIdealPivotCenter,
+  buildAdvisoryEndGunSensitivityReview,
   buildAdvisoryRadiusSensitivityReview,
   buildPivotPlacementCandidates,
   compareAdvisoryMachineStrategies,
@@ -751,6 +752,48 @@ assert.equal(customRadiusReview.rowCount, 1);
 assert.equal(customRadiusReview.rows[0].requestedRadiusMeters, 60);
 assert.equal(customRadiusReview.rows[0].radiusMeters, 70);
 assert.equal(customRadiusReview.rows[0].spanCount, 1);
+
+const endGunSensitivityProject = makeProject({
+  ...strategyProject,
+  machine: {
+    ...strategyProject.machine,
+    endGunThrowMeters: 20,
+    endGunAngleRanges: [{
+      startAngleDegrees: 0,
+      stopAngleDegrees: 180,
+      direction: "clockwise",
+    }],
+  },
+});
+const endGunSensitivityProjectBefore = JSON.stringify(endGunSensitivityProject);
+const endGunSensitivityReview = buildAdvisoryEndGunSensitivityReview(endGunSensitivityProject, {
+  throwDistancesMeters: [0, 20, 20, 30, -5, Number.NaN],
+});
+assert.equal(endGunSensitivityReview.advisoryOnly, true);
+assert.equal(endGunSensitivityReview.canonicalGeometryMutation, false);
+assert.equal(endGunSensitivityReview.qualifiedReviewRequired, true);
+assert.equal(endGunSensitivityReview.source, "generated_end_gun_sensitivity");
+assert.equal(endGunSensitivityReview.importedThrowMeters, 20);
+assert.equal(endGunSensitivityReview.rowCount, 3);
+assert.ok(endGunSensitivityReview.readyRowCount > 0);
+assert.ok(endGunSensitivityReview.bestByIncrementalAcres);
+assert.ok(endGunSensitivityReview.bestByLowOutsideFieldAcres);
+assert.deepEqual(endGunSensitivityReview.rows.map((row) => row.requestedThrowMeters), [0, 20, 30]);
+assert.ok(endGunSensitivityReview.rows.every((row) => row.advisoryOnly === true));
+assert.ok(endGunSensitivityReview.rows.every((row) => row.canonicalGeometryMutation === false));
+assert.ok(endGunSensitivityReview.rows.every((row) => row.qualifiedReviewRequired === true));
+assert.ok(endGunSensitivityReview.rows.every((row) => row.endGunAngleRangeCount === 1));
+assert.ok(endGunSensitivityReview.rows.every((row) => Number.isFinite(row.wetRadiusMeters)));
+assert.ok(endGunSensitivityReview.rows.every((row) => Number.isFinite(row.incrementalIrrigatedAcres)));
+assert.equal(endGunSensitivityReview.rows[0].throwMeters, 0);
+assert.equal(endGunSensitivityReview.rows[0].endGunAcres, 0);
+assert.ok((endGunSensitivityReview.rows.find((row) => row.throwMeters === 30)?.endGunAcres ?? 0) >= (endGunSensitivityReview.rows.find((row) => row.throwMeters === 20)?.endGunAcres ?? 0));
+assert.ok(endGunSensitivityReview.warnings.some((warning) => warning.includes("does not change project geometry")));
+assert.ok(endGunSensitivityReview.warnings.some((warning) => warning.includes("Pressure, wind, nozzle package")));
+assert.equal(JSON.stringify(endGunSensitivityProject), endGunSensitivityProjectBefore);
+
+const defaultEndGunSensitivityReview = buildAdvisoryEndGunSensitivityReview(strategyProject);
+assert.deepEqual(defaultEndGunSensitivityReview.rows.map((row) => row.requestedThrowMeters), [0, 15, 30, 45]);
 
 const ordinaryPivotEvidence: SurveyPoint = {
   id: "existing-pivot-evidence",

@@ -111,6 +111,7 @@ import {
   analyzeIdealPivotCenter,
   auditGeneratedFieldPivotReviewZones,
   buildAdvisoryDesignReport,
+  buildAdvisoryEndGunSensitivityReview,
   buildAdvisoryRadiusSensitivityReview,
   buildDesignScenarioPreview,
   compareAdvisoryMachineStrategies,
@@ -123,6 +124,8 @@ import {
   type AdvisoryCostInput,
   type AdvisoryCornerArmEvaluation,
   type AdvisoryDesignReport,
+  type AdvisoryEndGunSensitivityReview,
+  type AdvisoryEndGunSensitivityRow,
   type AdvisoryFieldPivotPlan,
   type AdvisoryGeneratedReviewZoneAudit,
   type AdvisoryMachineStrategyComparison,
@@ -2256,6 +2259,9 @@ function CalculateSheet({
       radiiMeters: appRadiusSensitivityRadii(project),
     });
   }, [advisoryCostDraft, advisoryCostInput, project]);
+  const endGunSensitivityReview = useMemo<AdvisoryEndGunSensitivityReview>(() => buildAdvisoryEndGunSensitivityReview(project, {
+    throwDistancesMeters: appEndGunThrowSensitivityThrows(project),
+  }), [project]);
   const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
   const multiMachineReview = useMemo<AdvisoryMultiMachineReview>(() => analyzeAdvisoryMultiMachineLayout(project, {
     maxCandidates: 3,
@@ -2272,8 +2278,9 @@ function CalculateSheet({
     multiMachineReview,
     strategyComparison,
     obstacleInteractionReview,
+    endGunSensitivityReview,
     reviewZoneAudit,
-  }), [fieldPivotPlan, multiMachineReview, obstacleInteractionReview, project, result, reviewZoneAudit, strategyComparison]);
+  }), [endGunSensitivityReview, fieldPivotPlan, multiMachineReview, obstacleInteractionReview, project, result, reviewZoneAudit, strategyComparison]);
 
   async function exportAdvisoryDesignReport(): Promise<void> {
     try {
@@ -2323,6 +2330,10 @@ function CalculateSheet({
         />
         <AdvisoryRadiusSensitivityTable
           review={radiusSensitivityReview}
+          settings={settings}
+        />
+        <AdvisoryEndGunSensitivityTable
+          review={endGunSensitivityReview}
           settings={settings}
         />
         {benderStrategy ? (
@@ -2511,8 +2522,64 @@ function AdvisoryRadiusSensitivityTable({
   );
 }
 
+function AdvisoryEndGunSensitivityTable({
+  review,
+  settings,
+}: {
+  review: AdvisoryEndGunSensitivityReview;
+  settings: AppSettings;
+}): React.JSX.Element {
+  const rows = review.rows;
+
+  if (rows.length === 0) {
+    return (
+      <Text style={styles.mapFeatureMeta} testID="advisory-end-gun-sensitivity-table">
+        End-gun throw alternatives need at least one nonnegative throw distance before advisory rows can be shown.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.radiusSensitivityTable} testID="advisory-end-gun-sensitivity-table">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>End-Gun Throw Alternatives</Text>
+        <Text style={styles.scenarioScore}>{review.readyRowCount}/{review.rowCount} ready</Text>
+      </View>
+      <Text style={[styles.mapFeatureMeta, styles.radiusSensitivityMeta]}>
+        End-gun alternatives compare throw-distance assumptions with the current pivot, sweep, shutoff arcs, field, and obstacle evidence. They do not edit End Gun settings, change storage, or prove pressure, wind, nozzle package, hydraulic limits, or vendor shutoff constraints.
+      </Text>
+      {review.bestByIncrementalAcres ? (
+        <Text style={[styles.mapFeatureMeta, styles.radiusSensitivityMeta]}>
+          Best modeled added acres: {review.bestByIncrementalAcres.label} at +{formatAreaFromAcres(review.bestByIncrementalAcres.incrementalIrrigatedAcres, settings.unitSystem)}.
+        </Text>
+      ) : null}
+      <View style={styles.costComparisonHeader}>
+        <Text style={styles.costComparisonHeaderText}>Throw Review</Text>
+        <Text style={styles.costComparisonHeaderText}>Throw</Text>
+        <Text style={styles.costComparisonHeaderText}>Added</Text>
+      </View>
+      {rows.map((row) => (
+        <View key={endGunSensitivityRowKey(row)} style={styles.costComparisonRow} testID={`advisory-end-gun-row-${endGunSensitivityRowKey(row)}`}>
+          <View style={styles.costComparisonStrategyCell}>
+            <Text style={styles.costComparisonStrategy}>{row.label}</Text>
+            <Text style={styles.costComparisonMeta}>
+              {formatAreaFromAcres(row.endGunAcres, settings.unitSystem)} end-gun · {row.coveragePercent.toFixed(1)}% coverage · outside {formatAreaFromAcres(row.outsideFieldAcres, settings.unitSystem)} · conflicts {row.obstacleConflictCount}/{row.hardMechanicalConflictCount}
+            </Text>
+          </View>
+          <Text style={styles.costComparisonValue}>{formatDistance(row.throwMeters, settings.unitSystem)}</Text>
+          <Text style={styles.costComparisonValue}>{formatAreaFromAcres(row.incrementalIrrigatedAcres, settings.unitSystem)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function radiusSensitivityRowKey(row: AdvisoryRadiusSensitivityRow): string {
   return `radius-${row.radiusMeters.toFixed(2).replace(".", "-")}`;
+}
+
+function endGunSensitivityRowKey(row: AdvisoryEndGunSensitivityRow): string {
+  return `throw-${row.throwMeters.toFixed(2).replace(".", "-")}`;
 }
 
 function formatRadiusSensitivityCostPerAcre(row: AdvisoryRadiusSensitivityRow): string {
@@ -3460,6 +3527,17 @@ function appRadiusSensitivityRadii(project: PivotProject): number[] {
     .map((ratio) => Math.round(currentRadius * ratio * 1000) / 1000)
     .filter((radius) => Number.isFinite(radius) && radius > 0)
     .filter((radius, index, radii) => radii.indexOf(radius) === index);
+}
+
+function appEndGunThrowSensitivityThrows(project: PivotProject): number[] {
+  const currentThrow = Math.max(0, project.machine.endGunThrowMeters);
+  const throws = currentThrow > 0
+    ? [0, currentThrow, currentThrow * 1.5]
+    : [0, 15, 30];
+  return throws
+    .map((throwMeters) => Math.round(throwMeters * 1000) / 1000)
+    .filter((throwMeters) => Number.isFinite(throwMeters) && throwMeters >= 0)
+    .filter((throwMeters, index, throwDistances) => throwDistances.indexOf(throwMeters) === index);
 }
 
 function advisoryCostDraftMessage(draft: AdvisoryCostDraft, status: AdvisoryCostAssessment["status"]): string {

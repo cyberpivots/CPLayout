@@ -1,6 +1,7 @@
 import type { AdvisorySourceReference, LayoutResult, PivotProject, ProjectMapFeature, XY } from "@cplayout/core";
 
 import type {
+  AdvisoryEndGunSensitivityReview,
   AdvisoryFieldPivotPlan,
   AdvisoryMachineStrategyComparison,
   AdvisoryMultiMachineReview,
@@ -52,6 +53,7 @@ export interface AdvisoryDesignReportInput {
   multiMachineReview: AdvisoryMultiMachineReview;
   strategyComparison: AdvisoryMachineStrategyComparison;
   obstacleInteractionReview: AdvisoryObstacleInteractionReview;
+  endGunSensitivityReview?: AdvisoryEndGunSensitivityReview;
   reviewZoneAudit?: AdvisoryGeneratedReviewZoneAudit;
   generatedAt?: string;
 }
@@ -183,6 +185,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
   const generatedRadiusStrategies = input.strategyComparison.strategies
     .filter((strategy) => strategy.strategyKind === "full_circle_radius")
     .sort((left, right) => left.machineRadiusMeters - right.machineRadiusMeters || left.label.localeCompare(right.label));
+  const endGunSensitivityReview = input.endGunSensitivityReview;
   const firstConflict = input.multiMachineReview.conflicts[0] ?? null;
   const firstObstacle = input.obstacleInteractionReview.items[0] ?? null;
   const sourceRefs = dedupeSourceRefs([
@@ -190,6 +193,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     ...input.multiMachineReview.sourceRefs,
     ...input.strategyComparison.sourceRefs,
     ...input.obstacleInteractionReview.sourceRefs,
+    ...(endGunSensitivityReview?.sourceRefs ?? []),
     ...input.strategyComparison.strategies.flatMap((strategy) => strategy.sourceRefs),
     ...input.obstacleInteractionReview.items.flatMap((item) => item.sourceRefs),
   ]);
@@ -203,6 +207,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     ...input.multiMachineReview.warnings,
     ...input.strategyComparison.warnings,
     ...input.obstacleInteractionReview.warnings,
+    ...(endGunSensitivityReview?.warnings ?? []),
   ]);
   const sections: AdvisoryDesignReportSection[] = [
     {
@@ -283,6 +288,24 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
         "Cost review is local and advisory; CPLayout does not infer prices, quote equipment, or recommend purchases automatically.",
       ],
     },
+    ...(endGunSensitivityReview ? [{
+      id: "end-gun-sensitivity",
+      title: "End-Gun Throw Sensitivity",
+      lines: [
+        `Imported/current throw: ${formatMeters(endGunSensitivityReview.importedThrowMeters)}`,
+        `Rows reviewed: ${endGunSensitivityReview.readyRowCount}/${endGunSensitivityReview.rowCount}`,
+        endGunSensitivityReview.bestByIncrementalAcres
+          ? `Best modeled added acres: ${endGunSensitivityReview.bestByIncrementalAcres.label}, +${formatAcres(endGunSensitivityReview.bestByIncrementalAcres.incrementalIrrigatedAcres)}, outside-field ${formatAcres(endGunSensitivityReview.bestByIncrementalAcres.outsideFieldAcres)}`
+          : "Best modeled added acres: none above the zero-throw baseline.",
+        endGunSensitivityReview.bestByLowOutsideFieldAcres
+          ? `Lowest outside-field row: ${endGunSensitivityReview.bestByLowOutsideFieldAcres.label}, outside-field ${formatAcres(endGunSensitivityReview.bestByLowOutsideFieldAcres.outsideFieldAcres)}`
+          : "Lowest outside-field row: no throw rows available.",
+        ...endGunSensitivityReview.rows.slice(0, 5).map((row) => (
+          `${row.label}: throw ${formatMeters(row.throwMeters)}, wet radius ${formatMeters(row.wetRadiusMeters)}, end-gun ${formatAcres(row.endGunAcres)}, added ${formatAcres(row.incrementalIrrigatedAcres)}, conflicts ${row.obstacleConflictCount}/${row.hardMechanicalConflictCount}`
+        )),
+        "End-gun review is advisory only; pressure, wind, nozzle package, hydraulic limits, application uniformity, controls, and vendor shutoff constraints remain unmodeled.",
+      ],
+    }] : []),
     {
       id: "obstacles-utilities",
       title: "Obstacle And Utility Review",

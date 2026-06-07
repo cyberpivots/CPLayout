@@ -893,6 +893,9 @@ test("full-scope demo compares cost versus acres across advisory strategies", as
   await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("canonical projected XY");
   await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("Full circle");
   await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("/ac");
+  await expect(page.getByTestId("advisory-end-gun-sensitivity-table")).toContainText("End-Gun Throw Alternatives");
+  await expect(page.getByTestId("advisory-end-gun-sensitivity-table")).toContainText("pressure, wind, nozzle package");
+  await expect(page.getByTestId("advisory-end-gun-sensitivity-table")).toContainText("Added");
   await expect(page.getByTestId("advisory-cost-row-linear-lateral")).toContainText("Linear/lateral");
   await expect(page.getByTestId("advisory-cost-row-linear-lateral")).toContainText("/ac");
   await expect(page.getByTestId("advisory-cost-row-bender-second-pivot")).toContainText("Bender");
@@ -911,6 +914,8 @@ test("full-scope demo compares cost versus acres across advisory strategies", as
   expect(reportText).toContain("Generated Field-Pivot Review");
   expect(reportText).toContain("Machine Strategy And Cost Review");
   expect(reportText).toContain("Generated radius alternatives:");
+  expect(reportText).toContain("End-Gun Throw Sensitivity");
+  expect(reportText).toContain("End-gun review is advisory only");
   expect(reportText).toContain("Obstacle And Utility Review");
   expect(reportText).toContain("Canonical geometry mutation: false");
   await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });

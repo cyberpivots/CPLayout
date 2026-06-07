@@ -7,6 +7,7 @@ import {
   analyzeAdvisoryObstacleInteractions,
   analyzeIdealPivotCenter,
   buildAdvisoryEndGunSensitivityReview,
+  buildAdvisoryGeneratedMultiPivotScenarioReview,
   buildAdvisoryRadiusSensitivityReview,
   buildAdvisorySweepEfficiencyReview,
   buildPivotPlacementCandidates,
@@ -421,6 +422,25 @@ assert.ok(generatedFieldPlan.candidates.slice(1).every((candidate) => (
   && candidate.nearestSelectedDistanceMeters >= generatedFieldPlan.minimumRequiredSeparationMeters
 )));
 assert.ok(generatedFieldPlan.warnings.some((warning) => warning.includes("does not create pivots")));
+const generatedScenarioReview = buildAdvisoryGeneratedMultiPivotScenarioReview(generatedFieldPlan);
+assert.equal(generatedScenarioReview.status, "ready");
+assert.equal(generatedScenarioReview.advisoryOnly, true);
+assert.equal(generatedScenarioReview.canonicalGeometryMutation, false);
+assert.equal(generatedScenarioReview.qualifiedReviewRequired, true);
+assert.equal(generatedScenarioReview.projectCrs, openMultiPivotProject.projectCrs);
+assert.equal(generatedScenarioReview.selectedCenterCount, generatedFieldPlan.selectedMachineCount);
+assert.equal(generatedScenarioReview.requestedMachineCount, generatedFieldPlan.requestedMachineCount);
+assert.equal(generatedScenarioReview.rows.length, generatedFieldPlan.selectedMachineCount);
+assert.equal(generatedScenarioReview.rows.every((row) => row.advisoryOnly === true), true);
+assert.equal(generatedScenarioReview.rows.every((row) => row.canonicalGeometryMutation === false), true);
+assert.ok(generatedScenarioReview.rows.slice(1).every((row) => (
+  row.separationMarginMeters !== null
+  && row.separationMarginMeters >= 0
+)));
+assert.equal(generatedScenarioReview.costInputStatus, "missing_cost_input");
+assert.ok(generatedScenarioReview.modeledIrrigatedUnionAcres > 0);
+assert.ok(generatedScenarioReview.duplicateModeledCoverageAcres >= 0);
+assert.ok(generatedScenarioReview.warnings.some((warning) => warning.includes("does not create saved pivots")));
 assert.equal(JSON.stringify(openMultiPivotProject), openMultiPivotBefore);
 
 const constrainedFieldPlan = planAdvisoryFieldPivots(openMultiPivotProject, {
@@ -434,6 +454,13 @@ assert.equal(constrainedFieldPlan.selectedMachineCount, 1);
 assert.ok(constrainedFieldPlan.rejectedForSeparationCount > 0);
 assert.ok(constrainedFieldPlan.separationRejections.every((rejection) => rejection.canonicalGeometryMutation === false));
 assert.ok(constrainedFieldPlan.blockers.some((blocker) => blocker.includes("Only 1 separated feasible center")));
+const constrainedGeneratedScenarioReview = buildAdvisoryGeneratedMultiPivotScenarioReview(constrainedFieldPlan);
+assert.equal(constrainedGeneratedScenarioReview.status, "single_center_review");
+assert.equal(constrainedGeneratedScenarioReview.selectedCenterCount, 1);
+assert.ok(constrainedGeneratedScenarioReview.rejectedRows.length > 0);
+assert.ok((constrainedGeneratedScenarioReview.largestSeparationDeficitMeters ?? 0) > 0);
+assert.ok(constrainedGeneratedScenarioReview.rejectedRows.every((row) => row.canonicalGeometryMutation === false));
+assert.ok(constrainedGeneratedScenarioReview.rejectedRows.some((row) => row.warnings.some((warning) => warning.includes("not certified collision prevention"))));
 
 const bufferWestMachineZone: ProjectMapFeature = {
   id: "zone-buffer-west",

@@ -1,8 +1,10 @@
 import type { AdvisorySourceReference, LayoutResult, PivotProject, ProjectMapFeature, XY } from "@cplayout/core";
 
+import { buildAdvisoryGeneratedMultiPivotScenarioReview } from "./advisoryPivotPlacement";
 import type {
   AdvisoryEndGunSensitivityReview,
   AdvisoryFieldPivotPlan,
+  AdvisoryGeneratedMultiPivotScenarioReview,
   AdvisoryMachineStrategyComparison,
   AdvisoryMultiMachineReview,
   AdvisoryObstacleInteractionReview,
@@ -56,6 +58,7 @@ export interface AdvisoryDesignReportInput {
   obstacleInteractionReview: AdvisoryObstacleInteractionReview;
   endGunSensitivityReview?: AdvisoryEndGunSensitivityReview;
   sweepEfficiencyReview?: AdvisorySweepEfficiencyReview;
+  generatedMultiPivotScenarioReview?: AdvisoryGeneratedMultiPivotScenarioReview;
   reviewZoneAudit?: AdvisoryGeneratedReviewZoneAudit;
   generatedAt?: string;
 }
@@ -189,10 +192,13 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     .sort((left, right) => left.machineRadiusMeters - right.machineRadiusMeters || left.label.localeCompare(right.label));
   const endGunSensitivityReview = input.endGunSensitivityReview;
   const sweepEfficiencyReview = input.sweepEfficiencyReview;
+  const generatedMultiPivotScenarioReview = input.generatedMultiPivotScenarioReview
+    ?? buildAdvisoryGeneratedMultiPivotScenarioReview(input.fieldPivotPlan);
   const firstConflict = input.multiMachineReview.conflicts[0] ?? null;
   const firstObstacle = input.obstacleInteractionReview.items[0] ?? null;
   const sourceRefs = dedupeSourceRefs([
     ...input.fieldPivotPlan.sourceRefs,
+    ...generatedMultiPivotScenarioReview.sourceRefs,
     ...input.multiMachineReview.sourceRefs,
     ...input.strategyComparison.sourceRefs,
     ...input.obstacleInteractionReview.sourceRefs,
@@ -211,6 +217,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     ...input.multiMachineReview.warnings,
     ...input.strategyComparison.warnings,
     ...input.obstacleInteractionReview.warnings,
+    ...generatedMultiPivotScenarioReview.warnings,
     ...(endGunSensitivityReview?.warnings ?? []),
     ...(sweepEfficiencyReview?.warnings ?? []),
   ]);
@@ -255,6 +262,33 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
           `Review zone ${item.sequence}: ${item.status}, ${item.reasons[0] ?? "qualified review required"}`
         )),
         "Generated centers are review candidates only; they do not create saved pivots unless the operator uses an explicit reducer-backed action.",
+      ],
+    },
+    {
+      id: "generated-multi-pivot-scenario",
+      title: "Generated Multi-Pivot Scenario Review",
+      lines: [
+        `Review status: ${readable(generatedMultiPivotScenarioReview.status)}`,
+        `Selected centers: ${generatedMultiPivotScenarioReview.selectedCenterCount}/${generatedMultiPivotScenarioReview.requestedMachineCount}`,
+        `Candidate pool: ${generatedMultiPivotScenarioReview.feasibleCandidateCount}/${generatedMultiPivotScenarioReview.candidatePoolCount} feasible`,
+        `Modeled union acres: ${formatAcres(generatedMultiPivotScenarioReview.modeledIrrigatedUnionAcres)}`,
+        `Duplicate modeled acres: ${formatAcres(generatedMultiPivotScenarioReview.duplicateModeledCoverageAcres)}`,
+        `Field coverage: ${formatPercent(generatedMultiPivotScenarioReview.fieldCoveragePercent)}`,
+        `Remaining dry acres: ${formatAcres(generatedMultiPivotScenarioReview.fieldUnirrigatedAcres)}`,
+        `Cost evidence: ${readable(generatedMultiPivotScenarioReview.costInputStatus)}`,
+        generatedMultiPivotScenarioReview.tightestSelectedSeparationMarginMeters !== null
+          ? `Tightest selected separation margin: ${formatMeters(generatedMultiPivotScenarioReview.tightestSelectedSeparationMarginMeters)}`
+          : "Tightest selected separation margin: first or only generated center.",
+        generatedMultiPivotScenarioReview.largestSeparationDeficitMeters !== null
+          ? `Largest rejected separation deficit: ${formatMeters(generatedMultiPivotScenarioReview.largestSeparationDeficitMeters)}`
+          : "Largest rejected separation deficit: none reported.",
+        ...generatedMultiPivotScenarioReview.rows.slice(0, 4).map((row) => (
+          `Generated center ${row.sequence}: incremental ${formatAcres(row.incrementalIrrigatedAcres)}, cumulative ${formatPercent(row.cumulativeFieldCoveragePercent)}, separation margin ${row.separationMarginMeters === null ? "first center" : formatMeters(row.separationMarginMeters)}, cost ${readable(row.costStatus)}`
+        )),
+        ...generatedMultiPivotScenarioReview.rejectedRows.slice(0, 3).map((row) => (
+          `Rejected candidate: deficit ${formatMeters(row.separationDeficitMeters)} to ${row.nearestSelectedCandidateId}`
+        )),
+        "Generated multi-pivot scenario review is advisory only; it does not create saved pivots, runtime collision prevention, or storage records.",
       ],
     },
     {

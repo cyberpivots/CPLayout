@@ -112,6 +112,7 @@ import {
   auditGeneratedFieldPivotReviewZones,
   buildAdvisoryDesignReport,
   buildAdvisoryEndGunSensitivityReview,
+  buildAdvisoryGeneratedMultiPivotScenarioReview,
   buildAdvisoryRadiusSensitivityReview,
   buildAdvisorySweepEfficiencyReview,
   buildDesignScenarioPreview,
@@ -129,6 +130,7 @@ import {
   type AdvisoryEndGunSensitivityRow,
   type AdvisoryFieldPivotPlan,
   type AdvisoryGeneratedReviewZoneAudit,
+  type AdvisoryGeneratedMultiPivotScenarioReview,
   type AdvisoryMachineStrategyComparison,
   type AdvisoryMachineStrategyResult,
   type AdvisoryMultiMachineReview,
@@ -271,14 +273,15 @@ function AppContent(): React.JSX.Element {
   const [activeInspectorPage, setActiveInspectorPage] = useState<InspectorPage>("metrics");
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
+  const advisoryCostInput = useMemo(() => advisoryCostInputFromDraft(advisoryCostDraft), [advisoryCostDraft]);
   const advisoryFieldPivotPlan = useMemo<AdvisoryFieldPivotPlan>(() => planAdvisoryFieldPivots(project, {
     gridDivisions: 6,
     maxMachines: 3,
     candidatePoolSize: 24,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
-  }), [project]);
+    costInput: advisoryCostInput,
+  }), [advisoryCostInput, project]);
   const cornerArmEvaluation = useMemo(() => evaluateAdvisoryCornerArm(project), [project]);
-  const advisoryCostInput = useMemo(() => advisoryCostInputFromDraft(advisoryCostDraft), [advisoryCostDraft]);
   const androidNativeProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_ANDROID_NATIVE_PROOF === "1";
   const nativeMapLibreProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF === "1";
   const isDirty = editor.revision !== savedRevision;
@@ -2274,6 +2277,9 @@ function CalculateSheet({
     maxCandidates: 3,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
   }), [project]);
+  const generatedMultiPivotScenarioReview = useMemo<AdvisoryGeneratedMultiPivotScenarioReview>(() => (
+    buildAdvisoryGeneratedMultiPivotScenarioReview(fieldPivotPlan)
+  ), [fieldPivotPlan]);
   const bestStrategy = strategyComparison.bestStrategy;
   const benderStrategy = benderStrategyForReview(strategyComparison);
   const reviewZoneAudit = useMemo<AdvisoryGeneratedReviewZoneAudit>(() => auditGeneratedFieldPivotReviewZones(project, fieldPivotPlan), [fieldPivotPlan, project]);
@@ -2287,8 +2293,9 @@ function CalculateSheet({
     obstacleInteractionReview,
     endGunSensitivityReview,
     sweepEfficiencyReview,
+    generatedMultiPivotScenarioReview,
     reviewZoneAudit,
-  }), [endGunSensitivityReview, fieldPivotPlan, multiMachineReview, obstacleInteractionReview, project, result, reviewZoneAudit, strategyComparison, sweepEfficiencyReview]);
+  }), [endGunSensitivityReview, fieldPivotPlan, generatedMultiPivotScenarioReview, multiMachineReview, obstacleInteractionReview, project, result, reviewZoneAudit, strategyComparison, sweepEfficiencyReview]);
 
   async function exportAdvisoryDesignReport(): Promise<void> {
     try {
@@ -2381,6 +2388,10 @@ function CalculateSheet({
           Generated field-pivot planning is advisory only. Save Review Zones creates projected-XY machine-zone map features for review; it does not create saved pivots, change the active pivot, or mutate canonical projected XY automatically.
         </Text>
         <Text style={styles.mapFeatureMeta} testID="generated-field-pivot-zone-save-status">Review zones: {reviewZoneAudit.currentCount} current / {reviewZoneAudit.missingCount} missing / {reviewZoneAudit.staleCount} stale</Text>
+        <GeneratedMultiPivotScenarioTable
+          review={generatedMultiPivotScenarioReview}
+          settings={settings}
+        />
         <View style={styles.inlineActions}>
           <SmallActionButton
             disabled={fieldPivotPlan.selectedMachineCount === 0}
@@ -2415,6 +2426,60 @@ function CalculateSheet({
       <IdealCenterSummary analysis={idealCenterAnalysis} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
       <ScenarioPreviewList preview={preview} settings={settings} />
       <PlacementReviewPanel analysis={idealCenterAnalysis} candidates={placementCandidates} onRequestApplyPivotCandidate={onRequestApplyPivotCandidate} settings={settings} />
+    </View>
+  );
+}
+
+function GeneratedMultiPivotScenarioTable({
+  review,
+  settings,
+}: {
+  review: AdvisoryGeneratedMultiPivotScenarioReview;
+  settings: AppSettings;
+}): React.JSX.Element {
+  if (review.rows.length === 0) {
+    return (
+      <Text style={styles.mapFeatureMeta} testID="advisory-generated-multi-pivot-scenario-review">
+        Generated multi-pivot scenario review needs at least one separated advisory center; no saved pivots, runtime collision prevention, or storage records are created.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.costComparisonTable} testID="advisory-generated-multi-pivot-scenario-review">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Generated Multi-Pivot Scenario Review</Text>
+        <Text style={styles.scenarioScore}>{review.status.replaceAll("_", " ")}</Text>
+      </View>
+      <Text style={styles.mapFeatureMeta}>
+        {review.selectedCenterCount}/{review.requestedMachineCount} selected centers · {formatAreaFromAcres(review.modeledIrrigatedUnionAcres, settings.unitSystem)} modeled union · {formatAreaFromAcres(review.duplicateModeledCoverageAcres, settings.unitSystem)} overlap · cost evidence {costStatusShortLabel(review.costInputStatus)}.
+      </Text>
+      <Text style={styles.mapFeatureMeta}>
+        Tightest selected separation margin: {review.tightestSelectedSeparationMarginMeters === null ? "first center" : formatDistance(review.tightestSelectedSeparationMarginMeters, settings.unitSystem)} · rejected by separation: {review.rejectedForSeparationCount}.
+      </Text>
+      <View style={styles.costComparisonHeader}>
+        <Text style={styles.costComparisonHeaderText}>Generated center</Text>
+        <Text style={styles.costComparisonHeaderText}>Adds</Text>
+        <Text style={styles.costComparisonHeaderText}>Margin</Text>
+      </View>
+      {review.rows.slice(0, 4).map((row) => (
+        <View key={row.candidateId} style={styles.costComparisonRow} testID={`advisory-generated-multi-pivot-row-${row.sequence}`}>
+          <View style={styles.costComparisonStrategyCell}>
+            <Text style={styles.costComparisonStrategy}>Center {row.sequence}</Text>
+            <Text style={styles.costComparisonMeta}>{row.costStatus.replaceAll("_", " ")} · score {row.placementScore.toFixed(1)}</Text>
+          </View>
+          <Text style={styles.costComparisonValue}>{formatAreaFromAcres(row.incrementalIrrigatedAcres, settings.unitSystem)}</Text>
+          <Text style={styles.costComparisonValue}>{row.separationMarginMeters === null ? "first" : formatDistance(row.separationMarginMeters, settings.unitSystem)}</Text>
+        </View>
+      ))}
+      {review.rejectedRows.length > 0 ? (
+        <Text style={styles.mapFeatureMeta}>
+          Largest rejected separation deficit: {review.largestSeparationDeficitMeters === null ? "none" : formatDistance(review.largestSeparationDeficitMeters, settings.unitSystem)}. Rejections are conservative advisory screening only.
+        </Text>
+      ) : null}
+      <Text style={styles.mapFeatureMeta}>
+        This scenario review is advisory only; it does not create saved pivots, runtime collision controls, vendor quotes, or canonical projected XY changes.
+      </Text>
     </View>
   );
 }
@@ -3072,7 +3137,11 @@ function DesignAwarenessPanel({
     maxMachines: 3,
     candidatePoolSize: 24,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
-  }), [project]);
+    costInput: advisoryCostInput,
+  }), [advisoryCostInput, project]);
+  const generatedMultiPivotScenarioReview = useMemo<AdvisoryGeneratedMultiPivotScenarioReview>(() => (
+    buildAdvisoryGeneratedMultiPivotScenarioReview(fieldPivotPlan)
+  ), [fieldPivotPlan]);
   const strategyComparison = useMemo<AdvisoryMachineStrategyComparison>(() => compareAdvisoryMachineStrategies(project, {
     maxCandidates: 2,
     costInput: advisoryCostInput,
@@ -3099,6 +3168,7 @@ function DesignAwarenessPanel({
         <MetricTile label="Envelope risks" value={`${multiMachineReview.conflicts.length}`} tone={multiMachineReview.conflicts.length > 0 ? "danger" : "good"} />
         <MetricTile label="Modeled union" value={formatAreaFromAcres(multiMachineReview.compilation.modeledIrrigatedUnionAcres, settings.unitSystem)} />
         <MetricTile label="Generated pivots" value={`${fieldPivotPlan.selectedMachineCount}/${fieldPivotPlan.requestedMachineCount}`} tone={fieldPivotPlan.selectedMachineCount > 1 ? "neutral" : "warn"} />
+        <MetricTile label="Gen. scenario" value={generatedMultiPivotScenarioReview.status.replaceAll("_", " ")} tone={generatedMultiPivotScenarioReview.selectedCenterCount > 1 ? "neutral" : "warn"} />
         <MetricTile label="Machine strategies" value={`${readyStrategyCount}/${strategyComparison.strategies.length}`} tone={readyStrategyCount > 0 ? "neutral" : "warn"} />
         <MetricTile label="Cost review" value={strategyCostStatus} tone={strategyComparison.costInputStatus === "complete" ? "good" : "warn"} />
         <MetricTile label="Obstacle review" value={`${obstacleInteractionReview.summary.hardBlockingCount}/${obstacleInteractionReview.itemCount}`} tone={obstacleInteractionReview.summary.hardBlockingCount > 0 ? "danger" : "neutral"} />
@@ -3111,6 +3181,9 @@ function DesignAwarenessPanel({
       </Text>
       <Text style={styles.mapFeatureMeta} testID="design-awareness-generated-field-pivot-plan">
         Generated field-pivot plan: {fieldPivotPlan.selectedMachineCount}/{fieldPivotPlan.requestedMachineCount} advisory centers · {fieldPivotPlan.fieldCoveragePercent.toFixed(1)}% field coverage · no saved pivots created.
+      </Text>
+      <Text style={styles.mapFeatureMeta} testID="design-awareness-generated-multi-pivot-scenario-review">
+        Generated multi-pivot scenario review: {generatedMultiPivotScenarioReview.selectedCenterCount}/{generatedMultiPivotScenarioReview.requestedMachineCount} selected · {formatAreaFromAcres(generatedMultiPivotScenarioReview.modeledIrrigatedUnionAcres, settings.unitSystem)} modeled union · {formatAreaFromAcres(generatedMultiPivotScenarioReview.duplicateModeledCoverageAcres, settings.unitSystem)} overlap · runtime collision prevention not claimed.
       </Text>
       {firstConflict ? (
         <Text style={styles.formError}>

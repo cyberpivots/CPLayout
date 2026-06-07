@@ -84,7 +84,60 @@ try {
       items?: Array<{ name?: string; classification?: string; featureKind?: string | null }>;
     };
     advisoryReview?: {
-      multiMachineReview?: { scenarioCount?: number; readyScenarioCount?: number };
+      fieldPivotPlan?: {
+        advisoryOnly?: boolean;
+        canonicalGeometryMutation?: boolean;
+        qualifiedReviewRequired?: boolean;
+        candidates?: Array<{
+          advisoryOnly?: boolean;
+          canonicalGeometryMutation?: boolean;
+          pivotCenter?: { x?: number; y?: number };
+          incrementalIrrigatedAcres?: number;
+        }>;
+        separationRejections?: Array<{
+          advisoryOnly?: boolean;
+          canonicalGeometryMutation?: boolean;
+          separationDeficitMeters?: number;
+        }>;
+      };
+      generatedMultiPivotScenarioReview?: {
+        advisoryOnly?: boolean;
+        canonicalGeometryMutation?: boolean;
+        qualifiedReviewRequired?: boolean;
+        selectedCenterCount?: number;
+        costInputStatus?: string;
+        rows?: Array<{
+          advisoryOnly?: boolean;
+          canonicalGeometryMutation?: boolean;
+          costStatus?: string;
+        }>;
+        rejectedRows?: Array<{
+          advisoryOnly?: boolean;
+          canonicalGeometryMutation?: boolean;
+        }>;
+      };
+      generatedReviewZoneAudit?: {
+        advisoryOnly?: boolean;
+        canonicalGeometryMutation?: boolean;
+        qualifiedReviewRequired?: boolean;
+        itemCount?: number;
+        currentCount?: number;
+        missingCount?: number;
+        staleCount?: number;
+        items?: Array<{
+          status?: string;
+          advisoryOnly?: boolean;
+          canonicalGeometryMutation?: boolean;
+        }>;
+      };
+      multiMachineReview?: {
+        scenarioCount?: number;
+        readyScenarioCount?: number;
+        scenarios?: Array<{
+          advisoryOnly?: boolean;
+          canonicalGeometryMutation?: boolean;
+        }>;
+      };
       strategyComparison?: { costInputStatus?: string; readyStrategyCount?: number };
       radiusSensitivity?: {
         advisoryOnly?: boolean;
@@ -117,6 +170,29 @@ try {
   assert.equal(manifest.importReview?.items?.some((item) => item.classification === "existing_pivot"), true);
   assert.ok((manifest.advisoryReview?.multiMachineReview?.scenarioCount ?? 0) >= 2);
   assert.ok((manifest.advisoryReview?.multiMachineReview?.readyScenarioCount ?? 0) >= 1);
+  assert.equal(manifest.advisoryReview?.fieldPivotPlan?.advisoryOnly, true);
+  assert.equal(manifest.advisoryReview?.fieldPivotPlan?.canonicalGeometryMutation, false);
+  assert.equal(manifest.advisoryReview?.fieldPivotPlan?.qualifiedReviewRequired, true);
+  assert.equal(manifest.advisoryReview?.fieldPivotPlan?.candidates?.every((candidate) => candidate.advisoryOnly === true), true);
+  assert.equal(manifest.advisoryReview?.fieldPivotPlan?.candidates?.every((candidate) => candidate.canonicalGeometryMutation === false), true);
+  assert.equal(manifest.advisoryReview?.fieldPivotPlan?.candidates?.every((candidate) => Number.isFinite(candidate.pivotCenter?.x) && Number.isFinite(candidate.pivotCenter?.y)), true);
+  assert.equal(manifest.advisoryReview?.generatedMultiPivotScenarioReview?.advisoryOnly, true);
+  assert.equal(manifest.advisoryReview?.generatedMultiPivotScenarioReview?.canonicalGeometryMutation, false);
+  assert.equal(manifest.advisoryReview?.generatedMultiPivotScenarioReview?.qualifiedReviewRequired, true);
+  assert.ok((manifest.advisoryReview?.generatedMultiPivotScenarioReview?.selectedCenterCount ?? 0) >= 1);
+  assert.equal(manifest.advisoryReview?.generatedMultiPivotScenarioReview?.costInputStatus, "complete");
+  assert.equal(manifest.advisoryReview?.generatedMultiPivotScenarioReview?.rows?.every((row) => row.advisoryOnly === true), true);
+  assert.equal(manifest.advisoryReview?.generatedMultiPivotScenarioReview?.rows?.every((row) => row.canonicalGeometryMutation === false), true);
+  assert.equal(manifest.advisoryReview?.generatedMultiPivotScenarioReview?.rows?.some((row) => row.costStatus === "complete"), true);
+  assert.equal(manifest.advisoryReview?.generatedReviewZoneAudit?.advisoryOnly, true);
+  assert.equal(manifest.advisoryReview?.generatedReviewZoneAudit?.canonicalGeometryMutation, false);
+  assert.equal(manifest.advisoryReview?.generatedReviewZoneAudit?.qualifiedReviewRequired, true);
+  assert.ok((manifest.advisoryReview?.generatedReviewZoneAudit?.itemCount ?? 0) >= 1);
+  assert.ok((manifest.advisoryReview?.generatedReviewZoneAudit?.missingCount ?? 0) >= 1);
+  assert.equal(manifest.advisoryReview?.generatedReviewZoneAudit?.items?.every((item) => item.advisoryOnly === true), true);
+  assert.equal(manifest.advisoryReview?.generatedReviewZoneAudit?.items?.every((item) => item.canonicalGeometryMutation === false), true);
+  assert.equal(manifest.advisoryReview?.multiMachineReview?.scenarios?.every((scenario) => scenario.advisoryOnly === true), true);
+  assert.equal(manifest.advisoryReview?.multiMachineReview?.scenarios?.every((scenario) => scenario.canonicalGeometryMutation === false), true);
   assert.equal(manifest.advisoryReview?.strategyComparison?.costInputStatus, "complete");
   assert.ok((manifest.advisoryReview?.strategyComparison?.readyStrategyCount ?? 0) >= 1);
   assert.equal(manifest.advisoryReview?.radiusSensitivity?.advisoryOnly, true);
@@ -134,6 +210,8 @@ try {
   assert.match(report, /Advisory only: true/);
   assert.match(report, /Canonical geometry mutation: false/);
   assert.match(report, /Machine Strategy And Cost Review/);
+  assert.match(report, /Generated Multi-Pivot Scenario Review/);
+  assert.match(report, /Generated multi-pivot scenario review is advisory only/);
   assert.match(report, /Cost review is local and advisory/);
   assert.match(report, /Radius Sensitivity Review/);
   assert.match(report, /Best cost-per-acre radius/);

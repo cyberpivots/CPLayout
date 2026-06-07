@@ -350,6 +350,72 @@ export interface AdvisoryFieldPivotPlan {
   sourceRefs: AdvisorySourceReference[];
 }
 
+export type AdvisoryGeneratedMultiPivotScenarioReviewStatus =
+  | "no_boundary"
+  | "no_selected_centers"
+  | "single_center_review"
+  | "ready";
+
+export interface AdvisoryGeneratedMultiPivotScenarioRow {
+  sequence: number;
+  candidateId: string;
+  pivotCenter: XY;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  machineRadiusMeters: number;
+  modeledIrrigatedAcres: number;
+  incrementalIrrigatedAcres: number;
+  cumulativeFieldCoveragePercent: number;
+  boundaryClearanceMeters: number;
+  nearestSelectedDistanceMeters: number | null;
+  minimumRequiredSeparationMeters: number;
+  separationMarginMeters: number | null;
+  placementScore: number;
+  costStatus: AdvisoryCostAssessment["status"];
+  costPerIrrigatedAcre: number | null;
+  warnings: string[];
+}
+
+export interface AdvisoryGeneratedMultiPivotRejectedRow {
+  candidateId: string;
+  pivotCenter: XY;
+  nearestSelectedCandidateId: string;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  centerDistanceMeters: number;
+  minimumRequiredSeparationMeters: number;
+  separationDeficitMeters: number;
+  warnings: string[];
+}
+
+export interface AdvisoryGeneratedMultiPivotScenarioReview {
+  status: AdvisoryGeneratedMultiPivotScenarioReviewStatus;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  qualifiedReviewRequired: true;
+  projectCrs: string;
+  requestedMachineCount: number;
+  selectedCenterCount: number;
+  candidatePoolCount: number;
+  feasibleCandidateCount: number;
+  rejectedForSeparationCount: number;
+  fieldCoveragePercent: number;
+  fieldUnirrigatedAcres: number;
+  modeledIrrigatedUnionAcres: number;
+  duplicateModeledCoverageAcres: number;
+  minimumRequiredSeparationMeters: number;
+  tightestSelectedSeparationMarginMeters: number | null;
+  largestSeparationDeficitMeters: number | null;
+  costInputStatus: AdvisoryCostAssessment["status"];
+  rows: AdvisoryGeneratedMultiPivotScenarioRow[];
+  rejectedRows: AdvisoryGeneratedMultiPivotRejectedRow[];
+  blockers: string[];
+  warnings: string[];
+  sourceRefs: AdvisorySourceReference[];
+}
+
 export type AdvisoryMachineStrategyKind =
   | "current_machine"
   | "full_circle_same_radius"
@@ -1046,6 +1112,120 @@ export function planAdvisoryFieldPivots(
       ...blockers,
     ],
     sourceRefs,
+  };
+}
+
+export function buildAdvisoryGeneratedMultiPivotScenarioReview(
+  fieldPivotPlan: AdvisoryFieldPivotPlan,
+): AdvisoryGeneratedMultiPivotScenarioReview {
+  const rows = fieldPivotPlan.candidates.map((candidate): AdvisoryGeneratedMultiPivotScenarioRow => {
+    const separationMarginMeters = candidate.nearestSelectedDistanceMeters === null
+      ? null
+      : round(candidate.nearestSelectedDistanceMeters - candidate.minimumRequiredSeparationMeters);
+    return {
+      sequence: candidate.sequence,
+      candidateId: candidate.id,
+      pivotCenter: candidate.pivotCenter,
+      advisoryOnly: true,
+      canonicalGeometryMutation: false,
+      qualifiedReviewRequired: true,
+      machineRadiusMeters: candidate.machineRadiusMeters,
+      modeledIrrigatedAcres: candidate.modeledIrrigatedAcres,
+      incrementalIrrigatedAcres: candidate.incrementalIrrigatedAcres,
+      cumulativeFieldCoveragePercent: candidate.cumulativeFieldCoveragePercent,
+      boundaryClearanceMeters: round(candidate.placementCandidate.boundaryClearanceMeters),
+      nearestSelectedDistanceMeters: candidate.nearestSelectedDistanceMeters,
+      minimumRequiredSeparationMeters: candidate.minimumRequiredSeparationMeters,
+      separationMarginMeters,
+      placementScore: candidate.placementCandidate.score,
+      costStatus: candidate.placementCandidate.costAssessment.status,
+      costPerIrrigatedAcre: candidate.placementCandidate.costAssessment.costPerIrrigatedAcre,
+      warnings: [
+        "Generated multi-pivot scenario row is advisory and does not create saved pivots or runtime collision controls.",
+        ...(separationMarginMeters !== null && separationMarginMeters < 0
+          ? ["Selected center is inside the conservative separation margin and requires operator review."]
+          : []),
+        ...candidate.warnings,
+      ],
+    };
+  });
+  const rejectedRows = fieldPivotPlan.separationRejections.map((rejection): AdvisoryGeneratedMultiPivotRejectedRow => ({
+    candidateId: rejection.candidateId,
+    pivotCenter: rejection.pivotCenter,
+    nearestSelectedCandidateId: rejection.nearestSelectedCandidateId,
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    centerDistanceMeters: rejection.centerDistanceMeters,
+    minimumRequiredSeparationMeters: rejection.minimumRequiredSeparationMeters,
+    separationDeficitMeters: rejection.separationDeficitMeters,
+    warnings: [
+      "Rejected row records advisory separation screening only; it is not certified collision prevention.",
+      ...rejection.warnings,
+    ],
+  }));
+  const selectedMargins = rows
+    .map((row) => row.separationMarginMeters)
+    .filter((value): value is number => value !== null);
+  const tightestSelectedSeparationMarginMeters = selectedMargins.length > 0 ? round(Math.min(...selectedMargins)) : null;
+  const largestSeparationDeficitMeters = rejectedRows.length > 0
+    ? round(Math.max(...rejectedRows.map((row) => row.separationDeficitMeters)))
+    : null;
+  const completeRows = rows.filter((row) => row.costStatus === "complete");
+  const invalidRows = rows.filter((row) => row.costStatus === "invalid_cost_input");
+  const noAcreRows = rows.filter((row) => row.costStatus === "no_irrigated_acres");
+  const costInputStatus: AdvisoryCostAssessment["status"] = rows.length === 0
+    ? "missing_cost_input"
+    : invalidRows.length > 0
+      ? "invalid_cost_input"
+      : noAcreRows.length === rows.length
+        ? "no_irrigated_acres"
+        : completeRows.length === rows.length
+          ? "complete"
+          : "missing_cost_input";
+  const status: AdvisoryGeneratedMultiPivotScenarioReviewStatus = fieldPivotPlan.status === "no_boundary"
+    ? "no_boundary"
+    : rows.length === 0
+      ? "no_selected_centers"
+      : rows.length === 1
+        ? "single_center_review"
+        : "ready";
+  const blockers = [
+    ...fieldPivotPlan.blockers,
+    ...(rows.length === 0 && fieldPivotPlan.status !== "no_boundary" ? ["No generated separated center rows are available for multi-pivot scenario review."] : []),
+  ];
+
+  return {
+    status,
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    projectCrs: fieldPivotPlan.projectCrs,
+    requestedMachineCount: fieldPivotPlan.requestedMachineCount,
+    selectedCenterCount: fieldPivotPlan.selectedMachineCount,
+    candidatePoolCount: fieldPivotPlan.candidatePoolCount,
+    feasibleCandidateCount: fieldPivotPlan.feasibleCandidateCount,
+    rejectedForSeparationCount: fieldPivotPlan.rejectedForSeparationCount,
+    fieldCoveragePercent: fieldPivotPlan.fieldCoveragePercent,
+    fieldUnirrigatedAcres: fieldPivotPlan.fieldUnirrigatedAcres,
+    modeledIrrigatedUnionAcres: fieldPivotPlan.modeledIrrigatedUnionAcres,
+    duplicateModeledCoverageAcres: fieldPivotPlan.duplicateModeledCoverageAcres,
+    minimumRequiredSeparationMeters: fieldPivotPlan.minimumRequiredSeparationMeters,
+    tightestSelectedSeparationMarginMeters,
+    largestSeparationDeficitMeters,
+    costInputStatus,
+    rows,
+    rejectedRows,
+    blockers,
+    warnings: [
+      "Generated multi-pivot scenario review is advisory and does not create saved pivots, machine zones, runtime collision controls, or project storage records.",
+      "Separation margins are projected-XY screening evidence only; timing, tower phasing, controls, terrain, span package, hydraulics, and vendor constraints require qualified review.",
+      "Cost status comes from explicit local assumptions on placement candidates only and is not a quote or purchase recommendation.",
+      ...(fieldPivotPlan.duplicateModeledCoverageAcres > 0.001 ? ["Modeled selected-center coverage overlaps; union acres are the de-duplicated review value."] : []),
+      ...(rejectedRows.length > 0 ? ["Some feasible candidates were rejected by conservative separation screening and should be reviewed before changing machine count or radius assumptions."] : []),
+      ...blockers,
+    ],
+    sourceRefs: fieldPivotPlan.sourceRefs,
   };
 }
 

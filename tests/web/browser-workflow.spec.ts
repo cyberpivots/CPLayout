@@ -798,6 +798,8 @@ test("generated field pivot plan saves advisory machine-zone review features aft
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("Generated Field Pivot Plan");
   await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("does not create saved pivots");
+  await expect(page.getByTestId("advisory-generated-multi-pivot-scenario-review")).toContainText("Generated Multi-Pivot Scenario Review");
+  await expect(page.getByTestId("advisory-generated-multi-pivot-scenario-review")).toContainText("runtime collision controls");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
 
   await page.getByTestId("save-generated-field-pivot-zones").click();
@@ -829,6 +831,8 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   await expect(page.getByTestId("advisory-full-scope-boundary-summary")).toContainText("canonical projected XY");
   await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("Generated Field Pivot Plan");
   await expect(page.getByTestId("advisory-generated-field-pivot-plan")).toContainText("canonical projected XY");
+  await expect(page.getByTestId("advisory-generated-multi-pivot-scenario-review")).toContainText("Generated Multi-Pivot Scenario Review");
+  await expect(page.getByTestId("advisory-generated-multi-pivot-scenario-review")).toContainText("cost evidence Missing");
   await expect(page.getByTestId("advisory-design-report-panel")).toContainText("Advisory Design Report");
   await expect(page.getByTestId("advisory-design-report-panel")).toContainText("does not create pivots");
   await expect(page.getByTestId("advisory-review-zone-audit-summary")).toContainText("Review-zone audit");
@@ -838,6 +842,7 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   await page.getByTestId("advisory-cost-per-meter").fill("700");
   await page.getByTestId("advisory-cost-per-tower").fill("3000");
   await expect(page.getByTestId("advisory-cost-review-panel")).toContainText("Complete");
+  await expect(page.getByTestId("advisory-generated-multi-pivot-scenario-review")).toContainText("cost evidence Complete");
   await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
 
   await page.getByTestId("design-console-calculate").click();
@@ -864,6 +869,8 @@ test("advisory cost review uses local assumptions without dirtying geometry", as
   expect(reportText).toContain("Advisory only: true");
   expect(reportText).toContain("Canonical geometry mutation: false");
   expect(reportText).toContain("Review-zone audit:");
+  expect(reportText).toContain("Generated Multi-Pivot Scenario Review");
+  expect(reportText).toContain("runtime collision prevention");
   expect(reportText).toContain("Cost review is local and advisory");
   await expect(page.getByTestId("advisory-design-report-export-status")).toContainText("Advisory report is review-only");
   await expect(page.getByText("Unsaved edits")).toHaveCount(0, { timeout: 2000 });
@@ -893,6 +900,8 @@ test("full-scope demo compares cost versus acres across advisory strategies", as
   await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("canonical projected XY");
   await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("Full circle");
   await expect(page.getByTestId("advisory-radius-sensitivity-table")).toContainText("/ac");
+  await expect(page.getByTestId("advisory-generated-multi-pivot-scenario-review")).toContainText("Generated Multi-Pivot Scenario Review");
+  await expect(page.getByTestId("advisory-generated-multi-pivot-scenario-review")).toContainText("cost evidence Complete");
   await expect(page.getByTestId("advisory-end-gun-sensitivity-table")).toContainText("End-Gun Throw Alternatives");
   await expect(page.getByTestId("advisory-end-gun-sensitivity-table")).toContainText("pressure, wind, nozzle package");
   await expect(page.getByTestId("advisory-end-gun-sensitivity-table")).toContainText("Added");
@@ -912,6 +921,7 @@ test("full-scope demo compares cost versus acres across advisory strategies", as
   const reportText = await readFile(reportPath!, "utf8");
   expect(reportText).toContain("Full-Scope");
   expect(reportText).toContain("Generated Field-Pivot Review");
+  expect(reportText).toContain("Generated Multi-Pivot Scenario Review");
   expect(reportText).toContain("Machine Strategy And Cost Review");
   expect(reportText).toContain("Generated radius alternatives:");
   expect(reportText).toContain("End-Gun Throw Sensitivity");

@@ -361,6 +361,7 @@ assert.equal(multiMachineReview.compilation.readyScenarioCount, 2);
 assert.equal(multiMachineReview.compilation.fullScopeBoundarySource, "field_boundary");
 assert.equal(multiMachineReview.compilation.scenarioBoundarySource, "machine_zone");
 assert.equal(multiMachineReview.compilation.compiledBoundaryPolygonCount, multiMachineReview.compilation.compiledBoundary.length);
+assert.equal(multiMachineReview.compilation.outsideFullScopeAcres, 0);
 assert.ok(multiMachineReview.compilation.compiledBoundary.length > 0);
 assert.ok(multiMachineReview.compilation.compiledBoundaryAcres > 0);
 assert.ok(multiMachineReview.compilation.scenarioBoundaryUnionAcres > 0);
@@ -371,6 +372,7 @@ assert.ok(multiMachineReview.compilation.modeledIrrigatedUnionAcres <= multiMach
 assert.equal(multiMachineReview.scenarios.length, 2);
 assert.ok(multiMachineReview.scenarios.every((scenario) => scenario.status === "ready"));
 assert.ok(multiMachineReview.scenarios.every((scenario) => scenario.canonicalGeometryMutation === false));
+assert.ok(multiMachineReview.warnings.some((warning) => warning.includes("internal machine-zone edges are not collision barriers")));
 assert.ok(multiMachineReview.conflicts.some((conflict) => conflict.status === "machine_envelope_overlap"));
 assert.ok(multiMachineReview.conflicts.every((conflict) => conflict.separationDeficitMeters > 0));
 const overlapConflict = multiMachineReview.conflicts.find((conflict) => conflict.status === "machine_envelope_overlap");
@@ -382,6 +384,68 @@ assert.ok((overlapConflict?.separationReviewZoneAcres ?? 0) >= (overlapConflict?
 assert.ok(overlapConflict?.warnings.some((warning) => warning.includes("projected-XY collision/review zone evidence")));
 assert.ok(multiMachineReview.warnings.some((warning) => warning.includes("does not create pivots")));
 assert.equal(JSON.stringify(multiZoneProject), multiZoneBefore);
+
+const internalEdgeContextProject = makeProject({
+  fieldBoundary: [
+    { x: 0, y: 0 },
+    { x: 220, y: 0 },
+    { x: 220, y: 220 },
+    { x: 0, y: 220 },
+  ],
+  pivotCenter: { x: 110, y: 110 },
+  waterSource: { x: 110, y: 110 },
+  powerSource: { x: 110, y: 110 },
+  obstacles: [],
+  mapFeatures: [{
+    id: "small-internal-zone",
+    name: "Small internal machine-zone context",
+    kind: "machine_zone",
+    geometry: {
+      type: "Polygon",
+      vertices: [
+        { x: 95, y: 95 },
+        { x: 125, y: 95 },
+        { x: 125, y: 125 },
+        { x: 95, y: 125 },
+      ],
+    },
+    confidence: "user_estimated",
+    properties: { advisoryOnly: true, canonicalGeometryMutation: false },
+  }],
+});
+const internalEdgeReview = analyzeAdvisoryMultiMachineLayout(internalEdgeContextProject, {
+  gridDivisions: 5,
+  maxCandidates: 2,
+});
+assert.equal(internalEdgeReview.status, "single_zone_review");
+assert.ok((internalEdgeReview.scenarios[0]?.modeledIrrigatedAcres ?? 0) > (internalEdgeReview.scenarios[0]?.zoneAcres ?? Number.POSITIVE_INFINITY));
+assert.equal(internalEdgeReview.compilation.outsideFullScopeAcres, 0);
+assert.ok(internalEdgeReview.warnings.some((warning) => warning.includes("internal machine-zone edges are not collision barriers")));
+
+const blockedPowerLineReview = analyzeAdvisoryMultiMachineLayout({
+  ...multiZoneProject,
+  mapFeatures: [...(multiZoneProject.mapFeatures ?? []), {
+    id: "verified-overhead-power-exclusion",
+    name: "Verified overhead power exclusion",
+    kind: "power_line",
+    geometry: { type: "LineString", vertices: [{ x: 15, y: 75 }, { x: 230, y: 75 }] },
+    confidence: "imagery_digitized",
+    properties: { powerLineEvidenceStatus: "verified_exclusion" },
+  }],
+}, {
+  gridDivisions: 6,
+  maxCandidates: 3,
+  collisionBufferMeters: 20,
+  obstacleCrossingProfiles: [{
+    obstacleId: "verified-overhead-power-exclusion",
+    crossingAllowed: false,
+    reason: "Operator supplied a verified overhead power exclusion.",
+    advisoryOnly: true,
+  }],
+});
+assert.equal(blockedPowerLineReview.status, "no_feasible_scenarios");
+assert.ok(blockedPowerLineReview.verifiedPowerExclusionConflictCount > 0);
+assert.ok(blockedPowerLineReview.blockers.some((blocker) => blocker.includes("verified power-line")));
 
 const openMultiPivotProject = makeProject({
   fieldBoundary: [
@@ -579,9 +643,12 @@ const clippedFullScopeReview = analyzeAdvisoryMultiMachineLayout({
 });
 assert.equal(clippedFullScopeReview.compilation.fullScopeBoundarySource, "planning_boundary");
 assert.equal(clippedFullScopeReview.compilation.scenarioBoundarySource, "machine_zone");
+assert.equal(clippedFullScopeReview.status, "no_feasible_scenarios");
 assert.ok(clippedFullScopeReview.compilation.modeledIrrigatedUnionAcres > clippedFullScopeReview.compilation.compiledBoundaryAcres);
+assert.ok(clippedFullScopeReview.compilation.outsideFullScopeAcres > 0);
 assert.ok(clippedFullScopeReview.compilation.fullScopeCoveragePercent <= 100);
 assert.ok(clippedFullScopeReview.compilation.fullScopeUnirrigatedAcres > 0);
+assert.ok(clippedFullScopeReview.blockers.some((blocker) => blocker.includes("outside the full-scope field boundary")));
 
 const partialSweepNoOverlapReview = analyzeAdvisoryMultiMachineLayout({
   ...bufferOnlyProject,
@@ -663,6 +730,7 @@ assert.equal(missingZoneReview.compilation.compiledBoundaryPolygonCount, 1);
 assert.equal(missingZoneReview.compilation.scenarioBoundaryUnionAcres, 0);
 assert.equal(missingZoneReview.compilation.fullScopeCoveragePercent, 0);
 assert.equal(missingZoneReview.compilation.fullScopeUnirrigatedAcres, missingZoneReview.compilation.compiledBoundaryAcres);
+assert.equal(missingZoneReview.compilation.outsideFullScopeAcres, 0);
 assert.ok(missingZoneReview.blockers.some((blocker) => blocker.includes("machine zone or planning boundary")));
 
 const planningBoundaryReview = analyzeAdvisoryMultiMachineLayout({

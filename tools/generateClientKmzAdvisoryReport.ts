@@ -45,6 +45,7 @@ export interface ClientKmzAdvisoryReportOptions {
   towerClearanceBufferMeters?: number;
   machineClearanceBufferMeters?: number;
   radiusSensitivityRadiiMeters?: number[];
+  companionInputPaths?: string[];
 }
 
 export interface ClientKmzAdvisoryReportResult {
@@ -62,11 +63,29 @@ export interface ClientKmzAdvisoryReportResult {
   costInputStatus: string;
   radiusSensitivityReadyCount: number;
   bestSensitivityRadiusMeters: number | null;
+  companionArtifactCount: number;
+  preferredMachineOutlineCount: number;
+  powerLineEvidenceStatus: string;
 }
 
 interface KmlArtifact {
   kmlText: string;
   kmlEntryName: string | null;
+}
+
+interface SourceArtifactReview {
+  path: string;
+  basename: string;
+  byteSize: number;
+  sha256: string;
+  kmlEntryName: string | null;
+  importReview: {
+    importedBoundary: boolean;
+    importedObstacleCount: number;
+    importedSurveyPointCount: number;
+    importedMapFeatureCount: number;
+    skippedFeatureCount: number;
+  };
 }
 
 interface LonLat {
@@ -76,6 +95,10 @@ interface LonLat {
 
 const DEFAULT_INPUT_PATH = "tmp/Will Rhea.kmz";
 const DEFAULT_OUTPUT_ROOT = "reports/client-kmz-advisory";
+const DEFAULT_PREFERRED_MACHINE_OUTLINE_PATHS = [
+  "docs/evidence/client-kmz-advisory/will-rhea/Middle Part Circle.kml",
+  "docs/evidence/client-kmz-advisory/will-rhea/South East Circle.kml",
+];
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const options = optionsFromArgs(process.argv.slice(2));
@@ -99,7 +122,51 @@ export function generateClientKmzAdvisoryReport(
   const projectCrs = options.projectCrs ?? autoUtmProjectCrs(artifact.kmlText);
   const seedProject = buildSeedProject(artifact.kmlText, projectCrs, options, generatedAt);
   const imported = importGoogleEarthKmlToProject(seedProject, artifact.kmlText, { observedAt: generatedAt });
-  const analysisProject = applyAdvisoryEvidenceAssumptions(imported.project, options);
+  const companionInputPaths = companionPathsFor(inputPath, options);
+  const companionReviews: SourceArtifactReview[] = [];
+  let combinedProject = imported.project;
+  for (const companionPath of companionInputPaths) {
+    const companionBytes = readFileSync(companionPath);
+    const companionArtifact = readKmlArtifact(companionPath, companionBytes);
+    const beforeFeatureIds = new Set((combinedProject.mapFeatures ?? []).map((feature) => feature.id));
+    const companionImport = importGoogleEarthKmlToProject(combinedProject, companionArtifact.kmlText, { observedAt: generatedAt });
+    const preferredOutlineIds = new Set((companionImport.project.mapFeatures ?? [])
+      .filter((feature) => !beforeFeatureIds.has(feature.id) && feature.kind === "machine_zone")
+      .map((feature) => feature.id));
+    combinedProject = {
+      ...companionImport.project,
+      mapFeatures: (companionImport.project.mapFeatures ?? []).map((feature) => (
+        preferredOutlineIds.has(feature.id)
+          ? {
+            ...feature,
+            notes: feature.notes ?? "Preferred machine-outline evidence imported from companion circle KML; advisory planning context only.",
+            properties: {
+              ...(feature.properties ?? {}),
+              preferredMachineOutline: true,
+              advisoryDesignRole: "preferred_machine_outline",
+              sourcePath: companionPath,
+              canonicalGeometryMutation: false,
+            },
+          }
+          : feature
+      )),
+    };
+    companionReviews.push({
+      path: companionPath,
+      basename: basename(companionPath),
+      byteSize: companionBytes.length,
+      sha256: sha256(companionBytes),
+      kmlEntryName: companionArtifact.kmlEntryName,
+      importReview: {
+        importedBoundary: companionImport.importedBoundary,
+        importedObstacleCount: companionImport.importedObstacleCount,
+        importedSurveyPointCount: companionImport.importedSurveyPointCount,
+        importedMapFeatureCount: companionImport.importedMapFeatureCount,
+        skippedFeatureCount: companionImport.skippedFeatureCount,
+      },
+    });
+  }
+  const analysisProject = applyAdvisoryEvidenceAssumptions(combinedProject, options);
   const sourceRefs: AdvisorySourceReference[] = [{
     sourceId: `local-client-kmz-${sourceSha256.slice(0, 12)}`,
     title: "Operator-supplied local KMZ/KML evidence",
@@ -130,6 +197,10 @@ export function generateClientKmzAdvisoryReport(
     source: "imported_radius_sensitivity",
     buildMachineForRadius: (_project, radiusMeters) => buildMachineFromRadius(radiusMeters, options),
   });
+  const preferredMachineOutlineCount = (analysisProject.mapFeatures ?? [])
+    .filter((feature) => feature.kind === "machine_zone" && feature.properties?.preferredMachineOutline === true)
+    .length;
+  const powerEvidenceStatus = powerLineEvidenceStatus(analysisProject);
   const report = buildAdvisoryDesignReport({
     project: analysisProject,
     result: layoutResult,
@@ -157,6 +228,7 @@ export function generateClientKmzAdvisoryReport(
       sha256: sourceSha256,
       kmlEntryName: artifact.kmlEntryName,
     },
+    companionSources: companionReviews,
     project: {
       id: analysisProject.id,
       name: analysisProject.name,
@@ -172,13 +244,17 @@ export function generateClientKmzAdvisoryReport(
       endGunThrowMeters: analysisProject.machine.endGunThrowMeters,
       costInputStatus: strategyComparison.costInputStatus,
       costInputProvided: Boolean(costInput),
+      preferredMachineOutlineCount,
+      machineZonesAsPlanningContext: true,
+      internalMachineZoneEdgesAreBlockers: false,
+      powerLineEvidenceStatus: powerEvidenceStatus.status,
     },
     importReview: {
       importedBoundary: imported.importedBoundary,
       importedObstacleCount: imported.importedObstacleCount,
       importedSurveyPointCount: imported.importedSurveyPointCount,
-      importedMapFeatureCount: imported.importedMapFeatureCount,
-      skippedFeatureCount: imported.skippedFeatureCount,
+      importedMapFeatureCount: imported.importedMapFeatureCount + companionReviews.reduce((sum, review) => sum + review.importReview.importedMapFeatureCount, 0),
+      skippedFeatureCount: imported.skippedFeatureCount + companionReviews.reduce((sum, review) => sum + review.importReview.skippedFeatureCount, 0),
       items: imported.items.map((item) => ({
         name: item.name,
         classification: item.classification,
@@ -188,6 +264,7 @@ export function generateClientKmzAdvisoryReport(
         warning: item.warning ?? null,
       })),
       warnings: imported.warnings,
+      companionImports: companionReviews,
     },
     advisoryReview: {
       currentLayout: {
@@ -310,6 +387,10 @@ export function generateClientKmzAdvisoryReport(
         scenarioCount: multiMachineReview.compilation.scenarioCount,
         fullScopeCoveragePercent: multiMachineReview.compilation.fullScopeCoveragePercent,
         fullScopeUnirrigatedAcres: multiMachineReview.compilation.fullScopeUnirrigatedAcres,
+        outsideFullScopeAcres: multiMachineReview.compilation.outsideFullScopeAcres,
+        verifiedPowerExclusionConflictCount: multiMachineReview.verifiedPowerExclusionConflictCount,
+        machineZonesAsPlanningContext: true,
+        internalMachineZoneEdgesAreBlockers: false,
       },
       strategyComparison: {
         status: strategyComparison.status,
@@ -333,6 +414,14 @@ export function generateClientKmzAdvisoryReport(
       finalClientDesign: false,
       advisoryOnly: true,
       qualifiedReviewRequired: true,
+      machineZoneContainmentConstraint: false,
+      separatePowerLineEvidenceRequired: true,
+    },
+    evidenceStatus: {
+      powerLine: powerEvidenceStatus,
+      preferredMachineOutlineCount,
+      advisoryCombinedDesignAreaAcres: multiMachineReview.compilation.scenarioBoundaryUnionAcres,
+      fullFieldBoundaryAcres: multiMachineReview.compilation.compiledBoundaryAcres,
     },
     outputs: {
       reportText: relative(outputDir, reportPath).replaceAll("\\", "/"),
@@ -357,6 +446,9 @@ export function generateClientKmzAdvisoryReport(
     bestSensitivityRadiusMeters: radiusSensitivity.bestByCostPerAcre?.radiusMeters
       ?? radiusSensitivity.bestByFullScopeCoverage?.radiusMeters
       ?? null,
+    companionArtifactCount: companionReviews.length,
+    preferredMachineOutlineCount,
+    powerLineEvidenceStatus: powerEvidenceStatus.status,
   };
 }
 
@@ -370,6 +462,14 @@ function readKmlArtifact(inputPath: string, sourceBytes: Buffer): KmlArtifact {
   const kmlEntry = Object.keys(unzipped).find((entry) => entry.toLowerCase().endsWith(".kml"));
   if (!kmlEntry) throw new Error(`Client KMZ contains no KML document: ${inputPath}`);
   return { kmlText: strFromU8(unzipped[kmlEntry]), kmlEntryName: kmlEntry };
+}
+
+function companionPathsFor(inputPath: string, options: ClientKmzAdvisoryReportOptions): string[] {
+  const paths = options.companionInputPaths
+    ?? (inputPath === DEFAULT_INPUT_PATH
+      ? DEFAULT_PREFERRED_MACHINE_OUTLINE_PATHS.filter((candidatePath) => existsSync(candidatePath))
+      : []);
+  return [...new Set(paths.filter((candidatePath) => candidatePath !== inputPath && existsSync(candidatePath)))];
 }
 
 function buildSeedProject(
@@ -539,6 +639,41 @@ function pivotAssumptionSource(project: PivotProject): string {
   return importedPivotEvidence(project) ? "imported_pivot_center_evidence" : "projected_boundary_centroid";
 }
 
+function powerLineEvidenceStatus(project: PivotProject): { status: "missing" | "provisional" | "verified" | "verified_exclusion"; message: string } {
+  const powerFeatures = (project.mapFeatures ?? []).filter((feature) => feature.kind === "power_line" || feature.kind === "power_pole");
+  if (powerFeatures.length === 0) {
+    return {
+      status: "missing",
+      message: "No separate power_line or power_pole evidence is supplied; advisory machine-zone boundaries are not power-line blockers.",
+    };
+  }
+  if (powerFeatures.some((feature) => (
+    feature.properties?.powerLineExclusion === true
+    || feature.properties?.power_line_exclusion === true
+    || feature.properties?.powerLineEvidenceStatus === "verified_exclusion"
+    || feature.properties?.power_line_evidence_status === "verified_exclusion"
+  ))) {
+    return {
+      status: "verified_exclusion",
+      message: "Separate verified power-line exclusion evidence is present and must be treated as a hard review blocker.",
+    };
+  }
+  if (powerFeatures.some((feature) => (
+    feature.properties?.powerLineEvidenceStatus === "provisional"
+    || feature.properties?.power_line_evidence_status === "provisional"
+    || feature.confidence === "user_estimated"
+  ))) {
+    return {
+      status: "provisional",
+      message: "Separate provisional power evidence is present; overhead geometry still needs verification before approval.",
+    };
+  }
+  return {
+    status: "verified",
+    message: "Separate power evidence is present; qualified utility and field review remain required.",
+  };
+}
+
 function sha256(bytes: Buffer | Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -570,6 +705,7 @@ function optionsFromArgs(args: string[]): ClientKmzAdvisoryReportOptions {
     towerClearanceBufferMeters: numberFor(args, "--tower-clearance-buffer-meters"),
     machineClearanceBufferMeters: numberFor(args, "--machine-clearance-buffer-meters"),
     radiusSensitivityRadiiMeters: numberListFor(args, "--radius-sensitivity-radii"),
+    companionInputPaths: stringListFor(args, "--companion-inputs") ?? stringListFor(args, "--companion-input"),
   };
 }
 
@@ -594,5 +730,13 @@ function numberListFor(args: string[], name: string): number[] | undefined {
   const invalid = parsed.find((number) => !Number.isFinite(number) || number <= 0);
   if (invalid !== undefined) throw new Error(`Invalid numeric list for ${name}: ${value}`);
   if (parsed.length === 0) throw new Error(`Invalid numeric list for ${name}: ${value}`);
+  return parsed;
+}
+
+function stringListFor(args: string[], name: string): string[] | undefined {
+  const value = valueFor(args, name);
+  if (value === undefined) return undefined;
+  const parsed = value.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
+  if (parsed.length === 0) throw new Error(`Invalid string list for ${name}: ${value}`);
   return parsed;
 }

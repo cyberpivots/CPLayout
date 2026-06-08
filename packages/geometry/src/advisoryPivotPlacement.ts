@@ -257,6 +257,7 @@ export interface AdvisoryBoundaryCompilation {
   compiledBoundaryAcres: number;
   fullScopeCoveragePercent: number;
   fullScopeUnirrigatedAcres: number;
+  outsideFullScopeAcres: number;
   scenarioBoundaryUnionAcres: number;
   scenarioZoneAcres: number;
   modeledIrrigatedAcresSum: number;
@@ -273,6 +274,7 @@ export interface AdvisoryMultiMachineReview {
   scenarios: AdvisoryMachineScenario[];
   conflicts: AdvisoryMachineEnvelopeConflict[];
   compilation: AdvisoryBoundaryCompilation;
+  verifiedPowerExclusionConflictCount: number;
   blockers: string[];
   warnings: string[];
   sourceRefs: AdvisorySourceReference[];
@@ -946,15 +948,26 @@ export function analyzeAdvisoryMultiMachineLayout(
   const readyScenarios = scenarios.filter((scenario) => scenario.status === "ready" && scenario.bestCandidate);
   const conflicts = buildMachineEnvelopeConflicts(project, readyScenarios, options);
   const compilation = buildBoundaryCompilation(project, planningBoundaries, machineZones, scenarios);
+  const verifiedPowerExclusionConflictCount = countVerifiedPowerExclusionConflicts(project, readyScenarios, options);
+  const fullScopeBlockers = [
+    ...(compilation.outsideFullScopeAcres > 0.001
+      ? [`Modeled machine coverage extends ${compilation.outsideFullScopeAcres.toFixed(2)} acres outside the full-scope field boundary.`]
+      : []),
+    ...(verifiedPowerExclusionConflictCount > 0
+      ? [`${verifiedPowerExclusionConflictCount} ready machine scenario${verifiedPowerExclusionConflictCount === 1 ? "" : "s"} intersect verified power-line or power-pole exclusion evidence.`]
+      : []),
+  ];
   const blockers = scenarioFeatures.length === 0
     ? ["Add at least one advisory machine zone or planning boundary before multi-machine layout review."]
     : readyScenarios.length === 0
       ? ["No advisory machine scenario has a feasible center candidate."]
-      : [];
+      : fullScopeBlockers;
   const status: AdvisoryMultiMachineReviewStatus = scenarioFeatures.length === 0
     ? "missing_zones"
     : readyScenarios.length === 0
       ? "no_feasible_scenarios"
+      : fullScopeBlockers.length > 0
+        ? "no_feasible_scenarios"
       : readyScenarios.length === 1
         ? "single_zone_review"
         : "ready";
@@ -968,9 +981,11 @@ export function analyzeAdvisoryMultiMachineLayout(
     scenarios,
     conflicts,
     compilation,
+    verifiedPowerExclusionConflictCount,
     blockers,
     warnings: [
       "Multi-machine layout review is advisory and does not create pivots, zones, or canonical projected-XY geometry.",
+      "Machine-zone and planning-boundary features are positive planning context; internal machine-zone edges are not collision barriers or containment limits.",
       "Each scenario reuses the current machine template; span package, corner-arm, flow, pressure, and vendor constraints require qualified review.",
       "Envelope conflicts are conservative geometry warnings and do not model timing, tower phasing, alignment controls, or bender-machine kinematics.",
       ...(compilation.duplicateModeledCoverageAcres > 0.001 ? ["Modeled irrigated acreage overlaps between scenarios; summed acres are not de-duplicated."] : []),
@@ -2248,15 +2263,11 @@ function buildAdvisoryMachineScenario(
     };
   }
 
-  const zoneProject: PivotProject = {
-    ...project,
-    fieldBoundary: zoneBoundary,
-  };
-  const candidates = buildPivotPlacementCandidates(zoneProject, {
+  const candidates = buildAdvisoryZonePlacementCandidates(project, zoneBoundary, {
     ...options,
     includeMachineZoneReviews: false,
     sourceRefs,
-  });
+  }, sourceRefs);
   const bestCandidate = candidates.find((candidate) => candidate.feasible && candidate.insideFieldBoundary) ?? null;
 
   if (!bestCandidate) {
@@ -2276,7 +2287,7 @@ function buildAdvisoryMachineScenario(
   }
 
   const scenarioProject: PivotProject = {
-    ...zoneProject,
+    ...project,
     pivotCenter: bestCandidate.pivotCenter,
   };
   const result = evaluateLayout(scenarioProject);
@@ -2292,10 +2303,61 @@ function buildAdvisoryMachineScenario(
     machineEnvelope,
     warnings: [
       `${feature.kind.replaceAll("_", " ")} scenario is transient and does not create a saved pivot or field boundary.`,
-      "Scenario uses the current machine as a planning template for this zone only.",
+      "Scenario uses the current machine as a planning template and uses this zone for seeding/scoring context only.",
+      "Machine physical and wet envelopes are evaluated against the full project field boundary; internal zone edges are not containment constraints.",
       ...bestCandidate.warnings,
     ],
   };
+}
+
+function buildAdvisoryZonePlacementCandidates(
+  project: PivotProject,
+  zoneBoundary: XY[],
+  options: PivotPlacementCandidateOptions,
+  sourceRefs: AdvisorySourceReference[],
+): PivotPlacementCandidate[] {
+  const gridDivisions = Math.max(3, Math.floor(options.gridDivisions ?? 9));
+  const maxCandidates = Math.max(1, Math.floor(options.maxCandidates ?? 5));
+  const seeds: Array<{ point: XY; sourceSeed: PivotPlacementCandidate["sourceSeed"] }> = [
+    { point: centroid(zoneBoundary), sourceSeed: "centroid" },
+    {
+      point: maximumInscribedCircleSeed(
+        zoneBoundary,
+        gridDivisions,
+        options.maximumInteriorSeedRefinement ?? "local",
+      ).center,
+      sourceSeed: "maximum_inscribed_circle",
+    },
+    ...zoneGridSeedPoints(zoneBoundary, gridDivisions).map((point) => ({
+      point,
+      sourceSeed: "bbox_grid" as const,
+    })),
+  ];
+
+  return dedupePlacementCandidates(seeds
+    .filter((seed) => pointInPolygon(seed.point, zoneBoundary))
+    .map((seed) => candidateFromProject(project, seed.point, seed.sourceSeed, options, sourceRefs)))
+    .sort(comparePlacementCandidates)
+    .slice(0, maxCandidates);
+}
+
+function zoneGridSeedPoints(zoneBoundary: XY[], gridDivisions: number): XY[] {
+  const bounds = boundsForGeometry([zoneBoundary]);
+  const xStep = (bounds.maxX - bounds.minX) / gridDivisions;
+  const yStep = (bounds.maxY - bounds.minY) / gridDivisions;
+  const points: XY[] = [];
+  for (let yIndex = 0; yIndex <= gridDivisions; yIndex += 1) {
+    for (let xIndex = 0; xIndex <= gridDivisions; xIndex += 1) {
+      const point = {
+        x: bounds.minX + xStep * xIndex,
+        y: bounds.minY + yStep * yIndex,
+      };
+      if (pointInPolygon(point, zoneBoundary) && distanceToRing(point, zoneBoundary) > 0.001) {
+        points.push(point);
+      }
+    }
+  }
+  return points;
 }
 
 function machineEnvelopeFor(project: PivotProject, pivotCenter: XY, radiusMeters = machineRadiusMeters(project.machine)): MultiPolygonXY {
@@ -2384,6 +2446,62 @@ function buildMachineEnvelopeConflicts(
   return conflicts;
 }
 
+function countVerifiedPowerExclusionConflicts(
+  project: PivotProject,
+  scenarios: AdvisoryMachineScenario[],
+  options: AdvisoryMultiMachineReviewOptions,
+): number {
+  const exclusionFeatures = verifiedPowerExclusionFeatures(project, options);
+  if (exclusionFeatures.length === 0 || scenarios.length === 0) return 0;
+  let conflictCount = 0;
+  for (const scenario of scenarios) {
+    const pivotCenter = scenario.bestCandidate?.pivotCenter;
+    if (!pivotCenter) continue;
+    const scenarioProject = { ...project, pivotCenter };
+    const conflicts = exclusionFeatures.some((feature) => (
+      mapFeatureTouchesMachineEnvelope(scenarioProject, feature, scenario.machineRadiusMeters, scenario.machineEnvelope)
+    ));
+    if (conflicts) conflictCount += 1;
+  }
+  return conflictCount;
+}
+
+function verifiedPowerExclusionFeatures(
+  project: PivotProject,
+  options: AdvisoryMultiMachineReviewOptions,
+): ProjectMapFeature[] {
+  const blockedProfileIds = new Set((options.obstacleCrossingProfiles ?? [])
+    .filter((profile) => profile.advisoryOnly === true && profile.crossingAllowed === false)
+    .flatMap((profile) => [profile.obstacleId, profile.evidenceId].filter((id): id is string => Boolean(id))));
+  return (project.mapFeatures ?? []).filter((feature) => {
+    if (feature.kind === "power_pole") return true;
+    if (feature.kind !== "power_line") return false;
+    if (blockedProfileIds.has(feature.id)) return true;
+    return feature.properties?.powerLineExclusion === true
+      || feature.properties?.power_line_exclusion === true
+      || feature.properties?.powerLineEvidenceStatus === "verified_exclusion"
+      || feature.properties?.power_line_evidence_status === "verified_exclusion";
+  });
+}
+
+function mapFeatureTouchesMachineEnvelope(
+  project: PivotProject,
+  feature: ProjectMapFeature,
+  radiusMeters: number,
+  envelope: MultiPolygonXY,
+): boolean {
+  if (feature.geometry.type === "Point") return pointInMultiPolygon(feature.geometry.point, envelope);
+  if (feature.geometry.type === "Circle") {
+    return distance(project.pivotCenter, feature.geometry.center) - feature.geometry.radiusMeters <= radiusMeters
+      && sweepContainsPoint(project, feature.geometry.center);
+  }
+  if (feature.geometry.type === "Polygon") {
+    return multiPolygonAreaSquareMeters(intersectMultiPolygons(envelope, [[feature.geometry.vertices]])) > 0.000001;
+  }
+  return feature.geometry.vertices.some((point) => pointInMultiPolygon(point, envelope))
+    || (project.machine.sweep.mode === "full_circle" && distanceToLineString(project.pivotCenter, feature.geometry.vertices) <= radiusMeters);
+}
+
 function buildBoundaryCompilation(
   project: PivotProject,
   planningBoundaries: ProjectMapFeature[],
@@ -2410,7 +2528,9 @@ function buildBoundaryCompilation(
   const modeledIrrigatedUnionAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(modeledCoverageUnion));
   const compiledBoundaryAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(compiledBoundary));
   const modeledCoverageInFullScope = intersectMultiPolygons(modeledCoverageUnion, compiledBoundary);
+  const modeledCoverageOutsideFullScope = differenceMultiPolygons(modeledCoverageUnion, compiledBoundary);
   const fullScopeCoveredAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(modeledCoverageInFullScope));
+  const outsideFullScopeAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(modeledCoverageOutsideFullScope));
   const fullScopeBoundarySource: AdvisoryBoundaryCompilation["fullScopeBoundarySource"] = planningBoundaryRings.length > 0
     ? "planning_boundary"
     : "field_boundary";
@@ -2436,6 +2556,7 @@ function buildBoundaryCompilation(
     compiledBoundaryAcres: round(compiledBoundaryAcres),
     fullScopeCoveragePercent: round(compiledBoundaryAcres > 0 ? (fullScopeCoveredAcres / compiledBoundaryAcres) * 100 : 0),
     fullScopeUnirrigatedAcres: round(Math.max(0, compiledBoundaryAcres - fullScopeCoveredAcres)),
+    outsideFullScopeAcres: round(outsideFullScopeAcres),
     scenarioBoundaryUnionAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(scenarioBoundaryUnion))),
     scenarioZoneAcres: round(scenarios.reduce((sum, scenario) => sum + scenario.zoneAcres, 0)),
     modeledIrrigatedAcresSum: round(modeledIrrigatedAcresSum),
@@ -3617,6 +3738,7 @@ function towerReviewForPoint(project: PivotProject, point: XY): TowerReview {
 function mapFeatureBoundary(feature: ProjectMapFeature): XY[] | null {
   if (feature.geometry.type === "Polygon") return feature.geometry.vertices;
   if (feature.geometry.type === "Circle") return createCirclePolygon(feature.geometry.center, feature.geometry.radiusMeters, 96);
+  if (feature.geometry.type === "LineString" && feature.geometry.vertices.length >= 3) return feature.geometry.vertices;
   return null;
 }
 
@@ -3672,7 +3794,17 @@ function intersectMultiPolygons(left: MultiPolygonXY, right: MultiPolygonXY): Mu
 function differenceMultiPolygons(left: MultiPolygonXY, right: MultiPolygonXY): MultiPolygonXY {
   if (left.length === 0) return [];
   if (right.length === 0) return left;
-  return fromClipMultiPolygon(polygonClipping.difference(toClipMultiPolygon(left), toClipMultiPolygon(right)) as ClipMultiPolygon | null);
+  try {
+    return fromClipMultiPolygon(polygonClipping.difference(toClipMultiPolygon(left), toClipMultiPolygon(right)) as ClipMultiPolygon | null);
+  } catch (error) {
+    const snappedLeft = toClipMultiPolygon(left, true);
+    const snappedRight = toClipMultiPolygon(right, true);
+    try {
+      return fromClipMultiPolygon(polygonClipping.difference(snappedLeft, snappedRight) as ClipMultiPolygon | null);
+    } catch {
+      throw error;
+    }
+  }
 }
 
 function unionMultiPolygons(multiPolygon: MultiPolygonXY): MultiPolygonXY {
@@ -3680,8 +3812,11 @@ function unionMultiPolygons(multiPolygon: MultiPolygonXY): MultiPolygonXY {
   return fromClipMultiPolygon(polygonClipping.union(toClipMultiPolygon(multiPolygon)) as ClipMultiPolygon | null);
 }
 
-function toClipMultiPolygon(multiPolygon: MultiPolygonXY): ClipMultiPolygon {
-  return multiPolygon.map((polygon) => polygon.map((ring) => closeRing(ring).map((point) => [point.x, point.y] as ClipPosition)));
+function toClipMultiPolygon(multiPolygon: MultiPolygonXY, snap = false): ClipMultiPolygon {
+  return multiPolygon.map((polygon) => polygon.map((ring) => closeRing(ring).map((point) => [
+    snap ? snapClipCoordinate(point.x) : point.x,
+    snap ? snapClipCoordinate(point.y) : point.y,
+  ] as ClipPosition)));
 }
 
 function fromClipMultiPolygon(multiPolygon: ClipMultiPolygon | null): MultiPolygonXY {
@@ -3694,6 +3829,10 @@ function closeRing(ring: XY[]): XY[] {
   const first = ring[0];
   const last = ring[ring.length - 1];
   return first.x === last.x && first.y === last.y ? ring : [...ring, first];
+}
+
+function snapClipCoordinate(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 function centroid(ring: XY[]): XY {
@@ -3713,6 +3852,10 @@ function pointInPolygon(point: XY, ring: XY[]): boolean {
     if (intersects) inside = !inside;
   }
   return inside;
+}
+
+function pointInMultiPolygon(point: XY, multiPolygon: MultiPolygonXY): boolean {
+  return multiPolygon.some((polygon) => polygon.some((ring) => pointInPolygon(point, ring)));
 }
 
 function pointOnSegment(point: XY, start: XY, end: XY): boolean {

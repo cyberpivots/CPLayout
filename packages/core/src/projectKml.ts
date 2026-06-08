@@ -1381,6 +1381,7 @@ function mapFeatureKindFromName(name: string): ProjectMapFeatureKind | null {
   if (/(^|_)(linear|lateral)(_)?(move|path|travel|track)(_path|_line|_route)?($|_)|\btravel_path\b/.test(normalizedName)) return "linear_move_path";
   if (/\b(distance|measurement|measure|length|lrdu)\b/.test(normalizedName)) return "measurement_line";
   if (/\b(machine|pivot)_?(zone|field|boundary)\b|\b(middle|south|north|east|west)_machine_field_boundary\b/.test(normalizedName)) return "machine_zone";
+  if (normalizedName.includes("circle") && /(middle|south|north|east|west|machine|pivot|part)/.test(normalizedName)) return "machine_zone";
   if (/\bplanning_boundary\b|\bplanning_area\b|\bfull_scope\b|\bscope_boundary\b/.test(normalizedName)) return "planning_boundary";
   return MAP_FEATURE_KINDS.find((kind) => normalizedName.includes(kind)) ?? null;
 }

@@ -279,8 +279,8 @@ PACK_DEFINITIONS = [
     {
         "id": "imagery_kml_evidence",
         "purpose": "Route imagery, Google Earth, KML/KMZ, local CV, and evidence packet prompts.",
-        "routeIds": ["cplayout_imagery_mapper"],
-        "agentIds": ["cplayout_imagery_mapper"],
+        "routeIds": ["cplayout_imagery_mapper", "cplayout_kb_curator"],
+        "agentIds": ["cplayout_imagery_mapper", "cplayout_kb_curator"],
         "triggerTerms": ["Google Earth", "KML", "KMZ", "imagery", "evidence packet", "computer vision"],
         "readFirstPaths": [
             "docs/kml-kmz-google-earth-source-ledger.md",

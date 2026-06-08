@@ -126,13 +126,15 @@ assert.ok((fullScopeFeatureCounts.power_pole ?? 0) >= 1);
 assert.ok(fullScopeMultiPivotCostDemoProject.surveyPoints.some((point) => /second pivot/i.test(`${point.label} ${point.notes ?? ""}`)));
 
 const fullScopeMultiMachineReview = analyzeAdvisoryMultiMachineLayout(fullScopeMultiPivotCostDemoProject);
-assert.equal(fullScopeMultiMachineReview.status, "ready");
+assert.equal(fullScopeMultiMachineReview.status, "no_feasible_scenarios");
 assert.equal(fullScopeMultiMachineReview.compilation.fullScopeBoundarySource, "planning_boundary");
 assert.equal(fullScopeMultiMachineReview.compilation.scenarioBoundarySource, "machine_zone");
 assert.equal(fullScopeMultiMachineReview.compilation.planningBoundaryCount, 2);
 assert.equal(fullScopeMultiMachineReview.compilation.machineZoneCount, 3);
 assert.equal(fullScopeMultiMachineReview.scenarios.length, 3);
 assert.ok(fullScopeMultiMachineReview.compilation.readyScenarioCount >= 2);
+assert.ok(fullScopeMultiMachineReview.compilation.outsideFullScopeAcres > 0);
+assert.ok(fullScopeMultiMachineReview.blockers.some((blocker) => blocker.includes("outside the full-scope field boundary")));
 assert.ok(fullScopeMultiMachineReview.compilation.compiledBoundaryAcres > fullScopeMultiMachineReview.compilation.fieldBoundaryAcres * 0.5);
 
 const fullScopeStrategyComparison = compareAdvisoryMachineStrategies(fullScopeMultiPivotCostDemoProject, {

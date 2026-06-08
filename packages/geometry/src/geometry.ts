@@ -215,8 +215,20 @@ export function evaluateLayout(project: PivotProject): LayoutResult {
   const noSprayObstaclePolygons = noSprayObstacles.map((obstacle) => [obstacle.polygon]);
   const obstacleMulti = toClipMultiPolygon(obstaclePolygons);
   const noSprayObstacleMulti = toClipMultiPolygon(noSprayObstaclePolygons);
+  const baseInsideField = polygonClipping.intersection(coverage.base, field) as ClipMultiPolygon | null;
+  const endGunInsideField = polygonClipping.intersection(coverage.endGunClip, field) as ClipMultiPolygon | null;
   const insideField = polygonClipping.intersection(coverage.wetRaw, field) as ClipMultiPolygon | null;
   const outsideField = polygonClipping.difference(coverage.wetRaw, field) as ClipMultiPolygon;
+  const baseAllowed = baseInsideField
+    ? (noSprayObstacles.length > 0
+      ? polygonClipping.difference(baseInsideField, noSprayObstacleMulti) as ClipMultiPolygon
+      : baseInsideField)
+    : [];
+  const endGunAllowed = endGunInsideField
+    ? (noSprayObstacles.length > 0
+      ? polygonClipping.difference(endGunInsideField, noSprayObstacleMulti) as ClipMultiPolygon
+      : endGunInsideField)
+    : [];
   const allowed = insideField
     ? (noSprayObstacles.length > 0
       ? polygonClipping.difference(insideField, noSprayObstacleMulti) as ClipMultiPolygon
@@ -226,7 +238,10 @@ export function evaluateLayout(project: PivotProject): LayoutResult {
 
   const fieldArea = polygonAreaSquareMeters(project.fieldBoundary);
   const allowedArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(allowed));
-  const endGunArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(polygonClipping.intersection(coverage.endGunClip, field) as ClipMultiPolygon | null ?? []));
+  const baseAllowedArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(baseAllowed));
+  const endGunArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(endGunAllowed));
+  const wetInsideFieldArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(insideField ?? []));
+  const blockedByNoSprayArea = Math.max(0, wetInsideFieldArea - allowedArea);
   const outsideArea = multiPolygonAreaSquareMeters(fromClipMultiPolygon(outsideField));
   const obstacleConflictCount = project.obstacles.filter((obstacle) => {
     const intersection = polygonClipping.intersection(coverage.wetRaw, toClipMultiPolygon([[obstacle.polygon]])) as ClipMultiPolygon | null;
@@ -250,8 +265,11 @@ export function evaluateLayout(project: PivotProject): LayoutResult {
       irrigatedAcres: squareMetersToAcres(allowedArea),
       nonIrrigatedAcres: squareMetersToAcres(Math.max(0, fieldArea - allowedArea)),
       coveragePercent: fieldArea > 0 ? (allowedArea / fieldArea) * 100 : 0,
+      standardPivotAcres: squareMetersToAcres(baseAllowedArea),
       endGunAcres: squareMetersToAcres(endGunArea),
+      cornerArmAcres: 0,
       outsideFieldAcres: squareMetersToAcres(outsideArea),
+      blockedByNoSprayAcres: squareMetersToAcres(blockedByNoSprayArea),
       obstacleConflictCount,
       noSprayConflictCount,
       hardMechanicalConflictCount,

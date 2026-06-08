@@ -279,8 +279,11 @@ export interface LayoutMetrics {
   irrigatedAcres: number;
   nonIrrigatedAcres: number;
   coveragePercent: number;
+  standardPivotAcres?: number;
   endGunAcres: number;
+  cornerArmAcres?: number;
   outsideFieldAcres: number;
+  blockedByNoSprayAcres?: number;
   obstacleConflictCount: number;
   noSprayConflictCount: number;
   hardMechanicalConflictCount: number;

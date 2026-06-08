@@ -10,6 +10,7 @@ import { generateClientKmzAdvisoryReport } from "./generateClientKmzAdvisoryRepo
 
 const root = mkdtempSync(join(tmpdir(), "cplayout-client-kmz-advisory-"));
 const inputPath = join(root, "operator.kmz");
+const companionCirclePath = join(root, "middle-circle.kml");
 const outputDir = join(root, "reports");
 
 const syntheticKml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -44,9 +45,22 @@ const syntheticKml = `<?xml version="1.0" encoding="UTF-8"?>
   </Document>
 </kml>`;
 
+const companionCircleKml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Placemark>
+      <name>Middle Part Circle</name>
+      <LineString><coordinates>
+        -102.1040,40.0015,0 -102.1010,40.0015,0 -102.1010,40.0045,0 -102.1040,40.0045,0 -102.1040,40.0015,0
+      </coordinates></LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+
 try {
   mkdirSync(root, { recursive: true });
   writeFileSync(inputPath, zipSync({ "doc.kml": strToU8(syntheticKml) }));
+  writeFileSync(companionCirclePath, companionCircleKml, "utf8");
 
   const result = generateClientKmzAdvisoryReport({
     inputPath,
@@ -58,6 +72,7 @@ try {
     costPerTower: 2800,
     maxMachines: 3,
     radiusSensitivityRadiiMeters: [60, 85],
+    companionInputPaths: [companionCirclePath],
   });
 
   assert.equal(result.importedBoundary, true);
@@ -67,6 +82,9 @@ try {
   assert.equal(result.costInputStatus, "complete");
   assert.ok(result.radiusSensitivityReadyCount >= 1);
   assert.ok((result.bestSensitivityRadiusMeters ?? 0) > 0);
+  assert.equal(result.companionArtifactCount, 1);
+  assert.equal(result.preferredMachineOutlineCount, 1);
+  assert.equal(result.powerLineEvidenceStatus, "missing");
 
   const manifest = JSON.parse(readFileSync(result.manifestPath, "utf8")) as {
     schemaVersion?: string;
@@ -80,8 +98,16 @@ try {
       qualifiedReviewRequired?: boolean;
     };
     source?: { kmlEntryName?: string; sha256?: string };
+    companionSources?: Array<{ basename?: string; importReview?: { importedMapFeatureCount?: number } }>;
     importReview?: {
       items?: Array<{ name?: string; classification?: string; featureKind?: string | null }>;
+      companionImports?: Array<{ basename?: string; importReview?: { importedMapFeatureCount?: number } }>;
+    };
+    assumptions?: {
+      preferredMachineOutlineCount?: number;
+      machineZonesAsPlanningContext?: boolean;
+      internalMachineZoneEdgesAreBlockers?: boolean;
+      powerLineEvidenceStatus?: string;
     };
     advisoryReview?: {
       fieldPivotPlan?: {
@@ -133,6 +159,10 @@ try {
       multiMachineReview?: {
         scenarioCount?: number;
         readyScenarioCount?: number;
+        outsideFullScopeAcres?: number;
+        verifiedPowerExclusionConflictCount?: number;
+        machineZonesAsPlanningContext?: boolean;
+        internalMachineZoneEdgesAreBlockers?: boolean;
         scenarios?: Array<{
           advisoryOnly?: boolean;
           canonicalGeometryMutation?: boolean;
@@ -155,9 +185,20 @@ try {
         }>;
       };
     };
+    evidenceStatus?: {
+      powerLine?: { status?: string; message?: string };
+      preferredMachineOutlineCount?: number;
+      advisoryCombinedDesignAreaAcres?: number;
+    };
   };
   assert.equal(manifest.schemaVersion, "cplayout-client-kmz-advisory-report-v1");
   assert.equal(manifest.source?.kmlEntryName, "doc.kml");
+  assert.equal(manifest.companionSources?.length, 1);
+  assert.equal(manifest.companionSources?.[0]?.importReview?.importedMapFeatureCount, 1);
+  assert.equal(manifest.assumptions?.preferredMachineOutlineCount, 1);
+  assert.equal(manifest.assumptions?.machineZonesAsPlanningContext, true);
+  assert.equal(manifest.assumptions?.internalMachineZoneEdgesAreBlockers, false);
+  assert.equal(manifest.assumptions?.powerLineEvidenceStatus, "missing");
   assert.equal(manifest.boundaries?.canonicalGeometryMutation, false);
   assert.equal(manifest.boundaries?.writesProjectStorage, false);
   assert.equal(manifest.boundaries?.writesProjectZip, false);
@@ -166,10 +207,15 @@ try {
   assert.equal(manifest.boundaries?.advisoryOnly, true);
   assert.equal(manifest.boundaries?.qualifiedReviewRequired, true);
   assert.equal(manifest.importReview?.items?.some((item) => item.featureKind === "machine_zone"), true);
+  assert.equal(manifest.importReview?.companionImports?.length, 1);
   assert.equal(manifest.importReview?.items?.some((item) => item.featureKind === "measurement_line"), true);
   assert.equal(manifest.importReview?.items?.some((item) => item.classification === "existing_pivot"), true);
   assert.ok((manifest.advisoryReview?.multiMachineReview?.scenarioCount ?? 0) >= 2);
   assert.ok((manifest.advisoryReview?.multiMachineReview?.readyScenarioCount ?? 0) >= 1);
+  assert.equal(manifest.advisoryReview?.multiMachineReview?.outsideFullScopeAcres, 0);
+  assert.equal(manifest.advisoryReview?.multiMachineReview?.verifiedPowerExclusionConflictCount, 0);
+  assert.equal(manifest.advisoryReview?.multiMachineReview?.machineZonesAsPlanningContext, true);
+  assert.equal(manifest.advisoryReview?.multiMachineReview?.internalMachineZoneEdgesAreBlockers, false);
   assert.equal(manifest.advisoryReview?.fieldPivotPlan?.advisoryOnly, true);
   assert.equal(manifest.advisoryReview?.fieldPivotPlan?.canonicalGeometryMutation, false);
   assert.equal(manifest.advisoryReview?.fieldPivotPlan?.qualifiedReviewRequired, true);
@@ -205,6 +251,9 @@ try {
   assert.equal(manifest.advisoryReview?.radiusSensitivity?.rows?.every((row) => row.advisoryOnly === true), true);
   assert.equal(manifest.advisoryReview?.radiusSensitivity?.rows?.every((row) => row.canonicalGeometryMutation === false), true);
   assert.equal(manifest.advisoryReview?.radiusSensitivity?.bestByCostPerAcre?.cost?.status, "complete");
+  assert.equal(manifest.evidenceStatus?.powerLine?.status, "missing");
+  assert.equal(manifest.evidenceStatus?.preferredMachineOutlineCount, 1);
+  assert.ok((manifest.evidenceStatus?.advisoryCombinedDesignAreaAcres ?? 0) > 0);
 
   const report = readFileSync(result.reportPath, "utf8");
   assert.match(report, /Advisory only: true/);
@@ -215,6 +264,10 @@ try {
   assert.match(report, /Cost review is local and advisory/);
   assert.match(report, /Radius Sensitivity Review/);
   assert.match(report, /Best cost-per-acre radius/);
+  assert.match(report, /Acre Ledger/);
+  assert.match(report, /Standard pivot acres/);
+  assert.match(report, /Power-line evidence status: missing/);
+  assert.match(report, /machine-zone boundaries are not power-line blockers/);
   assert.match(report, /not a final design, not Google Earth render proof, and not automatic canonical geometry mutation/);
   assert.match(report, /does not change project geometry, machine settings, storage, archives, or KML\/KMZ/);
 } finally {

@@ -199,6 +199,8 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
     ?? buildAdvisoryGeneratedMultiPivotScenarioReview(input.fieldPivotPlan);
   const firstConflict = input.multiMachineReview.conflicts[0] ?? null;
   const firstObstacle = input.obstacleInteractionReview.items[0] ?? null;
+  const acreLedger = buildAcreLedger(input);
+  const powerLineEvidence = powerLineEvidenceStatus(input.project);
   const sourceRefs = dedupeSourceRefs([
     ...input.fieldPivotPlan.sourceRefs,
     ...generatedMultiPivotScenarioReview.sourceRefs,
@@ -247,6 +249,23 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
         `Current modeled coverage: ${formatPercent(input.result.metrics.coveragePercent)}`,
         `Outside-field wet acres: ${formatAcres(input.result.metrics.outsideFieldAcres)}`,
         `Hard mechanical conflicts: ${input.result.metrics.hardMechanicalConflictCount}`,
+      ],
+    },
+    {
+      id: "acre-ledger",
+      title: "Acre Ledger",
+      lines: [
+        `Standard pivot acres: ${formatAcres(acreLedger.standardPivotAcres)}`,
+        `End-gun acres: ${formatAcres(acreLedger.endGunAcres)}`,
+        `Corner-arm acres: ${formatAcres(acreLedger.cornerArmAcres)} (advisory path evidence is not merged into layout coverage)`,
+        `Total de-duplicated irrigated acres: ${formatAcres(acreLedger.totalDeduplicatedIrrigatedAcres)}`,
+        `Modeled overlap acres: ${formatAcres(acreLedger.overlapAcres)}`,
+        `Outside-field acres: ${formatAcres(acreLedger.outsideFieldAcres)}`,
+        `Verified obstacle/no-spray blocked acres: ${formatAcres(acreLedger.verifiedBlockedAcres)}`,
+        `Full-scope outside acres: ${formatAcres(input.multiMachineReview.compilation.outsideFullScopeAcres)}`,
+        `Power-line evidence status: ${readable(powerLineEvidence.status)}`,
+        `Power-line exclusion conflicts: ${input.multiMachineReview.verifiedPowerExclusionConflictCount}`,
+        powerLineEvidence.message,
       ],
     },
     {
@@ -304,6 +323,7 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
         `Compiled boundary acres: ${formatAcres(input.multiMachineReview.compilation.compiledBoundaryAcres)}`,
         `Full-scope modeled coverage: ${formatPercent(input.multiMachineReview.compilation.fullScopeCoveragePercent)}`,
         `Full-scope remaining dry acres: ${formatAcres(input.multiMachineReview.compilation.fullScopeUnirrigatedAcres)}`,
+        `Outside full-scope acres: ${formatAcres(input.multiMachineReview.compilation.outsideFullScopeAcres)}`,
         `Ready scenarios: ${input.multiMachineReview.compilation.readyScenarioCount}/${input.multiMachineReview.compilation.scenarioCount}`,
         `Machine zones: ${input.multiMachineReview.compilation.machineZoneCount}`,
         `Planning boundaries: ${input.multiMachineReview.compilation.planningBoundaryCount}`,
@@ -446,6 +466,67 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
   return {
     ...report,
     text: formatAdvisoryDesignReportText(report),
+  };
+}
+
+interface AdvisoryAcreLedger {
+  standardPivotAcres: number;
+  endGunAcres: number;
+  cornerArmAcres: number;
+  totalDeduplicatedIrrigatedAcres: number;
+  overlapAcres: number;
+  outsideFieldAcres: number;
+  verifiedBlockedAcres: number;
+}
+
+function buildAcreLedger(input: AdvisoryDesignReportInput): AdvisoryAcreLedger {
+  const totalDeduplicatedIrrigatedAcres = input.multiMachineReview.compilation.modeledIrrigatedUnionAcres > 0
+    ? input.multiMachineReview.compilation.modeledIrrigatedUnionAcres
+    : input.result.metrics.irrigatedAcres;
+  return {
+    standardPivotAcres: input.result.metrics.standardPivotAcres
+      ?? Math.max(0, input.result.metrics.irrigatedAcres - input.result.metrics.endGunAcres),
+    endGunAcres: input.result.metrics.endGunAcres,
+    cornerArmAcres: input.result.metrics.cornerArmAcres ?? 0,
+    totalDeduplicatedIrrigatedAcres,
+    overlapAcres: input.multiMachineReview.compilation.duplicateModeledCoverageAcres,
+    outsideFieldAcres: input.result.metrics.outsideFieldAcres,
+    verifiedBlockedAcres: input.result.metrics.blockedByNoSprayAcres ?? 0,
+  };
+}
+
+function powerLineEvidenceStatus(project: PivotProject): { status: "missing" | "provisional" | "verified" | "verified_exclusion"; message: string } {
+  const powerFeatures = (project.mapFeatures ?? []).filter((feature) => feature.kind === "power_line" || feature.kind === "power_pole");
+  if (powerFeatures.length === 0) {
+    return {
+      status: "missing",
+      message: "Power-line status: no separate power_line or power_pole evidence supplied; machine-zone boundaries are not power-line blockers.",
+    };
+  }
+  if (powerFeatures.some((feature) => (
+    feature.properties?.powerLineExclusion === true
+    || feature.properties?.power_line_exclusion === true
+    || feature.properties?.powerLineEvidenceStatus === "verified_exclusion"
+    || feature.properties?.power_line_evidence_status === "verified_exclusion"
+  ))) {
+    return {
+      status: "verified_exclusion",
+      message: "Power-line status: at least one verified exclusion feature is present and must be reviewed before customer approval.",
+    };
+  }
+  if (powerFeatures.some((feature) => (
+    feature.properties?.powerLineEvidenceStatus === "provisional"
+    || feature.properties?.power_line_evidence_status === "provisional"
+    || feature.confidence === "user_estimated"
+  ))) {
+    return {
+      status: "provisional",
+      message: "Power-line status: provisional power evidence is present; verify overhead geometry or record an explicit exclusion before approval.",
+    };
+  }
+  return {
+    status: "verified",
+    message: "Power-line status: separate power evidence is present; qualified utility and field review remain required.",
   };
 }
 

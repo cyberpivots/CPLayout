@@ -33,8 +33,10 @@ REQUIRED_DOCS = (
     "docs/agent-prompt-registry.md",
     "docs/agent-source-ledger.md",
     "docs/agent-known-gaps.md",
+    "docs/agent-context-map.md",
     "docs/codex-managed-hook-deployment.md",
     "docs/examples/cplayout-managed-requirements.toml",
+    ".codex/hooks/cplayout_context_map.json",
     ".agents/skills/cplayout-expert-agent-panels/references/prompt-triage.md",
 )
 
@@ -60,6 +62,17 @@ REQUIRED_ROUTE_KEYWORDS = {
         "token efficient",
         "xhigh coordinator",
     },
+}
+
+REQUIRED_CONTEXT_PACK_IDS = {
+    "workspace_preflight",
+    "governance_hooks_skills",
+    "interface_ui",
+    "geometry_design",
+    "core_project_geometry",
+    "storage_archive_native",
+    "imagery_kml_evidence",
+    "cornergpsmap_bpf",
 }
 
 HOOK_SAMPLES = (
@@ -342,6 +355,133 @@ def validate_route_data() -> list[str]:
     return errors
 
 
+def validate_context_map() -> list[str]:
+    errors: list[str] = []
+    ok, output = run([sys.executable, str(ROOT / "tools" / "build_cplayout_context_map.py"), "--check"])
+    print("[context] context-map freshness: " + ("ok" if ok else output))
+    if not ok:
+        errors.append(f"context map check failed: {output}")
+        return errors
+
+    context_path = ROOT / ".codex" / "hooks" / "cplayout_context_map.json"
+    try:
+        context_map = json.loads(context_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - report parser detail.
+        return [f".codex/hooks/cplayout_context_map.json: {exc}"]
+
+    if context_map.get("schemaVersion") != 1:
+        errors.append("cplayout_context_map.json: schemaVersion must be 1")
+    limits = context_map.get("limits")
+    if not isinstance(limits, dict):
+        errors.append("cplayout_context_map.json: limits must be an object")
+        limits = {}
+    max_packs = limits.get("maxContextPacksPerHook")
+    if not isinstance(max_packs, int) or max_packs != 3:
+        errors.append("cplayout_context_map.json: maxContextPacksPerHook must be 3")
+
+    validation_commands = context_map.get("validationCommands")
+    if not isinstance(validation_commands, dict):
+        errors.append("cplayout_context_map.json: validationCommands must be an object")
+        validation_commands = {}
+
+    hard_vetoes = context_map.get("hardVetoes")
+    hard_veto_ids: set[object] = set()
+    if isinstance(hard_vetoes, list):
+        hard_veto_ids = {veto.get("id") for veto in hard_vetoes if isinstance(veto, dict)}
+    if "hooks_are_advisory" not in hard_veto_ids or "stop_hook_disabled" not in hard_veto_ids:
+        errors.append("cplayout_context_map.json: required hard vetoes are missing")
+
+    route_path = ROOT / ".codex" / "hooks" / "cplayout_route_data.json"
+    route_data = json.loads(route_path.read_text(encoding="utf-8"))
+    route_ids = {
+        route.get("id")
+        for route in route_data.get("routes", [])
+        if isinstance(route, dict) and isinstance(route.get("id"), str)
+    }
+    agent_names = set()
+    for path in ROOT.glob(".codex/agents/*.toml"):
+        parsed = tomllib.loads(path.read_text(encoding="utf-8"))
+        name = parsed.get("name")
+        if isinstance(name, str):
+            agent_names.add(name)
+
+    packs = context_map.get("contextPacks")
+    if not isinstance(packs, list):
+        errors.append("cplayout_context_map.json: contextPacks must be a list")
+        packs = []
+    pack_ids: list[str] = []
+    for pack in packs:
+        if not isinstance(pack, dict):
+            errors.append("cplayout_context_map.json: context pack must be an object")
+            continue
+        pack_id = pack.get("id")
+        if isinstance(pack_id, str):
+            pack_ids.append(pack_id)
+        else:
+            errors.append("cplayout_context_map.json: context pack id must be a string")
+            pack_id = "<unknown>"
+        for field, max_key in (
+            ("readFirstPaths", "maxReadFirstPathsPerPack"),
+            ("secondaryPaths", "maxSecondaryPathsPerPack"),
+        ):
+            values = pack.get(field)
+            max_count = limits.get(max_key, 0)
+            if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+                errors.append(f"cplayout_context_map.json: {pack_id}.{field} must be a string list")
+                continue
+            if isinstance(max_count, int) and len(values) > max_count:
+                errors.append(f"cplayout_context_map.json: {pack_id}.{field} exceeds {max_key}")
+            for relpath in values:
+                if relpath.startswith("/") or relpath.startswith("~") or "\\" in relpath:
+                    errors.append(f"cplayout_context_map.json: {pack_id}.{field} has non-relative path {relpath}")
+                if relpath.startswith("reports/") or relpath.startswith("tmp/"):
+                    errors.append(f"cplayout_context_map.json: {pack_id}.{field} references raw local artifact {relpath}")
+                if not (ROOT / relpath).exists():
+                    errors.append(f"cplayout_context_map.json: {pack_id}.{field} missing path {relpath}")
+        command_ids = pack.get("validationCommandIds")
+        max_commands = limits.get("maxValidationCommandsPerPack", 0)
+        if not isinstance(command_ids, list) or not all(isinstance(value, str) for value in command_ids):
+            errors.append(f"cplayout_context_map.json: {pack_id}.validationCommandIds must be a string list")
+        else:
+            if isinstance(max_commands, int) and len(command_ids) > max_commands:
+                errors.append(f"cplayout_context_map.json: {pack_id}.validationCommandIds exceeds maxValidationCommandsPerPack")
+            for command_id in command_ids:
+                if command_id not in validation_commands:
+                    errors.append(f"cplayout_context_map.json: {pack_id}.validationCommandIds unknown {command_id}")
+
+    missing_packs = sorted(REQUIRED_CONTEXT_PACK_IDS - set(pack_ids))
+    for missing_pack in missing_packs:
+        errors.append(f"cplayout_context_map.json: missing required context pack {missing_pack}")
+    duplicate_packs = sorted({pack_id for pack_id in pack_ids if pack_ids.count(pack_id) > 1})
+    for duplicate_pack in duplicate_packs:
+        errors.append(f"cplayout_context_map.json: duplicate context pack {duplicate_pack}")
+
+    route_context = context_map.get("routeContext")
+    if not isinstance(route_context, dict):
+        errors.append("cplayout_context_map.json: routeContext must be an object")
+        route_context = {}
+    for route_id in sorted(route_ids):
+        refs = route_context.get(route_id)
+        if not isinstance(refs, list) or not refs:
+            errors.append(f"cplayout_context_map.json: routeContext missing {route_id}")
+    agent_context = context_map.get("agentContext")
+    if not isinstance(agent_context, dict):
+        errors.append("cplayout_context_map.json: agentContext must be an object")
+        agent_context = {}
+    for agent_name in sorted(agent_names):
+        refs = agent_context.get(agent_name)
+        if not isinstance(refs, list) or not refs:
+            errors.append(f"cplayout_context_map.json: agentContext missing {agent_name}")
+
+    source_hashes = context_map.get("sourceHashes")
+    if not isinstance(source_hashes, dict) or "AGENTS.md" not in source_hashes:
+        errors.append("cplayout_context_map.json: sourceHashes must include AGENTS.md")
+
+    if not errors:
+        print("[context] cplayout_context_map.json: ok")
+    return errors
+
+
 def validate_hook_tests() -> list[str]:
     ok, output = run(
         [sys.executable, "-m", "unittest", "discover", "-s", "tools/tests", "-p", "test_cplayout_*.py"]
@@ -382,6 +522,7 @@ def main() -> int:
     errors.extend(validate_skills())
     errors.extend(validate_toml())
     errors.extend(validate_route_data())
+    errors.extend(validate_context_map())
     errors.extend(validate_hooks())
     errors.extend(validate_hook_tests())
     errors.extend(validate_ge_inventory_help())

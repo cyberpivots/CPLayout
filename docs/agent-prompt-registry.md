@@ -27,13 +27,21 @@ This registry records the repo-local specialist prompt surfaces and the session-
 
 ## Prompt Triage
 
-Prompt triage is implemented as an advisory `UserPromptSubmit` hook in `.codex/hooks.json`, backed by `.codex/hooks/cplayout_prompt_triage.py` and `.codex/hooks/cplayout_route_data.json`. It injects routing context only; it does not enforce policy or prove runtime behavior.
+Prompt triage is implemented as an advisory `UserPromptSubmit` hook in `.codex/hooks.json`, backed by `.codex/hooks/cplayout_prompt_triage.py`, `.codex/hooks/cplayout_route_data.json`, and `.codex/hooks/cplayout_context_map.json`. It injects routing and compact context-reference metadata only; it does not enforce policy or prove runtime behavior.
 
 The route data uses token/phrase-aware weighted positive and negative keywords. A route score is the sum of matched positive weights minus matched negative weights. Routes are emitted only when their score is at least `minScore`, then sorted by score descending, route priority ascending, and route id. Hook output is capped by `maxRoutes`, currently `3`, so broad prompts do not flood the context window with every specialist.
 
 Every route declares `agent`, `complexityBand`, coordinator `reasoningEffort`, `subagentReasoningEffort`, `spawnPolicy`, `routingReason`, and `validationExpectations`. The hook emits a coordinator contract with matched specialists, required preflight, subagent decision (`required`, `optional`, or `not useful`), coordinator complexity band, coordinator reasoning effort, task-selected subagent reasoning guidance, optimized re-prompt, and validation expectations. Route data intentionally has no global default complexity or reasoning effort; when no route or clear complexity signal matches, the hook emits `complexity analysis required before mutation`.
 
 Broad terms such as `agent`, `hook`, `layout`, and `web` are intentionally low weight. They should not route by themselves; they only help rank a route when stronger task-specific terms are also present.
+
+## Generated Context Map
+
+`tools/build_cplayout_context_map.py` generates `.codex/hooks/cplayout_context_map.json` and `docs/agent-context-map.md`. The map gives each route and custom agent compact context-pack ids, read-first repo paths, validation commands, expected output shape, token budgets, panel weights, and hard vetoes. It does not include raw file content, ignored reports, local customer artifacts, secrets, absolute machine paths, or extracted PDF bodies.
+
+The prompt triage hook preserves existing route scoring, then emits at most three context packs for matched routes. The subagent-start hook emits matching agent context packs when a custom CPLayout agent starts. If the context map is missing or invalid, hooks fail open and keep the ordinary coordinator or subagent boundary text.
+
+Run `npm run context-map:build` after changing routes, hooks, custom agents, repo-local skills, validation records, or indexed docs. Run `npm run context-map:check` or `npm run validate:skills` before reporting success; the check fails when the checked-in JSON or Markdown is stale.
 
 ## Persistent Subagent Authorization
 

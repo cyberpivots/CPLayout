@@ -19,6 +19,7 @@ def _repo_root(start: Path) -> Path:
 ROOT = _repo_root(Path.cwd())
 AGENTS_PATH = ROOT / "AGENTS.md"
 AGENT_DIR = ROOT / ".codex" / "agents"
+CONTEXT_MAP_FILENAME = "cplayout_context_map.json"
 
 
 def _read_payload() -> dict[str, object]:
@@ -68,6 +69,92 @@ def _agent_config(agent_type: object) -> tuple[Path, dict[str, object]] | None:
     return None
 
 
+def _context_map_path() -> Path | None:
+    repo_path = ROOT / ".codex" / "hooks" / CONTEXT_MAP_FILENAME
+    if repo_path.exists():
+        return repo_path
+    managed_path = Path(__file__).with_name(CONTEXT_MAP_FILENAME)
+    return managed_path if managed_path.exists() else None
+
+
+def _load_context_map() -> dict[str, object] | None:
+    path = _context_map_path()
+    if path is None:
+        return None
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(parsed, dict) or parsed.get("schemaVersion") != 1:
+        return None
+    if not isinstance(parsed.get("contextPacks"), list) or not isinstance(parsed.get("agentContext"), dict):
+        return None
+    return parsed
+
+
+def _max_context_packs(context_map: dict[str, object]) -> int:
+    limits = context_map.get("limits")
+    if isinstance(limits, dict):
+        value = limits.get("maxContextPacksPerHook")
+        if isinstance(value, int) and value > 0:
+            return value
+    return 3
+
+
+def _context_pack_lookup(context_map: dict[str, object]) -> dict[str, dict[str, object]]:
+    packs: dict[str, dict[str, object]] = {}
+    raw_packs = context_map.get("contextPacks")
+    if not isinstance(raw_packs, list):
+        return packs
+    for raw_pack in raw_packs:
+        if not isinstance(raw_pack, dict):
+            continue
+        pack_id = raw_pack.get("id")
+        if isinstance(pack_id, str) and pack_id:
+            packs[pack_id] = raw_pack
+    return packs
+
+
+def _agent_context_lines(agent_type: object) -> list[str]:
+    if not isinstance(agent_type, str) or not agent_type.strip():
+        return []
+    context_map = _load_context_map()
+    if context_map is None:
+        return []
+    agent_context = context_map.get("agentContext")
+    if not isinstance(agent_context, dict):
+        return []
+    raw_pack_ids = agent_context.get(agent_type.strip())
+    if not isinstance(raw_pack_ids, list):
+        return []
+    packs_by_id = _context_pack_lookup(context_map)
+    pack_ids = [
+        pack_id
+        for pack_id in raw_pack_ids
+        if isinstance(pack_id, str) and pack_id in packs_by_id
+    ][:_max_context_packs(context_map)]
+    if not pack_ids:
+        return []
+
+    lines = ["Context packs:"]
+    for pack_id in pack_ids:
+        pack = packs_by_id[pack_id]
+        purpose = pack.get("purpose")
+        read_first = pack.get("readFirstPaths")
+        expected_output = pack.get("expectedOutput")
+        if not isinstance(purpose, str):
+            continue
+        lines.append(f"  - {pack_id}: {purpose}")
+        if isinstance(read_first, list):
+            paths = [path for path in read_first if isinstance(path, str)]
+            if paths:
+                lines.append(f"    read first: {'; '.join(paths)}")
+        if isinstance(expected_output, str) and expected_output.strip():
+            lines.append(f"    expected output: {expected_output.strip()}")
+    lines.append("No-overlap boundary: stay read-only unless the coordinator assigns a bounded worker scope.")
+    return lines
+
+
 def _scope_lines(config: dict[str, object]) -> list[str]:
     instructions = config.get("developer_instructions")
     if not isinstance(instructions, str):
@@ -115,6 +202,9 @@ def _agent_scope(payload: dict[str, object]) -> list[str]:
         lines.append(f"Configured sandbox/reasoning: {sandbox_mode or 'inherited'} / {reasoning or 'inherited'}")
     lines.append("Agent-specific read-only scope:")
     lines.extend(f"  - {marker}" for marker in _scope_lines(config))
+    context_lines = _agent_context_lines(config.get("name"))
+    if context_lines:
+        lines.extend(context_lines)
     return lines
 
 

@@ -46,6 +46,7 @@ class RouteMatch:
 
 
 ROUTE_DATA_FILENAME = "cplayout_route_data.json"
+CONTEXT_MAP_FILENAME = "cplayout_context_map.json"
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 COMPLEXITY_ORDER = {"low": 0, "medium": 1, "high": 2, "xhigh": 3}
 REASONING_EFFORTS = frozenset(("minimal", "low", "medium", "high", "xhigh"))
@@ -82,19 +83,27 @@ class RouteData:
     routes: tuple[RouteDefinition, ...]
 
 
-def _repo_route_data_path(start: Path) -> Path | None:
+def _repo_hook_data_path(start: Path, filename: str) -> Path | None:
     for candidate in (start, *start.parents):
-        route_data_path = candidate / ".codex" / "hooks" / ROUTE_DATA_FILENAME
-        if route_data_path.exists():
-            return route_data_path
+        hook_data_path = candidate / ".codex" / "hooks" / filename
+        if hook_data_path.exists():
+            return hook_data_path
     return None
 
 
 def _route_data_path() -> Path:
-    cwd_route_data = _repo_route_data_path(Path.cwd())
+    cwd_route_data = _repo_hook_data_path(Path.cwd(), ROUTE_DATA_FILENAME)
     if cwd_route_data is not None:
         return cwd_route_data
     return Path(__file__).with_name(ROUTE_DATA_FILENAME)
+
+
+def _context_map_path() -> Path | None:
+    cwd_context_map = _repo_hook_data_path(Path.cwd(), CONTEXT_MAP_FILENAME)
+    if cwd_context_map is not None:
+        return cwd_context_map
+    fallback = Path(__file__).with_name(CONTEXT_MAP_FILENAME)
+    return fallback if fallback.exists() else None
 
 
 def _keywords(raw_keywords: object) -> tuple[Keyword, ...]:
@@ -213,6 +222,30 @@ def load_route_data(path: Path | None = None) -> RouteData:
     )
 
 
+def load_context_map(path: Path | None = None) -> dict[str, object] | None:
+    """Load compact advisory context-map metadata.
+
+    This intentionally fails open. Hook context is advisory; broken context-map
+    data must not block the coordinator from using AGENTS.md and current repo
+    evidence.
+    """
+
+    context_path = _context_map_path() if path is None else path
+    if context_path is None:
+        return None
+    try:
+        raw_data = json.loads(context_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw_data, dict) or raw_data.get("schemaVersion") != 1:
+        return None
+    if not isinstance(raw_data.get("contextPacks"), list):
+        return None
+    if not isinstance(raw_data.get("routeContext"), dict):
+        return None
+    return raw_data
+
+
 def _read_payload() -> tuple[dict[str, object], bool]:
     try:
         raw = sys.stdin.read()
@@ -287,6 +320,126 @@ def match_routes(
     return matches[:max_routes]
 
 
+def _pack_lookup(context_map: dict[str, object]) -> dict[str, dict[str, object]]:
+    packs: dict[str, dict[str, object]] = {}
+    raw_packs = context_map.get("contextPacks")
+    if not isinstance(raw_packs, list):
+        return packs
+    for raw_pack in raw_packs:
+        if not isinstance(raw_pack, dict):
+            continue
+        pack_id = raw_pack.get("id")
+        if isinstance(pack_id, str) and pack_id:
+            packs[pack_id] = raw_pack
+    return packs
+
+
+def _max_context_packs(context_map: dict[str, object]) -> int:
+    limits = context_map.get("limits")
+    if isinstance(limits, dict):
+        value = limits.get("maxContextPacksPerHook")
+        if isinstance(value, int) and value > 0:
+            return value
+    return 3
+
+
+def _pack_trigger_score(prompt_tokens: tuple[str, ...], pack: dict[str, object]) -> int:
+    terms = pack.get("triggerTerms")
+    if not isinstance(terms, list):
+        return 0
+    score = 0
+    for term in terms:
+        if isinstance(term, str) and _has_phrase(prompt_tokens, _tokens(term)):
+            score += 1
+    return score
+
+
+def context_packs_for_matches(
+    prompt: str,
+    matches: list[RouteMatch],
+    context_map: dict[str, object] | None = None,
+) -> list[dict[str, object]]:
+    if not matches:
+        return []
+    context_map = load_context_map() if context_map is None else context_map
+    if not isinstance(context_map, dict):
+        return []
+    packs_by_id = _pack_lookup(context_map)
+    route_context = context_map.get("routeContext")
+    if not packs_by_id or not isinstance(route_context, dict):
+        return []
+
+    selected_ids: list[str] = []
+    if "workspace_preflight" in packs_by_id:
+        selected_ids.append("workspace_preflight")
+
+    candidate_order: list[str] = []
+    for match in matches:
+        raw_pack_ids = route_context.get(match.route.route_id)
+        if not isinstance(raw_pack_ids, list):
+            continue
+        for raw_pack_id in raw_pack_ids:
+            if not isinstance(raw_pack_id, str) or raw_pack_id == "workspace_preflight":
+                continue
+            if raw_pack_id not in packs_by_id or raw_pack_id in candidate_order:
+                continue
+            candidate_order.append(raw_pack_id)
+
+    prompt_tokens = _tokens(prompt)
+    scored_candidates = [
+        (pack_id, _pack_trigger_score(prompt_tokens, packs_by_id[pack_id]), candidate_order.index(pack_id))
+        for pack_id in candidate_order
+    ]
+    positive_candidates = [candidate for candidate in scored_candidates if candidate[1] > 0]
+    ordered_candidates = [
+        pack_id
+        for pack_id, _score, _index in sorted(
+            positive_candidates or scored_candidates,
+            key=lambda candidate: (-candidate[1], candidate[2]),
+        )
+    ]
+    for pack_id in ordered_candidates:
+        if pack_id not in selected_ids:
+            selected_ids.append(pack_id)
+        if len(selected_ids) >= _max_context_packs(context_map):
+            break
+    return [packs_by_id[pack_id] for pack_id in selected_ids[: _max_context_packs(context_map)]]
+
+
+def _context_pack_lines(prompt: str, matches: list[RouteMatch], context_map: dict[str, object] | None = None) -> list[str]:
+    context_map = load_context_map() if context_map is None else context_map
+    packs = context_packs_for_matches(prompt, matches, context_map)
+    if not packs:
+        return []
+    validation_commands = context_map.get("validationCommands") if isinstance(context_map, dict) else {}
+    if not isinstance(validation_commands, dict):
+        validation_commands = {}
+
+    lines = [f"- Context packs (advisory refs; max {len(packs)} emitted):"]
+    for pack in packs:
+        pack_id = pack.get("id")
+        purpose = pack.get("purpose")
+        read_first = pack.get("readFirstPaths")
+        command_ids = pack.get("validationCommandIds")
+        if not isinstance(pack_id, str) or not isinstance(purpose, str):
+            continue
+        read_first_text = ""
+        if isinstance(read_first, list):
+            read_first_text = "; ".join(path for path in read_first if isinstance(path, str))
+        command_texts: list[str] = []
+        if isinstance(command_ids, list):
+            for command_id in command_ids:
+                command_entry = validation_commands.get(command_id) if isinstance(command_id, str) else None
+                if isinstance(command_entry, dict) and isinstance(command_entry.get("command"), str):
+                    command_texts.append(command_entry["command"])
+        lines.append(f"  - {pack_id}: {purpose}")
+        if read_first_text:
+            lines.append(f"    read first: {read_first_text}")
+        if command_texts:
+            lines.append(f"    validation: {'; '.join(command_texts)}")
+    return lines
+
+
 def _selected_complexity(matches: list[RouteMatch], route_data: RouteData) -> str:
     if not matches:
         return route_data.unmatched_complexity
@@ -354,7 +507,12 @@ def optimized_reprompt(
     )
 
 
-def _context(prompt: str, matches: list[RouteMatch], shape_unknown: bool) -> str:
+def _context(
+    prompt: str,
+    matches: list[RouteMatch],
+    shape_unknown: bool,
+    context_map: dict[str, object] | None = None,
+) -> str:
     route_data = load_route_data()
     complexity = _selected_complexity(matches, route_data)
     reasoning = _selected_reasoning(matches, route_data)
@@ -378,6 +536,7 @@ def _context(prompt: str, matches: list[RouteMatch], shape_unknown: bool) -> str
                 f"subagent {route.subagent_reasoning_effort}; "
                 f"{route.spawn_policy}): {route.routing_reason}"
             )
+        lines.extend(_context_pack_lines(prompt, matches, context_map))
     else:
         lines.append("- Routes: none; complexity analysis required before mutation.")
     lines.append(f"- Validation expectations (max {len(validation)}):")

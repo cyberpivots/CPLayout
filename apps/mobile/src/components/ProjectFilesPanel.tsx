@@ -15,7 +15,20 @@ import {
   installMapPackageArchiveZipAsync,
   readGoogleEarthKmlFile,
 } from "@cplayout/project-store";
-import { exportProjectGoogleEarthKml, type CornerGpsMapBpfImportPreview, type GoogleEarthKmlImportResult, type LayoutResult, type MapPackageManifest, type PivotProject } from "@cplayout/core";
+import {
+  exportCornerGpsMapBpf,
+  exportProjectGoogleEarthKml,
+  inferCornerGpsMapLegacyEvidenceKind,
+  parseCornerGpsMapLegacyEvidence,
+  type CornerGpsMapBpfImportPreview,
+  type CornerGpsMapLegacyEvidence,
+  type CornerGpsMapLegacyEvidenceKind,
+  type CornerGpsMapSourceRef,
+  type GoogleEarthKmlImportResult,
+  type LayoutResult,
+  type MapPackageManifest,
+  type PivotProject,
+} from "@cplayout/core";
 import type { ProjectWorkspaceStatus } from "../hooks/useProjectRepository";
 import { GoogleEarthImportWizard } from "./GoogleEarthImportWizard";
 
@@ -29,7 +42,7 @@ interface ProjectFilesPanelProps {
   onMapPackageImported: (manifest: MapPackageManifest, runtimeManifest: MapPackageManifest) => string;
   onPreviewGoogleEarthKml: (kmlText: string, selectedItemIds?: string[]) => GoogleEarthKmlImportResult;
   onApplyGoogleEarthKmlImport: (project: PivotProject) => void;
-  onPreviewCornerGpsMapBpf: (bpfText: string, selectedItemIds?: string[]) => CornerGpsMapBpfImportPreview;
+  onPreviewCornerGpsMapBpf: (bpfText: string, selectedItemIds?: string[], observedAt?: string, sourceRef?: CornerGpsMapSourceRef) => CornerGpsMapBpfImportPreview;
   onApplyCornerGpsMapBpfImport: (project: PivotProject) => void;
   onProjectLoaded: (project: PivotProject) => void;
   onSaveProject: () => void | Promise<void>;
@@ -56,7 +69,15 @@ interface PendingKmlImport {
 interface PendingBpfImport {
   filename: string;
   bpfText: string;
+  observedAt: string;
   result: CornerGpsMapBpfImportPreview;
+  sourceRef: CornerGpsMapSourceRef;
+}
+
+interface LegacyEvidenceReview {
+  filename: string;
+  kind: CornerGpsMapLegacyEvidenceKind;
+  result: CornerGpsMapLegacyEvidence;
 }
 
 export function ProjectFilesPanel({
@@ -82,6 +103,7 @@ export function ProjectFilesPanel({
   const [selectedKmlImportItemIds, setSelectedKmlImportItemIds] = useState<string[]>([]);
   const [pendingBpfImport, setPendingBpfImport] = useState<PendingBpfImport | null>(null);
   const [selectedBpfImportItemIds, setSelectedBpfImportItemIds] = useState<string[]>([]);
+  const [legacyEvidenceReview, setLegacyEvidenceReview] = useState<LegacyEvidenceReview | null>(null);
   const [geoJsonImport, setGeoJsonImport] = useState("");
   const [surveyCsvImport, setSurveyCsvImport] = useState("");
 
@@ -124,6 +146,20 @@ export function ProjectFilesPanel({
       setStatus({
         tone: outcome.ok ? "success" : "error",
         text: `${outcome.message} KMZ contains doc.kml with ${exported.exportedFeatureCount} feature${exported.exportedFeatureCount === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      setStatus({ tone: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function exportBpf(): Promise<void> {
+    try {
+      const exported = exportCornerGpsMapBpf(project, { sourceLabel: project.name });
+      const filename = `${project.id}.cornergpsmap.bpf`;
+      const outcome = await exportFileAsync(filename, exported.xmlText, { mimeType: "application/xml;charset=utf-8" });
+      setStatus({
+        tone: outcome.ok ? "success" : "error",
+        text: `${outcome.message} Exported ${exported.exportedPointCounts.borderPoints} BorderPoint entries, ${exported.exportedPointCounts.centerPoints} CenterPoint, and ${exported.exportedPointCounts.benchmarkPoints} BenchMark point${exported.exportedPointCounts.benchmarkPoints === 1 ? "" : "s"}. ${formatWarnings(exported.compatibilityWarnings)}`,
       });
     } catch (error) {
       setStatus({ tone: "error", text: errorMessage(error) });
@@ -214,18 +250,48 @@ export function ProjectFilesPanel({
         return;
       }
       const bpfText = decodeUtf8(file.bytes);
-      const result = onPreviewCornerGpsMapBpf(bpfText);
+      const observedAt = new Date().toISOString();
+      const sourceRef = sourceRefForFile(file.filename, observedAt, "CornerGPSMap BPF");
+      const result = onPreviewCornerGpsMapBpf(bpfText, undefined, observedAt, sourceRef);
       setPendingKmlImport(null);
       setSelectedKmlImportItemIds([]);
       setPendingBpfImport({
         filename: file.filename,
         bpfText,
+        observedAt,
         result,
+        sourceRef,
       });
       setSelectedBpfImportItemIds(result.items.filter((item) => item.selected).map((item) => item.id));
       setStatus({
         tone: result.canApply && result.warnings.length === 0 ? "info" : "warning",
         text: `${file.filename} is ready for BPF import review. ${bpfImportSummary(result)}${formatWarnings(result.warnings)}`,
+      });
+    } catch (error) {
+      setStatus({ tone: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function importLegacyEvidence(): Promise<void> {
+    try {
+      const file = await importFileAsync({
+        accept: ".opt,.csv,.out,.vri,text/plain,text/csv,application/octet-stream",
+        errorLabel: "CornerGPSMap or FLT legacy evidence",
+      });
+      if (!file) {
+        setStatus({ tone: "info", text: "No legacy evidence file selected." });
+        return;
+      }
+      const kind = inferCornerGpsMapLegacyEvidenceKind(file.filename);
+      if (!kind) throw new Error("Legacy evidence review accepts only .opt, .csv, .out, and .vri files.");
+      const observedAt = new Date().toISOString();
+      const result = parseCornerGpsMapLegacyEvidence(kind, decodeUtf8(file.bytes), {
+        sourceRef: sourceRefForFile(file.filename, observedAt, `CornerGPSMap/FLT ${kind.toUpperCase()} evidence`),
+      });
+      setLegacyEvidenceReview({ filename: file.filename, kind, result });
+      setStatus({
+        tone: result.statusSummary.blockerCount > 0 || result.warnings.length > 0 ? "warning" : "info",
+        text: `${file.filename} parsed for advisory evidence. ${legacyEvidenceSummary(result)}${formatWarnings([...result.warnings, ...result.diagnostics])}`,
       });
     } catch (error) {
       setStatus({ tone: "error", text: errorMessage(error) });
@@ -266,7 +332,12 @@ export function ProjectFilesPanel({
 
   function applyPendingBpfImport(): void {
     if (!pendingBpfImport) return;
-    const selectedResult = onPreviewCornerGpsMapBpf(pendingBpfImport.bpfText, selectedBpfImportItemIds);
+    const selectedResult = onPreviewCornerGpsMapBpf(
+      pendingBpfImport.bpfText,
+      selectedBpfImportItemIds,
+      pendingBpfImport.observedAt,
+      pendingBpfImport.sourceRef,
+    );
     if (!selectedResult.canApply) {
       setStatus({
         tone: "warning",
@@ -355,6 +426,8 @@ export function ProjectFilesPanel({
         <View style={styles.gisActionBox}>
           <View style={styles.actionRow}>
             <FileAction accessibilityLabel="Import CornerGPSMap BPF" icon={<Upload size={18} color="#254234" />} label="Import BPF" onPress={importCornerGpsMapBpf} testID="files-action-import-bpf" />
+            <FileAction accessibilityLabel="Export CornerGPSMap BPF" icon={<Download size={18} color="#254234" />} label="Export BPF" onPress={exportBpf} testID="files-action-export-bpf" />
+            <FileAction accessibilityLabel="Review FLT or CornerGPSMap legacy evidence" icon={<Upload size={18} color="#254234" />} label="Review Legacy" onPress={importLegacyEvidence} testID="files-action-review-legacy-evidence" />
             <FileAction accessibilityLabel="Import KML or KMZ" icon={<Upload size={18} color="#254234" />} label="Import KML/KMZ" onPress={importKmlOrKmz} testID="files-action-import-kml-kmz" />
             <FileAction accessibilityLabel="Export KML" icon={<Download size={18} color="#254234" />} label="Export KML" onPress={exportKml} testID="files-action-export-kml" />
             <FileAction accessibilityLabel="Export KMZ" icon={<Download size={18} color="#254234" />} label="Export KMZ" onPress={exportKmz} testID="files-action-export-kmz" />
@@ -398,6 +471,31 @@ export function ProjectFilesPanel({
           <View style={styles.actionRow}>
             <FileAction accessibilityLabel="Apply KML KMZ import" icon={<Upload size={18} color="#ffffff" />} label="Apply Import" primary onPress={applyPendingKmlImport} testID="files-action-apply-kml-kmz-import" />
             <FileAction accessibilityLabel="Cancel KML KMZ import" icon={<Trash2 size={18} color="#254234" />} label="Cancel" onPress={cancelPendingKmlImport} testID="files-action-cancel-kml-kmz-import" />
+          </View>
+        </View>
+      ) : null}
+      {legacyEvidenceReview ? (
+        <View style={styles.importPreviewBox} testID="files-legacy-evidence-review">
+          <View>
+            <Text style={styles.importTitle}>Legacy Evidence Review</Text>
+            <Text style={styles.importPreviewText}>
+              {legacyEvidenceReview.filename} · {legacyEvidenceReview.kind.toUpperCase()} · {legacyEvidenceSummary(legacyEvidenceReview.result)}
+            </Text>
+            <View style={styles.importPreviewItemGrid}>
+              {legacyEvidenceItems(legacyEvidenceReview.result).map((item) => (
+                <View key={item.title} style={styles.importPreviewItem}>
+                  <Text style={styles.importPreviewItemTitle}>{item.title}</Text>
+                  <Text style={styles.importPreviewItemMeta}>{item.detail}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.importPreviewWarning}>Legacy output is advisory evidence only; raw coordinates, local paths, controller files, and customer identifiers are not displayed or saved here.</Text>
+            {legacyEvidenceReview.result.warnings.map((warning) => (
+              <Text key={warning} style={styles.importPreviewWarning}>{warning}</Text>
+            ))}
+            {legacyEvidenceReview.result.violations.slice(0, 4).map((violation) => (
+              <Text key={`${violation.severity}-${violation.code}`} style={styles.importPreviewWarning}>{violation.severity.toUpperCase()}: {violation.message}</Text>
+            ))}
           </View>
         </View>
       ) : null}
@@ -597,6 +695,58 @@ function bpfImportItems(result: CornerGpsMapBpfImportPreview): { id: string; tit
       title: "No importable BPF evidence",
       detail: "The BPF did not return a usable projected boundary or pivot-center evidence item.",
     }];
+}
+
+function legacyEvidenceSummary(result: CornerGpsMapLegacyEvidence): string {
+  const parts = [
+    `${result.pathPointSummary.pointCount} path row${result.pathPointSummary.pointCount === 1 ? "" : "s"}`,
+    `${result.vriSummary.zoneCount} VRI zone${result.vriSummary.zoneCount === 1 ? "" : "s"}`,
+    `${result.statusSummary.values.length} status value${result.statusSummary.values.length === 1 ? "" : "s"}`,
+    `${result.statusSummary.violationCount} violation${result.statusSummary.violationCount === 1 ? "" : "s"}`,
+  ];
+  if (result.machineDimensions.rawFieldCount > 0) parts.push(`${result.machineDimensions.rawFieldCount} machine field${result.machineDimensions.rawFieldCount === 1 ? "" : "s"}`);
+  return parts.join(", ");
+}
+
+function legacyEvidenceItems(result: CornerGpsMapLegacyEvidence): { title: string; detail: string }[] {
+  return [
+    {
+      title: "Path Evidence",
+      detail: `${result.pathPointSummary.pointCount} row${result.pathPointSummary.pointCount === 1 ? "" : "s"} · ${result.pathPointSummary.hasCoordinateColumns ? "coordinate columns redacted" : "no coordinate columns detected"}`,
+    },
+    {
+      title: "Machine Metadata",
+      detail: [
+        result.machineDimensions.cornerLengthMeters !== undefined ? `corner ${formatMeters(result.machineDimensions.cornerLengthMeters)}` : null,
+        result.machineDimensions.lrduBoundaryDistanceMeters !== undefined ? `LRDU min ${formatMeters(result.machineDimensions.lrduBoundaryDistanceMeters)}` : null,
+        result.machineDimensions.endGunReachMeters !== undefined ? `end gun ${formatMeters(result.machineDimensions.endGunReachMeters)}` : null,
+        result.machineDimensions.rawFieldCount === 0 ? "no machine fields" : null,
+      ].filter((item): item is string => Boolean(item)).join(" · "),
+    },
+    {
+      title: "VRI Summary",
+      detail: result.vriSummary.zoneCount > 0
+        ? `${result.vriSummary.zoneCount} zone${result.vriSummary.zoneCount === 1 ? "" : "s"} · rate ${result.vriSummary.minRatePercent ?? "?"}-${result.vriSummary.maxRatePercent ?? "?"}%`
+        : "No VRI zones detected",
+    },
+    {
+      title: "Status Fields",
+      detail: `${result.statusSummary.warningCount} warning${result.statusSummary.warningCount === 1 ? "" : "s"} · ${result.statusSummary.blockerCount} blocker${result.statusSummary.blockerCount === 1 ? "" : "s"}`,
+    },
+  ];
+}
+
+function sourceRefForFile(filename: string, observedAt: string, label: string): CornerGpsMapSourceRef {
+  return {
+    sourceId: `SRC-${label}-${filename}`.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 96) || "SRC-CORNERGPSMAP-IMPORT",
+    title: `${label}: ${filename}`,
+    checkedAt: observedAt,
+    limit: "Operator-selected local file; raw coordinates, local paths, credentials, and customer identifiers are not persisted in CPLayout compatibility metadata.",
+  };
+}
+
+function formatMeters(value: number): string {
+  return `${value.toFixed(2)} m`;
 }
 
 function decodeUtf8(bytes: Uint8Array): string {

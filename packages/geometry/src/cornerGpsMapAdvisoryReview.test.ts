@@ -1,20 +1,29 @@
 import assert from "node:assert/strict";
 
 import type { PivotMachine, PivotProject } from "@cplayout/core";
-import { feetToMeters } from "@cplayout/core";
+import { feetToMeters, parseCornerGpsMapLegacyEvidence } from "@cplayout/core";
 
 import { evaluateCornerGpsMapAdvisoryReview } from "./cornerGpsMapAdvisoryReview";
 
 const readyProject = makeProject();
+const beforeReadyReview = structuredClone(readyProject);
 const readyReview = evaluateCornerGpsMapAdvisoryReview(readyProject);
 assert.equal(readyReview.status, "ready");
 assert.equal(readyReview.advisoryOnly, true);
 assert.equal(readyReview.canonicalGeometryMutation, false);
 assert.equal(readyReview.unverifiedManufacturerKinematics, true);
 assert.equal(readyReview.qualifiedReviewRequired, true);
+assert.equal(readyReview.compatibility.sduLrduSteering, "unverified");
+assert.equal(readyReview.compatibility.ggsControllerExport, "unverified");
+assert.equal(readyReview.compatibility.vriControllerExport, "unverified");
+assert.equal(readyReview.compatibility.sprinklerSequencing, "unverified");
 assert.ok((readyReview.metrics.lrduBoundaryClearanceMeters ?? 0) > feetToMeters(35));
 assert.equal(readyReview.advisoryPathFeatureIds.length, 0);
+assert.equal(readyReview.metrics.legacyEvidenceCount, 0);
+assert.ok(readyReview.violations.some((violation) => violation.code === "unverified_sdu_lrdu_steering"));
+assert.ok(readyReview.issues.some((issue) => issue.code === "missing_guidance_path_evidence"));
 assert.ok(readyReview.issues.some((issue) => issue.code === "no_obstacle_evidence"));
+assert.deepEqual(readyProject, beforeReadyReview);
 
 const pathFeatureReview = evaluateCornerGpsMapAdvisoryReview(makeProject({
   mapFeatures: [{
@@ -43,6 +52,10 @@ const blockedReview = evaluateCornerGpsMapAdvisoryReview(makeProject({
 }));
 assert.equal(blockedReview.status, "blocked");
 assert.ok(blockedReview.issues.some((issue) => issue.code === "lrdu_boundary_clearance_shortfall" && (issue.shortfallMeters ?? 0) > 0));
+const lrduViolation = blockedReview.violations.find((violation) => violation.code === "lrdu_boundary_clearance_shortfall");
+assert.equal(lrduViolation?.severity, "blocker");
+assert.ok((lrduViolation?.measuredMeters ?? 0) < (lrduViolation?.thresholdMeters ?? 0));
+assert.ok((lrduViolation?.shortfallMeters ?? 0) > 0);
 
 const endGunReview = evaluateCornerGpsMapAdvisoryReview(makeProject({
   machine: machine({ spanLengthsMeters: [300], endGunThrowMeters: 220 }),
@@ -75,6 +88,86 @@ const missingBoundaryReview = evaluateCornerGpsMapAdvisoryReview(makeProject({
 }));
 assert.equal(missingBoundaryReview.status, "blocked");
 assert.ok(missingBoundaryReview.issues.some((issue) => issue.code === "missing_projected_boundary"));
+
+const legacyEvidence = parseCornerGpsMapLegacyEvidence("vri", `zone,ratePercent,status
+1,45,OK
+2,80,Warning: operator review
+3,90,Violation: rate exceeds synthetic limit
+`, {
+  sourceRef: {
+    sourceId: "SRC-SYNTHETIC-VRI",
+    title: "Synthetic VRI fixture",
+    checkedAt: "2026-06-07",
+    limit: "Synthetic parser fixture only.",
+  },
+});
+const legacyReviewProject = makeProject({
+  machine: machine({
+    cornerArm: {
+      id: "synthetic-corner-arm",
+      name: "Synthetic advisory corner",
+      advisoryOnly: true,
+      lengthMeters: feetToMeters(181),
+      guidanceType: "gps_guidance",
+      sequencingType: "unknown",
+      orientation: "operator_supplied",
+      confidence: "imported_cad",
+      sourceRefs: [{
+        sourceId: "SRC-SYNTHETIC-CORNER-MODEL",
+        title: "Synthetic CornerGPSMap model",
+        checkedAt: "2026-06-07",
+        limit: "Synthetic metadata only.",
+      }],
+    },
+  }),
+  mapFeatures: [{
+    id: "operator-corner-swing",
+    name: "Operator corner swing",
+    kind: "corner_swing_limit",
+    geometry: {
+      type: "LineString",
+      vertices: [
+        { x: 500, y: 500 },
+        { x: 820, y: 820 },
+      ],
+    },
+    confidence: "imported_cad",
+    properties: {
+      evidenceOnly: true,
+      canonicalGeometryMutation: false,
+    },
+  }],
+});
+const beforeLegacyReview = structuredClone(legacyReviewProject);
+const legacyReview = evaluateCornerGpsMapAdvisoryReview(legacyReviewProject, {
+  legacyEvidence: [legacyEvidence],
+  modelPreset: {
+    modelId: "17",
+    name: "Synthetic VFlex",
+    kind: "pivot",
+    cornerType: "Single",
+    cornerLengthMeters: feetToMeters(181),
+    minLrduBoundaryDistanceMeters: feetToMeters(35),
+    minCornerAngleDegrees: 75,
+    maxCornerAngleDegrees: 162,
+    rawAttributes: {},
+    sourceRef: {
+      sourceId: "SRC-SYNTHETIC-MODEL",
+      title: "Synthetic model preset",
+      checkedAt: "2026-06-07",
+      limit: "Synthetic metadata only.",
+    },
+  },
+});
+assert.equal(legacyReview.metrics.legacyEvidenceCount, 1);
+assert.deepEqual(legacyReview.legacyEvidenceKinds, ["vri"]);
+assert.equal(legacyReview.metrics.modelMinCornerAngleDegrees, 75);
+assert.equal(legacyReview.metrics.modelMaxCornerAngleDegrees, 162);
+assert.ok(legacyReview.issues.some((issue) => issue.code === "legacy_vri_vri_zone_summary"));
+assert.ok(legacyReview.issues.some((issue) => issue.code === "model_corner_angle_limits_advisory"));
+assert.ok(legacyReview.violations.some((violation) => violation.code.includes("legacy_vri_violation")));
+assert.ok(legacyReview.violations.some((violation) => violation.sourceRefIds.includes("SRC-SYNTHETIC-VRI")));
+assert.deepEqual(legacyReviewProject, beforeLegacyReview);
 
 assert.deepEqual(readyProject.fieldBoundary, makeProject().fieldBoundary);
 

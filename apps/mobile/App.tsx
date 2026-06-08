@@ -87,6 +87,7 @@ import {
   importGoogleEarthKmlToProject,
   importProjectedGeoJsonToProject,
   importSurveyCsvToProject,
+  type CornerGpsMapSourceRef,
   previewCornerGpsMapBpfImport,
   improvedCenterPivotProofProject,
   realCenterPivotProofProject,
@@ -514,8 +515,13 @@ function AppContent(): React.JSX.Element {
     dispatchProject({ type: "apply_project_import", project: nextProject });
   }
 
-  function previewCornerGpsMapBpf(bpfText: string, selectedItemIds?: string[]): CornerGpsMapBpfImportPreview {
-    return previewCornerGpsMapBpfImport(project, bpfText, { selectedItemIds });
+  function previewCornerGpsMapBpf(
+    bpfText: string,
+    selectedItemIds?: string[],
+    observedAt?: string,
+    sourceRef?: CornerGpsMapSourceRef,
+  ): CornerGpsMapBpfImportPreview {
+    return previewCornerGpsMapBpfImport(project, bpfText, { selectedItemIds, observedAt, sourceRef });
   }
 
   function applyCornerGpsMapBpfImport(nextProject: PivotProject): void {

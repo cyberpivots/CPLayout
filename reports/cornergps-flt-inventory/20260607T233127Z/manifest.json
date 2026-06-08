@@ -1,0 +1,2920 @@
+{
+  "schemaVersion": "cplayout-cornergps-flt-inventory-v1",
+  "generatedAt": "2026-06-07T23:31:27.378Z",
+  "outputDir": "reports/cornergps-flt-inventory/20260607T233127Z",
+  "boundaries": {
+    "redacted": true,
+    "rawCustomerFilesCommitted": false,
+    "credentialsCommitted": false,
+    "controllerCompatibilityClaimed": false
+  },
+  "roots": [
+    {
+      "id": "valley-flt-4-4-4",
+      "label": "Valley FLT 4.4.4 install",
+      "role": "install",
+      "exists": true
+    },
+    {
+      "id": "corner-gps-mapping-1-0-0-0",
+      "label": "Corner GPS Mapping 1.0.0.0 install",
+      "role": "install",
+      "exists": true
+    },
+    {
+      "id": "valmont-service-tools-common",
+      "label": "Valmont Common Service Tools local data",
+      "role": "data",
+      "exists": true
+    }
+  ],
+  "artifacts": [
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/cv100.dll",
+      "extension": ".dll",
+      "sizeBytes": 843824,
+      "sha256": "6eeeee6401e9a199d67fc5fb095f4cc292d3cbd37fa7111b3a84c1043d76c5e9"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/cxcore100.dll",
+      "extension": ".dll",
+      "sizeBytes": 1011764,
+      "sha256": "39748cd7fd0b0d270239bd8d7e59e9477a1c1b358f9d66004646cbeff2e36443"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/GGSInterface.exe",
+      "extension": ".exe",
+      "sizeBytes": 1912832,
+      "sha256": "6dcb79b728e526480319e589ed6305004f3adf70f44fcf251cbad01a68d95138"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/GPSMap.exe",
+      "extension": ".exe",
+      "sizeBytes": 640512,
+      "sha256": "2a83e1cf1f977ca8d9e106599bdc9e60dbf8317cf1107322345656b070b06903"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/GPSMap.exe.config",
+      "extension": ".config",
+      "sizeBytes": 6165,
+      "sha256": "5410eeae1c4951a93cf1f03f15a9a7975c3fd6d4dc8715990cff1e691efa1b51"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/GPSMapConfig.xml",
+      "extension": ".xml",
+      "sizeBytes": 6971,
+      "sha256": "8de9d5e9ca65be4b797a31541d51e047bce9489acc841093e98d6586afcef6ee"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/GPSMapLib.dll",
+      "extension": ".dll",
+      "sizeBytes": 124416,
+      "sha256": "0a944023a61b2b49de55e3ff96cf1a79a56d6169c22c7fd02c5023e84d804e76"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/libguide40.dll",
+      "extension": ".dll",
+      "sizeBytes": 196608,
+      "sha256": "83fffcee58767d863285fc8c24d3ae04a22f0cbf9ce181a2692513b513a216f5"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/mclt.Config",
+      "extension": ".config",
+      "sizeBytes": 1137,
+      "sha256": "77490ee8e3d7d4ea32f7684817af15545cf903ca3fea9bf4e19d98a6dc117d52"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/mclt.exe",
+      "extension": ".exe",
+      "sizeBytes": 114688,
+      "sha256": "3f217af0d58df757baf728c49d7f0d77d05e695e62164e84138b37a3f095fe2c"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/Microsoft.VisualBasic.PowerPacks.Vs.dll",
+      "extension": ".dll",
+      "sizeBytes": 356352,
+      "sha256": "3d65066766862a957f5377412c835dd865e0c0de45e6efddc84b3bd9106c9c0b"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/MSVCP71.dll",
+      "extension": ".dll",
+      "sizeBytes": 499712,
+      "sha256": "df96156f6a548fd6fe5672918de5ae4509d3c810a57bffd2a91de45a3ed5b23b"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/MSVCR71.dll",
+      "extension": ".dll",
+      "sizeBytes": 348160,
+      "sha256": "8094af5ee310714caebccaeee7769ffb08048503ba478b879edfef5f1a24fefe"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/QtCore4.dll",
+      "extension": ".dll",
+      "sizeBytes": 1536000,
+      "sha256": "4a531c240c7f7a3c0508d69c916637bd2c366cccb8f50d931568fbaec6e5f200"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/QtGui4.dll",
+      "extension": ".dll",
+      "sizeBytes": 6234112,
+      "sha256": "847c6d3326b200d9ecf4ad5fbf64debad63e441c9ef8567d682e1478c473996d"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/QtNetwork4.dll",
+      "extension": ".dll",
+      "sizeBytes": 561152,
+      "sha256": "e39b3e87779dff5c8288b8c50ae227421ce3cacba7e1fdd34478499fac1b73c7"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/QtXml4.dll",
+      "extension": ".dll",
+      "sizeBytes": 339968,
+      "sha256": "472843f1b9b8a1af0f55abe1c7a20a1d68ceb2474ad74886d0e5d92ad30a04f6"
+    },
+    {
+      "rootId": "corner-gps-mapping-1-0-0-0",
+      "redactedPath": "corner-gps-mapping-1-0-0-0:/qwt5.dll",
+      "extension": ".dll",
+      "sizeBytes": 593920,
+      "sha256": "209ffa4d3d756baa777aa80bfef9c3a418f0384e8b35271047505b8f36084b7f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Akavache.dll",
+      "extension": ".dll",
+      "sizeBytes": 36864,
+      "sha256": "34aadba59ea758c80bed2663680c7aca0c38af8977b7993a6247ff8f891ae6af"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Akavache.Portable.dll",
+      "extension": ".dll",
+      "sizeBytes": 54272,
+      "sha256": "f6bd634cde802f2b0a29c9b5701e4d5505f97a25bfe3f0ea98f97ee19a358a90"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Akavache.Portable.xml",
+      "extension": ".xml",
+      "sizeBytes": 31498,
+      "sha256": "8c490b7c818db33826662dd4a4ecdb9289cef592b99557abb2def895563cd68f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Akavache.xml",
+      "extension": ".xml",
+      "sizeBytes": 5707,
+      "sha256": "71e35ab68a43fd9624fe99c2cb18d60905e365c086a42f1b29e6e4c598aff61a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Ggs/GGSInterface.exe",
+      "extension": ".exe",
+      "sizeBytes": 1912832,
+      "sha256": "6dcb79b728e526480319e589ed6305004f3adf70f44fcf251cbad01a68d95138"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Ggs/MSVCP71.dll",
+      "extension": ".dll",
+      "sizeBytes": 499712,
+      "sha256": "df96156f6a548fd6fe5672918de5ae4509d3c810a57bffd2a91de45a3ed5b23b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Ggs/MSVCR71.dll",
+      "extension": ".dll",
+      "sizeBytes": 348160,
+      "sha256": "8094af5ee310714caebccaeee7769ffb08048503ba478b879edfef5f1a24fefe"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Ggs/QtCore4.dll",
+      "extension": ".dll",
+      "sizeBytes": 1536000,
+      "sha256": "4a531c240c7f7a3c0508d69c916637bd2c366cccb8f50d931568fbaec6e5f200"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Ggs/QtGui4.dll",
+      "extension": ".dll",
+      "sizeBytes": 6234112,
+      "sha256": "847c6d3326b200d9ecf4ad5fbf64debad63e441c9ef8567d682e1478c473996d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Ggs/QtNetwork4.dll",
+      "extension": ".dll",
+      "sizeBytes": 561152,
+      "sha256": "e39b3e87779dff5c8288b8c50ae227421ce3cacba7e1fdd34478499fac1b73c7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Ggs/QtXml4.dll",
+      "extension": ".dll",
+      "sizeBytes": 339968,
+      "sha256": "472843f1b9b8a1af0f55abe1c7a20a1d68ceb2474ad74886d0e5d92ad30a04f6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Ggs/qwt5.dll",
+      "extension": ".dll",
+      "sizeBytes": 593920,
+      "sha256": "209ffa4d3d756baa777aa80bfef9c3a418f0384e8b35271047505b8f36084b7f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Apps/Vri/RxLoader.exe.config",
+      "extension": ".config",
+      "sizeBytes": 902,
+      "sha256": "3401ed578b49174e0b4cde6f4d9958984d3d2f51fe13aa62ec0289cbf59c11d0"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Ciloci.Flee.dll",
+      "extension": ".dll",
+      "sizeBytes": 217088,
+      "sha256": "37bfe967e51e0ba80ba1423b383c8c59c17673d2ce3402546fd6e0c2a5de45e9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/BPF_DXF_GGS-CommandLine.exe",
+      "extension": ".exe",
+      "sizeBytes": 295424,
+      "sha256": "8e9b63fd03ec1b13f6560df6faae7b279145ad9379ba16cb416eee8b2850345f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/DXFPathtoCSV.exe",
+      "extension": ".exe",
+      "sizeBytes": 98304,
+      "sha256": "9d300de431d420e239382c14a2710bf290fc686dd86c2daa416522c1f67ce3e8"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/gdal19.dll",
+      "extension": ".dll",
+      "sizeBytes": 7109632,
+      "sha256": "ef569f218c18dff80eb16f4298a7bb5087dcadedff12a7e9a6fc2aaee9d0a2c7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/geos_c.dll",
+      "extension": ".dll",
+      "sizeBytes": 1618432,
+      "sha256": "aaa3df9252ac7bbe5b5195ad4daa6a30557d7120d91e4852cb54274465396726"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/GGS-Shape-KML.exe",
+      "extension": ".exe",
+      "sizeBytes": 285696,
+      "sha256": "e29d9293590978940076a2742ffba3a588b18f7c982685c390dab485c6cd329e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/KMLtoBPF.exe",
+      "extension": ".exe",
+      "sizeBytes": 185344,
+      "sha256": "ffd793a4898f7ad6c8b2bdde1029b4c3cd9caf58bba26690467911cd7560e16f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/libeay32.dll",
+      "extension": ".dll",
+      "sizeBytes": 1177600,
+      "sha256": "95550b81825ae3fb4298b0de1f7ebd116754d99483a6d73cc7271e002484a928"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/libexpat.dll",
+      "extension": ".dll",
+      "sizeBytes": 131584,
+      "sha256": "bbcf88fc8ed12da7f9873b4b01b6f3ce44dc33c2bd97e4c7af5c1e0175bbf884"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/libgcc_s_dw2-1.dll",
+      "extension": ".dll",
+      "sizeBytes": 43008,
+      "sha256": "b35f2a8f4c8f1833f3cdec20739c58e295758ce22021d03d4335043148bd7610"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/ogr2ogr.exe",
+      "extension": ".exe",
+      "sizeBytes": 113152,
+      "sha256": "bb1354035f11bfac5e1fb46cdd1e8af40f7be1889d80b28e97c39125bd22cfbf"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/proj.dll",
+      "extension": ".dll",
+      "sizeBytes": 219648,
+      "sha256": "c5249011bae11c8d385f3e8de070890b38b97652f9e0a81681542830baf5bbc2"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/ssleay32.dll",
+      "extension": ".dll",
+      "sizeBytes": 232960,
+      "sha256": "5e0fae7ffec8ddbaa5d6be610ab99f6a3b671d957a6aa601091acb0dae1921dc"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/vcredist_x86.exe",
+      "extension": ".exe",
+      "sizeBytes": 5073240,
+      "sha256": "8162b2d665ca52884507ede19549e99939ce4ea4a638c537fa653539819138c8"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Converters/wkhtmltopdf.exe",
+      "extension": ".exe",
+      "sizeBytes": 28709888,
+      "sha256": "3aa3d4497596160dcbc1edf4d30bc363732c25706f8f7b7d3ff3efc7c4317a04"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/CSScriptLibrary.dll",
+      "extension": ".dll",
+      "sizeBytes": 167936,
+      "sha256": "59b4d2d115bb70a6f67ebfb818a25b38ab30dc0103f3871e8657455fa8cc66d3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/de/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 22704,
+      "sha256": "4bdd7ce53b51867efd63d8e240b38beb6dd903a8d086d48fe59c8eb87ca95b3e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/en/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 22704,
+      "sha256": "19b1c6309bafd678cabc21fa24f907e0c8049287ed9b12f86a3b3ad045d73b35"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/es/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 22688,
+      "sha256": "c9970100ed48564f4779bc03b65b69adf55b679f3132adb7a7caa3d7aa401137"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/fr/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 22688,
+      "sha256": "e181984d844aa7030623f602b636ef75299b59d750c88d8006da015de3502266"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GeoAPI.dll",
+      "extension": ".dll",
+      "sizeBytes": 59392,
+      "sha256": "5be9730181f7986a4ed2de4dd991b66dc5fde7ea859912b8007c68ecd8f20b91"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GeoAPI.xml",
+      "extension": ".xml",
+      "sizeBytes": 305333,
+      "sha256": "d9041d6c8070c811413a25314139ef859c7f92635abae60dd49b7301d61eef41"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMAP.dll",
+      "extension": ".dll",
+      "sizeBytes": 566784,
+      "sha256": "61d4d28773b87fa5a78b9a839b1e032230c394cbcc1ee29df1a83c232c620f07"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/cv100.dll",
+      "extension": ".dll",
+      "sizeBytes": 843824,
+      "sha256": "6eeeee6401e9a199d67fc5fb095f4cc292d3cbd37fa7111b3a84c1043d76c5e9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/cxcore100.dll",
+      "extension": ".dll",
+      "sizeBytes": 1011764,
+      "sha256": "39748cd7fd0b0d270239bd8d7e59e9477a1c1b358f9d66004646cbeff2e36443"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/GPSMap.exe",
+      "extension": ".exe",
+      "sizeBytes": 5120,
+      "sha256": "4e4e660ccfcbeae7f8d00c99c049054ff0c3b70de9edb49e6861d299bf3b8aaa"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/GPSMap.vshost.exe",
+      "extension": ".exe",
+      "sizeBytes": 24216,
+      "sha256": "5cd37ffb582d6b9366f05a3268afc86f65efea3b2ad6c6856458416919d32d33"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/GPSMapLib.dll",
+      "extension": ".dll",
+      "sizeBytes": 155648,
+      "sha256": "1c4ed95d1b0590ad584090c90e05feac48d8b8251cd62446bdf99bb889c9188d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/libguide40.dll",
+      "extension": ".dll",
+      "sizeBytes": 196608,
+      "sha256": "83fffcee58767d863285fc8c24d3ae04a22f0cbf9ce181a2692513b513a216f5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/mclt.Config",
+      "extension": ".config",
+      "sizeBytes": 1176,
+      "sha256": "e13d1fd5695503560d2a299f4de67a466574da8219d45f23ad586b7983a8b981"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/mclt.exe",
+      "extension": ".exe",
+      "sizeBytes": 114688,
+      "sha256": "3f217af0d58df757baf728c49d7f0d77d05e695e62164e84138b37a3f095fe2c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/MSVCP71.dll",
+      "extension": ".dll",
+      "sizeBytes": 499712,
+      "sha256": "df96156f6a548fd6fe5672918de5ae4509d3c810a57bffd2a91de45a3ed5b23b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/MSVCR71.dll",
+      "extension": ".dll",
+      "sizeBytes": 348160,
+      "sha256": "8094af5ee310714caebccaeee7769ffb08048503ba478b879edfef5f1a24fefe"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/Pro.xml",
+      "extension": ".xml",
+      "sizeBytes": 510,
+      "sha256": "b95f62ed5833a8a94bd502faf11a988b4e73cf16fb5c69d939af0c2ecea7fff7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/QtCore4.dll",
+      "extension": ".dll",
+      "sizeBytes": 1536000,
+      "sha256": "4a531c240c7f7a3c0508d69c916637bd2c366cccb8f50d931568fbaec6e5f200"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/QtGui4.dll",
+      "extension": ".dll",
+      "sizeBytes": 6234112,
+      "sha256": "847c6d3326b200d9ecf4ad5fbf64debad63e441c9ef8567d682e1478c473996d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/QtNetwork4.dll",
+      "extension": ".dll",
+      "sizeBytes": 561152,
+      "sha256": "e39b3e87779dff5c8288b8c50ae227421ce3cacba7e1fdd34478499fac1b73c7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/QtXml4.dll",
+      "extension": ".dll",
+      "sizeBytes": 339968,
+      "sha256": "472843f1b9b8a1af0f55abe1c7a20a1d68ceb2474ad74886d0e5d92ad30a04f6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMap/qwt5.dll",
+      "extension": ".dll",
+      "sizeBytes": 593920,
+      "sha256": "209ffa4d3d756baa777aa80bfef9c3a418f0384e8b35271047505b8f36084b7f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMapConfig.xml",
+      "extension": ".xml",
+      "sizeBytes": 17061,
+      "sha256": "3e95dfa16b1406a5cf52f9201a364a9ac9ffcc5385561839e33dbc42c5fd32d1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/GPSMapLib.dll",
+      "extension": ".dll",
+      "sizeBytes": 152064,
+      "sha256": "a96f6ffb57c11c1617afb838549b5fb5e76edb48a6e5b8e1df2cd63df128b125"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ICSharpCode.SharpZipLib.dll",
+      "extension": ".dll",
+      "sizeBytes": 188416,
+      "sha256": "b4cba17e1123333356bf7e80a20e3adffd8ec335c14da1a249d1b10f3d7cfd0b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/it/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 22688,
+      "sha256": "6fcd674338990f2964659b9318e0e7c15d69b7412e18fb1aa8ab38e9e94d318f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ja/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 23200,
+      "sha256": "83cc1b9613ca357b99d8a20d205c2176e1de29ddd1218e8165cd7c3b6cb00843"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/KmlProcessor.dll",
+      "extension": ".dll",
+      "sizeBytes": 45056,
+      "sha256": "e34bbef01b7f90d39b426450b5a3c7d32ac11735be96f1fd821e5f7c02c8f3df"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ko/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 22688,
+      "sha256": "119dc1592b7f89ced297c1b07797887c5da922dd50e96309d910d20f8a460507"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/libSkiaSharp.dll",
+      "extension": ".dll",
+      "sizeBytes": 5484104,
+      "sha256": "3524d6f652e290b9cae7d3dc7235853db587bd60979f271ff2950d54c0cea7d4"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/MapSuiteCore.dll",
+      "extension": ".dll",
+      "sizeBytes": 4172288,
+      "sha256": "a0e7af80a2f81249c63a1c415949bb6958a74d7354ce821e1147c1e50b15fbc7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/MapSuiteCore.xml",
+      "extension": ".xml",
+      "sizeBytes": 4880874,
+      "sha256": "465c3ff1ae0bcba6411a46f41661cb13b8b4c2e11f5c96da362ad388288d08e5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.ApplicationInsights.dll",
+      "extension": ".dll",
+      "sizeBytes": 386592,
+      "sha256": "06bbfd25f0aedfcdaf6f26d43feea0cd3878eacedbe7207032a80a5567aa3224"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.ApplicationInsights.xml",
+      "extension": ".xml",
+      "sizeBytes": 644843,
+      "sha256": "d62ac679d1b95b83449b986bcc6b7c439610734a801ea49f1a5eef1fa2bd44a7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.Identity.Client.dll",
+      "extension": ".dll",
+      "sizeBytes": 1644544,
+      "sha256": "61d350a14069d0e29cb4a364ee36b0e38ccbb98705f390f32d0df936a87db6e5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.Identity.Client.Extensions.Msal.dll",
+      "extension": ".dll",
+      "sizeBytes": 66656,
+      "sha256": "6c8a26705c69068484b721c1ce09ca6c0afc9dfdce422edd74b7a7f1a0af0cb6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.Identity.Client.Extensions.Msal.xml",
+      "extension": ".xml",
+      "sizeBytes": 46587,
+      "sha256": "55ec284688c8deee8d513c8d8d5c0cc0b69658cfc409ab3464e2a07ba18b1f83"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.Identity.Client.xml",
+      "extension": ".xml",
+      "sizeBytes": 1525251,
+      "sha256": "60fd8046346a42dea041faf5ee734c825666d297a26ce235d6cf9f7ac98c1034"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.IdentityModel.Abstractions.dll",
+      "extension": ".dll",
+      "sizeBytes": 18832,
+      "sha256": "732b74ec9e11ccd9fb8eff0ee87b65e583177fefe64408f18c9b9f9bcfcd84b1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.IdentityModel.Abstractions.xml",
+      "extension": ".xml",
+      "sizeBytes": 16405,
+      "sha256": "5e729e604a63929ba0d77d1b484da1144d719e5a76dc32a8109acf609ca2fc3b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.Maps.MapControl.WPF.dll",
+      "extension": ".dll",
+      "sizeBytes": 313504,
+      "sha256": "ca2aa116190300c246fdeb05aeb96cdf6f2ef179cf3a871dfc5e5e0fd33b3110"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.Maps.MapControl.WPF.xml",
+      "extension": ".xml",
+      "sizeBytes": 107073,
+      "sha256": "e9da5e9c422a17bc61a2ac6cc5bf6073373f0876f0d59dc6f41d1bfc3280d2f2"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.SqlServer.Types.dll",
+      "extension": ".dll",
+      "sizeBytes": 391880,
+      "sha256": "683ba0854ff8a0874fd14e4f540fe189e9df1443f7cfca935dab36964ea8bf4b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Microsoft.Win32.Primitives.dll",
+      "extension": ".dll",
+      "sizeBytes": 21216,
+      "sha256": "5eaa2e82a26b0b302280d08f54dc9da25165dd0e286be52440a271285d63f695"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/msvcp120.dll",
+      "extension": ".dll",
+      "sizeBytes": 455328,
+      "sha256": "87c42ca155473e4e71857d03497c8cbc28fa8ff7f2c8d72e8a1f39b71078f608"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/msvcr120.dll",
+      "extension": ".dll",
+      "sizeBytes": 970912,
+      "sha256": "86e39b5995af0e042fcdaa85fe2aefd7c9ddc7ad65e6327bd5e7058bc3ab615f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/netstandard.dll",
+      "extension": ".dll",
+      "sizeBytes": 98616,
+      "sha256": "8be4a2270f8b2bea40f33f79869fdcca34e07bb764e63b81ded49d90d2b720dd"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/NetTopologySuite.dll",
+      "extension": ".dll",
+      "sizeBytes": 571904,
+      "sha256": "cfe0b296545a2f060589be2b0ca5b6b89d8b4880dcd64697d8dfc7b54050321a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/NetTopologySuite.xml",
+      "extension": ".xml",
+      "sizeBytes": 1821210,
+      "sha256": "ac868f260a8cb7e95461217328ff94a4d344acadba88031c9ecb9d3e1913d14c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Newtonsoft.Json.dll",
+      "extension": ".dll",
+      "sizeBytes": 675240,
+      "sha256": "b66749b81e1489fcd8d754b2ad39ebe0db681344e392a3f49dc9235643bdbd06"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Newtonsoft.Json.xml",
+      "extension": ".xml",
+      "sizeBytes": 699263,
+      "sha256": "bfb2b3619bb456629cb3b3bb321ff751d06e1c04c8749e2114e85f4578efd4b0"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/NLog.config",
+      "extension": ".config",
+      "sizeBytes": 1326,
+      "sha256": "2d76c3e7a00cd07f5c75b34e2f1c1f30574debd2951012c846bdefb17ace07ed"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/NLog.dll",
+      "extension": ".dll",
+      "sizeBytes": 393728,
+      "sha256": "546f59886b65a3988932663a3912c2d3f40465da5b6d544f8feed94c4f659c52"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/NLog.xml",
+      "extension": ".xml",
+      "sizeBytes": 759768,
+      "sha256": "fbcf17d6554c4da7c1d7b06294a587fe8c0755b64c1643a5d786dc5b46c5ed49"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Npgsql.dll",
+      "extension": ".dll",
+      "sizeBytes": 438784,
+      "sha256": "bc3b336a3792b5cadcabdc87412aa5cd9a81e757fed7324d4cd5dd56d7e45029"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Npgsql.xml",
+      "extension": ".xml",
+      "sizeBytes": 323928,
+      "sha256": "960405252af01408b611f499bd034b8ee8b2a01b284566fd7ba24c6221ca0e30"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/NReco.PdfGenerator.dll",
+      "extension": ".dll",
+      "sizeBytes": 10900992,
+      "sha256": "ae0ff336493bfa70d6148b5d7cba71f7020de049d2b366eac15ae597cce7b600"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/PCLWebUtility.dll",
+      "extension": ".dll",
+      "sizeBytes": 20992,
+      "sha256": "c4ac6fe3a69136b373076adef804c680fc4b2e322c26800d5281c8bfba5e99f0"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/PdfSharp.Charting.dll",
+      "extension": ".dll",
+      "sizeBytes": 94208,
+      "sha256": "d1e8a01b4ca760cc0e0d23e673ff082c40e8dd08a296a4bc391edc54a441c2fb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/PdfSharp.Charting.xml",
+      "extension": ".xml",
+      "sizeBytes": 129253,
+      "sha256": "e04dc688a85b1484528c9defeacbeb55af3cbdf99fa23c022d82444850253a9d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/PdfSharp.dll",
+      "extension": ".dll",
+      "sizeBytes": 581632,
+      "sha256": "c318a0666e5a03052bbb32a47ff701f55058b63621ed4727549106f91d17677f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/PdfSharp.xml",
+      "extension": ".xml",
+      "sizeBytes": 1185278,
+      "sha256": "a1c8b9929e031386a94a7d677ed52ff295054de03d0b3cac82e10099ca3b7b00"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/PowerCollections.dll",
+      "extension": ".dll",
+      "sizeBytes": 190464,
+      "sha256": "1c1e1c8c7988907cc47b9288d0ab07e9929df47e36e34d75ad8f42dab50d0b46"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/PowerCollections.xml",
+      "extension": ".xml",
+      "sizeBytes": 758877,
+      "sha256": "74f104ff2b6c936af83003433112adc0e044338c7e1afac2df0d88aa58ae80a3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Pro.xml",
+      "extension": ".xml",
+      "sizeBytes": 510,
+      "sha256": "b95f62ed5833a8a94bd502faf11a988b4e73cf16fb5c69d939af0c2ecea7fff7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ReactiveUI.Blend.dll",
+      "extension": ".dll",
+      "sizeBytes": 7680,
+      "sha256": "3a3f3bf5790c7df26d9a08fb2246a608e5bab01ba2e4627110808afc578e3c06"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ReactiveUI.Blend.xml",
+      "extension": ".xml",
+      "sizeBytes": 141,
+      "sha256": "475bbb26b4b49e64e3a206aadbcc47d2a539af5c6433383d309988addb1bf13e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ReactiveUI.dll",
+      "extension": ".dll",
+      "sizeBytes": 218112,
+      "sha256": "b6baa749f76ec1f7aafc881d8d7e0e15cdf685b117141eab3ef53472cb7550c1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ReactiveUI.NLog.dll",
+      "extension": ".dll",
+      "sizeBytes": 11264,
+      "sha256": "653cceecafaaa69d0865aa6d2e65f89ddb69b567d35acf5a201b44c50e3d21cb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ReactiveUI.NLog.xml",
+      "extension": ".xml",
+      "sizeBytes": 140,
+      "sha256": "0b094eb67523e79ea15ac12b3e1eea585f201474db39f8b7b65c4402447b0a1c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ReactiveUI.Xaml.dll",
+      "extension": ".dll",
+      "sizeBytes": 43008,
+      "sha256": "a2be3d2a4cd2b820793444736adfd75707d6e13536a9bf79cc1653adba3c6307"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ReactiveUI.Xaml.xml",
+      "extension": ".xml",
+      "sizeBytes": 8664,
+      "sha256": "c460b078206a7c678c075a8db9601349da87d93dde51306061e458ef086efc4d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ReactiveUI.xml",
+      "extension": ".xml",
+      "sizeBytes": 225680,
+      "sha256": "97318cade7145b89e5ad6a5da1b1e57b135b2c4527fbb4b4d488696d4cb01bc6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/References/Microsoft.SqlServer.Types.dll",
+      "extension": ".dll",
+      "sizeBytes": 383576,
+      "sha256": "36c3e5efd0731ccf5ac9a341c488b4fd14c69747f5a3f6e4cd976a7c1288b3b0"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Resources/Report/report-filled.xml",
+      "extension": ".xml",
+      "sizeBytes": 2263266,
+      "sha256": "1d7c33aa5dcf375a572be17f4d9fed4713f1bf6100163d98f1655d330b9e35c7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Resources/Report/report.xml",
+      "extension": ".xml",
+      "sizeBytes": 6974,
+      "sha256": "9b00c8524849fffd633fa1c638f5d5cab0f08ccaa73772b0dd603949bf126f74"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ru/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 23216,
+      "sha256": "5abf4c385e916c03d6bfe73b67c0deb6f86d093cb4e876a13d3a2dc3e18327b3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/SkiaSharp.dll",
+      "extension": ".dll",
+      "sizeBytes": 272960,
+      "sha256": "606601b6e556884086d98d7fe6aab048b429719ed3389054ca7b6baa32229a5b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/SkiaSharp.xml",
+      "extension": ".xml",
+      "sizeBytes": 1081081,
+      "sha256": "3080ec5ca330877a203ad8ab03919ebb2fbf323f0d43e04057919602fa9e4c2b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/SmartFormat.dll",
+      "extension": ".dll",
+      "sizeBytes": 52736,
+      "sha256": "cf1a809674e631b38caa77f4df68efee120c9bad5f765248ac6c6e7ae93edb77"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/SoftEdits.dll",
+      "extension": ".dll",
+      "sizeBytes": 9728,
+      "sha256": "41254eaecba1e1736eae85fb6f64bbcbbcdd1bf459be4f5c740d19a8823a2095"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/SqlServerTypes/x64/msvcr100.dll",
+      "extension": ".dll",
+      "sizeBytes": 829264,
+      "sha256": "ae3cb6c6afba9a4aa5c85f66023c35338ca579b30326dd02918f9d55259503d5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/SqlServerTypes/x64/SqlServerSpatial110.dll",
+      "extension": ".dll",
+      "sizeBytes": 768088,
+      "sha256": "36a50e7c8037ec93ea3ec2d8289a3b5c6499b71b99e2bc8387f78f7e1a0b2c33"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/SqlServerTypes/x86/msvcr100.dll",
+      "extension": ".dll",
+      "sizeBytes": 829264,
+      "sha256": "ae3cb6c6afba9a4aa5c85f66023c35338ca579b30326dd02918f9d55259503d5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/SqlServerTypes/x86/SqlServerSpatial110.dll",
+      "extension": ".dll",
+      "sizeBytes": 768088,
+      "sha256": "36a50e7c8037ec93ea3ec2d8289a3b5c6499b71b99e2bc8387f78f7e1a0b2c33"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.AppContext.dll",
+      "extension": ".dll",
+      "sizeBytes": 21176,
+      "sha256": "9dc115ac4aadd6a94d87c7a8a3f61803cc25a3d73501d7534867df6b0d8a0d39"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Buffers.dll",
+      "extension": ".dll",
+      "sizeBytes": 20856,
+      "sha256": "accccfbe45d9f08ffeed9916e37b33e98c65be012cfff6e7fa7b67210ce1fefb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Buffers.xml",
+      "extension": ".xml",
+      "sizeBytes": 3481,
+      "sha256": "2ec7fb12e11f9831e40524427f6d88a3c9ffdd56ccfa81d373467b75b479a578"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Collections.Concurrent.dll",
+      "extension": ".dll",
+      "sizeBytes": 21224,
+      "sha256": "cc62f3b867d50083c2932061f20662c698d2e1a741c4d2f9df1fd2d435e3ef3c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Collections.dll",
+      "extension": ".dll",
+      "sizeBytes": 21696,
+      "sha256": "c2250e9e51b44d8ab8c5b892592766925f6580ee00b95026621d0afb037c2707"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Collections.NonGeneric.dll",
+      "extension": ".dll",
+      "sizeBytes": 21224,
+      "sha256": "529943c0cdf24f57e94bf03fac5f40b94a638625027a02df79e1e8cb5d9bc696"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Collections.Specialized.dll",
+      "extension": ".dll",
+      "sizeBytes": 21224,
+      "sha256": "938da38561da54793944e95e94b6e11cf83aacd667487297d428fbce1c06dc9c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.ComponentModel.dll",
+      "extension": ".dll",
+      "sizeBytes": 21192,
+      "sha256": "5e61d755616cb10524f5f31e9b70c65a7fff8e30e25ce711ac8b354d657ab479"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.ComponentModel.EventBasedAsync.dll",
+      "extension": ".dll",
+      "sizeBytes": 21768,
+      "sha256": "22108e32e0b6e42f5f52a4cb17b9b6fa3dfd547ecd9eef9c67226dbec54d23e5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.ComponentModel.Primitives.dll",
+      "extension": ".dll",
+      "sizeBytes": 21752,
+      "sha256": "bfcd867f71c887429dfe008d7ec5d1853d15b3932d4ce8991694293477b5be37"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.ComponentModel.TypeConverter.dll",
+      "extension": ".dll",
+      "sizeBytes": 22784,
+      "sha256": "0dbb92ecd5dfa7fc258bc6deed4cecf1b37f895457fd06976496926abdb317bb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Console.dll",
+      "extension": ".dll",
+      "sizeBytes": 21160,
+      "sha256": "b537313413f80105f143cc144feeae2ac93f44747727de309a71d57d2650034a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Data.Common.dll",
+      "extension": ".dll",
+      "sizeBytes": 154448,
+      "sha256": "1c7bff6f16bb618648e699b723aeafe511515cd6aad699c25faae2a507e22811"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Data.SQLite.dll",
+      "extension": ".dll",
+      "sizeBytes": 309760,
+      "sha256": "68da4690a498fca93f3d581b67ead5778d120c41a8605a51334774422396aa67"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Data.SQLite.xml",
+      "extension": ".xml",
+      "sizeBytes": 848595,
+      "sha256": "0dd48b4d522d47031c89e831cfdd06f328fb6f3b5538eb2dd87151946c2727e1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.Contracts.dll",
+      "extension": ".dll",
+      "sizeBytes": 21736,
+      "sha256": "9c4ae61e0e8365762efe3d34c5595029f2c12e0079e6070720e2cef0882c84e5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.Debug.dll",
+      "extension": ".dll",
+      "sizeBytes": 21208,
+      "sha256": "55a30d92d163cf1807bea6dc13b4c13e70aebbb034dc77eaef4f4394730dcd8e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.DiagnosticSource.dll",
+      "extension": ".dll",
+      "sizeBytes": 173232,
+      "sha256": "5b8ccdda36486950de37484c25e1334376431e52176c32f87dd730690b273e3b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.DiagnosticSource.xml",
+      "extension": ".xml",
+      "sizeBytes": 143624,
+      "sha256": "8a7d269f0576f8abd75ee24e85a0332fbc23371ba9b1aef50cb7a0a08fef42bf"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.FileVersionInfo.dll",
+      "extension": ".dll",
+      "sizeBytes": 21248,
+      "sha256": "7c25a74772e135257235640a0264ddc05235e14f3627896cfe735e9955155f83"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.Process.dll",
+      "extension": ".dll",
+      "sizeBytes": 21728,
+      "sha256": "28b165cddb82a2507114394ae398995ef8a50c549214f8678aa66054f6927754"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.StackTrace.dll",
+      "extension": ".dll",
+      "sizeBytes": 23936,
+      "sha256": "cae99f910874288afbf810968d13b79d755cd4b2006609ec036ea4934181cba5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.TextWriterTraceListener.dll",
+      "extension": ".dll",
+      "sizeBytes": 21280,
+      "sha256": "63eab38ee9f4dcd686c8e6a4f01e1e2a9bb91e52b20ab4dde0c28061e9261860"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.Tools.dll",
+      "extension": ".dll",
+      "sizeBytes": 21208,
+      "sha256": "260c6250ef9b57dca99b4cecc533f9a34857b5a32b5351202f776163841200aa"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.TraceSource.dll",
+      "extension": ".dll",
+      "sizeBytes": 21744,
+      "sha256": "c81a57d0634c462a6cf49844059e9b170f650ccdf0789519ffd4ae7d28e2718d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Diagnostics.Tracing.dll",
+      "extension": ".dll",
+      "sizeBytes": 31608,
+      "sha256": "b84b93be455cc7d14ec0c88ce08dafac7b6aac2e549c969e7126eb48c31f8b1c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.dll",
+      "extension": ".dll",
+      "sizeBytes": 1442888,
+      "sha256": "8a5237987dd148b2ea17cf04225cecd0da08c03a47fc9abf4815a9e72d190700"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Drawing.Primitives.dll",
+      "extension": ".dll",
+      "sizeBytes": 21208,
+      "sha256": "2805a18724a24034ad6acb315dac516e479cecc5f3753204052657e560932d5d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Dynamic.Runtime.dll",
+      "extension": ".dll",
+      "sizeBytes": 22224,
+      "sha256": "f600acc811720183c639cebe5618baf9c8135b85b9cbdc0758bc9b2dcc6dd7a9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Globalization.Calendars.dll",
+      "extension": ".dll",
+      "sizeBytes": 21744,
+      "sha256": "b56ffb65b842daae13f3020b0b04646db92f89801d2a2f89087d145a996d43f7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Globalization.dll",
+      "extension": ".dll",
+      "sizeBytes": 21192,
+      "sha256": "56bd0c02c734abf4d7fd1ef2e8b6a9e4bf5e4bab4e606cd1023d63b02852fa61"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Globalization.Extensions.dll",
+      "extension": ".dll",
+      "sizeBytes": 25992,
+      "sha256": "c7e91bd148ed22ee1ff8ebd3e58b199a30af90aa37499bcf8da34409672f2ed9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.Compression.dll",
+      "extension": ".dll",
+      "sizeBytes": 110944,
+      "sha256": "da18d61bb6b7d35c56cb4f392fae0844cca73f72a043a08994beccb531ff3b77"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.Compression.ZipFile.dll",
+      "extension": ".dll",
+      "sizeBytes": 21224,
+      "sha256": "7720ee13405ea8a3c204703a181e67dc6d66835e9df263c09d04d8b48b41eb26"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.dll",
+      "extension": ".dll",
+      "sizeBytes": 21144,
+      "sha256": "c191a43029edd4eb8eee003356f1fe79aa45071c25433a7a3589590e9089eed9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.FileSystem.AccessControl.dll",
+      "extension": ".dll",
+      "sizeBytes": 28552,
+      "sha256": "e6026501ad4056ff2f1655b0afdfe8923bc6e8fbad67e1e9ef56e3002f49fbb9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.FileSystem.AccessControl.xml",
+      "extension": ".xml",
+      "sizeBytes": 65116,
+      "sha256": "ec17e2fe77b4b6635b9f2f1c3716284a83310348d8315690a3a1b60f9b8e139d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.FileSystem.dll",
+      "extension": ".dll",
+      "sizeBytes": 21192,
+      "sha256": "9a4595dbb128e2d8f373b3ac45478e7131f4d181b50ec821ec8cb88bd46bd5b8"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.FileSystem.DriveInfo.dll",
+      "extension": ".dll",
+      "sizeBytes": 21232,
+      "sha256": "984575c44cab17d46587af6cc8c22c409b79bec280fd771e6af93a0a0c20e5b0"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.FileSystem.Primitives.dll",
+      "extension": ".dll",
+      "sizeBytes": 21232,
+      "sha256": "5c84dd40d67c0e59906511d2b09da8e28c454b5979eb5fde74213f9d4bdbc564"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.FileSystem.Watcher.dll",
+      "extension": ".dll",
+      "sizeBytes": 21224,
+      "sha256": "c9e2562f1a1b86acdb6957cf916aced9c4f8b71ebb16dfa0050252146205ad37"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.IsolatedStorage.dll",
+      "extension": ".dll",
+      "sizeBytes": 21208,
+      "sha256": "0e80a2e256d16e487bc847d1857ed7cd088f176254ba2a385d675338b836b0fc"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.MemoryMappedFiles.dll",
+      "extension": ".dll",
+      "sizeBytes": 21216,
+      "sha256": "81b6527ac2d18782ac24ae463c11dd1d70ab1bc89f626b7347a592229b371a1d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.Pipes.dll",
+      "extension": ".dll",
+      "sizeBytes": 21168,
+      "sha256": "80a229b2917fc3a5d941ff9745a6be0065028afdf9509300410d2721c71f1198"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.IO.UnmanagedMemoryStream.dll",
+      "extension": ".dll",
+      "sizeBytes": 21232,
+      "sha256": "86f1f12e47f260985b08bb966598123578eb5e48bef9bb086f04e16e9d53bb32"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Linq.dll",
+      "extension": ".dll",
+      "sizeBytes": 21152,
+      "sha256": "349c7fbe9ae2b78c2f90239bddfcea5b16a0faac1fe83553a816c50c3e9089b1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Linq.Expressions.dll",
+      "extension": ".dll",
+      "sizeBytes": 22224,
+      "sha256": "bf97f67165231c2a42b95f11d80337b082e2b2be54351da44c8a10c06194b369"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Linq.Parallel.dll",
+      "extension": ".dll",
+      "sizeBytes": 21192,
+      "sha256": "30a49d16436e3a05569c99a0c2d21755c2fa323c5b925f9f21c10287cc97d9c9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Linq.Queryable.dll",
+      "extension": ".dll",
+      "sizeBytes": 21192,
+      "sha256": "719ac73bb261e0a13574f5a198126ccf40352264958defb555280d005134c704"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Memory.dll",
+      "extension": ".dll",
+      "sizeBytes": 142240,
+      "sha256": "bf3fb84664f4097f1a8a9bc71a51dcf8cf1a905d4080a4d290da1730866e856f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Memory.xml",
+      "extension": ".xml",
+      "sizeBytes": 13950,
+      "sha256": "d5714c96607eb1a9d0f90f57ca194d8a9c3ede0656a1d1f461e78b209f054813"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.Http.dll",
+      "extension": ".dll",
+      "sizeBytes": 198472,
+      "sha256": "b5d20736f84f335ef4c918a5ba41c3a0d7189397c71b166ccc6c342427a94ece"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.NameResolution.dll",
+      "extension": ".dll",
+      "sizeBytes": 21208,
+      "sha256": "222bd77c5692c2961e8c3638f6511d6f7cbeb9e0977e2d5c3bca6739a5311f37"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.NetworkInformation.dll",
+      "extension": ".dll",
+      "sizeBytes": 22248,
+      "sha256": "2e2d28a0802d8c8c08c0d422f48733ad8bf1dfae75f5682a4a3df8898e7e819f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.Ping.dll",
+      "extension": ".dll",
+      "sizeBytes": 21168,
+      "sha256": "4d97e8481b9a27042bb903245625735d82ff627c66797de619303c1e705d0d6a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.Primitives.dll",
+      "extension": ".dll",
+      "sizeBytes": 22216,
+      "sha256": "9a8ba725f8e953c933285065228a9409036f9137d03016b127ccea8a19452466"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.Requests.dll",
+      "extension": ".dll",
+      "sizeBytes": 21184,
+      "sha256": "f2e74a3ec2dc753c9a48fa9a677775f949eb1e02fc1bb8bf38c39e8d2ab147eb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.Security.dll",
+      "extension": ".dll",
+      "sizeBytes": 21696,
+      "sha256": "d0d90152136a0acf340fb345098f2e5c718bb13f3b5a809d7be4d9948b8574d4"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.Sockets.dll",
+      "extension": ".dll",
+      "sizeBytes": 30544,
+      "sha256": "694f4c61b6bae0aefac07a1e861c12c03cb6002f30091e4c8b05bb9c8ccf0d3d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.WebHeaderCollection.dll",
+      "extension": ".dll",
+      "sizeBytes": 21232,
+      "sha256": "69b48ff8e6f40b84cdddb95bcdbb34e1184a2e29cb4ccc0fc9f1a2493648ee37"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.WebSockets.Client.dll",
+      "extension": ".dll",
+      "sizeBytes": 21224,
+      "sha256": "19766a20b62b038abc3e863f2d6e7b55fabee4d9cbcad3eb1d7bd3ebfe8d023a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Net.WebSockets.dll",
+      "extension": ".dll",
+      "sizeBytes": 21192,
+      "sha256": "99920ce34a01a0c07efd86d6e134bb401993515d001b7567a4116ad222993a63"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Numerics.Vectors.dll",
+      "extension": ".dll",
+      "sizeBytes": 115856,
+      "sha256": "1d3ef8698281e7cf7371d1554afef5872b39f96c26da772210a33da041ba1183"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Numerics.Vectors.xml",
+      "extension": ".xml",
+      "sizeBytes": 183484,
+      "sha256": "ae2c3de9ad57d7091d9f44dcdee3f88eccf2ba7cb43adc9bb24769154a532dc7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.ObjectModel.dll",
+      "extension": ".dll",
+      "sizeBytes": 21696,
+      "sha256": "870ee1141cb61abfce44507e39bfdd734f2335e34d89ecfffb13838195a6b936"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.Core.dll",
+      "extension": ".dll",
+      "sizeBytes": 114920,
+      "sha256": "66515e3e1212bbdf06284a6eadfbc354063908c5a0dc9253dcc00fd722e90cd1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.Core.xml",
+      "extension": ".xml",
+      "sizeBytes": 198555,
+      "sha256": "d5f97b4983153211d4543ca65845ad7484e66e0f83959271c25df188dfec5e9e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.Interfaces.dll",
+      "extension": ".dll",
+      "sizeBytes": 24296,
+      "sha256": "5bc6ebc57d4cd8cf2e540a3415c9e32203490a4e5fc3cd97f1ec8273473ebf38"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.Interfaces.xml",
+      "extension": ".xml",
+      "sizeBytes": 20236,
+      "sha256": "8ce4f8c564b4ba8c93481643a13d54c75ce560ee92accf4b1e8018cf9dd324db"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.Linq.dll",
+      "extension": ".dll",
+      "sizeBytes": 708840,
+      "sha256": "f391221bfd041b17c3f4a31f5e41f8dd773e54783809f6ad843bd9e7bba753cb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.Linq.xml",
+      "extension": ".xml",
+      "sizeBytes": 1019645,
+      "sha256": "1ffe81a0dd798f23821b31ee310e6b154e825e21434a005a5e8c6ae5589a27d8"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.PlatformServices.dll",
+      "extension": ".dll",
+      "sizeBytes": 38632,
+      "sha256": "4f4eda5a4b54e18b53e424756455c7190f34136f2f96d17f16c64fabd01b48a0"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.PlatformServices.xml",
+      "extension": ".xml",
+      "sizeBytes": 24749,
+      "sha256": "1613e50817f1869f48f449116e7c6fee1473c371a448c15acd34098428615f95"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.Windows.Threading.dll",
+      "extension": ".dll",
+      "sizeBytes": 29928,
+      "sha256": "f47cad62d7acda94a6ad96214a8cc76da7256850113bf5f92f35621a0da969c3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reactive.Windows.Threading.xml",
+      "extension": ".xml",
+      "sizeBytes": 23371,
+      "sha256": "3acd13e7dce6983cc982d0d2678d8bc68162b0941cf6f7907ab027641398d7e9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reflection.dll",
+      "extension": ".dll",
+      "sizeBytes": 22200,
+      "sha256": "63aaf632ee7f3bc852c4d71c742cf1d26f18f784f6c89113e056b2599ba8f514"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reflection.Extensions.dll",
+      "extension": ".dll",
+      "sizeBytes": 21224,
+      "sha256": "3d2551d6458b84566025fddfe5dad479cab5785428efd6814860d36ad1811c9a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Reflection.Primitives.dll",
+      "extension": ".dll",
+      "sizeBytes": 21736,
+      "sha256": "0383dc02fdf0b5d4612d8caaad13d594cac1609c8240b73dfd6ea5803f5e17ea"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Resources.Reader.dll",
+      "extension": ".dll",
+      "sizeBytes": 21200,
+      "sha256": "e3036362506d96c9c00ed6393a2afcacd9f2e71cd2a35c1d638a61e85d2fb040"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Resources.ResourceManager.dll",
+      "extension": ".dll",
+      "sizeBytes": 21232,
+      "sha256": "62dce4679e33c079e11f41b096bc803b30b1d963a1ea79efa84187cebbc06afe"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Resources.Writer.dll",
+      "extension": ".dll",
+      "sizeBytes": 21200,
+      "sha256": "daaabd07f1b94be19d72913360286e469f454886850afcc603506eaab03150e4"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.CompilerServices.Unsafe.dll",
+      "extension": ".dll",
+      "sizeBytes": 18024,
+      "sha256": "37768488e8ef45729bc7d9a2677633c6450042975bb96516e186da6cb9cd0dcf"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.CompilerServices.Unsafe.xml",
+      "extension": ".xml",
+      "sizeBytes": 20529,
+      "sha256": "39c2d4a63a186d423e9c866f4d3e9a6acba0103398f20baf8b92a38744894215"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.CompilerServices.VisualC.dll",
+      "extension": ".dll",
+      "sizeBytes": 21784,
+      "sha256": "18a610b8bad43cf784cde4d4902a238f2281c2a677daae790cab55f6da915979"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.dll",
+      "extension": ".dll",
+      "sizeBytes": 29360,
+      "sha256": "50ad612d4cf6113de26b2870da099c4817f59e64a2da98f05803b4a2e2304919"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Extensions.dll",
+      "extension": ".dll",
+      "sizeBytes": 21720,
+      "sha256": "f9feb277f86241f55425182a26decf50a210675d4f040ec542af3fb3dd287de6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Handles.dll",
+      "extension": ".dll",
+      "sizeBytes": 21200,
+      "sha256": "7a81d2a001b543b2a55c9affc845a5df7edab1fd308c6979bbd982b1b826b57c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.InteropServices.dll",
+      "extension": ".dll",
+      "sizeBytes": 24296,
+      "sha256": "383a1f9dac655c6805c24d4a03bc5fbeb9abd1536de5510f5756259eefcb4871"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.InteropServices.RuntimeInformation.dll",
+      "extension": ".dll",
+      "sizeBytes": 28624,
+      "sha256": "8bb9d52ba5c67f05c8f632deb1e7e98a909318b10e1388b47e919515fdd42cbf"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Numerics.dll",
+      "extension": ".dll",
+      "sizeBytes": 21200,
+      "sha256": "16e7efd6c19b2e3e516ae1bc7b3175d0e22f1ad357701f229e353da348eee182"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Serialization.dll",
+      "extension": ".dll",
+      "sizeBytes": 424096,
+      "sha256": "f929c65ed291a6cdf447c35096062cb0efe2db3efe1c405f0c45ef25ce9847e6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Serialization.Formatters.dll",
+      "extension": ".dll",
+      "sizeBytes": 21264,
+      "sha256": "c343f7bf08a4c97a90ba607a492c721533333173fa63f65f6e5de9ceee65fc16"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Serialization.Json.dll",
+      "extension": ".dll",
+      "sizeBytes": 21240,
+      "sha256": "e8d531f0aaa674f794b7f43ec76e4e32ad93f3c136020cf4b6e3433832f9c0df"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Serialization.Primitives.dll",
+      "extension": ".dll",
+      "sizeBytes": 27048,
+      "sha256": "575e26a455892f1fd77b730e6928f70b760e76094afe5bcb677d854daf869ac5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Serialization.xml",
+      "extension": ".xml",
+      "sizeBytes": 353075,
+      "sha256": "ed6a5355ef4a518efe42931ee4c7439732e4b82ba5872485269ba64756097200"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Runtime.Serialization.Xml.dll",
+      "extension": ".dll",
+      "sizeBytes": 24816,
+      "sha256": "557858e44a51a74646ad07a85cba56af1da13ad26ac2f74ee5d8c3e8a171c221"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.AccessControl.dll",
+      "extension": ".dll",
+      "sizeBytes": 33672,
+      "sha256": "1fda491eebdb19ea0a83cf6c16ab5dd004a1bfdfc845ede017ebe0945beb927f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.AccessControl.xml",
+      "extension": ".xml",
+      "sizeBytes": 221032,
+      "sha256": "48335d780f370c29ac652baa1ff984c972158d3caadd6524842f13ce720af4f8"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Claims.dll",
+      "extension": ".dll",
+      "sizeBytes": 21200,
+      "sha256": "8270d1248950ee8aee5c2ac2e321df07e65c7a94004ae03c857deacd231a5542"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Cryptography.Algorithms.dll",
+      "extension": ".dll",
+      "sizeBytes": 47016,
+      "sha256": "967dddbfe7f1ceb933b5875d65c59cdb835bb063f287a361e8b35dd814a9b14d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Cryptography.Csp.dll",
+      "extension": ".dll",
+      "sizeBytes": 21240,
+      "sha256": "566775f5502c3c1fa70acade145293df5d02c1a9f031820d429605e9b4584b44"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Cryptography.Encoding.dll",
+      "extension": ".dll",
+      "sizeBytes": 21256,
+      "sha256": "1f5c1abe1b2720680170388569354d8cda9d558b53aff7caf175ce0f7e3733e5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Cryptography.Primitives.dll",
+      "extension": ".dll",
+      "sizeBytes": 21784,
+      "sha256": "b755d0b55a465d07c9dd3fc11822487d1e649b684aef91a4ce9b935b416a01b9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Cryptography.ProtectedData.dll",
+      "extension": ".dll",
+      "sizeBytes": 23696,
+      "sha256": "a79ad1e9e7205bd790f40d6c1900baf1a9c8caa06089878d24ed3599ac3228a9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Cryptography.X509Certificates.dll",
+      "extension": ".dll",
+      "sizeBytes": 22832,
+      "sha256": "3c8630acb43c12a6a317227ff2922056ecd991fe945464fdf7ea81f1293a479f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Principal.dll",
+      "extension": ".dll",
+      "sizeBytes": 21208,
+      "sha256": "02416bc542be82002b8b81adbbbcdcc8d098104020d09b571dc674b5bc19a177"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Principal.Windows.dll",
+      "extension": ".dll",
+      "sizeBytes": 18312,
+      "sha256": "b4d8e15adc235d0e858e39b5133e5d00a4baa8c94f4f39e3b5e791b0f9c0c806"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.Principal.Windows.xml",
+      "extension": ".xml",
+      "sizeBytes": 90968,
+      "sha256": "1ab01d3e4957628d79789a9903c90e5b2309f09e7914bb3345e4d087a4209b75"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Security.SecureString.dll",
+      "extension": ".dll",
+      "sizeBytes": 22392,
+      "sha256": "18032d190d0d599823e59c8dd8b588909bef8888b8bf304723a138b61f1b911f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Text.Encoding.dll",
+      "extension": ".dll",
+      "sizeBytes": 21696,
+      "sha256": "0ab1f7f87b7c2afca57d394e4f4e262c82ba3209cb0a750cd66401fb33f21eca"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Text.Encoding.Extensions.dll",
+      "extension": ".dll",
+      "sizeBytes": 21232,
+      "sha256": "cbe29672cd2b6a0ea97b55f3844fbede3e591996f39c3aa1f829f2fa50551fa9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Text.RegularExpressions.dll",
+      "extension": ".dll",
+      "sizeBytes": 21232,
+      "sha256": "c98a52bd017df01aea7b955e6f219537d391a62c2c2b976684da282f9cd7cacf"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Threading.dll",
+      "extension": ".dll",
+      "sizeBytes": 22192,
+      "sha256": "4dc8d588ec63641c28422d648e8de5e2c030eb7afec2071a99dd3bd9a204557f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Threading.Overlapped.dll",
+      "extension": ".dll",
+      "sizeBytes": 37752,
+      "sha256": "f17ff442b77a6cfe9c118d2f8fae1ab6c814a0d4f35c5844996be84f3fcc8592"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Threading.Tasks.dll",
+      "extension": ".dll",
+      "sizeBytes": 22224,
+      "sha256": "0110616dfe870b8bcf25df8f6ce38ef5aac39e728ddaa3420ea199f5a7e80a16"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Threading.Tasks.Parallel.dll",
+      "extension": ".dll",
+      "sizeBytes": 21232,
+      "sha256": "3468e0c875db94a8f45d56ab76bbcc677b942ca51a23649ba3c5ad1b20e391f1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Threading.Thread.dll",
+      "extension": ".dll",
+      "sizeBytes": 21200,
+      "sha256": "9d4faea9892d4ecfabf61986687fc6cb30f5f51a6b62819b9571ff58e04c4dd5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Threading.ThreadPool.dll",
+      "extension": ".dll",
+      "sizeBytes": 21216,
+      "sha256": "3d9ebc81b1bd3234666c8ce403a5f17a726867c68ffa5de4ec8ee92599335658"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Threading.Timer.dll",
+      "extension": ".dll",
+      "sizeBytes": 21200,
+      "sha256": "04b9235f64c9c846f8a767230714895da87c7ae2cd0105e9d14835ae46f0fed8"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.ValueTuple.dll",
+      "extension": ".dll",
+      "sizeBytes": 79176,
+      "sha256": "efd8155cec6f3683b701fe94f555d225332d283126bb36b36d9a20ea9d7fc724"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Windows.Controls.Input.Toolkit.dll",
+      "extension": ".dll",
+      "sizeBytes": 109400,
+      "sha256": "bc3a78eb4df2fd5b39244fa0586cc0a82fe3d0e185d151e6c340c53072a61872"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Windows.Controls.Layout.Toolkit.dll",
+      "extension": ".dll",
+      "sizeBytes": 95064,
+      "sha256": "e3d7f794442d9dbe99f5d578c0bc8d9e3198fe4055cf5581fc1de78085967c50"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Windows.Interactivity.dll",
+      "extension": ".dll",
+      "sizeBytes": 55904,
+      "sha256": "93fbc59e4880afc9f136c3ac0976ada7f3faa7cacedce5c824b337cbca9d2ebf"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Xaml.dll",
+      "extension": ".dll",
+      "sizeBytes": 109656,
+      "sha256": "5bb63269d5b6f6d0444a3ab6f9aa4b0e32f4c7dac8e68ef68cdc60a6587399f6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Xaml.xml",
+      "extension": ".xml",
+      "sizeBytes": 356897,
+      "sha256": "cef73fcc616b585a42797b232bc3555645baca7766543280d4e768c08ed2ddfb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.xml",
+      "extension": ".xml",
+      "sizeBytes": 4730803,
+      "sha256": "1d87f40d2a572549ebf4b0bdae0e9e469273db277d5af1deecaab796cdd33135"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Xml.ReaderWriter.dll",
+      "extension": ".dll",
+      "sizeBytes": 21712,
+      "sha256": "5f560e1dd529bb2529d7052e04008449f58d0439c2bb43437d7b5d39f84f949f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Xml.XDocument.dll",
+      "extension": ".dll",
+      "sizeBytes": 21696,
+      "sha256": "4f6a14e4ba2a2b26b8b8433d5f82f75a96af5a4f036d9447373b07271493917b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Xml.XmlDocument.dll",
+      "extension": ".dll",
+      "sizeBytes": 21712,
+      "sha256": "8957f0bcea6ab8a011a53ae62466505199f11a228f87f3809931d974f87078ce"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Xml.XmlSerializer.dll",
+      "extension": ".dll",
+      "sizeBytes": 21712,
+      "sha256": "21493f7f615a099e795f7fae7ecce6082414d1d427790bdf4b103623a3ab34eb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Xml.XPath.dll",
+      "extension": ".dll",
+      "sizeBytes": 21176,
+      "sha256": "24daa1faee0478ba58febe8ee789eb88be0a14d350b57ad8b10690c55976b2e1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/System.Xml.XPath.XDocument.dll",
+      "extension": ".dll",
+      "sizeBytes": 22904,
+      "sha256": "b33d08149a756a401628d11bfddfeeaca1f03c0578395bb061dae44f8a12ce5d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.Cloud.Client.dll",
+      "extension": ".dll",
+      "sizeBytes": 188416,
+      "sha256": "f65fc69470ee4ae0bc2e83ee619384302e6b29275be6c583608ee5c434a38df5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.Cloud.Client.xml",
+      "extension": ".xml",
+      "sizeBytes": 248028,
+      "sha256": "36ad13742b6e4c96131844b1addaf12505bfc1985981279195fddb76f0df2652"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.dll",
+      "extension": ".dll",
+      "sizeBytes": 2051072,
+      "sha256": "e36acdda151367141e9dd64d295dafa84eda95b93a86b245f4c921ee1cdff528"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Drawing.PdfGeoCanvas.dll",
+      "extension": ".dll",
+      "sizeBytes": 26112,
+      "sha256": "703493408f143254ddfa4b959caffe41b5aeb60d0b825105ff8bb604012ace1c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Drawing.PdfGeoCanvas.xml",
+      "extension": ".xml",
+      "sizeBytes": 26040,
+      "sha256": "fa69408ccf1bcf63d310f262c41332ad7817e0ec34d3299e7219e9004bd33bc2"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Adornments.dll",
+      "extension": ".dll",
+      "sizeBytes": 365056,
+      "sha256": "49c5ffc5a6638336c5472fae851beb052860e6ae7a42f33d37dae6e7a6cf3e02"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Adornments.xml",
+      "extension": ".xml",
+      "sizeBytes": 23913,
+      "sha256": "6effc9db4a53faa65c2adfd8c4f39a673514c2a695fbc9331e95631eb3dd7c6f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Background.dll",
+      "extension": ".dll",
+      "sizeBytes": 6656,
+      "sha256": "af47abf5bf1db631b37d1c43c7996cc2e672188a851bd451bedcc5e75a7399ef"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Background.xml",
+      "extension": ".xml",
+      "sizeBytes": 3407,
+      "sha256": "67a5d3f69f08dcb15211990855e84ead0df3a65d2ddc13a1b06d498c9ff0f7b1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.BingMaps.dll",
+      "extension": ".dll",
+      "sizeBytes": 36864,
+      "sha256": "4ceeb38cf98b9e12c79891f2f934d19ead07f1d5b266018a985b2cf89b4bc7e2"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.BingMaps.xml",
+      "extension": ".xml",
+      "sizeBytes": 4221,
+      "sha256": "a0849e5b870b9ee19b85d311a5328b73990a578dcabfef97a760baca54c28ba8"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.CloudFile.dll",
+      "extension": ".dll",
+      "sizeBytes": 28160,
+      "sha256": "e6b60849092ccaec023fd9d5d1186e498d80f6d7d8a10b2923552db647312d79"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.CloudFile.xml",
+      "extension": ".xml",
+      "sizeBytes": 316,
+      "sha256": "e8d0c15d75f145b1fdcfd3308eadfd6b8b7bbafbb2d8e4eb079b3de6dde296c4"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Delimited.dll",
+      "extension": ".dll",
+      "sizeBytes": 53248,
+      "sha256": "2a66ab4969d7afba7d37bc31722397b422d85116a564148192f93da5f2712063"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Delimited.xml",
+      "extension": ".xml",
+      "sizeBytes": 1993,
+      "sha256": "533fb71230e7e9cfaaa7c7488fb80f89aca6e1a10e87bd208921da95db0e29b7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Ecw.dll",
+      "extension": ".dll",
+      "sizeBytes": 18944,
+      "sha256": "38a6a4486ba4efda8c7ed7a5c712a724ce2d2d3da96c08baa4f0e300fdda04d4"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Ecw.xml",
+      "extension": ".xml",
+      "sizeBytes": 17445,
+      "sha256": "60de8e88036e2bd59f5fa22c665376bba68d5087a91c57a2ce969504c6b2beed"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.FileGeoDatabase.dll",
+      "extension": ".dll",
+      "sizeBytes": 16384,
+      "sha256": "91ee228aa8dd549376f19689981e6b6926405348a5ce05567f3021a663ac482c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.FileGeoDatabase.xml",
+      "extension": ".xml",
+      "sizeBytes": 1939,
+      "sha256": "8ae0139dd6d61c257dc60e2f1c9b1e29b8e8a11a0e16fbf074080b48a7d0e1e7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.GeoTiff.dll",
+      "extension": ".dll",
+      "sizeBytes": 599040,
+      "sha256": "93279490c521f392b4ecf266795e69a0d607604af339176c9d70c9693d466438"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.GeoTiff.xml",
+      "extension": ".xml",
+      "sizeBytes": 766716,
+      "sha256": "25db4bf678efc5bf75b3dd2939f83de75aea2be9d22c880e5e8982ef7a2e95ac"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.GoogleMaps.dll",
+      "extension": ".dll",
+      "sizeBytes": 39424,
+      "sha256": "a5fd67837d77763e61b219d60718d743b498bab7eebe52fcfbe7877d0c9516a6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.GoogleMaps.xml",
+      "extension": ".xml",
+      "sizeBytes": 13167,
+      "sha256": "23b07966771cbaee4fed217b4e9a0b9e2dd0312428ae7a4e71ff657322f6f8b1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Gpx.dll",
+      "extension": ".dll",
+      "sizeBytes": 13312,
+      "sha256": "ad8b01678a19d83c97844ede94604660820308f145bd3cc94b372b47134667ee"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Gpx.xml",
+      "extension": ".xml",
+      "sizeBytes": 153,
+      "sha256": "90da752528a017e7dd4e18e8ce9a06fdbf4b01c8829494a84465062fbb6c7750"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Graticule.dll",
+      "extension": ".dll",
+      "sizeBytes": 18944,
+      "sha256": "ec4efe0b27d6b959b152c1e172888a46e69722b4c96a5bd43861ac12bde75d78"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Graticule.xml",
+      "extension": ".xml",
+      "sizeBytes": 3908,
+      "sha256": "e5de0cf109686de16ca320e2991f6120e293904f59e2679e7e3c87ac459185e0"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Grids.dll",
+      "extension": ".dll",
+      "sizeBytes": 53760,
+      "sha256": "221fd9c04794a2e9269047ef0ab0fa439b8b97cad32e64195213712a5e421255"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Grids.xml",
+      "extension": ".xml",
+      "sizeBytes": 100118,
+      "sha256": "7e759c744ec4c5ecf7dfb940fa21340c8b8626bdf79c156cc58f31c283205ed4"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Group.dll",
+      "extension": ".dll",
+      "sizeBytes": 7168,
+      "sha256": "9ea7eb2e81a890163176db8140f5420d2e2bf979f4cc1398593a6e0a37ce72b3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Group.xml",
+      "extension": ".xml",
+      "sizeBytes": 6946,
+      "sha256": "2734d3cbfaf1ca2f15061a650845e353b966204da4faa4835f709c8e701c3066"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Heat.dll",
+      "extension": ".dll",
+      "sizeBytes": 20480,
+      "sha256": "4af5afcc2b21bae8d2b5f5b81b5f866e0cff41d1155443d8829b83550aa61560"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Heat.xml",
+      "extension": ".xml",
+      "sizeBytes": 17814,
+      "sha256": "c49c6f3fe9e96e3270f9e7087a1361cfe9c2feede43deb2aa6b17a654abeb6c3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.IsoLine.dll",
+      "extension": ".dll",
+      "sizeBytes": 44544,
+      "sha256": "0c28472c120389bfe2a8acdefc45addd2ce4686e6a5797db38d3e67a007f2712"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.IsoLine.xml",
+      "extension": ".xml",
+      "sizeBytes": 2974,
+      "sha256": "e9fb4a0b2f2d7a11c4eb74c85334848ceba68c1d0048bb77b7a4592fd33054dc"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Jpeg2000.dll",
+      "extension": ".dll",
+      "sizeBytes": 17408,
+      "sha256": "8bf93275d2a1ba467d5883ddf065b7b5c1cd685b428a2677703f99ea3eb159cb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Jpeg2000.xml",
+      "extension": ".xml",
+      "sizeBytes": 14944,
+      "sha256": "9aca8efb27f3d0002fe3bc9d9f3b50cd50bade13dbf79f5480b984dde61dd9f7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Kml.dll",
+      "extension": ".dll",
+      "sizeBytes": 114688,
+      "sha256": "17aec61806b7cf6f1bc1deec6b5ef75a7aec88c18899cb537dc432d050c8d8f7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Kml.xml",
+      "extension": ".xml",
+      "sizeBytes": 8828,
+      "sha256": "199a4e210c84860ffaabbfb535272b51090e38afd08f04e4eae000ed04878b1d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.MapShape.dll",
+      "extension": ".dll",
+      "sizeBytes": 7168,
+      "sha256": "21f972f38b186dff195cefde04363ccfa8e6cb2cb760ca51242852cca0a5ae65"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.MapShape.xml",
+      "extension": ".xml",
+      "sizeBytes": 4162,
+      "sha256": "29f6f7941210957892982c26d8cc0f385f70ae2822d0368dc0d76d18583ac889"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.MrSid.dll",
+      "extension": ".dll",
+      "sizeBytes": 18432,
+      "sha256": "ed5595052297d183129a42d57b8d6a3dcbe2e656c1e70b765181c91c4bcda4f9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.MrSid.xml",
+      "extension": ".xml",
+      "sizeBytes": 18814,
+      "sha256": "75aaf7eb9aaa5e5917cd7e55aca7c0758a2b27bf1de5195fbba4d6071da5e241"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.MsSql.dll",
+      "extension": ".dll",
+      "sizeBytes": 43520,
+      "sha256": "aeb9fd4a2bfd5da58a05110cebc1462d1355cf5c0a1616ba642edd9cb91a6e7e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.MsSql.xml",
+      "extension": ".xml",
+      "sizeBytes": 51270,
+      "sha256": "a297a82948f8d47d44384901399bda087214bfc48e41f63ecd43eddbe14cb85f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.MultipleFeatureSource.dll",
+      "extension": ".dll",
+      "sizeBytes": 11264,
+      "sha256": "3156045ee2f83ca71be317b2493b486f6736649df5f1256954f35e677939db3e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.MultipleFeatureSource.xml",
+      "extension": ".xml",
+      "sizeBytes": 28271,
+      "sha256": "b057bfc16e259edf71bca2da322136e19b5dc2dcd2b78bac2c23601b9ea66568"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.NativeImage.dll",
+      "extension": ".dll",
+      "sizeBytes": 12288,
+      "sha256": "73b32c88b8b3c6a27ad09335ccd1bbde7cbef2e79ea8d23535b4ab6645bf714a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.NativeImage.xml",
+      "extension": ".xml",
+      "sizeBytes": 23719,
+      "sha256": "41036005fb1c8974da119a35bb6e414f995f09c1ce60bdba4b41e5046c2e133b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.NauticalCharts.dll",
+      "extension": ".dll",
+      "sizeBytes": 1215488,
+      "sha256": "8259587112d7e4081d3c3052ee79913dbffad9cc70ecd6b2e174ea675b0fea2e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.NauticalCharts.xml",
+      "extension": ".xml",
+      "sizeBytes": 53184,
+      "sha256": "1de7233ea62d1e3facaf312b205b7c2cc5eef2750c43a89b8eafa65a525b63f2"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Noaa.dll",
+      "extension": ".dll",
+      "sizeBytes": 113664,
+      "sha256": "c0852f09023b608dc5cbe70952a3d3795bc35d2a1fbd490ec72da4e9f7fccf8e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Noaa.xml",
+      "extension": ".xml",
+      "sizeBytes": 903,
+      "sha256": "e36d75be92e22b2b3fbe8d11b44975ed0deb842f7da29484de6529d3f9eef06e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.OpenStreetMap.dll",
+      "extension": ".dll",
+      "sizeBytes": 23040,
+      "sha256": "10575f29245972eafe965cbacd477d5e33811442fb32129bd84d6b02f6227b6c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.OpenStreetMap.xml",
+      "extension": ".xml",
+      "sizeBytes": 6618,
+      "sha256": "6519c9af8456e2277ccd91b34a061d756a42eb8289e2227027d475b577523d46"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.PostgreSql.dll",
+      "extension": ".dll",
+      "sizeBytes": 35840,
+      "sha256": "83e1706b767ea926ead4aa87136ac94621f18e2b63495907cb1850e13870090a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.PostgreSql.xml",
+      "extension": ".xml",
+      "sizeBytes": 36536,
+      "sha256": "f6331ac4fe6cfd1b9913f37d9b6312746f9c893c1cdc916d9aaace57afcd7f51"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Printers.dll",
+      "extension": ".dll",
+      "sizeBytes": 243200,
+      "sha256": "8cc0432201568b43b86362e20060accbec9981dcd6cc3b1245fb480ba8e42ec7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Printers.xml",
+      "extension": ".xml",
+      "sizeBytes": 12089,
+      "sha256": "e3ac15ec84438c531ee6de74a69d7db720e12f4e42b4dc2c036a0be79e662f0c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Restriction.dll",
+      "extension": ".dll",
+      "sizeBytes": 16896,
+      "sha256": "291f60e6ff01c2dae58a23de3d57729893b722ffd7326ff26d751719ace4c71b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Restriction.xml",
+      "extension": ".xml",
+      "sizeBytes": 13985,
+      "sha256": "40c450d59fac5cf915eaeb424c344bec07a360cd82b2de3db0d546e5e6e0ab47"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.ShapeFile.dll",
+      "extension": ".dll",
+      "sizeBytes": 98816,
+      "sha256": "79a16770b8d2293b28e21e2f6c0bd1415f204eaf17187c2caa52e4bbe63a9e8d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.ShapeFile.xml",
+      "extension": ".xml",
+      "sizeBytes": 207997,
+      "sha256": "6dd9490b5fd5d56ed1d65b87cb76c21ff6aa94ec0dd811092c10fe6e232f3472"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Sqlite.dll",
+      "extension": ".dll",
+      "sizeBytes": 38912,
+      "sha256": "1f0daf3e2af8e5e0efc21dace9f90580f5843d05a0ab1278b11f989173a5ed8e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Sqlite.xml",
+      "extension": ".xml",
+      "sizeBytes": 13437,
+      "sha256": "8113c3af5e91bbb85e3fcc80698f98d7feef4c43fed6c9af84d625d540af1527"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Tab.dll",
+      "extension": ".dll",
+      "sizeBytes": 463360,
+      "sha256": "6269796ac98a27cd60d0e5762bc07ce25f14da8d7a710c097b610d856cbb5e69"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Tab.xml",
+      "extension": ".xml",
+      "sizeBytes": 411607,
+      "sha256": "c7a376dbad86f4b589b011bc2c9a00190659672fd03ad1880abdfe4503b0e475"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.TiledWms.dll",
+      "extension": ".dll",
+      "sizeBytes": 50688,
+      "sha256": "3e6785a6b3ba2e4a87e528f39b4ab83af04b0ac847ae8fee22f7fd95afcaaf55"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.TiledWms.xml",
+      "extension": ".xml",
+      "sizeBytes": 31213,
+      "sha256": "0278951a04c351779d582b79a7c8f4dfd80b6b0113d7375c06d915d4413ea18d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.TinyGeo.dll",
+      "extension": ".dll",
+      "sizeBytes": 96768,
+      "sha256": "3f75bfc4ba373bb0183a2387b3329e8696bb37a2b9b6dffaeba9b2b7fbe19a10"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.TinyGeo.xml",
+      "extension": ".xml",
+      "sizeBytes": 44906,
+      "sha256": "6a716a25a2ecca1010efe56efceac8593afdd76484f54c75f8feb24160b77a3f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.TobinBas.dll",
+      "extension": ".dll",
+      "sizeBytes": 30720,
+      "sha256": "cf9e5543f8a19989110e75c7c58fae067f47e4936c31993a5b781a22d4bb6301"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.TobinBas.xml",
+      "extension": ".xml",
+      "sizeBytes": 3857,
+      "sha256": "cfc36a42066780ce92f68d997b0be4692ded56fc612ea5aba46884489ca8710a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Wfs.dll",
+      "extension": ".dll",
+      "sizeBytes": 26112,
+      "sha256": "fbf2e664509fa495d2c13b46c4b862e2fab4f468ab8982538a4f0d7559359bdb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Wfs.xml",
+      "extension": ".xml",
+      "sizeBytes": 52175,
+      "sha256": "17a28fe943fc2706a0154f0d49e4d3cb8430858cd92e5494fae24fb7c4d08093"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.WkbFile.dll",
+      "extension": ".dll",
+      "sizeBytes": 24064,
+      "sha256": "77c0fa9bb2e35dcac9dd0da03c3cfc07956103636dafcf186a4da92803365b63"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.WkbFile.xml",
+      "extension": ".xml",
+      "sizeBytes": 157,
+      "sha256": "935a80a0474372b377cea43101b412dead5352b9647c2d63b18f779f214f2c7f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Wms.dll",
+      "extension": ".dll",
+      "sizeBytes": 38912,
+      "sha256": "a21534dc540dad90a5577c60326266a44d087b8dc845a184b67e89243989b4a5"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Wms.xml",
+      "extension": ".xml",
+      "sizeBytes": 37203,
+      "sha256": "677b31eaaa15b7e44f535f4b8da49be863c95a52525c01f63ee64a7a388c56db"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Wmts.dll",
+      "extension": ".dll",
+      "sizeBytes": 37376,
+      "sha256": "132556ca9326e2008ecd357986a9887ca561be3f94230abb42a20a72abf4f7b2"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.Wmts.xml",
+      "extension": ".xml",
+      "sizeBytes": 2357,
+      "sha256": "94e7c6f47797ab595c66767e5bd70c672f7fea5b383eabee0faeae74aeea4da9"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.WorldMapKit.dll",
+      "extension": ".dll",
+      "sizeBytes": 67584,
+      "sha256": "48ad2319f5828fb0af8a6708c321cb9f2debe805578bfd19cc8a115a76ab34ef"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Layers.WorldMapKit.xml",
+      "extension": ".xml",
+      "sizeBytes": 22711,
+      "sha256": "45f25b2587a20cb27fef58d80d08f5595e101513ad82d3806c58f763ec70f70c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.ProductCenter.exe",
+      "extension": ".exe",
+      "sizeBytes": 1070520,
+      "sha256": "ab06eba07bbf8b481f430edecb7841f76cc379732e53cc707a6ad0ea826c864c"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.ClassBreak.dll",
+      "extension": ".dll",
+      "sizeBytes": 17920,
+      "sha256": "d461d16696dae027ef18509d183f8405ab2ae017f4af06260a36337e205675cb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.ClassBreak.xml",
+      "extension": ".xml",
+      "sizeBytes": 25186,
+      "sha256": "4e4e55db8d27725d7e14b0c33b4246d3752d1d09983594028eed452c83c0ddd0"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.ClusterPoint.dll",
+      "extension": ".dll",
+      "sizeBytes": 12800,
+      "sha256": "1cdebb4d202e89e284e6694f1dbbb9c7a44cd32321b8f29615ceef4d70002817"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.ClusterPoint.xml",
+      "extension": ".xml",
+      "sizeBytes": 162,
+      "sha256": "47e5bdd44b33f790da9461dbe4a6d76e505118be5797d2122cb74758f18d90ba"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Composite.dll",
+      "extension": ".dll",
+      "sizeBytes": 8192,
+      "sha256": "8a939082a54ec48e89c5d4c314e1b65be89f99918130a01e17882e65755ec997"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Composite.xml",
+      "extension": ".xml",
+      "sizeBytes": 159,
+      "sha256": "53a8cb74444a6fe3aa9ede3cfb3ffbe63a6ed7ecf8091ff42d12add4663ef6c3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.DotDensity.dll",
+      "extension": ".dll",
+      "sizeBytes": 14336,
+      "sha256": "b1208bb278ab791bc6766d62492f2b12dfe2ce822dc2fc81325e2a72ee583576"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.DotDensity.xml",
+      "extension": ".xml",
+      "sizeBytes": 12583,
+      "sha256": "6f0107dbdf1da04a32a883c61139a5bff682afe9b490d444756a53bd55f70260"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Filter.dll",
+      "extension": ".dll",
+      "sizeBytes": 19456,
+      "sha256": "17bff4dd2811296921fdf0172f4c92015492702d874b6521aced12f25fa6ba22"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Filter.xml",
+      "extension": ".xml",
+      "sizeBytes": 156,
+      "sha256": "87af1c98252ba2bd1fe4e13151449343f64faf70ba33b21b9f4b498e56724c66"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.FleeBoolean.dll",
+      "extension": ".dll",
+      "sizeBytes": 8704,
+      "sha256": "a3f0251dc2c5c310d128a38b30b7122e5b7a63ec831c2b0113ec42e8b6d79bfe"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.FleeBoolean.xml",
+      "extension": ".xml",
+      "sizeBytes": 161,
+      "sha256": "1aee9a652c7b70032ef68083ec7132ec927b8643b190919ad3ddfafddcc982a3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Gradient.dll",
+      "extension": ".dll",
+      "sizeBytes": 8704,
+      "sha256": "0b48b24354cf30fb663328281856a8deda7501d6e4ef5a4ddfb57a2834a85c3b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Gradient.xml",
+      "extension": ".xml",
+      "sizeBytes": 7353,
+      "sha256": "dc02ffe5670f241d347beb6aa6933e1139f3099746840f047a1f75e966d93d03"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Icon.dll",
+      "extension": ".dll",
+      "sizeBytes": 11264,
+      "sha256": "ad3c5977de8b596acfbd792bd6250852f4d18210324966990492f451591bfab1"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Icon.xml",
+      "extension": ".xml",
+      "sizeBytes": 10635,
+      "sha256": "05a25063492a814b5ce3f623c5852043cd4e85f72f898c331c1f3afff74d6d9e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.IconValue.dll",
+      "extension": ".dll",
+      "sizeBytes": 13824,
+      "sha256": "12ec062c0534aed4ad5ef4897e5dd5b7144e40874a3159d00e544f663726f500"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.IconValue.xml",
+      "extension": ".xml",
+      "sizeBytes": 16840,
+      "sha256": "fd0b4981b08041d893699882467da1b92f6006110b41fe71b4998c303c5defa3"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Regex.dll",
+      "extension": ".dll",
+      "sizeBytes": 10752,
+      "sha256": "588523b983e4d5f7c738693c2e2533c26ea3e64f8f1788f22b0687e022e304d7"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Regex.xml",
+      "extension": ".xml",
+      "sizeBytes": 22541,
+      "sha256": "91d867abfc197ed935b7497f73533c0c89ab37284cd67ad6dce71c6db6a7accc"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Value.dll",
+      "extension": ".dll",
+      "sizeBytes": 13824,
+      "sha256": "634c5c00d5fba291971ee3568c066d9d71a07191b865420dc96f8115f616d87b"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.Value.xml",
+      "extension": ".xml",
+      "sizeBytes": 19053,
+      "sha256": "7c94f712387bf511338e6746f29d981d2174de39c40d0cb83170829f10141f59"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.WellPoint.dll",
+      "extension": ".dll",
+      "sizeBytes": 79872,
+      "sha256": "98aa77b79543818674a54d46fe7e685dc07a718d282caafba250e0beb73c6f5d"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.WellPoint.xml",
+      "extension": ".xml",
+      "sizeBytes": 3675,
+      "sha256": "05bf414684efcdc4d55bb0eff1fdd6ec59755dca057a12ebff3bf950836aca3a"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.ZedGraph.dll",
+      "extension": ".dll",
+      "sizeBytes": 8704,
+      "sha256": "49237c524705227fc17fc56735a23c0a72fa8ad6c26e79c51cb6efd743250960"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Styles.ZedGraph.xml",
+      "extension": ".xml",
+      "sizeBytes": 158,
+      "sha256": "a52384d1442bfeba7377a845af4082e7aed89d04c9eacfd37ffa0515a4d12d57"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.WinForms.dll",
+      "extension": ".dll",
+      "sizeBytes": 1660416,
+      "sha256": "c4c0ad8afd079d0bd6249d87f967bb16b1ad0e5afd36a283c60aafbc6fec9ecf"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.WinForms.xml",
+      "extension": ".xml",
+      "sizeBytes": 528908,
+      "sha256": "7d23a217eb4f6a06de3d5408029ebb7646efeeec11f0270d70d70b347fdfadb6"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Wpf.dll",
+      "extension": ".dll",
+      "sizeBytes": 1802240,
+      "sha256": "cfd5916c21877fc8799bc5ccc933f9d9b8e1fffdefd4aac1d85db9be497ab633"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.Wpf.xml",
+      "extension": ".xml",
+      "sizeBytes": 595252,
+      "sha256": "499f311e4407a0b31cdd6adcd44d218973ba6a2672a56e59a4e88a99dda6cf91"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/ThinkGeo.MapSuite.xml",
+      "extension": ".xml",
+      "sizeBytes": 2677944,
+      "sha256": "0f588b2e26d2dbe2072721fbcf66c13b05698683a5bc6b764dedd8227c8eafcb"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Valmont.Core.dll",
+      "extension": ".dll",
+      "sizeBytes": 766464,
+      "sha256": "84969366dfeaaab6f7c2368fc3a1cd4f47fd1022dfca271d5409ce10af3899d8"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Valmont.Core.dll.config",
+      "extension": ".config",
+      "sizeBytes": 3110,
+      "sha256": "039f3e0710ac78302ee6c13b68dad1cba05a32beb7b5b9b4dff8274357ff4de4"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Valmont.FLT.App.exe",
+      "extension": ".exe",
+      "sizeBytes": 3023872,
+      "sha256": "8abeff46389f21fb289c3e2f40e3efca9dfec8b09adc346d9c983950cfc58b90"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Valmont.FLT.App.exe.Config",
+      "extension": ".config",
+      "sizeBytes": 25915,
+      "sha256": "762c2ea54d3ad404244e271084404570bb2ebf9ab075a7b5fc5a9e0eb839d6aa"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/Valmont.FLT.App.exe.manifest",
+      "extension": ".manifest",
+      "sizeBytes": 421,
+      "sha256": "9b248077e1b1733c2dc703d6ca89a74a4b9f071bec313fe25439e1b4dc457c01"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/wkhtmltopdf.exe",
+      "extension": ".exe",
+      "sizeBytes": 22880256,
+      "sha256": "e85485ff0eb778e1ef1e1a371cb0e95054d9c8555c3ff3703161210a0f7c785e"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/WpfDesktopEdition.dll",
+      "extension": ".dll",
+      "sizeBytes": 521728,
+      "sha256": "48656e050fde72f0f2f97077c5a83a327c16b262d45a55c4791d21933f446b07"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/WpfDesktopEdition.xml",
+      "extension": ".xml",
+      "sizeBytes": 472546,
+      "sha256": "67ddb3be848a0a8436d2bae5cba6629615cff94a798846bfdbba63aca2878e1f"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/WPFToolkit.dll",
+      "extension": ".dll",
+      "sizeBytes": 467288,
+      "sha256": "aef9fcbb874fc82e151e32279330061f8f22a77c05f583a0cb5e5696654ac456"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/XMLParser.dll",
+      "extension": ".dll",
+      "sizeBytes": 27648,
+      "sha256": "c3feb24c385a7500886722f5125f837a0ea323588cd8dbb3b15765b99937d351"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/zh-Hans/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 22176,
+      "sha256": "321c3c5b944527ba03e1534587eb46f9cf54b36cff9efe2b628cfae768c23994"
+    },
+    {
+      "rootId": "valley-flt-4-4-4",
+      "redactedPath": "valley-flt-4-4-4:/zh-Hant/System.Windows.Interactivity.resources.dll",
+      "extension": ".dll",
+      "sizeBytes": 22176,
+      "sha256": "3c2c9193db37c3368cd9cbaefeb4797d6fa4c05ba30aa107d64ab004f5bf12bc"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/cv100.dll",
+      "extension": ".dll",
+      "sizeBytes": 843824,
+      "sha256": "6eeeee6401e9a199d67fc5fb095f4cc292d3cbd37fa7111b3a84c1043d76c5e9"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/cxcore100.dll",
+      "extension": ".dll",
+      "sizeBytes": 1011764,
+      "sha256": "39748cd7fd0b0d270239bd8d7e59e9477a1c1b358f9d66004646cbeff2e36443"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/GGSInterface.exe",
+      "extension": ".exe",
+      "sizeBytes": 1912832,
+      "sha256": "6dcb79b728e526480319e589ed6305004f3adf70f44fcf251cbad01a68d95138"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/GPSMap.exe",
+      "extension": ".exe",
+      "sizeBytes": 640512,
+      "sha256": "2a83e1cf1f977ca8d9e106599bdc9e60dbf8317cf1107322345656b070b06903"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/GPSMap.exe.config",
+      "extension": ".config",
+      "sizeBytes": 6165,
+      "sha256": "5410eeae1c4951a93cf1f03f15a9a7975c3fd6d4dc8715990cff1e691efa1b51"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/GPSMapConfig.xml",
+      "extension": ".xml",
+      "sizeBytes": 6971,
+      "sha256": "8de9d5e9ca65be4b797a31541d51e047bce9489acc841093e98d6586afcef6ee"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/GPSMapLib.dll",
+      "extension": ".dll",
+      "sizeBytes": 124416,
+      "sha256": "0a944023a61b2b49de55e3ff96cf1a79a56d6169c22c7fd02c5023e84d804e76"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/libguide40.dll",
+      "extension": ".dll",
+      "sizeBytes": 196608,
+      "sha256": "83fffcee58767d863285fc8c24d3ae04a22f0cbf9ce181a2692513b513a216f5"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/mclt.Config",
+      "extension": ".config",
+      "sizeBytes": 1137,
+      "sha256": "77490ee8e3d7d4ea32f7684817af15545cf903ca3fea9bf4e19d98a6dc117d52"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/mclt.exe",
+      "extension": ".exe",
+      "sizeBytes": 114688,
+      "sha256": "3f217af0d58df757baf728c49d7f0d77d05e695e62164e84138b37a3f095fe2c"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/Microsoft.VisualBasic.PowerPacks.Vs.dll",
+      "extension": ".dll",
+      "sizeBytes": 356352,
+      "sha256": "3d65066766862a957f5377412c835dd865e0c0de45e6efddc84b3bd9106c9c0b"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/MSVCP71.dll",
+      "extension": ".dll",
+      "sizeBytes": 499712,
+      "sha256": "df96156f6a548fd6fe5672918de5ae4509d3c810a57bffd2a91de45a3ed5b23b"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/MSVCR71.dll",
+      "extension": ".dll",
+      "sizeBytes": 348160,
+      "sha256": "8094af5ee310714caebccaeee7769ffb08048503ba478b879edfef5f1a24fefe"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/QtCore4.dll",
+      "extension": ".dll",
+      "sizeBytes": 1536000,
+      "sha256": "4a531c240c7f7a3c0508d69c916637bd2c366cccb8f50d931568fbaec6e5f200"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/QtGui4.dll",
+      "extension": ".dll",
+      "sizeBytes": 6234112,
+      "sha256": "847c6d3326b200d9ecf4ad5fbf64debad63e441c9ef8567d682e1478c473996d"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/QtNetwork4.dll",
+      "extension": ".dll",
+      "sizeBytes": 561152,
+      "sha256": "e39b3e87779dff5c8288b8c50ae227421ce3cacba7e1fdd34478499fac1b73c7"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/QtXml4.dll",
+      "extension": ".dll",
+      "sizeBytes": 339968,
+      "sha256": "472843f1b9b8a1af0f55abe1c7a20a1d68ceb2474ad74886d0e5d92ad30a04f6"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/GPS Mapping/1.0.0.0/qwt5.dll",
+      "extension": ".dll",
+      "sizeBytes": 593920,
+      "sha256": "209ffa4d3d756baa777aa80bfef9c3a418f0384e8b35271047505b8f36084b7f"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/Valley Calculator/1.0.0.1/Valley Calculator.exe",
+      "extension": ".exe",
+      "sizeBytes": 256000,
+      "sha256": "b549032326e5b9f3ea7b192646ce6783be6ff3a8c3ac773f36415ea9319d5d39"
+    },
+    {
+      "rootId": "valmont-service-tools-common",
+      "redactedPath": "valmont-service-tools-common:/Valley Calculator/1.0.0.1/Valley Calculator.exe.config",
+      "extension": ".config",
+      "sizeBytes": 1319,
+      "sha256": "521afdcaf81f41fd1a2462a5d49b3f606e42e2cf4aed2559a526ba5989bf775f"
+    }
+  ],
+  "supportedFileTypeCounts": {},
+  "skipped": [],
+  "warnings": []
+}

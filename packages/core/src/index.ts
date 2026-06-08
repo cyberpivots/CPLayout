@@ -1,5 +1,7 @@
 export * from "./coordinates";
+export * from "./cornerGpsMapExport";
 export * from "./cornerGpsMapImport";
+export * from "./cornerGpsMapLegacyEvidence";
 export * from "./imageryEvidence";
 export * from "./machineCatalog";
 export * from "./mapTilePackages";

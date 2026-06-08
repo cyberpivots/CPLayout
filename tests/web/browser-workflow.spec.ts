@@ -1609,6 +1609,9 @@ test("files actions expose accessible browser buttons", async ({ page }, testInf
   await expect(page.getByRole("button", { name: "Export ZIP" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Import ZIP" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Import Map Package" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import BPF" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export BPF" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review Legacy" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Import KML/KMZ" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export KML" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export KMZ" })).toBeVisible();

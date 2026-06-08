@@ -126,6 +126,7 @@ import {
   compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
   evaluateLayout,
+  evaluateMachineBoundaryClearance,
   exportScenarioGeoJson,
   machineRadiusMeters,
   planAdvisoryFieldPivots,
@@ -150,6 +151,7 @@ import {
   type DrawingLayerType,
   type DrawingMode,
   type IdealCenterPointAnalysis,
+  type MachineBoundaryClearanceRow,
   type PivotPlacementCandidate,
 } from "@cplayout/geometry";
 import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFeetInches, parseDistanceInput } from "@cplayout/core";
@@ -400,7 +402,11 @@ function AppContent(): React.JSX.Element {
   }
 
   function calculateDesignScenarios(): void {
-    const analysis = analyzeIdealPivotCenter(project, { maxCandidates: 4, costInput: advisoryCostInput });
+    const analysis = analyzeIdealPivotCenter(project, {
+      maxCandidates: 4,
+      costInput: advisoryCostInput,
+      minimumBoundaryClearanceMeters: settings.layoutReview.requiredBoundaryClearanceMeters,
+    });
     setDesignScenarioPreview(buildDesignScenarioPreview(project, { maxOptimizedCandidates: 3 }));
     setIdealCenterAnalysis(analysis);
     setPlacementCandidates(analysis.candidates);
@@ -2168,6 +2174,7 @@ function DesignConsolePanel({
               onCalculate={onCalculate}
               onRequestApplyPivotCandidate={onRequestApplyPivotCandidate}
               onSaveGeneratedFieldPivotZones={onSaveGeneratedFieldPivotZones}
+              onSettingsChange={onSettingsChange}
               onUpdateAdvisoryCostDraft={onUpdateAdvisoryCostDraft}
               placementCandidates={placementCandidates}
               preview={preview}
@@ -2529,6 +2536,9 @@ function CornerArmSheet({
 }): React.JSX.Element {
   const [name, setName] = useState(machine.cornerArm?.name ?? "Operator corner-arm advisory");
   const [length, setLength] = useState(formatDistanceInputValue(machine.cornerArm?.lengthMeters ?? 91, unitSystem));
+  const [wheelTrackLength, setWheelTrackLength] = useState(machine.cornerArm?.wheelTrackLengthMeters !== undefined ? formatDistanceInputValue(machine.cornerArm.wheelTrackLengthMeters, unitSystem) : "");
+  const [overhangLength, setOverhangLength] = useState(machine.cornerArm?.overhangLengthMeters !== undefined ? formatDistanceInputValue(machine.cornerArm.overhangLengthMeters, unitSystem) : "");
+  const [metadataSource, setMetadataSource] = useState<AdvisoryCornerArmConfig["metadataSource"]>(machine.cornerArm?.metadataSource ?? "operator_supplied");
   const [guidanceType, setGuidanceType] = useState<AdvisoryCornerArmConfig["guidanceType"]>(machine.cornerArm?.guidanceType ?? "operator_supplied");
   const [sequencingType, setSequencingType] = useState<AdvisoryCornerArmConfig["sequencingType"]>(machine.cornerArm?.sequencingType ?? "operator_supplied");
   const [orientation, setOrientation] = useState<AdvisoryCornerArmConfig["orientation"]>(machine.cornerArm?.orientation ?? "operator_supplied");
@@ -2538,6 +2548,9 @@ function CornerArmSheet({
   useEffect(() => {
     setName(machine.cornerArm?.name ?? "Operator corner-arm advisory");
     setLength(formatDistanceInputValue(machine.cornerArm?.lengthMeters ?? 91, unitSystem));
+    setWheelTrackLength(machine.cornerArm?.wheelTrackLengthMeters !== undefined ? formatDistanceInputValue(machine.cornerArm.wheelTrackLengthMeters, unitSystem) : "");
+    setOverhangLength(machine.cornerArm?.overhangLengthMeters !== undefined ? formatDistanceInputValue(machine.cornerArm.overhangLengthMeters, unitSystem) : "");
+    setMetadataSource(machine.cornerArm?.metadataSource ?? "operator_supplied");
     setGuidanceType(machine.cornerArm?.guidanceType ?? "operator_supplied");
     setSequencingType(machine.cornerArm?.sequencingType ?? "operator_supplied");
     setOrientation(machine.cornerArm?.orientation ?? "operator_supplied");
@@ -2548,11 +2561,16 @@ function CornerArmSheet({
   function requestSave(): void {
     try {
       const trimmedName = name.trim();
+      const parsedWheelTrackLength = optionalPositiveDistanceInput(wheelTrackLength, unitSystem, "Corner-arm wheel track length");
+      const parsedOverhangLength = optionalNonNegativeDistanceInput(overhangLength, unitSystem, "Corner-arm overhang length");
       const config: AdvisoryCornerArmConfig = {
         id: machine.cornerArm?.id ?? "operator-corner-arm-advisory",
         name: trimmedName.length > 0 ? trimmedName : "Operator corner-arm advisory",
         advisoryOnly: true,
         lengthMeters: requiredPositiveDistanceInput(length, unitSystem, "Corner-arm length"),
+        ...(parsedWheelTrackLength === undefined ? {} : { wheelTrackLengthMeters: parsedWheelTrackLength }),
+        ...(parsedOverhangLength === undefined ? {} : { overhangLengthMeters: parsedOverhangLength }),
+        metadataSource,
         guidanceType,
         sequencingType,
         orientation,
@@ -2583,6 +2601,16 @@ function CornerArmSheet({
       <View style={styles.formGrid} testID="corner-arm-advisory-form">
         <FormField label="Advisory name" value={name} onChangeText={setName} />
         <FormField label={`Length (${unitSystem === "metric" ? "m" : "ft/in"})`} value={length} onChangeText={setLength} />
+        <FormField label={`Wheel track (${unitSystem === "metric" ? "m" : "ft/in"}, optional)`} value={wheelTrackLength} onChangeText={setWheelTrackLength} />
+        <FormField label={`Overhang (${unitSystem === "metric" ? "m" : "ft/in"}, optional)`} value={overhangLength} onChangeText={setOverhangLength} />
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Metadata source</Text>
+          <View style={styles.controlRow}>
+            {(["operator_supplied", "cornergpsmap_config", "manufacturer_public", "local_design_guide", "unknown"] as const).map((value) => (
+              <ActionButton key={value} label={advisoryOptionLabel(value)} selected={metadataSource === value} onPress={() => setMetadataSource(value)} />
+            ))}
+          </View>
+        </View>
         <View style={styles.formField}>
           <Text style={styles.formLabel}>Guidance</Text>
           <View style={styles.controlRow}>
@@ -2638,6 +2666,7 @@ function CalculateSheet({
   onCalculate,
   onRequestApplyPivotCandidate,
   onSaveGeneratedFieldPivotZones,
+  onSettingsChange,
   onUpdateAdvisoryCostDraft,
   placementCandidates,
   preview,
@@ -2653,6 +2682,7 @@ function CalculateSheet({
   onCalculate: () => void;
   onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
   onSaveGeneratedFieldPivotZones: (plan: AdvisoryFieldPivotPlan) => void;
+  onSettingsChange: (settings: AppSettings) => void;
   onUpdateAdvisoryCostDraft: (draft: AdvisoryCostDraft) => void;
   placementCandidates: PivotPlacementCandidate[] | null;
   preview: DesignScenarioPreview[] | null;
@@ -2681,6 +2711,7 @@ function CalculateSheet({
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
   const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
+  const machineBoundaryClearanceRows = useMemo<MachineBoundaryClearanceRow[]>(() => evaluateMachineBoundaryClearance(project, settings), [project, settings]);
   const multiMachineReview = useMemo<AdvisoryMultiMachineReview>(() => analyzeAdvisoryMultiMachineLayout(project, {
     maxCandidates: 3,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
@@ -2716,6 +2747,16 @@ function CalculateSheet({
     }
   }
 
+  function updateLayoutReview(next: Partial<AppSettings["layoutReview"]>): void {
+    onSettingsChange({
+      ...settings,
+      layoutReview: {
+        ...settings.layoutReview,
+        ...next,
+      },
+    });
+  }
+
   return (
     <View style={styles.machineForm}>
       <View style={styles.metricGrid}>
@@ -2737,6 +2778,11 @@ function CalculateSheet({
           Cost assumptions will rank advisory candidates and machine strategies only; they are not saved as canonical geometry or vendor quotes.
         </Text>
       ) : null}
+      <MachineBoundaryClearancePanel
+        onUpdateLayoutReview={updateLayoutReview}
+        rows={machineBoundaryClearanceRows}
+        settings={settings}
+      />
       <View style={styles.placementReviewPanel} testID="advisory-strategy-cost-summary">
         <View style={styles.scenarioRowHeader}>
           <Text style={styles.rowTitle}>Machine Strategy Cost Review</Text>
@@ -3556,6 +3602,8 @@ function DesignAwarenessPanel({
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
   const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
+  const machineBoundaryClearanceRows = useMemo<MachineBoundaryClearanceRow[]>(() => evaluateMachineBoundaryClearance(project, settings), [project, settings]);
+  const shortestMachineBoundaryRow = shortestBoundaryClearanceRow(machineBoundaryClearanceRows);
   const firstConflict = multiMachineReview.conflicts[0] ?? null;
   const firstConflictReviewAcres = firstConflict
     ? Math.max(firstConflict.collisionZoneAcres, firstConflict.separationReviewZoneAcres)
@@ -3584,7 +3632,18 @@ function DesignAwarenessPanel({
         <MetricTile label="Span reviews" value={`${obstacleInteractionReview.summary.spanClearanceReviewCount + obstacleInteractionReview.summary.towerTrackReviewCount + obstacleInteractionReview.summary.utilityPathReviewCount}`} tone={obstacleInteractionReview.status === "ready" ? "warn" : "neutral"} />
         <MetricTile label="Hard conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
         <MetricTile label="Outside wet" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "warn" : "good"} />
+        <MetricTile
+          label="Min boundary"
+          testID="design-awareness-min-machine-boundary-clearance"
+          tone={shortestMachineBoundaryRow && !shortestMachineBoundaryRow.meetsRequiredBoundaryClearance ? "danger" : "good"}
+          value={shortestMachineBoundaryRow ? formatDistance(shortestMachineBoundaryRow.minimumBoundaryDistanceMeters, settings.unitSystem) : "n/a"}
+        />
       </View>
+      {settings.layoutReview.showMachineBoundaryDistances && shortestMachineBoundaryRow ? (
+        <Text style={styles.mapFeatureMeta} testID="design-awareness-machine-boundary-summary">
+          Machine-boundary review: {shortestMachineBoundaryRow.label} minimum {formatDistance(shortestMachineBoundaryRow.minimumBoundaryDistanceMeters, settings.unitSystem)} · required {formatDistance(settings.layoutReview.requiredBoundaryClearanceMeters, settings.unitSystem)} · advisory only.
+        </Text>
+      ) : null}
       <Text style={styles.mapFeatureMeta}>
         Multi-machine review: {multiMachineReview.status.replaceAll("_", " ")} · {multiMachineReview.compilation.compiledBoundaryAcres.toFixed(2)} compiled advisory acres · {multiMachineReview.compilation.fullScopeCoveragePercent.toFixed(1)}% full-scope coverage · canonical projected XY unchanged.
       </Text>
@@ -3758,6 +3817,92 @@ function ScenarioPreviewList({ preview, settings }: { preview: DesignScenarioPre
           ) : null}
         </View>
       ))}
+    </View>
+  );
+}
+
+function MachineBoundaryClearancePanel({
+  onUpdateLayoutReview,
+  rows,
+  settings,
+}: {
+  onUpdateLayoutReview: (next: Partial<AppSettings["layoutReview"]>) => void;
+  rows: MachineBoundaryClearanceRow[];
+  settings: AppSettings;
+}): React.JSX.Element {
+  const shortest = shortestBoundaryClearanceRow(rows);
+  const failingCount = rows.filter((row) => !row.meetsRequiredBoundaryClearance).length;
+  const stepMeters = layoutReviewClearanceStepMeters(settings.unitSystem);
+  const required = settings.layoutReview.requiredBoundaryClearanceMeters;
+  return (
+    <View style={styles.placementReviewPanel} testID="machine-boundary-clearance-panel">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Machine Boundary Distances</Text>
+        <Text style={styles.scenarioScore}>{failingCount > 0 ? `${failingCount} check` : "Ready"}</Text>
+      </View>
+      <View style={styles.metricGrid}>
+        <MetricTile
+          label="Shortest"
+          testID="machine-boundary-shortest"
+          tone={shortest && !shortest.meetsRequiredBoundaryClearance ? "danger" : "good"}
+          value={shortest ? formatDistance(shortest.minimumBoundaryDistanceMeters, settings.unitSystem) : "n/a"}
+        />
+        <MetricTile
+          label="Required"
+          testID="machine-boundary-required"
+          value={formatDistance(required, settings.unitSystem)}
+        />
+        <MetricTile
+          label="Rows"
+          value={`${rows.length}`}
+        />
+      </View>
+      <View style={styles.controlRow}>
+        <ActionButton
+          label={settings.layoutReview.showMachineBoundaryDistances ? "Rows shown" : "Rows hidden"}
+          selected={settings.layoutReview.showMachineBoundaryDistances}
+          onPress={() => onUpdateLayoutReview({ showMachineBoundaryDistances: !settings.layoutReview.showMachineBoundaryDistances })}
+        />
+        <SmallActionButton
+          disabled={required <= 0}
+          label="Clearance -"
+          onPress={() => onUpdateLayoutReview({ requiredBoundaryClearanceMeters: Math.max(0, required - stepMeters) })}
+          testID="machine-boundary-clearance-decrease"
+        />
+        <SmallActionButton
+          label="Clearance +"
+          onPress={() => onUpdateLayoutReview({ requiredBoundaryClearanceMeters: required + stepMeters })}
+          testID="machine-boundary-clearance-increase"
+        />
+      </View>
+      {settings.layoutReview.showMachineBoundaryDistances ? (
+        <View style={styles.placementCandidateList} testID="machine-boundary-clearance-rows">
+          {rows.map((row) => (
+            <View key={`${row.kind}-${row.towerIndex ?? row.radiusMeters}`} style={[styles.placementCandidateRow, row.meetsRequiredBoundaryClearance ? styles.scenarioRowFeasible : styles.scenarioRowRejected]} testID={`machine-boundary-row-${row.kind}`}>
+              <View style={styles.scenarioRowHeader}>
+                <Text style={styles.rowTitle}>{row.towerIndex ? `${row.label} T${row.towerIndex}` : row.label}</Text>
+                <Text style={styles.scenarioScore}>{row.meetsRequiredBoundaryClearance ? "OK" : "Short"}</Text>
+              </View>
+              <Text style={styles.rowMeta}>
+                radius {formatDistance(row.radiusMeters, settings.unitSystem)} · minimum {formatDistance(row.minimumBoundaryDistanceMeters, settings.unitSystem)} · required {formatDistance(row.requiredBoundaryClearanceMeters, settings.unitSystem)}
+              </Text>
+              <Text style={row.meetsRequiredBoundaryClearance ? styles.mapFeatureMeta : styles.formError}>
+                {row.meetsRequiredBoundaryClearance
+                  ? `No shortfall. Outside envelope ${formatAreaFromAcres(row.outsideFieldAcres, settings.unitSystem)}.`
+                  : `Shortfall ${formatDistance(row.clearanceShortfallMeters, settings.unitSystem)}. Outside envelope ${formatAreaFromAcres(row.outsideFieldAcres, settings.unitSystem)}.`}
+              </Text>
+              {row.wheelOverhangSeparationVerified === false ? (
+                <Text style={styles.mapFeatureMeta}>Corner-arm wheel and overhang separation is unverified; row uses advisory fallback length metadata.</Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.mapFeatureMeta}>Rows are hidden by project setting. Clearance gates still use projected/local XY advisory settings when Calculate runs.</Text>
+      )}
+      <Text style={styles.mapFeatureMeta}>
+        Rows are sampled advisory path-to-boundary distances in the project CRS. They do not mutate pivot center, machine settings, field boundary, storage, archives, KML/KMZ, or native runtime state.
+      </Text>
     </View>
   );
 }
@@ -4056,6 +4201,16 @@ function formatGeneratedFieldPivotPlanSummary(plan: AdvisoryFieldPivotPlan, sett
     ? ` · first adds ${formatAreaFromAcres(first.incrementalIrrigatedAcres, settings.unitSystem)}`
     : "";
   return `${plan.status.replaceAll("_", " ")} · ${plan.selectedMachineCount}/${plan.requestedMachineCount} separated advisory center${plan.requestedMachineCount === 1 ? "" : "s"} · ${plan.fieldCoveragePercent.toFixed(1)}% field coverage · ${formatAreaFromAcres(plan.fieldUnirrigatedAcres, settings.unitSystem)} remaining dry${firstIncrement}`;
+}
+
+function shortestBoundaryClearanceRow(rows: MachineBoundaryClearanceRow[]): MachineBoundaryClearanceRow | null {
+  return rows.length > 0
+    ? [...rows].sort((left, right) => left.minimumBoundaryDistanceMeters - right.minimumBoundaryDistanceMeters)[0]
+    : null;
+}
+
+function layoutReviewClearanceStepMeters(unitSystem: AppSettings["unitSystem"]): number {
+  return unitSystem === "metric" ? 5 : 15.24;
 }
 
 function advisoryCostInputFromDraft(draft: AdvisoryCostDraft): AdvisoryCostInput | undefined {
@@ -5575,6 +5730,16 @@ function requiredNonNegativeDistanceInput(value: string, unitSystem: PivotProjec
   return parsed;
 }
 
+function optionalPositiveDistanceInput(value: string, unitSystem: PivotProject["unitSystem"], label: string): number | undefined {
+  if (value.trim().length === 0) return undefined;
+  return requiredPositiveDistanceInput(value, unitSystem, label);
+}
+
+function optionalNonNegativeDistanceInput(value: string, unitSystem: PivotProject["unitSystem"], label: string): number | undefined {
+  if (value.trim().length === 0) return undefined;
+  return requiredNonNegativeDistanceInput(value, unitSystem, label);
+}
+
 function safeDistanceInput(value: string, unitSystem: PivotProject["unitSystem"]): number | null {
   try {
     return parseDistanceInput(value, unitSystem, "Distance");
@@ -6749,6 +6914,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 6,
     padding: 10,
+  },
+  placementCandidateList: {
+    gap: 8,
   },
   advisoryBadgeRow: {
     flexDirection: "row",

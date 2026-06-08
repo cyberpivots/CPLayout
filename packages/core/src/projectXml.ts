@@ -165,8 +165,14 @@ function machineXml(machine: PivotMachine): string[] {
 
 function cornerArmXml(cornerArm: AdvisoryCornerArmConfig | undefined): string[] {
   if (!cornerArm) return [];
+  const optionalAttrs = [
+    cornerArm.wheelTrackLengthMeters !== undefined ? ` wheelTrackLengthMeters="${cornerArm.wheelTrackLengthMeters}"` : "",
+    cornerArm.overhangLengthMeters !== undefined ? ` overhangLengthMeters="${cornerArm.overhangLengthMeters}"` : "",
+    cornerArm.metadataSource ? ` metadataSource="${cornerArm.metadataSource}"` : "",
+    cornerArm.modelFamily ? ` modelFamily="${cornerArm.modelFamily}"` : "",
+  ].join("");
   return [
-    `    <cornerArm id="${escapeXml(cornerArm.id)}" name="${escapeXml(cornerArm.name)}" advisoryOnly="true" lengthMeters="${cornerArm.lengthMeters}" guidanceType="${cornerArm.guidanceType}" sequencingType="${cornerArm.sequencingType}" orientation="${cornerArm.orientation}" confidence="${cornerArm.confidence}"${cornerArm.operatorConfirmedAt ? ` operatorConfirmedAt="${escapeXml(cornerArm.operatorConfirmedAt)}"` : ""}${cornerArm.notes ? ` notes="${escapeXml(cornerArm.notes)}"` : ""}>`,
+    `    <cornerArm id="${escapeXml(cornerArm.id)}" name="${escapeXml(cornerArm.name)}" advisoryOnly="true" lengthMeters="${cornerArm.lengthMeters}"${optionalAttrs} guidanceType="${cornerArm.guidanceType}" sequencingType="${cornerArm.sequencingType}" orientation="${cornerArm.orientation}" confidence="${cornerArm.confidence}"${cornerArm.operatorConfirmedAt ? ` operatorConfirmedAt="${escapeXml(cornerArm.operatorConfirmedAt)}"` : ""}${cornerArm.notes ? ` notes="${escapeXml(cornerArm.notes)}"` : ""}>`,
     ...cornerArm.sourceRefs.map(sourceRefXml),
     `    </cornerArm>`,
   ];
@@ -291,6 +297,14 @@ function cornerArmFrom(element: XmlElement): AdvisoryCornerArmConfig {
     name: requiredAttr(element, "name"),
     advisoryOnly: true,
     lengthMeters: positiveNumberAttr(element, "lengthMeters"),
+    wheelTrackLengthMeters: attr(element, "wheelTrackLengthMeters") ? positiveNumberAttr(element, "wheelTrackLengthMeters") : undefined,
+    overhangLengthMeters: attr(element, "overhangLengthMeters") ? nonNegativeNumberAttr(element, "overhangLengthMeters") : undefined,
+    metadataSource: attr(element, "metadataSource")
+      ? enumAttr<NonNullable<AdvisoryCornerArmConfig["metadataSource"]>>(element, "metadataSource", ["operator_supplied", "cornergpsmap_config", "manufacturer_public", "local_design_guide", "unknown"])
+      : undefined,
+    modelFamily: attr(element, "modelFamily")
+      ? enumAttr<NonNullable<AdvisoryCornerArmConfig["modelFamily"]>>(element, "modelFamily", ["single_span_lrdu_sdu", "dualspan", "operator_supplied", "unknown"])
+      : undefined,
     guidanceType: enumAttr(element, "guidanceType", ["gps_guidance", "below_ground_guidance", "operator_supplied", "unknown"]),
     sequencingType: enumAttr(element, "sequencingType", ["electronic", "mechanical", "operator_supplied", "unknown"]),
     orientation: enumAttr(element, "orientation", ["leading", "trailing", "operator_supplied", "unknown"]),

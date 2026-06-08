@@ -20,6 +20,8 @@ assert.equal("onlineImagery" in (parsed.settings ?? {}), false);
 assert.equal("referenceOverlay" in (parsed.settings ?? {}), false);
 assert.doesNotMatch(serialized, /onlineImagery|referenceOverlay|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 assert.equal(parsed.settings?.mappingWorkflowMode, "design");
+assert.equal(parsed.settings?.layoutReview.requiredBoundaryClearanceMeters, 0);
+assert.equal(parsed.settings?.layoutReview.showMachineBoundaryDistances, true);
 assert.deepEqual(parsed.mapFeatures, []);
 
 const parsedWillRhea = parseProjectDocument(serializeProjectDocument(willRheaJasonHarmelinkExampleProject));
@@ -218,6 +220,10 @@ const parsedCornerArmProject = parseProjectDocument({
       name: "Corner arm A",
       advisoryOnly: true,
       lengthMeters: 91,
+      wheelTrackLengthMeters: 78,
+      overhangLengthMeters: 13,
+      metadataSource: "operator_supplied",
+      modelFamily: "single_span_lrdu_sdu",
       guidanceType: "gps_guidance",
       sequencingType: "electronic",
       orientation: "operator_supplied",
@@ -229,6 +235,10 @@ const parsedCornerArmProject = parseProjectDocument({
   },
 });
 assert.equal(parsedCornerArmProject.machine.cornerArm?.advisoryOnly, true);
+assert.equal(parsedCornerArmProject.machine.cornerArm?.wheelTrackLengthMeters, 78);
+assert.equal(parsedCornerArmProject.machine.cornerArm?.overhangLengthMeters, 13);
+assert.equal(parsedCornerArmProject.machine.cornerArm?.metadataSource, "operator_supplied");
+assert.equal(parsedCornerArmProject.machine.cornerArm?.modelFamily, "single_span_lrdu_sdu");
 assert.equal(parsedCornerArmProject.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");
 assert.equal(parseProjectDocument(sampleProject).machine.cornerArm, undefined);
 assert.throws(
@@ -283,6 +293,8 @@ const parsedLegacySettings = parseProjectDocument({
 assert.equal(parsedLegacySettings.settings?.coordinateDisplayFormat, "decimal_degrees");
 assert.equal(parsedLegacySettings.settings?.mappingWorkflowMode, "design");
 assert.equal(parsedLegacySettings.settings?.aerialImagery.mode, "auto");
+assert.equal(parsedLegacySettings.settings?.layoutReview.requiredBoundaryClearanceMeters, 0);
+assert.equal(parsedLegacySettings.settings?.layoutReview.showMachineBoundaryDistances, true);
 
 const parsedLayoutSettings = parseProjectDocument({
   ...sampleProject,

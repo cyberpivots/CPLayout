@@ -321,6 +321,12 @@ export function cornerGpsMapPresetToAdvisoryCornerArmConfig(
     name: preset.name,
     advisoryOnly: true,
     lengthMeters: preset.cornerLengthMeters,
+    ...(preset.overhangLengthMeters !== undefined ? { overhangLengthMeters: preset.overhangLengthMeters } : {}),
+    ...(preset.overhangLengthMeters !== undefined && preset.cornerLengthMeters > preset.overhangLengthMeters
+      ? { wheelTrackLengthMeters: preset.cornerLengthMeters - preset.overhangLengthMeters }
+      : {}),
+    metadataSource: "cornergpsmap_config",
+    modelFamily: cornerArmModelFamilyForPreset(preset),
     guidanceType: "gps_guidance",
     sequencingType: "unknown",
     orientation: "operator_supplied",
@@ -329,6 +335,12 @@ export function cornerGpsMapPresetToAdvisoryCornerArmConfig(
     operatorConfirmedAt: options.operatorConfirmedAt,
     notes: advisoryNotesForPreset(preset),
   };
+}
+
+function cornerArmModelFamilyForPreset(preset: CornerGpsMapModelPreset): NonNullable<AdvisoryCornerArmConfig["modelFamily"]> {
+  if (/\bdual\b/i.test(preset.cornerType ?? "") || /\bdual\s*span\b/i.test(preset.name)) return "dualspan";
+  if (preset.cornerLengthMeters && preset.cornerLengthMeters > 0) return "single_span_lrdu_sdu";
+  return "unknown";
 }
 
 function bpfCenterSurveyPoint(project: PivotProject, projected: XY, wgs84: LonLat, observedAt = new Date(0).toISOString()): SurveyPoint {

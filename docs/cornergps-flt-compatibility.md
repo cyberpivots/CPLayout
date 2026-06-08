@@ -1,6 +1,6 @@
 # FLT And CornerGPSMap Compatibility Lane
 
-Updated: 2026-06-07
+Updated: 2026-06-08
 
 ## Scope
 
@@ -14,8 +14,9 @@ The current local evidence plan identified these installed sources:
 
 - `/mnt/c/Program Files (x86)/Valmont/Valley FLT 4.4.4`
 - `/mnt/c/Valmont/Service Tools Suite/Common Service Tools/GPS Mapping/1.0.0.0`
+- `/mnt/c/Valmont/FLT/Data`
 
-Use `tsx tools/cornerGpsFltInventory.ts` to generate redacted reports under `reports/cornergps-flt-inventory/`. The report hashes executable/config-style artifacts and counts supported legacy exchange extensions. It does not emit raw customer file contents, exact local customer paths, coordinates, cloud endpoints, API keys, credentials, or controller files.
+Use `tsx tools/cornerGpsFltInventory.ts --dry-run --summary --json` for a no-write summary of root existence, extension counts, warning counts, and boundary flags. Use `tsx tools/cornerGpsFltInventory.ts` only when a local detailed manifest is intentionally needed under `reports/cornergps-flt-inventory/`. Detailed reports hash install executable/config-style artifacts and count supported legacy exchange extensions; data roots are summarized by extension counts only. Reports do not emit raw customer file contents, exact local customer paths, coordinates, cloud endpoints, API keys, credentials, controller files, GGS/VRI compatibility claims, or controller-ready payloads.
 
 ## BPF XML Shape
 
@@ -101,6 +102,7 @@ Run after implementation changes:
 
 - `npm run validate`
 - `npm run proof:web` for visible Files-panel changes
+- `tsx tools/cornerGpsFltInventory.ts --dry-run --summary --json` for inventory-surface checks
 - `git diff --check`
 - `npm audit`
 

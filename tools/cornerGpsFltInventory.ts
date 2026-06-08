@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
-interface InventoryRoot {
+export interface InventoryRoot {
   id: string;
   label: string;
   localPath: string;
@@ -10,7 +10,7 @@ interface InventoryRoot {
   maxDepth: number;
 }
 
-interface InventoryArtifact {
+export interface InventoryArtifact {
   rootId: string;
   redactedPath: string;
   extension: string;
@@ -18,7 +18,7 @@ interface InventoryArtifact {
   sha256: string;
 }
 
-interface InventoryReport {
+export interface InventoryReport {
   schemaVersion: "cplayout-cornergps-flt-inventory-v1";
   generatedAt: string;
   outputDir: string;
@@ -40,7 +40,27 @@ interface InventoryReport {
   warnings: string[];
 }
 
-const DEFAULT_ROOTS: InventoryRoot[] = [
+export interface InventorySummary {
+  schemaVersion: "cplayout-cornergps-flt-inventory-summary-v1";
+  generatedAt: string;
+  dryRun: boolean;
+  boundaries: InventoryReport["boundaries"];
+  roots: InventoryReport["roots"];
+  artifactCount: number;
+  artifactExtensionCounts: Record<string, number>;
+  artifactRootRoleCounts: Record<InventoryRoot["role"], number>;
+  supportedFileTypeCounts: Record<string, number>;
+  skippedCount: number;
+  warningCount: number;
+  warnings: string[];
+}
+
+export interface InventoryBuildOptions {
+  roots?: InventoryRoot[];
+  includeInstallArtifactHashes?: boolean;
+}
+
+export const DEFAULT_ROOTS: InventoryRoot[] = [
   {
     id: "valley-flt-4-4-4",
     label: "Valley FLT 4.4.4 install",
@@ -61,6 +81,13 @@ const DEFAULT_ROOTS: InventoryRoot[] = [
     localPath: "/mnt/c/Valmont/Service Tools Suite/Common Service Tools",
     role: "data",
     maxDepth: 4,
+  },
+  {
+    id: "valmont-flt-data",
+    label: "Valmont FLT local data",
+    localPath: "/mnt/c/Valmont/FLT/Data",
+    role: "data",
+    maxDepth: 5,
   },
 ];
 
@@ -90,7 +117,9 @@ const COUNTED_EXTENSIONS = new Set([
 
 const MAX_HASH_BYTES = 100 * 1024 * 1024;
 
-export function buildCornerGpsFltInventoryReport(generatedAt = new Date().toISOString()): InventoryReport {
+export function buildCornerGpsFltInventoryReport(generatedAt = new Date().toISOString(), options: InventoryBuildOptions = {}): InventoryReport {
+  const roots = options.roots ?? DEFAULT_ROOTS;
+  const includeInstallArtifactHashes = options.includeInstallArtifactHashes ?? true;
   const timestamp = generatedAt.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
   const outputDir = join("reports", "cornergps-flt-inventory", timestamp);
   const artifacts: InventoryArtifact[] = [];
@@ -98,9 +127,9 @@ export function buildCornerGpsFltInventoryReport(generatedAt = new Date().toISOS
   const skipped: InventoryReport["skipped"] = [];
   const warnings: string[] = [];
 
-  for (const root of DEFAULT_ROOTS) {
+  for (const root of roots) {
     if (!existsSync(root.localPath)) continue;
-    walkRoot(root, root.localPath, 0, artifacts, supportedFileTypeCounts, skipped);
+    walkRoot(root, root.localPath, 0, artifacts, supportedFileTypeCounts, skipped, { includeInstallArtifactHashes });
   }
 
   if (artifacts.length === 0) {
@@ -117,7 +146,7 @@ export function buildCornerGpsFltInventoryReport(generatedAt = new Date().toISOS
       credentialsCommitted: false,
       controllerCompatibilityClaimed: false,
     },
-    roots: DEFAULT_ROOTS.map((root) => ({
+    roots: roots.map((root) => ({
       id: root.id,
       label: root.label,
       role: root.role,
@@ -127,6 +156,31 @@ export function buildCornerGpsFltInventoryReport(generatedAt = new Date().toISOS
     supportedFileTypeCounts: sortCounts(supportedFileTypeCounts),
     skipped,
     warnings,
+  };
+}
+
+export function buildCornerGpsFltInventorySummary(report: InventoryReport, dryRun = false): InventorySummary {
+  const rootRoles = new Map(report.roots.map((root) => [root.id, root.role]));
+  const artifactExtensionCounts: Record<string, number> = {};
+  const artifactRootRoleCounts: Record<InventoryRoot["role"], number> = { install: 0, data: 0 };
+  for (const artifact of report.artifacts) {
+    artifactExtensionCounts[artifact.extension] = (artifactExtensionCounts[artifact.extension] ?? 0) + 1;
+    const role = rootRoles.get(artifact.rootId) ?? "install";
+    artifactRootRoleCounts[role] += 1;
+  }
+  return {
+    schemaVersion: "cplayout-cornergps-flt-inventory-summary-v1",
+    generatedAt: report.generatedAt,
+    dryRun,
+    boundaries: report.boundaries,
+    roots: report.roots,
+    artifactCount: report.artifacts.length,
+    artifactExtensionCounts: sortCounts(artifactExtensionCounts),
+    artifactRootRoleCounts,
+    supportedFileTypeCounts: report.supportedFileTypeCounts,
+    skippedCount: report.skipped.length,
+    warningCount: report.warnings.length,
+    warnings: report.warnings,
   };
 }
 
@@ -146,6 +200,7 @@ function walkRoot(
   artifacts: InventoryArtifact[],
   supportedFileTypeCounts: Record<string, number>,
   skipped: InventoryReport["skipped"],
+  options: Required<Pick<InventoryBuildOptions, "includeInstallArtifactHashes">>,
 ): void {
   if (depth > root.maxDepth) return;
   let entries: string[];
@@ -166,7 +221,7 @@ function walkRoot(
       continue;
     }
     if (stat.isDirectory()) {
-      walkRoot(root, path, depth + 1, artifacts, supportedFileTypeCounts, skipped);
+      walkRoot(root, path, depth + 1, artifacts, supportedFileTypeCounts, skipped, options);
       continue;
     }
     if (!stat.isFile()) continue;
@@ -176,6 +231,7 @@ function walkRoot(
       supportedFileTypeCounts[extension] = (supportedFileTypeCounts[extension] ?? 0) + 1;
     }
     if (!HASHED_EXTENSIONS.has(extension)) continue;
+    if (root.role !== "install" || !options.includeInstallArtifactHashes) continue;
     if (stat.size > MAX_HASH_BYTES) {
       skipped.push({ rootId: root.id, redactedPath: redactedPath(root, path), reason: "Artifact exceeded hash size limit." });
       continue;
@@ -240,8 +296,34 @@ See \`manifest.json\` for redacted artifact paths and SHA-256 hashes. Keep gener
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const args = new Set(process.argv.slice(2));
+  const dryRun = args.has("--dry-run");
+  const summary = args.has("--summary");
+  const json = args.has("--json");
   const report = buildCornerGpsFltInventoryReport();
-  const paths = writeCornerGpsFltInventoryReport(report);
-  console.log(`Wrote ${paths.manifestPath}`);
-  console.log(`Wrote ${paths.readmePath}`);
+  if (summary || dryRun) {
+    const output = buildCornerGpsFltInventorySummary(report, dryRun);
+    if (json) {
+      console.log(JSON.stringify(output, null, 2));
+    } else {
+      console.log(summaryText(output));
+    }
+  }
+  if (!dryRun) {
+    const paths = writeCornerGpsFltInventoryReport(report);
+    console.log(`Wrote ${paths.manifestPath}`);
+    console.log(`Wrote ${paths.readmePath}`);
+  }
+}
+
+function summaryText(summary: InventorySummary): string {
+  return [
+    `CornerGPSMap / FLT inventory summary (${summary.generatedAt})`,
+    `dryRun=${summary.dryRun}`,
+    `roots=${summary.roots.length}`,
+    `artifacts=${summary.artifactCount}`,
+    `supportedExchangeCounts=${JSON.stringify(summary.supportedFileTypeCounts)}`,
+    `skipped=${summary.skippedCount}`,
+    `warnings=${summary.warningCount}`,
+  ].join("\n");
 }

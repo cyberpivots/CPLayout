@@ -215,6 +215,10 @@ const exportedCornerArmMetadata = exportProjectGoogleEarthKml({
       name: "Corner arm KML",
       advisoryOnly: true,
       lengthMeters: 91,
+      wheelTrackLengthMeters: 78,
+      overhangLengthMeters: 13,
+      metadataSource: "manufacturer_public",
+      modelFamily: "single_span_lrdu_sdu",
       guidanceType: "gps_guidance",
       sequencingType: "electronic",
       orientation: "operator_supplied",
@@ -231,6 +235,10 @@ const exportedCornerArmMetadata = exportProjectGoogleEarthKml({
 });
 assert.match(exportedCornerArmMetadata.kml, /cornerArmAdvisoryOnly/);
 assert.match(exportedCornerArmMetadata.kml, /cornerArmCanonicalGeometryMutation/);
+assert.match(exportedCornerArmMetadata.kml, /cornerArmWheelTrackLengthMeters/);
+assert.match(exportedCornerArmMetadata.kml, /cornerArmOverhangLengthMeters/);
+assert.match(exportedCornerArmMetadata.kml, /cornerArmMetadataSource/);
+assert.match(exportedCornerArmMetadata.kml, /cornerArmModelFamily/);
 assert.match(exportedCornerArmMetadata.kml, /SRC-VALLEY-VFLEX-CORNER/);
 assert.match(exportedCornerArmMetadata.kml, /Visual interchange metadata only/);
 assert.match(exportedCornerArmMetadata.kml, /<styleUrl>#cplayout-point-pivot<\/styleUrl>/);

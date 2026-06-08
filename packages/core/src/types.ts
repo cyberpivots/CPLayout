@@ -137,11 +137,28 @@ export type AdvisoryCornerArmOrientation =
   | "operator_supplied"
   | "unknown";
 
+export type AdvisoryCornerArmMetadataSource =
+  | "operator_supplied"
+  | "cornergpsmap_config"
+  | "manufacturer_public"
+  | "local_design_guide"
+  | "unknown";
+
+export type AdvisoryCornerArmModelFamily =
+  | "single_span_lrdu_sdu"
+  | "dualspan"
+  | "operator_supplied"
+  | "unknown";
+
 export interface AdvisoryCornerArmConfig {
   id: string;
   name: string;
   advisoryOnly: true;
   lengthMeters: number;
+  wheelTrackLengthMeters?: number;
+  overhangLengthMeters?: number;
+  metadataSource?: AdvisoryCornerArmMetadataSource;
+  modelFamily?: AdvisoryCornerArmModelFamily;
   guidanceType: AdvisoryCornerArmGuidanceType;
   sequencingType: AdvisoryCornerArmSequencingType;
   orientation: AdvisoryCornerArmOrientation;

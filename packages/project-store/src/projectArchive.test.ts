@@ -275,6 +275,10 @@ const projectWithCornerArm = {
       name: "Corner arm archive",
       advisoryOnly: true as const,
       lengthMeters: 91,
+      wheelTrackLengthMeters: 78,
+      overhangLengthMeters: 13,
+      metadataSource: "operator_supplied" as const,
+      modelFamily: "single_span_lrdu_sdu" as const,
       guidanceType: "gps_guidance" as const,
       sequencingType: "electronic" as const,
       orientation: "operator_supplied" as const,
@@ -297,9 +301,15 @@ const cornerArmBundle = buildProjectArchiveBundle(
 );
 assert.match(cornerArmBundle.files[PROJECT_JSON_FILENAME], /corner-arm-archive/);
 assert.match(cornerArmBundle.files[PROJECT_MAP_XML_FILENAME], /<cornerArm id="corner-arm-archive"/);
+assert.match(cornerArmBundle.files[PROJECT_MAP_XML_FILENAME], /modelFamily="single_span_lrdu_sdu"/);
+assert.match(cornerArmBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /cornerArmModelFamily/);
 assert.match(cornerArmBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /cornerArmCanonicalGeometryMutation/);
 const importedCornerArmProject = importProjectArchiveZip(exportProjectArchiveZip(cornerArmBundle));
 assert.equal(importedCornerArmProject.machine.cornerArm?.id, "corner-arm-archive");
+assert.equal(importedCornerArmProject.machine.cornerArm?.wheelTrackLengthMeters, 78);
+assert.equal(importedCornerArmProject.machine.cornerArm?.overhangLengthMeters, 13);
+assert.equal(importedCornerArmProject.machine.cornerArm?.metadataSource, "operator_supplied");
+assert.equal(importedCornerArmProject.machine.cornerArm?.modelFamily, "single_span_lrdu_sdu");
 assert.equal(importedCornerArmProject.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");
 
 const zipped = exportProjectArchiveZip(bundle);

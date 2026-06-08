@@ -21,6 +21,7 @@ import {
   createAnnularSector,
   createCirclePolygon,
   createSectorPolygon,
+  evaluateCornerArmPath,
   evaluateLayout,
   machineRadiusMeters,
   multiPolygonAreaSquareMeters,
@@ -47,6 +48,7 @@ export interface PivotPlacementCandidateOptions {
   powerSourceWeight?: number;
   accessWeight?: number;
   includeMaximumInscribedCircleSeed?: boolean;
+  maximumInteriorSeedRefinement?: "grid" | "local";
   includeMachineZoneReviews?: boolean;
   minimumBoundaryClearanceMeters?: number;
   minimumObstacleClearanceMeters?: number;
@@ -865,7 +867,7 @@ export function buildPivotPlacementCandidates(
 
   const candidates = optimizerAlternatives.map((alternative) => candidateFromAlternative(project, alternative, options, sourceRefs));
   if (options.includeMaximumInscribedCircleSeed !== false) {
-    const micSeed = maximumInscribedCircleSeed(project.fieldBoundary, gridDivisions);
+    const micSeed = maximumInscribedCircleSeed(project.fieldBoundary, gridDivisions, options.maximumInteriorSeedRefinement ?? "local");
     candidates.push(candidateFromProject(project, micSeed.center, "maximum_inscribed_circle", options, sourceRefs));
   }
 
@@ -1727,15 +1729,12 @@ export function evaluateAdvisoryCornerArm(
     };
   }
 
-  const machineRadius = machineRadiusMeters(project.machine);
-  const pathEnvelope = intersectMultiPolygons(
-    createAnnularSector(project.pivotCenter, machineRadius, machineRadius + config.lengthMeters, project.machine.sweep),
-    [[project.fieldBoundary]],
-  );
+  const cornerArmPath = evaluateCornerArmPath(project);
+  const pathEnvelope = cornerArmPath
+    ? intersectMultiPolygons(cornerArmPath.extensionEnvelope, [[project.fieldBoundary]])
+    : [];
   const evidence = cornerSwingEvidence(project);
-  const reviewEnvelope = evidence.multiPolygon.length > 0
-    ? intersectMultiPolygons(pathEnvelope, evidence.multiPolygon)
-    : pathEnvelope;
+  const reviewEnvelope = pathEnvelope;
   const coverageCandidate = intersectMultiPolygons(reviewEnvelope, dryCornerPolygons);
   const estimatedAddedCoverageAcres = squareMetersToAcres(multiPolygonAreaSquareMeters(coverageCandidate));
 
@@ -1750,6 +1749,7 @@ export function evaluateAdvisoryCornerArm(
     warnings: [
       ...base.warnings,
       ...(evidence.ids.length === 0 ? ["No corner_swing_limit map feature is present; envelope is unconstrained by operator footprint evidence."] : []),
+      ...(cornerArmPath?.warnings ?? []),
       "Coverage candidate is not merged into allowedCoverage, endGunCoverage, or feasibility.",
     ],
   };
@@ -3103,7 +3103,11 @@ function dryCornerPolygonsFor(project: PivotProject, allowedCoverage: MultiPolyg
   return differenceMultiPolygons([[project.fieldBoundary]], allowedCoverage);
 }
 
-function maximumInscribedCircleSeed(fieldBoundary: XY[], gridDivisions: number): { center: XY; radiusMeters: number } {
+function maximumInscribedCircleSeed(
+  fieldBoundary: XY[],
+  gridDivisions: number,
+  refinement: PivotPlacementCandidateOptions["maximumInteriorSeedRefinement"],
+): { center: XY; radiusMeters: number } {
   const bounds = boundsForGeometry([fieldBoundary]);
   let best = centroid(fieldBoundary);
   let bestDistance = pointInPolygon(best, fieldBoundary) ? distanceToRing(best, fieldBoundary) : -1;
@@ -3126,6 +3130,49 @@ function maximumInscribedCircleSeed(fieldBoundary: XY[], gridDivisions: number):
         }
       }
     }
+  }
+
+  if (refinement === "local") {
+    const refined = refineMaximumInteriorSeed(fieldBoundary, best, Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / Math.max(8, gridDivisions * 2));
+    best = refined.center;
+    bestDistance = refined.radiusMeters;
+  }
+
+  return { center: best, radiusMeters: Math.max(0, bestDistance) };
+}
+
+function refineMaximumInteriorSeed(fieldBoundary: XY[], seed: XY, initialStepMeters: number): { center: XY; radiusMeters: number } {
+  let best = seed;
+  let bestDistance = pointInPolygon(best, fieldBoundary) ? distanceToRing(best, fieldBoundary) : -1;
+  let step = Math.max(0.25, initialStepMeters);
+  const directions = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+    { x: 1, y: 1 },
+    { x: -1, y: 1 },
+    { x: 1, y: -1 },
+    { x: -1, y: -1 },
+  ];
+
+  for (let iteration = 0; iteration < 18 && step >= 0.05; iteration += 1) {
+    let improved = false;
+    for (const direction of directions) {
+      const length = Math.hypot(direction.x, direction.y);
+      const candidate = {
+        x: best.x + (direction.x / length) * step,
+        y: best.y + (direction.y / length) * step,
+      };
+      if (!pointInPolygon(candidate, fieldBoundary)) continue;
+      const candidateDistance = distanceToRing(candidate, fieldBoundary);
+      if (candidateDistance > bestDistance) {
+        best = candidate;
+        bestDistance = candidateDistance;
+        improved = true;
+      }
+    }
+    if (!improved) step /= 2;
   }
 
   return { center: best, radiusMeters: Math.max(0, bestDistance) };

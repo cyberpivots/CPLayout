@@ -1,12 +1,15 @@
 import * as polygonClipping from "polygon-clipping";
 
 import {
+  AdvisoryCornerArmConfig,
   LayoutMechanicalConflict,
   LayoutResult,
   MultiPolygonXY,
   ObstacleZone,
   PivotMachine,
   PivotProject,
+  ProjectMapFeature,
+  ProjectSettings,
   PivotSweep,
   PolygonXY,
   TowerPoint,
@@ -22,18 +25,115 @@ const DEFAULT_SEGMENTS = 288;
 const EPSILON_AREA = 0.000001;
 export const DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS = 0.01;
 
+export type CornerArmPathModel = "max_extension_envelope" | "corner_swing_limit_variable_reach";
+export type CornerArmExtensionEvidenceSource = "none" | "corner_swing_limit";
+
+export interface CornerArmPathPoint {
+  angleDegrees: number;
+  wheelTrackRadiusMeters: number;
+  overhangEndRadiusMeters: number;
+  wheelTrackExtensionMeters: number;
+  overhangEndExtensionMeters: number;
+  point: XY;
+}
+
+export interface CornerArmExtensionSlopeSummary {
+  domain: "angle_degrees";
+  maxExtensionMetersPerDegree: number;
+  maxRetractionMetersPerDegree: number;
+  maxAbsoluteMetersPerDegree: number;
+  sampleCount: number;
+}
+
+export interface CornerArmPathEvaluation {
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  anchorRadiusMeters: number;
+  maxExtensionMeters: number;
+  wheelTrackExtensionMeters: number;
+  overhangLengthMeters: number;
+  wheelTrackRadiusMeters: number;
+  overhangEndRadiusMeters: number;
+  wheelOverhangSeparationVerified: boolean;
+  pathModel: CornerArmPathModel;
+  modelFamily: NonNullable<AdvisoryCornerArmConfig["modelFamily"]>;
+  extensionEvidenceSource: CornerArmExtensionEvidenceSource;
+  evidenceFeatureIds: string[];
+  sampledPathPoints: CornerArmPathPoint[];
+  sampledPathPointCount: number;
+  extensionSlopeDomain: "angle_degrees";
+  extensionSlopeSummary: CornerArmExtensionSlopeSummary;
+  wheelTrackEnvelope: MultiPolygonXY;
+  overhangEndEnvelope: MultiPolygonXY;
+  extensionEnvelope: MultiPolygonXY;
+  warnings: string[];
+}
+
+export type LayoutPathOverlayKind =
+  | "wheel_track"
+  | "end_of_machine"
+  | "corner_arm_wheel_track"
+  | "corner_arm_overhang_end";
+
 export interface LayoutPathOverlay {
-  kind: "wheel_track" | "end_of_machine";
+  kind: LayoutPathOverlayKind;
   label: string;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
   radiusMeters: number;
   bufferMeters: number;
   insideFieldEnvelope: MultiPolygonXY;
   outsideFieldEnvelope: MultiPolygonXY;
   towerIndex?: number;
+  evidenceFeatureIds?: string[];
+  wheelOverhangSeparationVerified?: boolean;
+  anchorRadiusMeters?: number;
+  pathModel?: CornerArmPathModel;
+  modelFamily?: NonNullable<AdvisoryCornerArmConfig["modelFamily"]>;
+  extensionEvidenceSource?: CornerArmExtensionEvidenceSource;
+  sampledPathPointCount?: number;
+  maxExtensionMeters?: number;
+  extensionSlopeDomain?: "angle_degrees";
+  maxExtensionSlopeMetersPerDegree?: number;
+  maxRetractionSlopeMetersPerDegree?: number;
+  warnings?: string[];
+}
+
+export type MachineBoundaryClearanceRowKind =
+  | "pivot_center"
+  | "wheel_track"
+  | "end_of_machine"
+  | "end_gun_reach"
+  | "corner_arm_wheel_track"
+  | "corner_arm_overhang_end";
+
+export interface MachineBoundaryClearanceRow {
+  kind: MachineBoundaryClearanceRowKind;
+  label: string;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  radiusMeters: number;
+  bufferMeters: number;
+  minimumBoundaryDistanceMeters: number;
+  requiredBoundaryClearanceMeters: number;
+  clearanceShortfallMeters: number;
+  meetsRequiredBoundaryClearance: boolean;
+  outsideFieldEnvelope: MultiPolygonXY;
+  outsideFieldAreaSquareMeters: number;
+  outsideFieldAcres: number;
+  sampledPointCount: number;
+  towerIndex?: number;
+  evidenceFeatureIds?: string[];
+  wheelOverhangSeparationVerified?: boolean;
+  warnings: string[];
 }
 
 export function machineRadiusMeters(machine: PivotMachine): number {
   return machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0) + machine.overhangMeters;
+}
+
+export function lrduAnchorRadiusMeters(machine: PivotMachine): number {
+  return machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0);
 }
 
 export function endGunRadiusMeters(machine: PivotMachine): number {
@@ -226,7 +326,186 @@ export function buildLayoutPathOverlays(project: PivotProject): LayoutPathOverla
     createBufferedPathClip(project.pivotCenter, machineRadius, machineBuffer, project.machine.sweep),
   ));
 
+  const cornerArmPath = evaluateCornerArmPath(project);
+  if (cornerArmPath) {
+    overlays.push(layoutPathOverlay(
+      "corner_arm_wheel_track",
+      "Corner-arm wheel track",
+      cornerArmPath.wheelTrackRadiusMeters,
+      towerBuffer,
+      field,
+      toClipMultiPolygon(cornerArmPath.wheelTrackEnvelope),
+      undefined,
+      {
+        evidenceFeatureIds: cornerArmPath.evidenceFeatureIds,
+        wheelOverhangSeparationVerified: cornerArmPath.wheelOverhangSeparationVerified,
+        anchorRadiusMeters: cornerArmPath.anchorRadiusMeters,
+        pathModel: cornerArmPath.pathModel,
+        modelFamily: cornerArmPath.modelFamily,
+        extensionEvidenceSource: cornerArmPath.extensionEvidenceSource,
+        sampledPathPointCount: cornerArmPath.sampledPathPointCount,
+        maxExtensionMeters: cornerArmPath.maxExtensionMeters,
+        extensionSlopeDomain: cornerArmPath.extensionSlopeDomain,
+        maxExtensionSlopeMetersPerDegree: cornerArmPath.extensionSlopeSummary.maxExtensionMetersPerDegree,
+        maxRetractionSlopeMetersPerDegree: cornerArmPath.extensionSlopeSummary.maxRetractionMetersPerDegree,
+        warnings: cornerArmPath.warnings,
+      },
+    ));
+    overlays.push(layoutPathOverlay(
+      "corner_arm_overhang_end",
+      "Corner-arm overhang end",
+      cornerArmPath.overhangEndRadiusMeters,
+      machineBuffer,
+      field,
+      toClipMultiPolygon(cornerArmPath.overhangEndEnvelope),
+      undefined,
+      {
+        evidenceFeatureIds: cornerArmPath.evidenceFeatureIds,
+        wheelOverhangSeparationVerified: cornerArmPath.wheelOverhangSeparationVerified,
+        anchorRadiusMeters: cornerArmPath.anchorRadiusMeters,
+        pathModel: cornerArmPath.pathModel,
+        modelFamily: cornerArmPath.modelFamily,
+        extensionEvidenceSource: cornerArmPath.extensionEvidenceSource,
+        sampledPathPointCount: cornerArmPath.sampledPathPointCount,
+        maxExtensionMeters: cornerArmPath.maxExtensionMeters,
+        extensionSlopeDomain: cornerArmPath.extensionSlopeDomain,
+        maxExtensionSlopeMetersPerDegree: cornerArmPath.extensionSlopeSummary.maxExtensionMetersPerDegree,
+        maxRetractionSlopeMetersPerDegree: cornerArmPath.extensionSlopeSummary.maxRetractionMetersPerDegree,
+        warnings: cornerArmPath.warnings,
+      },
+    ));
+  }
+
   return overlays;
+}
+
+export function evaluateCornerArmPath(project: PivotProject): CornerArmPathEvaluation | null {
+  assertProjectedCrs(project.projectCrs);
+
+  const config = project.machine.cornerArm;
+  const cornerArmPaths = cornerArmPathLengths(project.machine);
+  if (!config || !cornerArmPaths) return null;
+
+  const anchorRadius = lrduAnchorRadiusMeters(project.machine);
+  const evidence = cornerSwingEvidence(project);
+  const hasEvidence = evidence.multiPolygon.length > 0;
+  const modelFamily = config.modelFamily ?? "single_span_lrdu_sdu";
+  const sampledPath = sampleCornerArmPath(project, anchorRadius, cornerArmPaths, evidence.multiPolygon);
+  const pathModel: CornerArmPathModel = hasEvidence ? "corner_swing_limit_variable_reach" : "max_extension_envelope";
+  const maxWheelTrackRadius = anchorRadius + cornerArmPaths.wheelTrackLengthMeters;
+  const maxOverhangEndRadius = anchorRadius + cornerArmPaths.overhangEndLengthMeters;
+  const extensionEnvelope = createCornerArmExtensionEnvelope(
+    project,
+    anchorRadius,
+    maxOverhangEndRadius,
+    hasEvidence ? evidence.multiPolygon : [],
+  );
+  const warnings = [
+    "Corner-arm path is advisory projected/local XY geometry and does not mutate canonical project geometry.",
+    "Extension/retraction slopes are sampled reach changes per pivot angle degree, not time-based mechanical speeds or controller timing.",
+    ...(cornerArmPaths.wheelOverhangSeparationVerified
+      ? []
+      : ["Corner-arm wheel track and overhang separation is unverified; legacy length is rendered as advisory total reach."]),
+    ...(hasEvidence
+      ? []
+      : ["No corner_swing_limit map feature is present; conservative max-extension envelope is rendered without operator footprint evidence."]),
+    ...(hasEvidence && sampledPath.points.length === 0
+      ? ["corner_swing_limit evidence did not intersect sampled advisory corner-arm reach angles; rendered path envelopes are empty."]
+      : []),
+    ...(modelFamily === "dualspan"
+      ? ["DualSpan model family is metadata/review-only in this advisory path model; CPLayout does not reproduce proprietary dual-swing kinematics."]
+      : []),
+  ];
+
+  return {
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    anchorRadiusMeters: round(anchorRadius),
+    maxExtensionMeters: round(cornerArmPaths.overhangEndLengthMeters),
+    wheelTrackExtensionMeters: round(cornerArmPaths.wheelTrackLengthMeters),
+    overhangLengthMeters: round(Math.max(0, cornerArmPaths.overhangEndLengthMeters - cornerArmPaths.wheelTrackLengthMeters)),
+    wheelTrackRadiusMeters: round(maxWheelTrackRadius),
+    overhangEndRadiusMeters: round(maxOverhangEndRadius),
+    wheelOverhangSeparationVerified: cornerArmPaths.wheelOverhangSeparationVerified,
+    pathModel,
+    modelFamily,
+    extensionEvidenceSource: hasEvidence ? "corner_swing_limit" : "none",
+    evidenceFeatureIds: evidence.ids,
+    sampledPathPoints: sampledPath.points.map((point) => ({
+      angleDegrees: round(normalizeDegrees(point.angleDegrees)),
+      wheelTrackRadiusMeters: round(point.wheelTrackRadiusMeters),
+      overhangEndRadiusMeters: round(point.overhangEndRadiusMeters),
+      wheelTrackExtensionMeters: round(point.wheelTrackExtensionMeters),
+      overhangEndExtensionMeters: round(point.overhangEndExtensionMeters),
+      point: { x: round(point.point.x), y: round(point.point.y) },
+    })),
+    sampledPathPointCount: sampledPath.points.length,
+    extensionSlopeDomain: "angle_degrees",
+    extensionSlopeSummary: sampledPath.extensionSlopeSummary,
+    wheelTrackEnvelope: sampledPath.wheelTrackEnvelope,
+    overhangEndEnvelope: sampledPath.overhangEndEnvelope,
+    extensionEnvelope,
+    warnings,
+  };
+}
+
+export function evaluateMachineBoundaryClearance(
+  project: PivotProject,
+  settings?: Pick<ProjectSettings, "layoutReview">,
+): MachineBoundaryClearanceRow[] {
+  assertProjectedCrs(project.projectCrs);
+
+  const requiredBoundaryClearanceMeters = Math.max(0, settings?.layoutReview?.requiredBoundaryClearanceMeters ?? 0);
+  const rows: MachineBoundaryClearanceRow[] = [];
+  const pointDistance = signedBoundaryDistance(project.pivotCenter, project.fieldBoundary);
+  rows.push(machineBoundaryClearanceRow({
+    kind: "pivot_center",
+    label: "Pivot center",
+    radiusMeters: 0,
+    bufferMeters: 0,
+    minimumBoundaryDistanceMeters: pointDistance,
+    requiredBoundaryClearanceMeters,
+    outsideFieldEnvelope: pointDistance < 0 ? [[createCirclePolygon(project.pivotCenter, 0.5, 16)]] : [],
+    sampledPointCount: 1,
+    warnings: ["Pivot-center clearance is advisory and does not move the saved pivot unless the operator applies a candidate."],
+  }));
+
+  const overlays = buildLayoutPathOverlays(project);
+  for (const overlay of overlays) {
+    const sampled = sampledPathBoundaryDistance(project, overlay.radiusMeters);
+    rows.push(machineBoundaryClearanceRow({
+      kind: overlay.kind,
+      label: overlay.label,
+      radiusMeters: overlay.radiusMeters,
+      bufferMeters: overlay.bufferMeters,
+      minimumBoundaryDistanceMeters: sampled.minimumBoundaryDistanceMeters,
+      requiredBoundaryClearanceMeters,
+      outsideFieldEnvelope: overlay.outsideFieldEnvelope,
+      sampledPointCount: sampled.sampledPointCount,
+      towerIndex: overlay.towerIndex,
+      evidenceFeatureIds: overlay.evidenceFeatureIds,
+      wheelOverhangSeparationVerified: overlay.wheelOverhangSeparationVerified,
+      warnings: overlay.warnings ?? [],
+    }));
+  }
+
+  const endGunRadius = endGunRadiusMeters(project.machine);
+  if (endGunRadius > machineRadiusMeters(project.machine)) {
+    const sampled = sampledPathBoundaryDistance(project, endGunRadius);
+    rows.push(machineBoundaryClearanceRow({
+      kind: "end_gun_reach",
+      label: "End-gun reach",
+      radiusMeters: endGunRadius,
+      bufferMeters: 0,
+      minimumBoundaryDistanceMeters: sampled.minimumBoundaryDistanceMeters,
+      requiredBoundaryClearanceMeters,
+      outsideFieldEnvelope: pathOutsideFieldEnvelope(project, endGunRadius, 0.5),
+      sampledPointCount: sampled.sampledPointCount,
+      warnings: ["End-gun reach is a wet-coverage review row, not a physical tower or corner-arm path."],
+    }));
+  }
+
+  return rows;
 }
 
 export interface BoundaryConstraintResult {
@@ -458,6 +737,322 @@ function obstacleIntersectionArea(clip: ClipMultiPolygon, obstacle: ObstacleZone
   return multiPolygonAreaSquareMeters(fromClipMultiPolygon(intersection ?? []));
 }
 
+function sampledPathBoundaryDistance(project: PivotProject, radiusMeters: number): {
+  minimumBoundaryDistanceMeters: number;
+  sampledPointCount: number;
+} {
+  const angles = project.machine.sweep.mode === "full_circle"
+    ? Array.from({ length: DEFAULT_SEGMENTS }, (_value, index) => (index / DEFAULT_SEGMENTS) * 360)
+    : buildSweepAngles(project.machine.sweep.startAngleDegrees, project.machine.sweep.stopAngleDegrees, project.machine.sweep.direction, DEFAULT_SEGMENTS);
+  const distances = angles.map((angle) => signedBoundaryDistance(polarOffset(project.pivotCenter, radiusMeters, angle), project.fieldBoundary));
+  return {
+    minimumBoundaryDistanceMeters: round(distances.reduce((minimum, value) => Math.min(minimum, value), Number.POSITIVE_INFINITY)),
+    sampledPointCount: distances.length,
+  };
+}
+
+function machineBoundaryClearanceRow(input: {
+  kind: MachineBoundaryClearanceRowKind;
+  label: string;
+  radiusMeters: number;
+  bufferMeters: number;
+  minimumBoundaryDistanceMeters: number;
+  requiredBoundaryClearanceMeters: number;
+  outsideFieldEnvelope: MultiPolygonXY;
+  sampledPointCount: number;
+  towerIndex?: number;
+  evidenceFeatureIds?: string[];
+  wheelOverhangSeparationVerified?: boolean;
+  warnings: string[];
+}): MachineBoundaryClearanceRow {
+  const minimumBoundaryDistanceMeters = round(input.minimumBoundaryDistanceMeters);
+  const requiredBoundaryClearanceMeters = round(Math.max(0, input.requiredBoundaryClearanceMeters));
+  const clearanceShortfallMeters = round(Math.max(0, requiredBoundaryClearanceMeters - minimumBoundaryDistanceMeters));
+  const outsideFieldAreaSquareMeters = multiPolygonAreaSquareMeters(input.outsideFieldEnvelope);
+  return {
+    kind: input.kind,
+    label: input.label,
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    radiusMeters: round(input.radiusMeters),
+    bufferMeters: round(input.bufferMeters),
+    minimumBoundaryDistanceMeters,
+    requiredBoundaryClearanceMeters,
+    clearanceShortfallMeters,
+    meetsRequiredBoundaryClearance: clearanceShortfallMeters <= 0,
+    outsideFieldEnvelope: input.outsideFieldEnvelope,
+    outsideFieldAreaSquareMeters: round(outsideFieldAreaSquareMeters),
+    outsideFieldAcres: squareMetersToAcres(outsideFieldAreaSquareMeters),
+    sampledPointCount: input.sampledPointCount,
+    ...(input.towerIndex === undefined ? {} : { towerIndex: input.towerIndex }),
+    ...(input.evidenceFeatureIds === undefined ? {} : { evidenceFeatureIds: input.evidenceFeatureIds }),
+    ...(input.wheelOverhangSeparationVerified === undefined ? {} : { wheelOverhangSeparationVerified: input.wheelOverhangSeparationVerified }),
+    warnings: [
+      "Machine-to-boundary clearance is sampled advisory geometry in projected/local XY and does not mutate canonical project geometry.",
+      ...(clearanceShortfallMeters > 0 ? [`Required boundary clearance is short by ${clearanceShortfallMeters.toFixed(2)} meters.`] : []),
+      ...input.warnings,
+    ],
+  };
+}
+
+function pathOutsideFieldEnvelope(project: PivotProject, radiusMeters: number, bufferMeters: number): MultiPolygonXY {
+  const field = toClipMultiPolygon([[project.fieldBoundary]]);
+  const envelope = createBufferedPathClip(project.pivotCenter, radiusMeters, Math.max(0.5, bufferMeters), project.machine.sweep);
+  return fromClipMultiPolygon(polygonClipping.difference(envelope, field) as ClipMultiPolygon);
+}
+
+type CornerArmPathLengths = NonNullable<ReturnType<typeof cornerArmPathLengths>>;
+
+interface SampledCornerArmPathPoint extends CornerArmPathPoint {
+  sequenceDegrees: number;
+  sequenceIndex: number;
+}
+
+function sampleCornerArmPath(
+  project: PivotProject,
+  anchorRadiusMeters: number,
+  cornerArmPaths: CornerArmPathLengths,
+  evidenceMultiPolygon: MultiPolygonXY,
+): {
+  points: SampledCornerArmPathPoint[];
+  wheelTrackEnvelope: MultiPolygonXY;
+  overhangEndEnvelope: MultiPolygonXY;
+  extensionSlopeSummary: CornerArmExtensionSlopeSummary;
+} {
+  const hasEvidence = evidenceMultiPolygon.length > 0;
+  const angles = sweepSampleAngles(project.machine.sweep);
+  const points = angles.flatMap((sample): SampledCornerArmPathPoint[] => {
+    const evidenceExtension = hasEvidence
+      ? evidenceBoundedExtensionMeters(project.pivotCenter, anchorRadiusMeters, sample.angleDegrees, cornerArmPaths.overhangEndLengthMeters, evidenceMultiPolygon)
+      : cornerArmPaths.overhangEndLengthMeters;
+    if (hasEvidence && evidenceExtension <= 0) return [];
+    const wheelTrackExtension = cornerArmPaths.wheelOverhangSeparationVerified
+      ? Math.min(cornerArmPaths.wheelTrackLengthMeters, evidenceExtension)
+      : evidenceExtension;
+    const overhangEndRadius = anchorRadiusMeters + evidenceExtension;
+    const wheelTrackRadius = anchorRadiusMeters + wheelTrackExtension;
+    return [{
+      angleDegrees: sample.angleDegrees,
+      sequenceDegrees: sample.sequenceDegrees,
+      sequenceIndex: sample.sequenceIndex,
+      wheelTrackRadiusMeters: wheelTrackRadius,
+      overhangEndRadiusMeters: overhangEndRadius,
+      wheelTrackExtensionMeters: wheelTrackExtension,
+      overhangEndExtensionMeters: evidenceExtension,
+      point: polarOffset(project.pivotCenter, overhangEndRadius, sample.angleDegrees),
+    }];
+  });
+
+  return {
+    points,
+    wheelTrackEnvelope: hasEvidence
+      ? bufferedSampledPathEnvelope(
+        project.pivotCenter,
+        points.map((point) => ({ ...point, radiusMeters: point.wheelTrackRadiusMeters })),
+        Math.max(0.5, project.machine.towerClearanceBufferMeters),
+        false,
+      )
+      : fromClipMultiPolygon(createBufferedPathClip(project.pivotCenter, anchorRadiusMeters + cornerArmPaths.wheelTrackLengthMeters, Math.max(0.5, project.machine.towerClearanceBufferMeters), project.machine.sweep)),
+    overhangEndEnvelope: hasEvidence
+      ? bufferedSampledPathEnvelope(
+        project.pivotCenter,
+        points.map((point) => ({ ...point, radiusMeters: point.overhangEndRadiusMeters })),
+        Math.max(0.5, project.machine.machineClearanceBufferMeters),
+        false,
+      )
+      : fromClipMultiPolygon(createBufferedPathClip(project.pivotCenter, anchorRadiusMeters + cornerArmPaths.overhangEndLengthMeters, Math.max(0.5, project.machine.machineClearanceBufferMeters), project.machine.sweep)),
+    extensionSlopeSummary: cornerArmSlopeSummary(points),
+  };
+}
+
+function sweepSampleAngles(sweep: PivotSweep): { angleDegrees: number; sequenceDegrees: number; sequenceIndex: number }[] {
+  const angles = sweep.mode === "full_circle"
+    ? Array.from({ length: DEFAULT_SEGMENTS }, (_value, index) => (index / DEFAULT_SEGMENTS) * 360)
+    : buildSweepAngles(sweep.startAngleDegrees, sweep.stopAngleDegrees, sweep.direction, DEFAULT_SEGMENTS);
+  return angles.map((angleDegrees, sequenceIndex) => ({
+    angleDegrees,
+    sequenceDegrees: sequenceIndex === 0 ? 0 : Math.abs(angleDegrees - angles[0]),
+    sequenceIndex,
+  }));
+}
+
+function evidenceBoundedExtensionMeters(
+  center: XY,
+  anchorRadiusMeters: number,
+  angleDegrees: number,
+  maxExtensionMeters: number,
+  evidenceMultiPolygon: MultiPolygonXY,
+): number {
+  const steps = 48;
+  let best = 0;
+  for (let step = 1; step <= steps; step += 1) {
+    const extension = (maxExtensionMeters * step) / steps;
+    const point = polarOffset(center, anchorRadiusMeters + extension, angleDegrees);
+    if (pointInMultiPolygon(point, evidenceMultiPolygon)) best = extension;
+  }
+  return best;
+}
+
+function bufferedSampledPathEnvelope(
+  center: XY,
+  samples: Array<SampledCornerArmPathPoint & { radiusMeters: number }>,
+  bufferMeters: number,
+  closeLoop: boolean,
+): MultiPolygonXY {
+  if (samples.length === 0) return [];
+  const clips: ClipMultiPolygon[] = [];
+  for (const sample of samples) {
+    clips.push(toClipMultiPolygon([[createCirclePolygon(polarOffset(center, sample.radiusMeters, sample.angleDegrees), bufferMeters, 24)]]));
+  }
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1];
+    const current = samples[index];
+    if (current.sequenceIndex === previous.sequenceIndex + 1) {
+      clips.push(toClipMultiPolygon([[lineSegmentBufferPolygon(
+        polarOffset(center, previous.radiusMeters, previous.angleDegrees),
+        polarOffset(center, current.radiusMeters, current.angleDegrees),
+        bufferMeters,
+      )]]));
+    }
+  }
+  if (closeLoop && samples.length > 2) {
+    clips.push(toClipMultiPolygon([[lineSegmentBufferPolygon(
+      polarOffset(center, samples[samples.length - 1].radiusMeters, samples[samples.length - 1].angleDegrees),
+      polarOffset(center, samples[0].radiusMeters, samples[0].angleDegrees),
+      bufferMeters,
+    )]]));
+  }
+  return fromClipMultiPolygon(unionClipMultiPolygons(clips));
+}
+
+function lineSegmentBufferPolygon(start: XY, end: XY, bufferMeters: number): XY[] {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return createCirclePolygon(start, bufferMeters, 24);
+  const offsetX = (-dy / length) * bufferMeters;
+  const offsetY = (dx / length) * bufferMeters;
+  return [
+    { x: start.x + offsetX, y: start.y + offsetY },
+    { x: end.x + offsetX, y: end.y + offsetY },
+    { x: end.x - offsetX, y: end.y - offsetY },
+    { x: start.x - offsetX, y: start.y - offsetY },
+  ];
+}
+
+function unionClipMultiPolygons(clips: ClipMultiPolygon[]): ClipMultiPolygon {
+  if (clips.length === 0) return [];
+  if (clips.length === 1) return clips[0];
+  return clips.slice(1).reduce(
+    (merged, clip) => polygonClipping.union(merged, clip) as ClipMultiPolygon,
+    clips[0],
+  );
+}
+
+function createCornerArmExtensionEnvelope(
+  project: PivotProject,
+  anchorRadiusMeters: number,
+  overhangEndRadiusMeters: number,
+  evidenceMultiPolygon: MultiPolygonXY,
+): MultiPolygonXY {
+  const envelope = toClipMultiPolygon(createAnnularSector(project.pivotCenter, anchorRadiusMeters, overhangEndRadiusMeters, project.machine.sweep));
+  if (evidenceMultiPolygon.length === 0) return fromClipMultiPolygon(envelope);
+  const evidence = toClipMultiPolygon(evidenceMultiPolygon);
+  return fromClipMultiPolygon(polygonClipping.intersection(envelope, evidence) as ClipMultiPolygon | null ?? []);
+}
+
+function cornerArmSlopeSummary(points: SampledCornerArmPathPoint[]): CornerArmExtensionSlopeSummary {
+  let maxExtension = 0;
+  let maxRetraction = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    if (current.sequenceIndex !== previous.sequenceIndex + 1) continue;
+    const angleDelta = Math.abs(current.sequenceDegrees - previous.sequenceDegrees);
+    if (angleDelta <= 0) continue;
+    const slope = (current.overhangEndExtensionMeters - previous.overhangEndExtensionMeters) / angleDelta;
+    if (slope > 0) maxExtension = Math.max(maxExtension, slope);
+    if (slope < 0) maxRetraction = Math.max(maxRetraction, Math.abs(slope));
+  }
+  return {
+    domain: "angle_degrees",
+    maxExtensionMetersPerDegree: round(maxExtension),
+    maxRetractionMetersPerDegree: round(maxRetraction),
+    maxAbsoluteMetersPerDegree: round(Math.max(maxExtension, maxRetraction)),
+    sampleCount: points.length,
+  };
+}
+
+function signedBoundaryDistance(point: XY, fieldBoundary: XY[]): number {
+  const boundaryDistance = distanceToRing(point, fieldBoundary);
+  return (pointInPolygon(point, fieldBoundary) ? 1 : -1) * boundaryDistance;
+}
+
+function cornerArmPathLengths(machine: PivotMachine): {
+  wheelTrackLengthMeters: number;
+  overhangEndLengthMeters: number;
+  wheelOverhangSeparationVerified: boolean;
+} | null {
+  const config = machine.cornerArm;
+  if (!config || config.lengthMeters <= 0) return null;
+  const totalLengthMeters = Math.max(0, config.lengthMeters);
+  const explicitWheelLength = config.wheelTrackLengthMeters;
+  const explicitOverhangLength = config.overhangLengthMeters;
+  if (
+    explicitWheelLength !== undefined
+    && Number.isFinite(explicitWheelLength)
+    && explicitWheelLength > 0
+    && explicitOverhangLength !== undefined
+    && Number.isFinite(explicitOverhangLength)
+    && explicitOverhangLength >= 0
+  ) {
+    return {
+      wheelTrackLengthMeters: explicitWheelLength,
+      overhangEndLengthMeters: explicitWheelLength + explicitOverhangLength,
+      wheelOverhangSeparationVerified: true,
+    };
+  }
+  if (explicitWheelLength !== undefined && Number.isFinite(explicitWheelLength) && explicitWheelLength > 0) {
+    return {
+      wheelTrackLengthMeters: explicitWheelLength,
+      overhangEndLengthMeters: Math.max(totalLengthMeters, explicitWheelLength),
+      wheelOverhangSeparationVerified: false,
+    };
+  }
+  if (
+    explicitOverhangLength !== undefined
+    && Number.isFinite(explicitOverhangLength)
+    && explicitOverhangLength >= 0
+    && explicitOverhangLength < totalLengthMeters
+  ) {
+    return {
+      wheelTrackLengthMeters: totalLengthMeters - explicitOverhangLength,
+      overhangEndLengthMeters: totalLengthMeters,
+      wheelOverhangSeparationVerified: false,
+    };
+  }
+  return {
+    wheelTrackLengthMeters: totalLengthMeters,
+    overhangEndLengthMeters: totalLengthMeters,
+    wheelOverhangSeparationVerified: false,
+  };
+}
+
+function cornerSwingEvidence(project: PivotProject): { ids: string[]; multiPolygon: MultiPolygonXY } {
+  const features = (project.mapFeatures ?? []).filter((feature) => feature.kind === "corner_swing_limit");
+  return {
+    ids: features.map((feature) => feature.id),
+    multiPolygon: features.flatMap(cornerSwingEvidencePolygon),
+  };
+}
+
+function cornerSwingEvidencePolygon(feature: ProjectMapFeature): MultiPolygonXY {
+  if (feature.geometry.type === "Polygon") return [[feature.geometry.vertices]];
+  if (feature.geometry.type === "Circle") return [[createCirclePolygon(feature.geometry.center, feature.geometry.radiusMeters, 96)]];
+  if (feature.geometry.type === "LineString" && feature.geometry.vertices.length >= 3) return [[feature.geometry.vertices]];
+  return [];
+}
+
 function layoutPathOverlay(
   kind: LayoutPathOverlay["kind"],
   label: string,
@@ -466,17 +1061,49 @@ function layoutPathOverlay(
   field: ClipMultiPolygon,
   envelope: ClipMultiPolygon,
   towerIndex?: number,
+  options: {
+    evidenceLimit?: ClipMultiPolygon | null;
+    evidenceFeatureIds?: string[];
+    wheelOverhangSeparationVerified?: boolean;
+    anchorRadiusMeters?: number;
+    pathModel?: CornerArmPathModel;
+    modelFamily?: NonNullable<AdvisoryCornerArmConfig["modelFamily"]>;
+    extensionEvidenceSource?: CornerArmExtensionEvidenceSource;
+    sampledPathPointCount?: number;
+    maxExtensionMeters?: number;
+    extensionSlopeDomain?: "angle_degrees";
+    maxExtensionSlopeMetersPerDegree?: number;
+    maxRetractionSlopeMetersPerDegree?: number;
+    warnings?: string[];
+  } = {},
 ): LayoutPathOverlay {
-  const inside = polygonClipping.intersection(envelope, field) as ClipMultiPolygon | null;
-  const outside = polygonClipping.difference(envelope, field) as ClipMultiPolygon;
+  const limitedEnvelope = options.evidenceLimit
+    ? polygonClipping.intersection(envelope, options.evidenceLimit) as ClipMultiPolygon | null
+    : envelope;
+  const inside = polygonClipping.intersection(limitedEnvelope ?? [], field) as ClipMultiPolygon | null;
+  const outside = polygonClipping.difference(limitedEnvelope ?? [], field) as ClipMultiPolygon;
   return {
     kind,
     label,
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
     radiusMeters,
     bufferMeters,
     insideFieldEnvelope: fromClipMultiPolygon(inside ?? []),
     outsideFieldEnvelope: fromClipMultiPolygon(outside),
     ...(towerIndex === undefined ? {} : { towerIndex }),
+    ...(options.evidenceFeatureIds === undefined ? {} : { evidenceFeatureIds: options.evidenceFeatureIds }),
+    ...(options.wheelOverhangSeparationVerified === undefined ? {} : { wheelOverhangSeparationVerified: options.wheelOverhangSeparationVerified }),
+    ...(options.anchorRadiusMeters === undefined ? {} : { anchorRadiusMeters: options.anchorRadiusMeters }),
+    ...(options.pathModel === undefined ? {} : { pathModel: options.pathModel }),
+    ...(options.modelFamily === undefined ? {} : { modelFamily: options.modelFamily }),
+    ...(options.extensionEvidenceSource === undefined ? {} : { extensionEvidenceSource: options.extensionEvidenceSource }),
+    ...(options.sampledPathPointCount === undefined ? {} : { sampledPathPointCount: options.sampledPathPointCount }),
+    ...(options.maxExtensionMeters === undefined ? {} : { maxExtensionMeters: options.maxExtensionMeters }),
+    ...(options.extensionSlopeDomain === undefined ? {} : { extensionSlopeDomain: options.extensionSlopeDomain }),
+    ...(options.maxExtensionSlopeMetersPerDegree === undefined ? {} : { maxExtensionSlopeMetersPerDegree: options.maxExtensionSlopeMetersPerDegree }),
+    ...(options.maxRetractionSlopeMetersPerDegree === undefined ? {} : { maxRetractionSlopeMetersPerDegree: options.maxRetractionSlopeMetersPerDegree }),
+    ...(options.warnings === undefined ? {} : { warnings: options.warnings }),
   };
 }
 
@@ -496,4 +1123,58 @@ function mechanicalConflict(
 
 function uniqueConflictObstacleCount(conflicts: LayoutMechanicalConflict[]): number {
   return new Set(conflicts.map((conflict) => conflict.obstacleId)).size;
+}
+
+function pointInMultiPolygon(point: XY, multiPolygon: MultiPolygonXY): boolean {
+  return multiPolygon.some((polygon) => {
+    const [outer, ...holes] = polygon;
+    return Boolean(outer && pointInPolygon(point, outer) && !holes.some((hole) => pointInPolygon(point, hole)));
+  });
+}
+
+function pointInPolygon(point: XY, ring: XY[]): boolean {
+  let inside = false;
+  for (let currentIndex = 0, previousIndex = ring.length - 1; currentIndex < ring.length; previousIndex = currentIndex, currentIndex += 1) {
+    const current = ring[currentIndex];
+    const previous = ring[previousIndex];
+    if (pointOnSegment(point, previous, current)) return true;
+    const intersects = ((current.y > point.y) !== (previous.y > point.y))
+      && point.x < ((previous.x - current.x) * (point.y - current.y)) / (previous.y - current.y) + current.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function pointOnSegment(point: XY, start: XY, end: XY): boolean {
+  const cross = (point.y - start.y) * (end.x - start.x) - (point.x - start.x) * (end.y - start.y);
+  if (Math.abs(cross) > 0.000001) return false;
+  const dot = (point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (end.y - start.y);
+  if (dot < 0) return false;
+  const segmentLengthSquared = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
+  return dot <= segmentLengthSquared;
+}
+
+function distanceToRing(point: XY, ring: XY[]): number {
+  return ring.reduce((minimum, start, index) => {
+    const end = ring[(index + 1) % ring.length];
+    return Math.min(minimum, distanceToSegment(point, start, end));
+  }, Number.POSITIVE_INFINITY);
+}
+
+function distanceToSegment(point: XY, start: XY, end: XY): number {
+  const segmentLengthSquared = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
+  if (segmentLengthSquared === 0) return distance(point, start);
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (end.y - start.y)) / segmentLengthSquared));
+  return distance(point, {
+    x: start.x + t * (end.x - start.x),
+    y: start.y + t * (end.y - start.y),
+  });
+}
+
+function distance(left: XY, right: XY): number {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function round(value: number): number {
+  return Number(value.toFixed(6));
 }

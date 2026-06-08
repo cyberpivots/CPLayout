@@ -228,6 +228,43 @@ export function SettingsPanel({ mapPackages = [], settings, onChange }: Settings
         />
       </SettingsGroup>
 
+      <SettingsGroup icon={<Ruler size={20} color="#254234" />} title="Layout Review">
+        <Stepper
+          label="Boundary clearance"
+          testID="settings-layout-boundary-clearance"
+          value={`${settings.layoutReview.requiredBoundaryClearanceMeters.toFixed(1)} m`}
+          onDecrease={() => update({
+            layoutReview: {
+              ...settings.layoutReview,
+              requiredBoundaryClearanceMeters: clamp(settings.layoutReview.requiredBoundaryClearanceMeters - 5, 0, 1000),
+            },
+          })}
+          onIncrease={() => update({
+            layoutReview: {
+              ...settings.layoutReview,
+              requiredBoundaryClearanceMeters: clamp(settings.layoutReview.requiredBoundaryClearanceMeters + 5, 0, 1000),
+            },
+          })}
+        />
+        <View style={styles.buttonRow}>
+          <Choice
+            active={settings.layoutReview.showMachineBoundaryDistances}
+            label="Show distances"
+            onPress={() => update({ layoutReview: { ...settings.layoutReview, showMachineBoundaryDistances: true } })}
+            testID="settings-layout-show-machine-distances"
+          />
+          <Choice
+            active={!settings.layoutReview.showMachineBoundaryDistances}
+            label="Hide distances"
+            onPress={() => update({ layoutReview: { ...settings.layoutReview, showMachineBoundaryDistances: false } })}
+            testID="settings-layout-hide-machine-distances"
+          />
+        </View>
+        <Text style={styles.lockedText} testID="settings-layout-review-summary">
+          Advisory sampled machine-to-boundary rows use projected/local XY only and do not move pivots, vertices, machine settings, storage, archives, or exports.
+        </Text>
+      </SettingsGroup>
+
       <SettingsGroup icon={<Satellite size={20} color="#254234" />} title="GPS Quality Gate">
         <Stepper
           label="Minimum satellites"

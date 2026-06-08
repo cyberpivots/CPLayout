@@ -132,7 +132,14 @@ const advisoryConfig = cornerGpsMapPresetToAdvisoryCornerArmConfig(vflex, {
 assert.equal(advisoryConfig.advisoryOnly, true);
 assert.equal(advisoryConfig.guidanceType, "gps_guidance");
 assert.equal(advisoryConfig.lengthMeters, vflex.cornerLengthMeters);
+assert.equal(advisoryConfig.overhangLengthMeters, vflex.overhangLengthMeters);
+assert.equal(advisoryConfig.metadataSource, "cornergpsmap_config");
+assert.equal(advisoryConfig.modelFamily, "single_span_lrdu_sdu");
+assert.ok((advisoryConfig.wheelTrackLengthMeters ?? 0) > 0);
 assert.match(advisoryConfig.notes ?? "", /proprietary kinematics/);
+
+const dualAdvisoryConfig = cornerGpsMapPresetToAdvisoryCornerArmConfig(dual);
+assert.equal(dualAdvisoryConfig.modelFamily, "dualspan");
 
 assert.equal(CORNER_GPS_MAP_DEFAULT_REVIEW_SETTINGS.advisoryOnly, true);
 assert.ok(Math.abs(CORNER_GPS_MAP_DEFAULT_REVIEW_SETTINGS.safetyZoneMeters - feetToMeters(15)) < 0.000001);

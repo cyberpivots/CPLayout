@@ -88,12 +88,25 @@ function layoutPathOverlayFeatures(project: PivotProject, overlay: LayoutPathOve
     label: overlay.label,
     radiusMeters: overlay.radiusMeters,
     bufferMeters: overlay.bufferMeters,
+    advisoryOnly: overlay.advisoryOnly,
     renderOnly: true,
     canonicalGeometryMutation: false,
     ...(overlay.towerIndex === undefined ? {} : { towerIndex: overlay.towerIndex }),
+    ...(overlay.evidenceFeatureIds === undefined ? {} : { evidenceFeatureIds: overlay.evidenceFeatureIds }),
+    ...(overlay.wheelOverhangSeparationVerified === undefined ? {} : { wheelOverhangSeparationVerified: overlay.wheelOverhangSeparationVerified }),
+    ...(overlay.anchorRadiusMeters === undefined ? {} : { anchorRadiusMeters: overlay.anchorRadiusMeters }),
+    ...(overlay.pathModel === undefined ? {} : { pathModel: overlay.pathModel }),
+    ...(overlay.modelFamily === undefined ? {} : { modelFamily: overlay.modelFamily }),
+    ...(overlay.extensionEvidenceSource === undefined ? {} : { extensionEvidenceSource: overlay.extensionEvidenceSource }),
+    ...(overlay.sampledPathPointCount === undefined ? {} : { sampledPathPointCount: overlay.sampledPathPointCount }),
+    ...(overlay.maxExtensionMeters === undefined ? {} : { maxExtensionMeters: overlay.maxExtensionMeters }),
+    ...(overlay.extensionSlopeDomain === undefined ? {} : { extensionSlopeDomain: overlay.extensionSlopeDomain }),
+    ...(overlay.maxExtensionSlopeMetersPerDegree === undefined ? {} : { maxExtensionSlopeMetersPerDegree: overlay.maxExtensionSlopeMetersPerDegree }),
+    ...(overlay.maxRetractionSlopeMetersPerDegree === undefined ? {} : { maxRetractionSlopeMetersPerDegree: overlay.maxRetractionSlopeMetersPerDegree }),
+    ...(overlay.warnings === undefined ? {} : { warningCount: overlay.warnings.length }),
   };
-  const insideLayer = overlay.kind === "wheel_track" ? "wheel_track_path" : "end_machine_path";
-  const outsideLayer = overlay.kind === "wheel_track" ? "wheel_track_outside_field" : "end_machine_outside_field";
+  const insideLayer = layoutPathInsideLayerType(overlay);
+  const outsideLayer = layoutPathOutsideLayerType(overlay);
   return [
     polygonFeature(project, insideLayer, overlay.insideFieldEnvelope, {
       ...baseProperties,
@@ -107,6 +120,32 @@ function layoutPathOverlayFeatures(project: PivotProject, overlay: LayoutPathOve
       warning: "Path envelope extends outside the field boundary.",
     }),
   ];
+}
+
+function layoutPathInsideLayerType(overlay: LayoutPathOverlay): string {
+  switch (overlay.kind) {
+    case "wheel_track":
+      return "wheel_track_path";
+    case "end_of_machine":
+      return "end_machine_path";
+    case "corner_arm_wheel_track":
+      return "corner_arm_wheel_track_path";
+    case "corner_arm_overhang_end":
+      return "corner_arm_overhang_end_path";
+  }
+}
+
+function layoutPathOutsideLayerType(overlay: LayoutPathOverlay): string {
+  switch (overlay.kind) {
+    case "wheel_track":
+      return "wheel_track_outside_field";
+    case "end_of_machine":
+      return "end_machine_outside_field";
+    case "corner_arm_wheel_track":
+      return "corner_arm_wheel_track_outside_field";
+    case "corner_arm_overhang_end":
+      return "corner_arm_overhang_end_outside_field";
+  }
 }
 
 export function projectWgs84Bounds(project: PivotProject): [number, number, number, number] {

@@ -48,6 +48,31 @@ const projectWithMapFeature = {
   ],
 };
 const featureCollectionWithMapFeature = projectLayoutToWgs84FeatureCollection(projectWithMapFeature, evaluateLayout(projectWithMapFeature));
+const projectWithCornerArm = {
+  ...sampleProject,
+  machine: {
+    ...sampleProject.machine,
+    cornerArm: {
+      id: "corner-arm-map-overlay",
+      name: "Corner arm map overlay",
+      advisoryOnly: true as const,
+      lengthMeters: 91,
+      wheelTrackLengthMeters: 78,
+      overhangLengthMeters: 13,
+      metadataSource: "operator_supplied" as const,
+      modelFamily: "single_span_lrdu_sdu" as const,
+      guidanceType: "operator_supplied" as const,
+      sequencingType: "operator_supplied" as const,
+      orientation: "operator_supplied" as const,
+      confidence: "user_estimated" as const,
+      sourceRefs: [{
+        sourceId: "SRC-TEST-CORNER-ARM",
+        limit: "Synthetic advisory map overlay test source only.",
+      }],
+    },
+  },
+};
+const featureCollectionWithCornerArm = projectLayoutToWgs84FeatureCollection(projectWithCornerArm, evaluateLayout(projectWithCornerArm));
 const boundsWithMapFeature = projectWgs84Bounds(projectWithMapFeature);
 const settings = defaultAppSettings();
 const workbenchStyleWithAdvisoryPlan = buildWorkbenchStyle(
@@ -65,8 +90,23 @@ assert.equal(featureCollection.type, "FeatureCollection");
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "field_boundary"));
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "wheel_track_path" && feature.properties.renderOnly === true && feature.properties.canonicalGeometryMutation === false));
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "end_machine_path" && feature.properties.renderOnly === true && feature.properties.canonicalGeometryMutation === false));
+assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "wheel_track_path" && feature.properties.advisoryOnly === true));
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "wheel_track_path" && feature.geometry.type === "MultiPolygon"));
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "end_machine_path" && feature.geometry.type === "MultiPolygon"));
+assert.ok(featureCollectionWithCornerArm.features.some((feature) => feature.properties.layerType === "corner_arm_wheel_track_path" && feature.properties.advisoryOnly === true && feature.properties.canonicalGeometryMutation === false));
+assert.ok(featureCollectionWithCornerArm.features.some((feature) => feature.properties.layerType === "corner_arm_overhang_end_path" && feature.properties.wheelOverhangSeparationVerified === true));
+assert.ok(featureCollectionWithCornerArm.features.some((feature) => feature.properties.layerType === "corner_arm_wheel_track_path" && feature.properties.radiusMeters === lrduAnchorRadius(projectWithCornerArm) + 78));
+assert.ok(featureCollectionWithCornerArm.features.some((feature) => feature.properties.layerType === "corner_arm_overhang_end_path" && feature.properties.radiusMeters === lrduAnchorRadius(projectWithCornerArm) + 91));
+assert.ok(featureCollectionWithCornerArm.features.some((feature) => (
+  feature.properties.layerType === "corner_arm_overhang_end_path"
+  && feature.properties.anchorRadiusMeters === lrduAnchorRadius(projectWithCornerArm)
+  && feature.properties.pathModel === "max_extension_envelope"
+  && feature.properties.modelFamily === "single_span_lrdu_sdu"
+  && feature.properties.extensionEvidenceSource === "none"
+  && Number(feature.properties.sampledPathPointCount) > 0
+  && feature.properties.maxExtensionMeters === 91
+  && feature.properties.extensionSlopeDomain === "angle_degrees"
+)));
 assert.ok(featureCollectionWithAdvisoryPlan.features.some((feature) => feature.properties.layerType === "advisory_generated_field_pivot_coverage" && feature.properties.canonicalGeometryMutation === false));
 assert.ok(featureCollectionWithAdvisoryPlan.features.some((feature) => feature.properties.layerType === "advisory_generated_field_pivot_center" && feature.properties.advisoryOnly === true));
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "advisory-generated-field-pivot-fill"));
@@ -75,6 +115,16 @@ assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "wh
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "wheel-track-line"));
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "end-machine-path-fill"));
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "end-machine-path-line"));
+assert.ok(buildWorkbenchStyle(
+  null,
+  featureCollectionWithCornerArm,
+  resolveReferenceOverlaySource({
+    preferences: { ...settings.referenceOverlay, mode: "off" },
+    mapPackages: [],
+    target: "web_maplibre_gl_js",
+  }),
+  { ...settings.referenceOverlay, mode: "off" },
+).layers.some((layer) => layer.id === "corner-arm-wheel-track-line"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Pipeline A"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Corner Footprint A" && feature.geometry.type === "MultiPolygon"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "End Gun Circle A" && feature.geometry.type === "MultiPolygon"));
@@ -88,3 +138,7 @@ assert.equal(JSON.stringify({
 }), beforeProjectGeometry);
 
 console.log("map overlay GeoJSON tests passed");
+
+function lrduAnchorRadius(project: typeof projectWithCornerArm): number {
+  return project.machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0);
+}

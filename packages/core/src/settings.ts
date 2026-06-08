@@ -71,6 +71,11 @@ export interface AerialImageryPreferences {
   sourcePackageId?: string;
 }
 
+export interface LayoutReviewSettings {
+  requiredBoundaryClearanceMeters: number;
+  showMachineBoundaryDistances: boolean;
+}
+
 export interface OnlineImageryProvider {
   id: OnlineImageryProviderId;
   name: string;
@@ -98,6 +103,7 @@ export interface AppSettings {
   mapStyle: MapStyle;
   drawing: DrawingSettings;
   gpsQuality: GpsQualityThresholds;
+  layoutReview: LayoutReviewSettings;
   offlineMaps: OfflineMapPreferences;
   aerialImagery: AerialImageryPreferences;
   onlineImagery: OnlineImageryPreferences;
@@ -218,6 +224,14 @@ export const AerialImageryPreferencesSchema = z.object({
   sourcePackageId: z.string().trim().min(1).optional(),
 }).default({ mode: "auto" });
 
+export const LayoutReviewSettingsSchema = z.object({
+  requiredBoundaryClearanceMeters: z.number().min(0).max(1000).default(0),
+  showMachineBoundaryDistances: z.boolean().default(true),
+}).default({
+  requiredBoundaryClearanceMeters: 0,
+  showMachineBoundaryDistances: true,
+});
+
 export const AppSettingsSchema = z.object({
   unitSystem: UnitSystemSchema,
   coordinateDisplayFormat: CoordinateDisplayFormatSchema,
@@ -226,6 +240,7 @@ export const AppSettingsSchema = z.object({
   mapStyle: MapStyleSchema,
   drawing: DrawingSettingsSchema,
   gpsQuality: GpsQualityThresholdsSchema,
+  layoutReview: LayoutReviewSettingsSchema,
   offlineMaps: OfflineMapPreferencesSchema,
   aerialImagery: AerialImageryPreferencesSchema,
   onlineImagery: OnlineImageryPreferencesSchema,
@@ -256,6 +271,10 @@ export function defaultAppSettings(): AppSettings {
       maxHdop: 1.2,
       maxHorizontalAccuracyMeters: 0.05,
       maxCorrectionAgeSeconds: 3,
+    },
+    layoutReview: {
+      requiredBoundaryClearanceMeters: 0,
+      showMachineBoundaryDistances: true,
     },
     offlineMaps: {
       preferredPackageType: "pmtiles",
@@ -303,6 +322,7 @@ export function projectSettingsFromApp(settings: AppSettings): ProjectSettings {
     mapStyle: settings.mapStyle,
     drawing: settings.drawing,
     gpsQuality: settings.gpsQuality,
+    layoutReview: settings.layoutReview,
     offlineMaps: {
       preferredPackageType: settings.offlineMaps.preferredPackageType,
       requireAttribution: true,

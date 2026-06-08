@@ -89,6 +89,10 @@ const projectWithFeatures: PivotProject = {
       name: "Corner arm A",
       advisoryOnly: true as const,
       lengthMeters: 91,
+      wheelTrackLengthMeters: 78,
+      overhangLengthMeters: 13,
+      metadataSource: "operator_supplied" as const,
+      modelFamily: "single_span_lrdu_sdu" as const,
       guidanceType: "gps_guidance" as const,
       sequencingType: "electronic" as const,
       orientation: "operator_supplied" as const,
@@ -118,6 +122,9 @@ assert.match(xml, /<mapFeature id="linear-move-path-a"/);
 assert.match(xml, /<mapFeature id="well-a"/);
 assert.match(xml, /catalogId="valley-8000-public-preset"/);
 assert.match(xml, /<cornerArm id="corner-arm-a"/);
+assert.match(xml, /wheelTrackLengthMeters="78"/);
+assert.match(xml, /overhangLengthMeters="13"/);
+assert.match(xml, /modelFamily="single_span_lrdu_sdu"/);
 assert.match(xml, /sourceId="SRC-VALLEY-VFLEX-CORNER"/);
 assert.doesNotMatch(xml, /tileUrlTemplate|packageDirectory|hidden/i);
 
@@ -134,6 +141,10 @@ assert.equal(imported.project.mapFeatures?.[4].kind, "linear_move_path");
 assert.equal(imported.project.mapFeatures?.[5].kind, "well_location");
 assert.equal(imported.project.machine.catalogSelection?.catalogId, "valley-8000-public-preset");
 assert.equal(imported.project.machine.cornerArm?.id, "corner-arm-a");
+assert.equal(imported.project.machine.cornerArm?.wheelTrackLengthMeters, 78);
+assert.equal(imported.project.machine.cornerArm?.overhangLengthMeters, 13);
+assert.equal(imported.project.machine.cornerArm?.metadataSource, "operator_supplied");
+assert.equal(imported.project.machine.cornerArm?.modelFamily, "single_span_lrdu_sdu");
 assert.equal(imported.project.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");
 assert.equal(imported.project.wgs84Companion?.status, "projected");
 assert.equal(imported.project.wgs84Companion?.coordinateSystem, "decimal_degrees");

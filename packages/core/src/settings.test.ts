@@ -20,6 +20,8 @@ assert.equal(defaults.onlineImagery.providerId, "usgs_imagery_only");
 assert.equal(defaults.aerialImagery.mode, "auto");
 assert.equal(defaults.referenceOverlay.mode, "auto");
 assert.equal(defaults.referenceOverlay.schema, "cplayout_reference_v1");
+assert.equal(defaults.layoutReview.requiredBoundaryClearanceMeters, 0);
+assert.equal(defaults.layoutReview.showMachineBoundaryDistances, true);
 assert.match(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileUrlTemplate, /basemap\.nationalmap\.gov/);
 assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileScheme, "xyz");
 assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileSize, 256);
@@ -34,15 +36,20 @@ assert.equal(parseAppSettings({ ...defaults, referenceOverlay: { ...defaults.ref
 const merged = mergeAppSettings({
   coordinateDisplayFormat: "degrees_minutes_seconds",
   drawing: { vertexSnapToleranceMeters: 2.5 },
+  layoutReview: { requiredBoundaryClearanceMeters: 12 },
 });
 assert.equal(merged.coordinateDisplayFormat, "degrees_minutes_seconds");
 assert.equal(merged.mappingWorkflowMode, "design");
 assert.equal(merged.drawing.vertexSnapToleranceMeters, 2.5);
 assert.equal(merged.drawing.featureSnapToleranceMeters, defaults.drawing.featureSnapToleranceMeters);
+assert.equal(merged.layoutReview.requiredBoundaryClearanceMeters, 12);
+assert.equal(merged.layoutReview.showMachineBoundaryDistances, true);
 
 const projectSettings = projectSettingsFromApp(merged);
 assert.equal(projectSettings.mappingWorkflowMode, "design");
 assert.equal(projectSettings.aerialImagery.mode, "auto");
+assert.equal(projectSettings.layoutReview.requiredBoundaryClearanceMeters, 12);
+assert.equal(projectSettings.layoutReview.showMachineBoundaryDistances, true);
 assert.equal(projectSettings.offlineMaps.allowNetworkTiles, false);
 assert.equal("packageDirectory" in projectSettings.offlineMaps, false);
 assert.equal("onlineImagery" in projectSettings, false);
@@ -68,6 +75,11 @@ assert.throws(
 assert.throws(
   () => parseAppSettings({ ...defaults, onlineImagery: { ...defaults.onlineImagery, maxTilesPerView: 1000 } }),
   /Too big/,
+);
+
+assert.throws(
+  () => parseAppSettings({ ...defaults, layoutReview: { ...defaults.layoutReview, requiredBoundaryClearanceMeters: -1 } }),
+  /Too small/,
 );
 
 assert.equal(

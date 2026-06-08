@@ -73,10 +73,10 @@ This record provides compact route-to-context references for hooks, coordinators
 - `.codex/hooks/cplayout_route_data.json`: `6596229abb5739177fabbd70493ea4296e4383d997bc27bb9ed006a3a74814f7`
 - `.codex/hooks/cplayout_subagent_start.py`: `2c54b41069c7cc68a380788735a4d5c7b1209ea83e24c4f5a0ea614645fac8a5`
 - `AGENTS.md`: `c4d4433bbdc8c0a1c1a46c3a134518d0b6d6a66e82fba774371356480f7bfbf9`
-- `docs/agent-known-gaps.md`: `d348e888a930e461dc73e54a830a524445effd0f632bf3058985cb2e36b60370`
+- `docs/agent-known-gaps.md`: `2364cbe5e29f6d52fea458d21d93593f95fa90ae95c367d605a12d7ad135bd62`
 - `docs/agent-prompt-registry.md`: `316dde2db3b02e33549471742d6f4859c24d94065b5082a6d10a9c369408d5c0`
-- `docs/agent-source-ledger.md`: `56a20962f581e78243576bb83a8f8c11171d6adae9fff4002669cf2391041beb`
+- `docs/agent-source-ledger.md`: `1c764a9eaf1b655391296c5cfbb73eab02d79def4a1812cfb1c2bf4e309064b5`
 - `docs/codex-managed-hook-deployment.md`: `75a3ef85b723b66de5284feee9e3630d52f347a202414da5809474fea2ff5318`
-- `package.json`: `33aee09fa35e19ec64b223a773db5f4ddb2ea3021ac9dd47283b0bfe0ecc76b1`
+- `package.json`: `31576f902c9f7fd0b43e451d3a3594f297258dbcc7e14a81ed6239181d6d6ace`
 - `tools/build_cplayout_context_map.py`: `12fb0cc0e52c1596589abdc71bb8622dc577b5f61f5a2bca86a2cc21817e9f68`
 - `tools/validate_cplayout_skills.py`: `e429cc2ed171764154d87934f2c570afd35f0590e51f8469dc7f348a6690349e`

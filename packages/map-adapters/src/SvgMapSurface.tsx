@@ -1061,7 +1061,7 @@ function LayoutPathOverlayLayer({ overlays, palette, pivotCenter }: { overlays: 
         const insidePath = ringsToSvgPath(overlay.insideFieldEnvelope);
         const outsidePath = ringsToSvgPath(overlay.outsideFieldEnvelope);
         const key = `${overlay.kind}-${overlay.towerIndex ?? "machine"}`;
-        const labelPoint = polarLabelPoint(pivotCenter, overlay.radiusMeters, overlay.kind === "wheel_track" ? 225 : 315);
+        const labelPoint = polarLabelPoint(pivotCenter, overlay.radiusMeters, layoutPathLabelAngle(overlay.kind));
         return (
           <React.Fragment key={key}>
             {insidePath && overlay.kind === "wheel_track" ? (
@@ -1081,26 +1081,48 @@ function LayoutPathOverlayLayer({ overlays, palette, pivotCenter }: { overlays: 
                 <Path d={insidePath} fill="none" stroke={palette.machinePath} strokeLinejoin="round" strokeWidth={3.2} />
               </>
             ) : null}
+            {insidePath && overlay.kind === "corner_arm_wheel_track" ? (
+              <Path
+                d={insidePath}
+                fill={palette.cornerArmTrack}
+                opacity={0.12}
+                stroke={palette.cornerArmTrack}
+                strokeDasharray="6 6"
+                strokeLinejoin="round"
+                strokeWidth={2.2}
+              />
+            ) : null}
+            {insidePath && overlay.kind === "corner_arm_overhang_end" ? (
+              <Path
+                d={insidePath}
+                fill={palette.cornerArmReach}
+                opacity={0.1}
+                stroke={palette.cornerArmReach}
+                strokeDasharray="15 7"
+                strokeLinejoin="round"
+                strokeWidth={2.6}
+              />
+            ) : null}
             {outsidePath ? (
               <Path
                 d={outsidePath}
-                fill={overlay.kind === "wheel_track" ? palette.wheelTrackOutside : palette.machinePathOutside}
-                opacity={overlay.kind === "wheel_track" ? 0.18 : 0.24}
-                stroke={overlay.kind === "wheel_track" ? palette.wheelTrackOutside : palette.machinePathOutside}
-                strokeDasharray={overlay.kind === "wheel_track" ? "5 6" : "12 7"}
+                fill={layoutPathOutsideColor(overlay.kind, palette)}
+                opacity={overlay.kind === "end_of_machine" ? 0.24 : 0.18}
+                stroke={layoutPathOutsideColor(overlay.kind, palette)}
+                strokeDasharray={overlay.kind === "wheel_track" || overlay.kind === "corner_arm_wheel_track" ? "5 6" : "12 7"}
                 strokeLinejoin="round"
-                strokeWidth={overlay.kind === "wheel_track" ? 2.2 : 3.2}
+                strokeWidth={overlay.kind === "end_of_machine" ? 3.2 : 2.4}
               />
             ) : null}
             {insidePath ? (
               <SvgText
                 x={labelPoint.x}
                 y={-labelPoint.y}
-                fill={overlay.kind === "wheel_track" ? palette.wheelTrack : palette.machinePath}
+                fill={layoutPathLabelColor(overlay.kind, palette)}
                 fontSize={overlay.kind === "wheel_track" ? 13 : 15}
                 fontWeight="900"
               >
-                {overlay.kind === "wheel_track" ? `T${overlay.towerIndex}` : "EOM"}
+                {layoutPathLabel(overlay)}
               </SvgText>
             ) : null}
           </React.Fragment>
@@ -1108,6 +1130,33 @@ function LayoutPathOverlayLayer({ overlays, palette, pivotCenter }: { overlays: 
       })}
     </G>
   );
+}
+
+function layoutPathLabel(overlay: LayoutPathOverlay): string {
+  if (overlay.kind === "wheel_track") return `T${overlay.towerIndex}`;
+  if (overlay.kind === "end_of_machine") return "EOM";
+  if (overlay.kind === "corner_arm_wheel_track") return "CAW";
+  return "CAO";
+}
+
+function layoutPathLabelAngle(kind: LayoutPathOverlay["kind"]): number {
+  if (kind === "wheel_track") return 225;
+  if (kind === "end_of_machine") return 315;
+  if (kind === "corner_arm_wheel_track") return 250;
+  return 290;
+}
+
+function layoutPathLabelColor(kind: LayoutPathOverlay["kind"], palette: MapPalette): string {
+  if (kind === "wheel_track") return palette.wheelTrack;
+  if (kind === "end_of_machine") return palette.machinePath;
+  if (kind === "corner_arm_wheel_track") return palette.cornerArmTrack;
+  return palette.cornerArmReach;
+}
+
+function layoutPathOutsideColor(kind: LayoutPathOverlay["kind"], palette: MapPalette): string {
+  if (kind === "wheel_track") return palette.wheelTrackOutside;
+  if (kind === "end_of_machine") return palette.machinePathOutside;
+  return palette.cornerArmOutside;
 }
 
 function polarLabelPoint(center: XY, radiusMeters: number, angleDegrees: number): XY {
@@ -1593,6 +1642,9 @@ function paletteForMapStyle(style: MapStyle): {
   wheelTrackOutside: string;
   machinePath: string;
   machinePathOutside: string;
+  cornerArmTrack: string;
+  cornerArmReach: string;
+  cornerArmOutside: string;
   fieldStroke: string;
   obstacle: string;
   obstacleStroke: string;
@@ -1619,6 +1671,9 @@ function paletteForMapStyle(style: MapStyle): {
       wheelTrackOutside: "#b84b2f",
       machinePath: "#000000",
       machinePathOutside: "#b84b2f",
+      cornerArmTrack: "#6d4f00",
+      cornerArmReach: "#005f66",
+      cornerArmOutside: "#b84b2f",
       fieldStroke: "#0b160f",
       obstacle: "#b00020",
       obstacleStroke: "#3b0008",
@@ -1647,6 +1702,9 @@ function paletteForMapStyle(style: MapStyle): {
       wheelTrackOutside: "#d77b46",
       machinePath: "#203526",
       machinePathOutside: "#d77b46",
+      cornerArmTrack: "#80631f",
+      cornerArmReach: "#1f5f66",
+      cornerArmOutside: "#d77b46",
       fieldStroke: "#203526",
       obstacle: "#bb4b42",
       obstacleStroke: "#70271f",
@@ -1675,6 +1733,9 @@ function paletteForMapStyle(style: MapStyle): {
       wheelTrackOutside: "#db844d",
       machinePath: "#2b3c24",
       machinePathOutside: "#db844d",
+      cornerArmTrack: "#80631f",
+      cornerArmReach: "#1f5f66",
+      cornerArmOutside: "#db844d",
       fieldStroke: "#2b3c24",
       obstacle: "#c4513f",
       obstacleStroke: "#71301e",
@@ -1702,6 +1763,9 @@ function paletteForMapStyle(style: MapStyle): {
     wheelTrackOutside: "#e68b58",
     machinePath: "#253f2f",
     machinePathOutside: "#e68b58",
+    cornerArmTrack: "#80631f",
+    cornerArmReach: "#1f5f66",
+    cornerArmOutside: "#e68b58",
     fieldStroke: "#253f2f",
     obstacle: "#c64f43",
     obstacleStroke: "#70271f",

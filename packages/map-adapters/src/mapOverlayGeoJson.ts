@@ -1,5 +1,5 @@
 import { projectXyToLonLat, type LayoutResult, type PivotProject, type XY } from "@cplayout/core";
-import type { AdvisoryFieldPivotPlan } from "@cplayout/geometry";
+import { buildLayoutPathOverlays, type AdvisoryFieldPivotPlan, type LayoutPathOverlay } from "@cplayout/geometry";
 
 type GeoJsonFeature = {
   type: "Feature";
@@ -41,6 +41,7 @@ export function projectLayoutToWgs84FeatureCollection(
       })),
     ]
     : [];
+  const layoutPathFeatures = buildLayoutPathOverlays(project).flatMap((overlay) => layoutPathOverlayFeatures(project, overlay));
   return {
     type: "FeatureCollection",
     features: [
@@ -49,6 +50,7 @@ export function projectLayoutToWgs84FeatureCollection(
       polygonFeature(project, "outside_field_coverage", result.outsideFieldCoverage, { acres: result.metrics.outsideFieldAcres }),
       polygonFeature(project, "end_gun_coverage", result.endGunCoverage, { acres: result.metrics.endGunAcres }),
       ...advisoryFieldPivotFeatures,
+      ...layoutPathFeatures,
       polygonFeature(project, "obstacle", result.obstacles, { count: project.obstacles.length }),
       pointFeature(project, "pivot_center", project.pivotCenter, { label: "Pivot" }),
       pointFeature(project, "water_source", project.waterSource, { label: "Water" }),
@@ -78,6 +80,33 @@ export function projectLayoutToWgs84FeatureCollection(
       ...(draftVertices.length >= 2 ? [lineFeature(project, "draft_vertices", draftVertices, { count: draftVertices.length })] : []),
     ],
   };
+}
+
+function layoutPathOverlayFeatures(project: PivotProject, overlay: LayoutPathOverlay): GeoJsonFeature[] {
+  const baseProperties = {
+    kind: overlay.kind,
+    label: overlay.label,
+    radiusMeters: overlay.radiusMeters,
+    bufferMeters: overlay.bufferMeters,
+    renderOnly: true,
+    canonicalGeometryMutation: false,
+    ...(overlay.towerIndex === undefined ? {} : { towerIndex: overlay.towerIndex }),
+  };
+  const insideLayer = overlay.kind === "wheel_track" ? "wheel_track_path" : "end_machine_path";
+  const outsideLayer = overlay.kind === "wheel_track" ? "wheel_track_outside_field" : "end_machine_outside_field";
+  return [
+    polygonFeature(project, insideLayer, overlay.insideFieldEnvelope, {
+      ...baseProperties,
+      insideFieldEnvelope: true,
+      outsideFieldEnvelope: false,
+    }),
+    polygonFeature(project, outsideLayer, overlay.outsideFieldEnvelope, {
+      ...baseProperties,
+      insideFieldEnvelope: false,
+      outsideFieldEnvelope: true,
+      warning: "Path envelope extends outside the field boundary.",
+    }),
+  ];
 }
 
 export function projectWgs84Bounds(project: PivotProject): [number, number, number, number] {

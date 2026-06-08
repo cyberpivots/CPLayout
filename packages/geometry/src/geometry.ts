@@ -22,6 +22,16 @@ const DEFAULT_SEGMENTS = 288;
 const EPSILON_AREA = 0.000001;
 export const DEFAULT_BOUNDARY_EPSILON_SQUARE_METERS = 0.01;
 
+export interface LayoutPathOverlay {
+  kind: "wheel_track" | "end_of_machine";
+  label: string;
+  radiusMeters: number;
+  bufferMeters: number;
+  insideFieldEnvelope: MultiPolygonXY;
+  outsideFieldEnvelope: MultiPolygonXY;
+  towerIndex?: number;
+}
+
 export function machineRadiusMeters(machine: PivotMachine): number {
   return machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0) + machine.overhangMeters;
 }
@@ -182,6 +192,41 @@ export function evaluateMechanicalConflicts(project: PivotProject): LayoutMechan
   }
 
   return conflicts;
+}
+
+export function buildLayoutPathOverlays(project: PivotProject): LayoutPathOverlay[] {
+  assertProjectedCrs(project.projectCrs);
+
+  const field = toClipMultiPolygon([[project.fieldBoundary]]);
+  const overlays: LayoutPathOverlay[] = [];
+  const towerBuffer = Math.max(0, project.machine.towerClearanceBufferMeters);
+  let towerRadius = 0;
+
+  project.machine.spanLengthsMeters.forEach((spanLength, index) => {
+    towerRadius += spanLength;
+    overlays.push(layoutPathOverlay(
+      "wheel_track",
+      `Tower ${index + 1} wheel track`,
+      towerRadius,
+      towerBuffer,
+      field,
+      createBufferedPathClip(project.pivotCenter, towerRadius, towerBuffer, project.machine.sweep),
+      index + 1,
+    ));
+  });
+
+  const machineRadius = machineRadiusMeters(project.machine);
+  const machineBuffer = Math.max(0, project.machine.machineClearanceBufferMeters);
+  overlays.push(layoutPathOverlay(
+    "end_of_machine",
+    "End of machine path",
+    machineRadius,
+    machineBuffer,
+    field,
+    createBufferedPathClip(project.pivotCenter, machineRadius, machineBuffer, project.machine.sweep),
+  ));
+
+  return overlays;
 }
 
 export interface BoundaryConstraintResult {
@@ -411,6 +456,28 @@ function createBufferedPathClip(center: XY, radiusMeters: number, bufferMeters: 
 function obstacleIntersectionArea(clip: ClipMultiPolygon, obstacle: ObstacleZone): number {
   const intersection = polygonClipping.intersection(clip, toClipMultiPolygon([[obstacle.polygon]])) as ClipMultiPolygon | null;
   return multiPolygonAreaSquareMeters(fromClipMultiPolygon(intersection ?? []));
+}
+
+function layoutPathOverlay(
+  kind: LayoutPathOverlay["kind"],
+  label: string,
+  radiusMeters: number,
+  bufferMeters: number,
+  field: ClipMultiPolygon,
+  envelope: ClipMultiPolygon,
+  towerIndex?: number,
+): LayoutPathOverlay {
+  const inside = polygonClipping.intersection(envelope, field) as ClipMultiPolygon | null;
+  const outside = polygonClipping.difference(envelope, field) as ClipMultiPolygon;
+  return {
+    kind,
+    label,
+    radiusMeters,
+    bufferMeters,
+    insideFieldEnvelope: fromClipMultiPolygon(inside ?? []),
+    outsideFieldEnvelope: fromClipMultiPolygon(outside),
+    ...(towerIndex === undefined ? {} : { towerIndex }),
+  };
 }
 
 function mechanicalConflict(

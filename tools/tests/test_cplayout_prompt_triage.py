@@ -44,6 +44,23 @@ class PromptTriageTests(unittest.TestCase):
         routes = self.route_ids("Improve the Expo React Native UI screen and SVG map component.")
         self.assertEqual(routes[0], "cplayout_interface_developer")
 
+    def test_right_sidebar_toolbar_ui_proof_prompt_selects_interface_route(self) -> None:
+        routes = self.route_ids("Refactor right-sidebar and right-drawer toolbar UI-proof controls.")
+        self.assertEqual(routes[0], "cplayout_interface_developer")
+
+    def test_map_visual_elements_prompt_routes_interface_and_pivot(self) -> None:
+        routes = self.route_ids("Improve map visual elements for wheel tracks and end-of-machine indicators.")
+        self.assertIn("cplayout_interface_developer", routes)
+        self.assertIn("cplayout_center_pivot_designer", routes)
+
+    def test_process_record_route_terms_select_curator_route(self) -> None:
+        routes = self.route_ids("Update context-map route data and validate_cplayout_skills process records.")
+        self.assertEqual(routes[0], "cplayout_kb_curator")
+
+    def test_governance_keyword_updates_route_curator(self) -> None:
+        routes = self.route_ids("Update governance keywords and route keyword tests.")
+        self.assertEqual(routes[0], "cplayout_kb_curator")
+
     def test_pivot_corner_arm_prompt_selects_pivot_route(self) -> None:
         routes = self.route_ids("Score a center pivot corner arm irrigation layout around obstacles.")
         self.assertEqual(routes[0], "cplayout_center_pivot_designer")

@@ -1217,7 +1217,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   statusHudExternal: {
-    maxHeight: 78,
+    maxHeight: 168,
     overflow: "hidden",
     paddingHorizontal: 9,
     paddingVertical: 8,

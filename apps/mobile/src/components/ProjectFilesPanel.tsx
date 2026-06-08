@@ -817,7 +817,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: 7,
-    minHeight: 44,
+    minHeight: 48,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },

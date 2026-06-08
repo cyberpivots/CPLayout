@@ -18,7 +18,7 @@ This record provides compact route-to-context references for hooks, coordinators
 | --- | --- | --- | --- |
 | `workspace_preflight` | Load the durable CPLayout work contract and dirty-tree/validation expectations before non-trivial changes. | `AGENTS.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md` | `npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 | `governance_hooks_skills` | Review and update prompt triage, route data, hooks, custom agents, skills, and process records. | `.codex/hooks/cplayout_prompt_triage.py`<br>`.codex/hooks/cplayout_route_data.json`<br>`.codex/hooks.json`<br>`tools/validate_cplayout_skills.py`<br>`docs/agent-prompt-registry.md` | `npm run context-map:check`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
-| `interface_ui` | Map Expo React Native, browser UI, HUD, component, and visible workflow work to proof gates. | `apps/mobile/App.tsx`<br>`apps/mobile/src/components`<br>`packages/map-adapters`<br>`.agents/skills/cplayout-interface-development-agent/SKILL.md` | `npm run validate`<br>`npm run proof:web`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `interface_ui` | Map Expo React Native, browser UI, HUD, right drawer/sidebar, toolbar, component, UI-proof, and visible workflow work to proof gates. | `apps/mobile/App.tsx`<br>`apps/mobile/src/components`<br>`packages/map-adapters`<br>`.agents/skills/cplayout-interface-development-agent/SKILL.md` | `npm run validate`<br>`npm run proof:web`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 | `geometry_design` | Route center pivot, corner-arm, lateral/linear move, and sprinkler design prompts to advisory geometry evidence. | `packages/geometry`<br>`docs/design-guides/topic-index.md`<br>`.agents/skills/cplayout-center-pivot-design-agent/SKILL.md`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.ts` | `npm run validate`<br>`npm run validate:design-guides`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 | `core_project_geometry` | Route project document, KML/XML, sample fixture, and canonical geometry contract work. | `packages/core`<br>`packages/core/src/projectDocument.ts`<br>`packages/core/src/projectKml.ts`<br>`packages/core/src/sampleProject.ts` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 | `storage_archive_native` | Route SQLite, project-store, project archive, ZIP, and native/web persistence contract work. | `packages/project-store`<br>`packages/project-store/src/projectArchive.ts`<br>`packages/project-store/src/projectRepository.native.ts`<br>`packages/core/src/projectDocument.ts`<br>`.agents/skills/cplayout-database-agent/SKILL.md` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
@@ -70,13 +70,13 @@ This record provides compact route-to-context references for hooks, coordinators
 - `.codex/agents/cplayout_kb_curator.toml`: `28a28a37e94e016b0ffa0bb89899f4ec725146566b9ee8d30083db1e3b423ae7`
 - `.codex/hooks.json`: `2bdbfed0fcdfb1b3351a8834b89f11fb3e6f0cedda9491107b0d5c3c7b3174ca`
 - `.codex/hooks/cplayout_prompt_triage.py`: `f4238d68cbaf72a2dd3537d41c0debe2aabf39401fe498a31f3a0f59392dc3da`
-- `.codex/hooks/cplayout_route_data.json`: `a80e23195988ef9dab825ad1ce40d2c6d7d1f1f0065c974470a526df9a347415`
+- `.codex/hooks/cplayout_route_data.json`: `6596229abb5739177fabbd70493ea4296e4383d997bc27bb9ed006a3a74814f7`
 - `.codex/hooks/cplayout_subagent_start.py`: `2c54b41069c7cc68a380788735a4d5c7b1209ea83e24c4f5a0ea614645fac8a5`
 - `AGENTS.md`: `c4d4433bbdc8c0a1c1a46c3a134518d0b6d6a66e82fba774371356480f7bfbf9`
 - `docs/agent-known-gaps.md`: `d348e888a930e461dc73e54a830a524445effd0f632bf3058985cb2e36b60370`
-- `docs/agent-prompt-registry.md`: `34a332c7fbbff2f103a0338ac5d08dc9e4ce244cb6820f665642d88c3c553028`
+- `docs/agent-prompt-registry.md`: `316dde2db3b02e33549471742d6f4859c24d94065b5082a6d10a9c369408d5c0`
 - `docs/agent-source-ledger.md`: `56a20962f581e78243576bb83a8f8c11171d6adae9fff4002669cf2391041beb`
 - `docs/codex-managed-hook-deployment.md`: `75a3ef85b723b66de5284feee9e3630d52f347a202414da5809474fea2ff5318`
 - `package.json`: `33aee09fa35e19ec64b223a773db5f4ddb2ea3021ac9dd47283b0bfe0ecc76b1`
-- `tools/build_cplayout_context_map.py`: `4418bd30d6710b5a5af0bdbf9fc6ef2793f96bd39288a947c128444277dcdf53`
-- `tools/validate_cplayout_skills.py`: `9278d6c891fde531a6c29474e10edcae19087f1475c411a031f9dd381b0e5e40`
+- `tools/build_cplayout_context_map.py`: `12fb0cc0e52c1596589abdc71bb8622dc577b5f61f5a2bca86a2cc21817e9f68`
+- `tools/validate_cplayout_skills.py`: `e429cc2ed171764154d87934f2c570afd35f0590e51f8469dc7f348a6690349e`

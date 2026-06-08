@@ -7,10 +7,10 @@ Use this reference when a prompt asks for specialist routing, agent panels, sour
 | Prompt signal | Primary skill | Specialist agent | Secondary coordination |
 | --- | --- | --- | --- |
 | Google Earth, KML/KMZ, visual proof, imagery, OCR/CV, field boundary | `$cplayout-imagery-mapping-agent` | `cplayout_imagery_mapper` | Pivot design, database, UI as needed |
-| Interface, screen, component, map surface, Expo, Playwright evidence | `$cplayout-interface-development-agent` | `cplayout_interface_developer` | Database and pivot design as needed |
-| Center pivot, lateral or linear move, corner arm, irrigation scoring | `$cplayout-center-pivot-design-agent` | `cplayout_center_pivot_designer` | Imagery and database as needed |
+| Interface, screen, component, map surface, map visual overlays, right sidebar/drawer, toolbar, UI-proof, Expo, Playwright evidence | `$cplayout-interface-development-agent` | `cplayout_interface_developer` | Database and pivot design as needed |
+| Center pivot, lateral or linear move, corner arm, wheel/tower tracks, end-of-machine paths, irrigation scoring | `$cplayout-center-pivot-design-agent` | `cplayout_center_pivot_designer` | Imagery and database as needed |
 | SQLite, project-store, archive, schema, CRUD, migration | `$cplayout-database-agent` | `cplayout_database_specialist` | Interface and pivot design as needed |
-| Skills, agents, hooks, source ledger, known gaps, prompt registry | `$cplayout-expert-agent-panels` | `cplayout_kb_curator` | Planning review as needed |
+| Skills, agents, hooks, route keywords, governance keywords, source ledger, known gaps, prompt registry | `$cplayout-expert-agent-panels` | `cplayout_kb_curator` | Planning review as needed |
 
 ## Decision Rules
 

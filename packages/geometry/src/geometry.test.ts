@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 
 import {
   calculateTowerPoints,
+  buildLayoutPathOverlays,
   createSectorPolygon,
   endGunRadiusMeters,
   evaluateMechanicalConflicts,
   evaluateLayout,
   machineRadiusMeters,
+  multiPolygonAreaSquareMeters,
   polygonAreaSquareMeters,
   validateWetCoverageWithinField,
 } from "./geometry";
@@ -124,6 +126,55 @@ assert.equal(hardConflictResult.metrics.noSprayConflictCount, 0);
 assert.equal(hardConflictResult.metrics.hardMechanicalConflictCount, 1);
 assert.equal(hardConflictResult.metrics.towerTrackConflictCount, 1);
 assert.ok(evaluateMechanicalConflicts(hardConflictProject).some((conflict) => conflict.conflictType === "tower_track"));
+
+const beforePathOverlayProjectGeometry = JSON.stringify({
+  fieldBoundary: fieldBoundedProject.fieldBoundary,
+  machine: fieldBoundedProject.machine,
+  pivotCenter: fieldBoundedProject.pivotCenter,
+});
+const fullCirclePathOverlays = buildLayoutPathOverlays({
+  ...fieldBoundedProject,
+  machine: {
+    ...fieldBoundedProject.machine,
+    spanLengthsMeters: [15, 20],
+    overhangMeters: 5,
+    towerClearanceBufferMeters: 2,
+    machineClearanceBufferMeters: 3,
+  },
+});
+assert.deepEqual(fullCirclePathOverlays.map((overlay) => overlay.kind), ["wheel_track", "wheel_track", "end_of_machine"]);
+assert.deepEqual(fullCirclePathOverlays.filter((overlay) => overlay.kind === "wheel_track").map((overlay) => overlay.radiusMeters), [15, 35]);
+assert.equal(fullCirclePathOverlays[0]?.towerIndex, 1);
+assert.equal(fullCirclePathOverlays[2]?.radiusMeters, 40);
+assert.equal(fullCirclePathOverlays[2]?.bufferMeters, 3);
+assert.ok(fullCirclePathOverlays.every((overlay) => multiPolygonAreaSquareMeters(overlay.insideFieldEnvelope) > 0));
+assert.ok(fullCirclePathOverlays.every((overlay) => multiPolygonAreaSquareMeters(overlay.outsideFieldEnvelope) === 0));
+assert.equal(JSON.stringify({
+  fieldBoundary: fieldBoundedProject.fieldBoundary,
+  machine: fieldBoundedProject.machine,
+  pivotCenter: fieldBoundedProject.pivotCenter,
+}), beforePathOverlayProjectGeometry);
+
+const partialOutsidePathOverlays = buildLayoutPathOverlays({
+  ...fieldBoundedProject,
+  pivotCenter: { x: 90, y: 50 },
+  machine: {
+    ...fieldBoundedProject.machine,
+    spanLengthsMeters: [35],
+    overhangMeters: 10,
+    towerClearanceBufferMeters: 4,
+    machineClearanceBufferMeters: 5,
+    sweep: { mode: "partial_circle", startAngleDegrees: 260, stopAngleDegrees: 40, direction: "counterclockwise" as const },
+  },
+});
+const partialTowerOverlay = partialOutsidePathOverlays.find((overlay) => overlay.kind === "wheel_track");
+const partialMachineOverlay = partialOutsidePathOverlays.find((overlay) => overlay.kind === "end_of_machine");
+assert.ok(partialTowerOverlay);
+assert.ok(partialMachineOverlay);
+assert.ok(multiPolygonAreaSquareMeters(partialTowerOverlay.insideFieldEnvelope) > 0);
+assert.ok(multiPolygonAreaSquareMeters(partialTowerOverlay.outsideFieldEnvelope) > 0);
+assert.equal(partialMachineOverlay.radiusMeters, 45);
+assert.ok(multiPolygonAreaSquareMeters(partialMachineOverlay.outsideFieldEnvelope) > 0);
 
 assert.throws(
   () => evaluateLayout({ ...sampleProject, projectCrs: "EPSG:4326" }),

@@ -27,6 +27,10 @@ interface ProjectCatalogDialogProps {
   visible: boolean;
 }
 
+interface CatalogItemFormProps extends Omit<ProjectCatalogDialogProps, "visible"> {
+  embedded?: boolean;
+}
+
 const dialogCopy: Record<ProjectCatalogDialogMode, {
   createLabel: string;
   helper: string;
@@ -68,16 +72,53 @@ export function ProjectCatalogDialog({
 }: ProjectCatalogDialogProps): React.JSX.Element {
   const { width } = useWindowDimensions();
   const compact = width < 520;
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={onCancel}
+      transparent
+      visible={visible}
+    >
+      <View style={[styles.backdrop, compact && styles.backdropCompact]} testID="catalog-dialog-backdrop">
+        <CatalogItemForm
+          contextPreview={contextPreview}
+          createButtonLabel={createButtonLabel}
+          defaultName={defaultName}
+          helper={helper}
+          mode={mode}
+          onCancel={onCancel}
+          onCreate={onCreate}
+          submitting={submitting}
+          title={title}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+export function CatalogItemForm({
+  createButtonLabel,
+  contextPreview,
+  defaultName,
+  embedded = false,
+  helper,
+  mode,
+  onCancel,
+  onCreate,
+  submitting = false,
+  title,
+}: CatalogItemFormProps): React.JSX.Element {
+  const { width } = useWindowDimensions();
+  const compact = !embedded && width < 520;
   const [name, setName] = useState(defaultName);
   const [error, setError] = useState<string | null>(null);
   const copy = dialogCopy[mode];
   const icon = useMemo(() => catalogDialogIcon(mode), [mode]);
 
   useEffect(() => {
-    if (!visible) return;
     setName(defaultName);
     setError(null);
-  }, [defaultName, visible]);
+  }, [defaultName]);
 
   async function submit(): Promise<void> {
     const trimmedName = name.trim();
@@ -90,76 +131,67 @@ export function ProjectCatalogDialog({
   }
 
   return (
-    <Modal
-      animationType="fade"
-      onRequestClose={onCancel}
-      transparent
-      visible={visible}
-    >
-      <View style={[styles.backdrop, compact && styles.backdropCompact]} testID="catalog-dialog-backdrop">
-        <View accessibilityViewIsModal style={[styles.dialog, compact && styles.dialogCompact]} testID="catalog-dialog">
-          <View style={styles.header}>
-            <View style={styles.iconBadge}>{icon}</View>
-            <View style={styles.headerText}>
-              <Text style={styles.title}>{title ?? copy.title}</Text>
-              <Text style={styles.helper}>{helper ?? copy.helper}</Text>
-            </View>
-          </View>
-
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            style={styles.body}
-            contentContainerStyle={styles.bodyContent}
-            testID="catalog-dialog-body"
-          >
-            <Text style={styles.contextPreview} testID="catalog-dialog-context">
-              {contextPreview}
-            </Text>
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Name</Text>
-              <TextInput
-                accessibilityLabel="Catalog item name"
-                autoFocus
-                onChangeText={(value) => {
-                  setName(value);
-                  if (error) setError(null);
-                }}
-                onSubmitEditing={() => void submit()}
-                returnKeyType="done"
-                selectTextOnFocus
-                style={[styles.input, error && styles.inputError]}
-                testID="catalog-dialog-name-input"
-                value={name}
-              />
-              {error ? <Text style={styles.errorText} testID="catalog-dialog-error">{error}</Text> : null}
-            </View>
-          </ScrollView>
-
-          <View style={styles.footer}>
-            <Pressable
-              accessibilityLabel={`Cancel ${copy.createLabel} creation`}
-              accessibilityRole="button"
-              disabled={submitting}
-              onPress={onCancel}
-              style={[styles.secondaryButton, submitting && styles.disabledButton]}
-              testID="catalog-dialog-cancel"
-            >
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel={`Create ${copy.createLabel}`}
-              accessibilityRole="button"
-              disabled={submitting}
-              onPress={() => void submit()}
-              style={[styles.primaryButton, submitting && styles.disabledButton]}
-              testID="catalog-dialog-create"
-            >
-              <Text style={styles.primaryButtonText}>{submitting ? "Working" : (createButtonLabel ?? "Create")}</Text>
-            </Pressable>
-          </View>
+    <View accessibilityViewIsModal={!embedded} style={[styles.dialog, compact && styles.dialogCompact, embedded && styles.embeddedDialog]} testID="catalog-dialog">
+      <View style={styles.header}>
+        <View style={styles.iconBadge}>{icon}</View>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>{title ?? copy.title}</Text>
+          <Text style={styles.helper}>{helper ?? copy.helper}</Text>
         </View>
       </View>
-    </Modal>
+
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        testID="catalog-dialog-body"
+      >
+        <Text style={styles.contextPreview} testID="catalog-dialog-context">
+          {contextPreview}
+        </Text>
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Name</Text>
+          <TextInput
+            accessibilityLabel="Catalog item name"
+            autoFocus={!embedded}
+            onChangeText={(value) => {
+              setName(value);
+              if (error) setError(null);
+            }}
+            onSubmitEditing={() => void submit()}
+            returnKeyType="done"
+            selectTextOnFocus
+            style={[styles.input, error && styles.inputError]}
+            testID="catalog-dialog-name-input"
+            value={name}
+          />
+          {error ? <Text style={styles.errorText} testID="catalog-dialog-error">{error}</Text> : null}
+        </View>
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <Pressable
+          accessibilityLabel={`Cancel ${copy.createLabel} creation`}
+          accessibilityRole="button"
+          disabled={submitting}
+          onPress={onCancel}
+          style={[styles.secondaryButton, submitting && styles.disabledButton]}
+          testID="catalog-dialog-cancel"
+        >
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel={`Create ${copy.createLabel}`}
+          accessibilityRole="button"
+          disabled={submitting}
+          onPress={() => void submit()}
+          style={[styles.primaryButton, submitting && styles.disabledButton]}
+          testID="catalog-dialog-create"
+        >
+          <Text style={styles.primaryButtonText}>{submitting ? "Working" : (createButtonLabel ?? "Create")}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -194,14 +226,48 @@ export function ClientProfileDialog({
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const compact = width < 520;
+  return (
+    <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
+      <View style={[styles.backdrop, compact && styles.backdropCompact]} testID="client-profile-dialog-backdrop">
+        <ClientProfileForm
+          defaultDisplayName={defaultDisplayName}
+          initialClient={initialClient}
+          mode={mode}
+          onCancel={onCancel}
+          onSave={onSave}
+          submitting={submitting}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+export function ClientProfileForm({
+  defaultDisplayName,
+  embedded = false,
+  initialClient,
+  mode,
+  onCancel,
+  onSave,
+  submitting = false,
+}: {
+  defaultDisplayName: string;
+  embedded?: boolean;
+  initialClient?: ClientRecord | null;
+  mode: "create" | "edit";
+  onCancel: () => void;
+  onSave: (value: ClientProfileDialogValue) => void | Promise<void>;
+  submitting?: boolean;
+}): React.JSX.Element {
+  const { width } = useWindowDimensions();
+  const compact = !embedded && width < 520;
   const [value, setValue] = useState<ClientProfileDialogValue>(() => clientDialogValue(initialClient, defaultDisplayName));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!visible) return;
     setValue(clientDialogValue(initialClient, defaultDisplayName));
     setError(null);
-  }, [defaultDisplayName, initialClient, visible]);
+  }, [defaultDisplayName, initialClient]);
 
   function updateField(field: keyof ClientProfileDialogValue, nextValue: string): void {
     setValue((current) => ({ ...current, [field]: nextValue }));
@@ -228,40 +294,36 @@ export function ClientProfileDialog({
   }
 
   return (
-    <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
-      <View style={[styles.backdrop, compact && styles.backdropCompact]} testID="client-profile-dialog-backdrop">
-        <View accessibilityViewIsModal style={[styles.dialog, compact && styles.dialogCompact]} testID="client-profile-dialog">
-          <View style={styles.header}>
-            <View style={styles.iconBadge}><UserRound size={22} color="#eef7f1" /></View>
-            <View style={styles.headerText}>
-              <Text style={styles.title}>{mode === "create" ? "Add Client" : "Edit Client"}</Text>
-              <Text style={styles.helper}>Company is optional; primary contact first and last name are required. Client profile details stay in the local catalog and are not written into project ZIP packages.</Text>
-            </View>
-          </View>
-
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.body} contentContainerStyle={styles.bodyContent} testID="client-profile-dialog-body">
-            <DialogField label="Company name" value={value.companyName} onChangeText={(text) => updateField("companyName", text)} testID="client-profile-company-input" />
-            <DialogField label="Last name" value={value.primaryContactLastName} onChangeText={(text) => updateField("primaryContactLastName", text)} error={error} testID="client-profile-last-name-input" />
-            <DialogField label="First name" value={value.primaryContactFirstName} onChangeText={(text) => updateField("primaryContactFirstName", text)} testID="client-profile-first-name-input" />
-            <DialogField label="M.I." value={value.primaryContactMiddleInitial} onChangeText={(text) => updateField("primaryContactMiddleInitial", text)} testID="client-profile-middle-initial-input" />
-            <DialogField label="Suffix" value={value.primaryContactSuffix} onChangeText={(text) => updateField("primaryContactSuffix", text)} testID="client-profile-suffix-input" />
-            <DialogField label="Email" value={value.email} onChangeText={(text) => updateField("email", text)} testID="client-profile-email-input" />
-            <DialogField label="Phone" value={value.phone} onChangeText={(text) => updateField("phone", text)} testID="client-profile-phone-input" />
-            <DialogField label="Location" value={value.location} onChangeText={(text) => updateField("location", text)} testID="client-profile-location-input" />
-            <DialogField label="Notes" multiline value={value.notes} onChangeText={(text) => updateField("notes", text)} testID="client-profile-notes-input" />
-          </ScrollView>
-
-          <View style={styles.footer}>
-            <Pressable accessibilityRole="button" disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]} testID="client-profile-cancel">
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" disabled={submitting} onPress={() => void submit()} style={[styles.primaryButton, submitting && styles.disabledButton]} testID="client-profile-save">
-              <Text style={styles.primaryButtonText}>{submitting ? "Saving" : "Save"}</Text>
-            </Pressable>
-          </View>
+    <View accessibilityViewIsModal={!embedded} style={[styles.dialog, compact && styles.dialogCompact, embedded && styles.embeddedDialog]} testID="client-profile-dialog">
+      <View style={styles.header}>
+        <View style={styles.iconBadge}><UserRound size={22} color="#eef7f1" /></View>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>{mode === "create" ? "Add Client" : "Edit Client"}</Text>
+          <Text style={styles.helper}>Company is optional; primary contact first and last name are required. Client profile details stay in the local catalog and are not written into project ZIP packages.</Text>
         </View>
       </View>
-    </Modal>
+
+      <ScrollView keyboardShouldPersistTaps="handled" style={styles.body} contentContainerStyle={styles.bodyContent} testID="client-profile-dialog-body">
+        <DialogField label="Company name" value={value.companyName} onChangeText={(text) => updateField("companyName", text)} testID="client-profile-company-input" />
+        <DialogField label="Last name" value={value.primaryContactLastName} onChangeText={(text) => updateField("primaryContactLastName", text)} error={error} testID="client-profile-last-name-input" />
+        <DialogField label="First name" value={value.primaryContactFirstName} onChangeText={(text) => updateField("primaryContactFirstName", text)} testID="client-profile-first-name-input" />
+        <DialogField label="M.I." value={value.primaryContactMiddleInitial} onChangeText={(text) => updateField("primaryContactMiddleInitial", text)} testID="client-profile-middle-initial-input" />
+        <DialogField label="Suffix" value={value.primaryContactSuffix} onChangeText={(text) => updateField("primaryContactSuffix", text)} testID="client-profile-suffix-input" />
+        <DialogField label="Email" value={value.email} onChangeText={(text) => updateField("email", text)} testID="client-profile-email-input" />
+        <DialogField label="Phone" value={value.phone} onChangeText={(text) => updateField("phone", text)} testID="client-profile-phone-input" />
+        <DialogField label="Location" value={value.location} onChangeText={(text) => updateField("location", text)} testID="client-profile-location-input" />
+        <DialogField label="Notes" multiline value={value.notes} onChangeText={(text) => updateField("notes", text)} testID="client-profile-notes-input" />
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <Pressable accessibilityRole="button" disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]} testID="client-profile-cancel">
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" disabled={submitting} onPress={() => void submit()} style={[styles.primaryButton, submitting && styles.disabledButton]} testID="client-profile-save">
+          <Text style={styles.primaryButtonText}>{submitting ? "Saving" : "Save"}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -291,25 +353,62 @@ export function ConfirmActionDialog({
   return (
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
       <View style={[styles.backdrop, compact && styles.backdropCompact]} testID={`${testID}-backdrop`}>
-        <View accessibilityRole="alert" accessibilityViewIsModal style={[styles.dialog, compact && styles.dialogCompact]} testID={testID}>
-          <View style={styles.header}>
-            <View style={[styles.iconBadge, tone === "danger" && styles.dangerIconBadge]}><AlertTriangle size={22} color="#fff4ed" /></View>
-            <View style={styles.headerText}>
-              <Text style={styles.title}>{title}</Text>
-              <Text style={styles.helper}>{message}</Text>
-            </View>
-          </View>
-          <View style={styles.footer}>
-            <Pressable accessibilityRole="button" disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]} testID={`${testID}-cancel`}>
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" disabled={submitting} onPress={() => void onConfirm()} style={[tone === "danger" ? styles.dangerButton : styles.primaryButton, submitting && styles.disabledButton]} testID={`${testID}-confirm`}>
-              <Text style={styles.primaryButtonText}>{submitting ? "Working" : confirmLabel}</Text>
-            </Pressable>
-          </View>
-        </View>
+        <ConfirmActionPanel
+          confirmLabel={confirmLabel}
+          message={message}
+          onCancel={onCancel}
+          onConfirm={onConfirm}
+          submitting={submitting}
+          testID={testID}
+          title={title}
+          tone={tone}
+        />
       </View>
     </Modal>
+  );
+}
+
+export function ConfirmActionPanel({
+  confirmLabel,
+  embedded = false,
+  message,
+  onCancel,
+  onConfirm,
+  submitting = false,
+  testID = "confirm-action-dialog",
+  title,
+  tone = "danger",
+}: {
+  confirmLabel: string;
+  embedded?: boolean;
+  message: string;
+  onCancel: () => void;
+  onConfirm: () => void | Promise<void>;
+  submitting?: boolean;
+  testID?: string;
+  title: string;
+  tone?: "danger" | "neutral";
+}): React.JSX.Element {
+  const { width } = useWindowDimensions();
+  const compact = !embedded && width < 520;
+  return (
+    <View accessibilityRole="alert" accessibilityViewIsModal={!embedded} style={[styles.dialog, compact && styles.dialogCompact, embedded && styles.embeddedDialog]} testID={testID}>
+      <View style={styles.header}>
+        <View style={[styles.iconBadge, tone === "danger" && styles.dangerIconBadge]}><AlertTriangle size={22} color="#fff4ed" /></View>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.helper}>{message}</Text>
+        </View>
+      </View>
+      <View style={styles.footer}>
+        <Pressable accessibilityRole="button" disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]} testID={`${testID}-cancel`}>
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" disabled={submitting} onPress={() => void onConfirm()} style={[tone === "danger" ? styles.dangerButton : styles.primaryButton, submitting && styles.disabledButton]} testID={`${testID}-confirm`}>
+          <Text style={styles.primaryButtonText}>{submitting ? "Working" : confirmLabel}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -332,66 +431,96 @@ export function MoveProjectDialog({
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const compact = width < 520;
+  return (
+    <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
+      <View style={[styles.backdrop, compact && styles.backdropCompact]} testID="move-project-dialog-backdrop">
+        <MoveProjectForm
+          currentClientId={currentClientId}
+          clients={clients}
+          onCancel={onCancel}
+          onMove={onMove}
+          projectName={projectName}
+          submitting={submitting}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+export function MoveProjectForm({
+  clients,
+  currentClientId,
+  embedded = false,
+  onCancel,
+  onMove,
+  projectName,
+  submitting = false,
+}: {
+  currentClientId: string;
+  clients: ClientRecord[];
+  embedded?: boolean;
+  onCancel: () => void;
+  onMove: (clientId: string) => void | Promise<void>;
+  projectName: string;
+  submitting?: boolean;
+}): React.JSX.Element {
+  const { width } = useWindowDimensions();
+  const compact = !embedded && width < 520;
   const targets = useMemo(() => clients.filter((client) => client.id !== currentClientId), [currentClientId, clients]);
   const [selectedClientId, setSelectedClientId] = useState(targets[0]?.id ?? "");
 
   useEffect(() => {
-    if (!visible) return;
     setSelectedClientId(targets[0]?.id ?? "");
-  }, [targets, visible]);
+  }, [targets]);
 
   return (
-    <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
-      <View style={[styles.backdrop, compact && styles.backdropCompact]} testID="move-project-dialog-backdrop">
-        <View accessibilityViewIsModal style={[styles.dialog, compact && styles.dialogCompact]} testID="move-project-dialog">
-          <View style={styles.header}>
-            <View style={styles.iconBadge}><MoveRight size={22} color="#eef7f1" /></View>
-            <View style={styles.headerText}>
-              <Text style={styles.title}>Move Project</Text>
-              <Text style={styles.helper}>Move {projectName} to another client folder. Project geometry and archive contents are unchanged.</Text>
-            </View>
-          </View>
-          <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} testID="move-project-dialog-body">
-            {targets.length === 0 ? (
-              <Text style={styles.errorText}>Create another client folder before moving this project.</Text>
-            ) : targets.map((client) => {
-              const selected = selectedClientId === client.id;
-              return (
-                <Pressable
-                  accessibilityLabel={`Move to ${client.displayName}`}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  key={client.id}
-                  onPress={() => setSelectedClientId(client.id)}
-                  style={[styles.choiceRow, selected && styles.choiceRowSelected]}
-                  testID={`move-project-target-${client.id}`}
-                >
-                  {selected ? <CheckCircle2 size={18} color="#0f5e3d" /> : <FolderOpen size={18} color="#53645a" />}
-                  <View style={styles.choiceText}>
-                    <Text style={styles.choiceTitle}>{client.displayName}</Text>
-                    <Text style={styles.choiceMeta}>{client.location || client.contactName || "Client folder"}</Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          <View style={styles.footer}>
-            <Pressable accessibilityRole="button" disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]} testID="move-project-cancel">
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={submitting || !selectedClientId}
-              onPress={() => selectedClientId ? void onMove(selectedClientId) : undefined}
-              style={[styles.primaryButton, (submitting || !selectedClientId) && styles.disabledButton]}
-              testID="move-project-confirm"
-            >
-              <Text style={styles.primaryButtonText}>{submitting ? "Moving" : "Move"}</Text>
-            </Pressable>
-          </View>
+    <View accessibilityViewIsModal={!embedded} style={[styles.dialog, compact && styles.dialogCompact, embedded && styles.embeddedDialog]} testID="move-project-dialog">
+      <View style={styles.header}>
+        <View style={styles.iconBadge}><MoveRight size={22} color="#eef7f1" /></View>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>Move Project</Text>
+          <Text style={styles.helper}>Move {projectName} to another client folder. Project geometry and archive contents are unchanged.</Text>
         </View>
       </View>
-    </Modal>
+      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} testID="move-project-dialog-body">
+        {targets.length === 0 ? (
+          <Text style={styles.errorText}>Create another client folder before moving this project.</Text>
+        ) : targets.map((client) => {
+          const selected = selectedClientId === client.id;
+          return (
+            <Pressable
+              accessibilityLabel={`Move to ${client.displayName}`}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected }}
+              key={client.id}
+              onPress={() => setSelectedClientId(client.id)}
+              style={[styles.choiceRow, selected && styles.choiceRowSelected]}
+              testID={`move-project-target-${client.id}`}
+            >
+              {selected ? <CheckCircle2 size={18} color="#0f5e3d" /> : <FolderOpen size={18} color="#53645a" />}
+              <View style={styles.choiceText}>
+                <Text style={styles.choiceTitle}>{client.displayName}</Text>
+                <Text style={styles.choiceMeta}>{client.location || client.contactName || "Client folder"}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <View style={styles.footer}>
+        <Pressable accessibilityRole="button" disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]} testID="move-project-cancel">
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          disabled={submitting || !selectedClientId}
+          onPress={() => selectedClientId ? void onMove(selectedClientId) : undefined}
+          style={[styles.primaryButton, (submitting || !selectedClientId) && styles.disabledButton]}
+          testID="move-project-confirm"
+        >
+          <Text style={styles.primaryButtonText}>{submitting ? "Moving" : "Move"}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -478,6 +607,9 @@ const styles = StyleSheet.create({
   },
   dialogCompact: {
     maxHeight: "92%",
+  },
+  embeddedDialog: {
+    maxHeight: "100%",
   },
   header: {
     alignItems: "flex-start",

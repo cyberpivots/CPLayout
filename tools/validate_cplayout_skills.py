@@ -54,12 +54,23 @@ SUBAGENT_REASONING_EFFORTS = {"task_selected"}
 SPAWN_POLICIES = {"required", "optional", "not_useful"}
 REQUIRED_ROUTE_KEYWORDS = {
     "cplayout_imagery_mapper": {"will rhea", "jason harmelink"},
-    "cplayout_interface_developer": {"hud", "bottom hud", "map workspace"},
+    "cplayout_interface_developer": {
+        "hud",
+        "bottom hud",
+        "map workspace",
+        "right-sidebar",
+        "right-drawer",
+        "toolbar",
+        "ui-proof",
+    },
     "cplayout_kb_curator": {
         "advisory hooks",
+        "context-map",
         "coordinator route band",
+        "route data",
         "subagent reasoning",
         "token efficient",
+        "validate_cplayout_skills",
         "xhigh coordinator",
     },
 }

@@ -36,6 +36,10 @@ interface DrawingToolPaletteProps {
   settings: AppSettings;
 }
 
+interface DrawingToolLauncherProps extends DrawingToolPaletteProps {
+  variant: "compact" | "sidebar";
+}
+
 export function DrawingToolPalette({
   activeModal,
   activeTool,
@@ -45,10 +49,38 @@ export function DrawingToolPalette({
   onToggleLayers,
   settings,
 }: DrawingToolPaletteProps): React.JSX.Element {
+  return (
+    <View style={styles.bottomHud} testID="map-bottom-hud">
+      <DrawingToolLauncher
+        activeModal={activeModal}
+        activeTool={activeTool}
+        onActivateTool={onActivateTool}
+        onCalculate={onCalculate}
+        onOpenModal={onOpenModal}
+        onToggleLayers={onToggleLayers}
+        settings={settings}
+        variant="compact"
+      />
+    </View>
+  );
+}
+
+export function DrawingToolLauncher({
+  activeModal,
+  activeTool,
+  onActivateTool,
+  onCalculate,
+  onOpenModal,
+  onToggleLayers,
+  settings,
+  variant,
+}: DrawingToolLauncherProps): React.JSX.Element {
   const [expandedHud, setExpandedHud] = useState(false);
+  const sidebar = variant === "sidebar";
   const designMode = settings.mappingWorkflowMode === "design";
   const activeToolId = useMemo(() => activeMapToolId(activeModal, activeTool), [activeModal, activeTool]);
   const statusText = activeToolStatus(activeModal, activeTool, designMode);
+  const expanded = sidebar || expandedHud;
 
   function runTool(tool: MapToolCatalogItem): void {
     const action = tool.action;
@@ -68,9 +100,9 @@ export function DrawingToolPalette({
   }
 
   return (
-    <View style={styles.bottomHud} testID="map-bottom-hud">
-      <View style={styles.shell} testID="design-action-hud">
-        <View style={styles.statusRow}>
+    <View style={[styles.shell, sidebar && styles.sidebarShell]} testID="design-action-hud">
+      <View style={styles.statusRow}>
+        {!sidebar ? (
           <Pressable
             accessibilityLabel={expandedHud ? "Collapse map HUD" : "Expand map HUD"}
             accessibilityRole="button"
@@ -81,10 +113,28 @@ export function DrawingToolPalette({
           >
             {expandedHud ? <ChevronDown size={18} color="#173428" /> : <ChevronUp size={18} color="#173428" />}
           </Pressable>
-          <View style={styles.activeChip} testID="map-hud-active-tool-chip">
-            <Text numberOfLines={1} style={styles.activeChipText}>{statusText}</Text>
-          </View>
+        ) : null}
+        <View style={styles.activeChip} testID="map-hud-active-tool-chip">
+          <Text numberOfLines={sidebar ? 2 : 1} style={styles.activeChipText}>{statusText}</Text>
         </View>
+      </View>
+      {sidebar ? (
+        <View style={styles.sidebarToolGrid} testID="design-action-scroll">
+          {MAP_TOOL_CATALOG.map((tool) => (
+            <ToolButton
+              key={tool.id}
+              active={activeToolId === tool.id}
+              expanded={expanded}
+              icon={toolIcon(tool.id, activeToolId === tool.id)}
+              legacyTestID={legacyTestId(tool.id)}
+              onPress={() => runTool(tool)}
+              sidebar
+              testID={groupTestId(tool.id)}
+              tool={tool}
+            />
+          ))}
+        </View>
+      ) : (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={expandedHud}
@@ -96,7 +146,7 @@ export function DrawingToolPalette({
             <ToolButton
               key={tool.id}
               active={activeToolId === tool.id}
-              expanded={expandedHud}
+              expanded={expanded}
               icon={toolIcon(tool.id, activeToolId === tool.id)}
               legacyTestID={legacyTestId(tool.id)}
               onPress={() => runTool(tool)}
@@ -105,10 +155,10 @@ export function DrawingToolPalette({
             />
           ))}
         </ScrollView>
-        {!designMode && expandedHud ? (
-          <Text style={styles.notice}>Layout mode is read-only for pointer edits.</Text>
-        ) : null}
-      </View>
+      )}
+      {!designMode && expanded ? (
+        <Text style={styles.notice}>Layout mode is read-only for pointer edits.</Text>
+      ) : null}
     </View>
   );
 }
@@ -119,6 +169,7 @@ function ToolButton({
   icon,
   legacyTestID,
   onPress,
+  sidebar = false,
   testID,
   tool,
 }: {
@@ -127,18 +178,21 @@ function ToolButton({
   icon: React.ReactNode;
   legacyTestID?: string;
   onPress: () => void;
+  sidebar?: boolean;
   testID: string;
   tool: MapToolCatalogItem;
 }): React.JSX.Element {
+  const visualGroup = toolVisualGroup(tool.id);
   return (
-    <View testID={testID}>
+    <View style={[styles.toolGroupShell, { borderTopColor: visualGroup.color }]} testID={testID}>
       <Pressable
         accessibilityLabel={tool.label}
+        accessibilityHint={`${visualGroup.label} tool group`}
         accessibilityRole="button"
         accessibilityState={{ selected: active }}
         aria-pressed={active}
         onPress={onPress}
-        style={[styles.toolButton, expanded && styles.toolButtonExpanded, active && styles.toolButtonActive]}
+        style={[styles.toolButton, { borderColor: visualGroup.borderColor }, expanded && styles.toolButtonExpanded, sidebar && styles.sidebarToolButton, active && styles.toolButtonActive]}
         testID={legacyTestID}
       >
         {icon}
@@ -146,6 +200,29 @@ function ToolButton({
       </Pressable>
     </View>
   );
+}
+
+function toolVisualGroup(id: MapToolId): { label: string; color: string; borderColor: string } {
+  switch (id) {
+    case "pan":
+      return { label: "Navigate", color: "#2f6f6b", borderColor: "#9dc9c5" };
+    case "edit":
+      return { label: "Edit", color: "#5f6f2f", borderColor: "#c5cf9d" };
+    case "point":
+      return { label: "Points", color: "#7a4a12", borderColor: "#d8bb8d" };
+    case "line":
+      return { label: "Utilities", color: "#62418f", borderColor: "#c5b4dd" };
+    case "polygon":
+      return { label: "Areas", color: "#2d5f3a", borderColor: "#a8cdb1" };
+    case "circle":
+      return { label: "Coverage", color: "#006a9f", borderColor: "#9bc8df" };
+    case "machine":
+      return { label: "Machine", color: "#253f2f", borderColor: "#9db7a7" };
+    case "layers":
+      return { label: "Layers", color: "#53655a", borderColor: "#b9c8bd" };
+    case "calculate":
+      return { label: "Review", color: "#8b5cf6", borderColor: "#c9b9f8" };
+  }
 }
 
 function activeMapToolId(activeModal: DrawingToolPaletteModal, activeTool: ActiveTool): MapToolId {
@@ -267,6 +344,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 7,
   },
+  sidebarShell: {
+    backgroundColor: "#f7faf5",
+    flexShrink: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
   statusRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -308,6 +391,16 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingRight: 2,
   },
+  sidebarToolGrid: {
+    alignItems: "stretch",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  toolGroupShell: {
+    borderTopWidth: 3,
+    borderRadius: 8,
+  },
   toolButton: {
     alignItems: "center",
     backgroundColor: "#eef4ef",
@@ -325,6 +418,12 @@ const styles = StyleSheet.create({
   toolButtonExpanded: {
     minWidth: 72,
     width: "auto",
+  },
+  sidebarToolButton: {
+    flexBasis: 94,
+    flexGrow: 1,
+    height: 52,
+    minWidth: 86,
   },
   toolButtonActive: {
     backgroundColor: "#173428",

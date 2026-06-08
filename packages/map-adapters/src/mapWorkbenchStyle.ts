@@ -71,8 +71,18 @@ export function buildWorkbenchStyle(
     fillLayer("end-gun-fill", "end_gun_coverage", "#33a79b", 0.28),
     fillLayer("outside-fill", "outside_field_coverage", "#d8893f", 0.28),
     fillLayer("advisory-generated-field-pivot-fill", "advisory_generated_field_pivot_coverage", "#8b5cf6", 0.22),
+    fillLayer("wheel-track-fill", "wheel_track_path", "#6b756d", 0.18),
+    fillLayer("wheel-track-outside-fill", "wheel_track_outside_field", "#d8893f", 0.2),
+    fillLayer("end-machine-path-fill", "end_machine_path", "#1f3528", 0.16),
+    fillLayer("end-machine-path-outside-fill", "end_machine_outside_field", "#d8893f", 0.24),
     fillLayer("obstacle-fill", "obstacle", "#b73f35", 0.5),
     fillLayer("map-feature-polygon", "map_feature", "#7c5b14", 0.18, ["all", ["==", ["geometry-type"], "Polygon"], ["==", ["get", "layerType"], "map_feature"]]),
+    lineLayer("wheel-track-line", "wheel_track_path", "#4f5a50", 1.5, undefined, { "line-dasharray": [1.4, 1.1] }),
+    lineLayer("wheel-track-outside-line", "wheel_track_outside_field", "#a14322", 2, undefined, { "line-dasharray": [1, 1] }),
+    lineLayer("end-machine-path-halo", "end_machine_path", "#fffef8", 5),
+    lineLayer("end-machine-path-line", "end_machine_path", "#111c17", 2.5),
+    lineLayer("end-machine-path-outside-halo", "end_machine_outside_field", "#fff4e8", 5),
+    lineLayer("end-machine-path-outside-line", "end_machine_outside_field", "#a14322", 2.5, undefined, { "line-dasharray": [2, 1.2] }),
     lineLayer("field-line", "field_boundary", "#111c17", 3),
     lineLayer("advisory-generated-field-pivot-line", "advisory_generated_field_pivot_coverage", "#6d28d9", 2),
     lineLayer("obstacle-line", "obstacle", "#6d251f", 2),
@@ -182,6 +192,7 @@ function lineLayer(
   color: string,
   width: number,
   filter: unknown[] = ["==", ["get", "layerType"], layerType],
+  paintOverrides: Record<string, unknown> = {},
 ): StyleSpecification["layers"][number] {
   return {
     id,
@@ -192,6 +203,7 @@ function lineLayer(
       "line-color": color,
       "line-width": width,
       "line-opacity": 0.95,
+      ...paintOverrides,
     },
   };
 }

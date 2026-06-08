@@ -55,8 +55,12 @@ import { CommandBar, IconCommandButton, type CommandIconButtonConfig, type Comma
 import { MapSurface } from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
 import {
+  CatalogItemForm,
   ConfirmActionDialog,
+  ConfirmActionPanel,
   ClientProfileDialog,
+  ClientProfileForm,
+  MoveProjectForm,
   MoveProjectDialog,
   ProjectCatalogDialog,
   type ClientProfileDialogValue,
@@ -64,7 +68,7 @@ import {
 } from "./src/components/ProjectCatalogDialog";
 import { ProjectFilesPanel } from "./src/components/ProjectFilesPanel";
 import { SettingsPanel } from "./src/components/SettingsPanel";
-import { DrawingToolPalette, type DrawingToolPaletteModal } from "./src/components/DrawingToolPalette";
+import { DrawingToolLauncher, DrawingToolPalette, type DrawingToolPaletteModal } from "./src/components/DrawingToolPalette";
 import { useProjectRepository, type ProjectWorkspaceStatus } from "./src/hooks/useProjectRepository";
 import type { ClientRecord } from "@cplayout/project-store";
 import { exportFileAsync, rehydrateInstalledMapPackageManifestsAsync } from "@cplayout/project-store";
@@ -156,7 +160,7 @@ type WorkspaceView = "dashboard" | "map" | "survey" | "files" | "settings" | "he
 type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "validation" | "export";
 type DesignConsoleModal = DrawingToolPaletteModal;
-type InspectorPage = "metrics" | "layers" | "feature" | "rtk" | "warnings";
+type RightWorkflowSidebarPage = "overview" | "tools" | "toolForm" | "layers" | "rtk" | "feature" | "warnings" | "catalog" | "catalogForm";
 type AdvisoryCostDraft = {
   fixedMachineCost: string;
   costPerMeter: string;
@@ -275,7 +279,7 @@ function AppContent(): React.JSX.Element {
   const safeBottomGutter = Math.max(insets.bottom, Platform.OS === "android" ? 24 : 0) + 10;
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(() => desktopConsole);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(() => desktopConsole);
-  const [activeInspectorPage, setActiveInspectorPage] = useState<InspectorPage>("metrics");
+  const [activeSidebarPage, setActiveSidebarPage] = useState<RightWorkflowSidebarPage>("tools");
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
   const advisoryCostInput = useMemo(() => advisoryCostInputFromDraft(advisoryCostDraft), [advisoryCostDraft]);
@@ -312,6 +316,25 @@ function AppContent(): React.JSX.Element {
   const deletingClient = deletingClientId
     ? repository.catalog.clients.find((client) => client.id === deletingClientId) ?? null
     : null;
+  const sidebarInlineWorkflow = !compactLayout && !nativeMapLibreProofEnabled;
+  const inlineCatalogForms = sidebarInlineWorkflow && activeView === "map";
+  const activeCatalogForm = Boolean(catalogDialogMode || clientProfileDialogMode || renamingProject || movingProject || deletingProject || deletingClient);
+  const warningCount = result.warnings.length + (editor.lastError ? 1 : 0);
+  const visibleSidebarPages = useMemo(
+    () => rightWorkflowSidebarPages({
+      activeCatalogForm: inlineCatalogForms && activeCatalogForm,
+      activeToolForm: Boolean(designConsoleModal),
+      homeView: homeMapView,
+      mappingWorkflowMode: settings.mappingWorkflowMode,
+      selectedMapFeature: Boolean(selectedMapFeature),
+      warningCount,
+    }),
+    [activeCatalogForm, designConsoleModal, homeMapView, inlineCatalogForms, selectedMapFeature, settings.mappingWorkflowMode, warningCount],
+  );
+  const requestedSidebarPage = inlineCatalogForms && activeCatalogForm ? "catalogForm" : activeSidebarPage;
+  const effectiveSidebarPage = visibleSidebarPages.some((page) => page.id === requestedSidebarPage)
+    ? requestedSidebarPage
+    : (visibleSidebarPages[0]?.id ?? "overview");
 
   useEffect(() => {
     if (selectedMapFeatureId && !(project.mapFeatures ?? []).some((feature) => feature.id === selectedMapFeatureId)) {
@@ -340,9 +363,19 @@ function AppContent(): React.JSX.Element {
 
   useEffect(() => {
     if (!selectedMapFeatureId) return;
-    setActiveInspectorPage("feature");
+    if (activeCatalogForm || designConsoleModal) return;
+    setActiveSidebarPage("feature");
     setRightDrawerOpen(true);
-  }, [selectedMapFeatureId]);
+  }, [activeCatalogForm, designConsoleModal, selectedMapFeatureId]);
+
+  useEffect(() => {
+    if (homeMapView) {
+      setActiveSidebarPage("catalog");
+      return;
+    }
+    if (selectedMapFeatureId) return;
+    setActiveSidebarPage(settings.mappingWorkflowMode === "layout" ? "rtk" : "tools");
+  }, [homeMapView, selectedMapFeatureId, settings.mappingWorkflowMode]);
 
   useEffect(() => {
     if (desktopConsole) {
@@ -415,6 +448,7 @@ function AppContent(): React.JSX.Element {
     setHomeMapView(false);
     setActiveView("map");
     setWorkflowMode("design");
+    setActiveSidebarPage("tools");
     if (context) {
       setActiveCatalogContext((current) => ({ ...current, ...context }));
     }
@@ -449,6 +483,7 @@ function AppContent(): React.JSX.Element {
     setScreen("workspace");
     setActiveView("map");
     setHomeMapView(true);
+    setActiveSidebarPage("catalog");
   }
 
   async function saveCurrentProject(): Promise<void> {
@@ -569,8 +604,42 @@ function AppContent(): React.JSX.Element {
 
   function activateDesignConsoleTool(mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind): void {
     activateGuidedMapTool(mode, activeLayer, featureKind);
+    setSelectedMapFeatureId(null);
     setDesignConsoleModal(null);
+    if (sidebarInlineWorkflow) setActiveSidebarPage("tools");
     setActiveView("map");
+  }
+
+  function openDesignConsolePanel(modal: DesignConsoleModal): void {
+    setDesignConsoleModal(modal);
+    if (modal && sidebarInlineWorkflow) {
+      setActiveSidebarPage(modal === "layers" ? "layers" : "toolForm");
+      setRightDrawerOpen(true);
+      setActiveView("map");
+    }
+  }
+
+  function toggleLayersPanel(): void {
+    if (sidebarInlineWorkflow) {
+      setDesignConsoleModal(null);
+      setActiveSidebarPage("layers");
+      setRightDrawerOpen(true);
+      setActiveView("map");
+      return;
+    }
+    setDesignConsoleModal((current) => current === "layers" ? null : "layers");
+  }
+
+  function calculateAndOpenPanel(): void {
+    calculateDesignScenarios();
+    if (sidebarInlineWorkflow) {
+      setDesignConsoleModal("calculate");
+      setActiveSidebarPage("toolForm");
+      setRightDrawerOpen(true);
+      setActiveView("map");
+      return;
+    }
+    setDesignConsoleModal("calculate");
   }
 
   function routeToClientSelection(): void {
@@ -591,18 +660,52 @@ function AppContent(): React.JSX.Element {
     }
     setCatalogDialogDefaultName(defaultCatalogDialogName(mode));
     setCatalogDialogMode(mode);
+    openCatalogFormSidebar();
   }
 
   function openClientCreateDialog(): void {
     setCatalogNotice(null);
     setEditingClientId(null);
     setClientProfileDialogMode("create");
+    openCatalogFormSidebar();
   }
 
   function openClientEditDialog(clientId: string): void {
     setCatalogNotice(null);
     setEditingClientId(clientId);
     setClientProfileDialogMode("edit");
+    openCatalogFormSidebar();
+  }
+
+  function openCatalogFormSidebar(): void {
+    if (!inlineCatalogForms) return;
+    setActiveSidebarPage("catalogForm");
+    setRightDrawerOpen(true);
+    setActiveView("map");
+  }
+
+  function openProjectRenameForm(projectId: string): void {
+    setRenamingProjectId(projectId);
+    openCatalogFormSidebar();
+  }
+
+  function openProjectMoveForm(projectId: string): void {
+    setMovingProjectId(projectId);
+    openCatalogFormSidebar();
+  }
+
+  function openProjectDeleteForm(projectId: string): void {
+    setDeletingProjectId(projectId);
+    openCatalogFormSidebar();
+  }
+
+  function openClientDeleteForm(clientId: string): void {
+    setDeletingClientId(clientId);
+    openCatalogFormSidebar();
+  }
+
+  function closeInlineCatalogForm(): void {
+    setActiveSidebarPage(homeMapView ? "catalog" : (settings.mappingWorkflowMode === "layout" ? "rtk" : "tools"));
   }
 
   async function submitCatalogDialog(name: string): Promise<void> {
@@ -613,6 +716,7 @@ function AppContent(): React.JSX.Element {
       if (catalogDialogMode === "fieldMap") await createFieldMapForProject(name);
       if (catalogDialogMode === "design") await createDesignForFieldMap(name);
       setCatalogDialogMode(null);
+      closeInlineCatalogForm();
     } finally {
       setCatalogDialogSubmitting(false);
     }
@@ -621,6 +725,7 @@ function AppContent(): React.JSX.Element {
   function closeCatalogDialog(): void {
     if (catalogDialogSubmitting) return;
     setCatalogDialogMode(null);
+    closeInlineCatalogForm();
   }
 
   function defaultCatalogDialogName(mode: ProjectCatalogDialogMode): string {
@@ -680,6 +785,7 @@ function AppContent(): React.JSX.Element {
       }
       setClientProfileDialogMode(null);
       setEditingClientId(null);
+      closeInlineCatalogForm();
     } finally {
       setCatalogDialogSubmitting(false);
     }
@@ -689,6 +795,7 @@ function AppContent(): React.JSX.Element {
     if (catalogDialogSubmitting) return;
     setClientProfileDialogMode(null);
     setEditingClientId(null);
+    closeInlineCatalogForm();
   }
 
   async function createProjectFolder(name: string): Promise<void> {
@@ -776,6 +883,7 @@ function AppContent(): React.JSX.Element {
         setSavedRevision(0);
       }
       setRenamingProjectId(null);
+      closeInlineCatalogForm();
     } finally {
       setCatalogDialogSubmitting(false);
     }
@@ -791,6 +899,7 @@ function AppContent(): React.JSX.Element {
         setActiveCatalogContext((current) => ({ ...current, clientId }));
       }
       setMovingProjectId(null);
+      closeInlineCatalogForm();
     } finally {
       setCatalogDialogSubmitting(false);
     }
@@ -807,6 +916,7 @@ function AppContent(): React.JSX.Element {
           showCatalogMap({ clientId: activeCatalogContext.clientId, projectId: null, fieldMapId: null, designId: null });
         }
         setDeletingProjectId(null);
+        closeInlineCatalogForm();
       }
     } finally {
       setCatalogDialogSubmitting(false);
@@ -824,6 +934,7 @@ function AppContent(): React.JSX.Element {
           setActiveCatalogContext({ clientId: null, projectId: null, fieldMapId: null, designId: null });
         }
         setDeletingClientId(null);
+        closeInlineCatalogForm();
       }
     } finally {
       setCatalogDialogSubmitting(false);
@@ -867,6 +978,8 @@ function AppContent(): React.JSX.Element {
     setWorkflowMode("layout");
     setCatalogNotice(notice);
     setSelectedMapFeatureId(null);
+    setDesignConsoleModal(null);
+    setActiveSidebarPage("catalog");
     setActiveCatalogContext((current) => ({ ...current, ...context }));
   }
 
@@ -946,6 +1059,344 @@ function AppContent(): React.JSX.Element {
     }
   }
 
+  function renderRightWorkflowSidebarContent(page: RightWorkflowSidebarPage): React.JSX.Element {
+    if (page === "catalog") {
+      return selectedClient ? (
+        <ClientDetailPanel
+          activeProjectId={activeCatalogContext.projectId}
+          catalog={repository.catalog}
+          client={selectedClient}
+          notice={catalogNotice}
+          onCreateProject={() => openCatalogDialog("project")}
+          onDeleteClient={openClientDeleteForm}
+          onDeleteProject={openProjectDeleteForm}
+          onEditClient={openClientEditDialog}
+          onMoveProject={openProjectMoveForm}
+          onOpenProject={selectProjectCatalogOnly}
+          onRenameProject={openProjectRenameForm}
+          onSelectProject={(projectId) => {
+            const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
+            setActiveCatalogContext({
+              clientId: record?.clientId ?? selectedClient.id,
+              projectId,
+              fieldMapId: null,
+              designId: null,
+            });
+          }}
+        />
+      ) : (
+        <CatalogHomePanel
+          catalog={repository.catalog}
+          notice={catalogNotice}
+          onCreateClient={openClientCreateDialog}
+          onStartBlankDesign={startBlankDesign}
+          repository={repository}
+          settings={settings}
+        />
+      );
+    }
+
+    if (page === "catalogForm") {
+      return renderCatalogInlineForm();
+    }
+
+    if (page === "overview") {
+      return (
+        <>
+          <Text style={styles.sectionTitle}>Overview</Text>
+          <View style={styles.metricGrid}>
+            <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
+            <MetricTile label="Dry / non-irrigated" value={formatAreaFromAcres(result.metrics.nonIrrigatedAcres, settings.unitSystem)} tone="warn" />
+            <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} tone="neutral" />
+            <MetricTile label="End gun" value={formatAreaFromAcres(result.metrics.endGunAcres, settings.unitSystem)} tone="neutral" />
+            <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
+            <MetricTile label="Obstacle hits" value={`${result.metrics.obstacleConflictCount}`} tone={result.metrics.obstacleConflictCount > 0 ? "danger" : "good"} />
+            <MetricTile label="Hard path conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
+          </View>
+          <View style={styles.mapFeatureEditor} testID="design-console-status">
+            <Text style={styles.mapFeatureTitle}>Workflow Sidebar</Text>
+            <Text style={styles.mapFeatureMeta}>Drawing tools, focused inputs, layers, RTK capture, selected features, and warnings are managed from this right sidebar. Draft vertices and save/clear actions remain on the map.</Text>
+          </View>
+        </>
+      );
+    }
+
+    if (page === "tools") {
+      return (
+        <>
+          <Text style={styles.sectionTitle}>Tools</Text>
+          <DrawingToolLauncher
+            activeModal={designConsoleModal}
+            activeTool={guidedMapTool}
+            onActivateTool={activateDesignConsoleTool}
+            onCalculate={calculateAndOpenPanel}
+            onOpenModal={openDesignConsolePanel}
+            onToggleLayers={toggleLayersPanel}
+            settings={settings}
+            variant="sidebar"
+          />
+          {settings.mappingWorkflowMode === "layout" ? (
+            <View style={styles.mapFeatureEditor}>
+              <Text style={styles.mapFeatureTitle}>Layout mode</Text>
+              <Text style={styles.mapFeatureMeta}>Pointer geometry edits stay read-only in Layout. Use RTK capture for survey-controlled geometry changes or switch to Design for map-click drafting.</Text>
+            </View>
+          ) : null}
+        </>
+      );
+    }
+
+    if (page === "toolForm") {
+      return designConsoleModal ? (
+        <View testID="design-console-panel">
+          <DesignConsolePanel
+            activeModal={designConsoleModal}
+            advisoryCostDraft={advisoryCostDraft}
+            advisoryCostInput={advisoryCostInput}
+            cornerArmEvaluation={cornerArmEvaluation}
+            editorError={editor.lastError}
+            fieldPivotPlan={advisoryFieldPivotPlan}
+            onActivateTool={activateDesignConsoleTool}
+            onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
+            onCalculate={calculateDesignScenarios}
+            onClose={() => {
+              setDesignConsoleModal(null);
+              setActiveSidebarPage("tools");
+            }}
+            onOpenModal={openDesignConsolePanel}
+            onOpenFiles={() => {
+              setDesignConsoleModal(null);
+              setActiveView("files");
+            }}
+            onRequestApplyPivotCandidate={(candidate) => setPendingPlacementAction({ kind: "pivot", candidate })}
+            onRequestSaveCornerArm={(config) => setPendingPlacementAction({ kind: "cornerArm", config })}
+            onSaveGeneratedFieldPivotZones={saveGeneratedFieldPivotReviewZones}
+            onUpdateAdvisoryCostDraft={setAdvisoryCostDraft}
+            onSettingsChange={commitSettings}
+            onUpdateMachine={(machine) => dispatchProjectWithResult({ type: "update_machine", machine })}
+            idealCenterAnalysis={idealCenterAnalysis}
+            placementCandidates={placementCandidates}
+            preview={designScenarioPreview}
+            project={runtimeProject}
+            result={result}
+            settings={settings}
+            testID="design-console-dialog"
+          />
+        </View>
+      ) : (
+        <View style={styles.mapFeatureEditor}>
+          <Text style={styles.mapFeatureTitle}>No active form</Text>
+          <Text style={styles.mapFeatureMeta}>Choose Point, Line, Polygon, Circle, Machine, or Calculate from Tools.</Text>
+        </View>
+      );
+    }
+
+    if (page === "layers") {
+      return (
+        <>
+          <View style={styles.sidebarSectionHeader}>
+            <Text style={styles.sectionTitle}>Layers</Text>
+            <Pressable
+              accessibilityLabel="Close design console dialog"
+              accessibilityRole="button"
+              onPress={() => setActiveSidebarPage(settings.mappingWorkflowMode === "design" ? "tools" : "overview")}
+              style={styles.consoleCloseButton}
+              testID="design-console-close"
+            >
+              <Text style={styles.consoleCloseText}>Close</Text>
+            </Pressable>
+          </View>
+          <LayersSheet
+            mapPackages={runtimeProject.mapPackages ?? []}
+            onOpenFiles={() => {
+              setDesignConsoleModal(null);
+              setActiveView("files");
+            }}
+            onSettingsChange={commitSettings}
+            project={runtimeProject}
+            settings={settings}
+          />
+        </>
+      );
+    }
+
+    if (page === "rtk") {
+      return settings.mappingWorkflowMode === "layout" ? (
+        <>
+          <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
+          <BrowserRtkReceiverPanel
+            onAddMapFeature={addMapFeature}
+            onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
+            onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
+            onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
+            onStatusChange={setRtkReceiverStatus}
+            project={project}
+            settings={settings}
+          />
+        </>
+      ) : (
+        <>
+          <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
+          <View style={styles.mapFeatureEditor}>
+            <Text style={styles.mapFeatureTitle}>Layout mode inactive</Text>
+            <Text style={styles.mapFeatureMeta}>Switch to Layout when RTK-only capture is needed. Design mode keeps pointer edits separate from survey capture.</Text>
+          </View>
+        </>
+      );
+    }
+
+    if (page === "feature") {
+      return (
+        <>
+          <Text style={styles.sectionTitle}>Feature</Text>
+          <MapFeatureEditor
+            feature={selectedMapFeature}
+            onDelete={deleteMapFeature}
+            onRename={updateMapFeatureName}
+            onUpdate={updateMapFeature}
+          />
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Text style={styles.sectionTitle}>Warnings</Text>
+        <View style={styles.warningList}>
+          {editor.lastError ? (
+            <View style={styles.warningItem}>
+              <AlertTriangle size={17} color="#9a4c1c" />
+              <Text style={styles.warningText}>{editor.lastError}</Text>
+            </View>
+          ) : null}
+          {result.warnings.length === 0 && !editor.lastError ? (
+            <View style={styles.mapFeatureEditor}>
+              <Text style={styles.mapFeatureTitle}>No active warnings</Text>
+              <Text style={styles.mapFeatureMeta}>Layout validation warnings appear here without mutating geometry.</Text>
+            </View>
+          ) : null}
+          {result.warnings.map((warning) => (
+            <View key={warning} style={styles.warningItem}>
+              <AlertTriangle size={17} color="#9a4c1c" />
+              <Text style={styles.warningText}>{warning}</Text>
+            </View>
+          ))}
+        </View>
+      </>
+    );
+  }
+
+  function renderCatalogInlineForm(): React.JSX.Element {
+    if (catalogDialogMode) {
+      return (
+        <CatalogItemForm
+          contextPreview={catalogDialogContextPreview(catalogDialogMode)}
+          defaultName={catalogDialogDefaultName}
+          embedded
+          mode={catalogDialogMode}
+          onCancel={closeCatalogDialog}
+          onCreate={submitCatalogDialog}
+          submitting={catalogDialogSubmitting}
+        />
+      );
+    }
+    if (clientProfileDialogMode) {
+      return (
+        <ClientProfileForm
+          defaultDisplayName={`Client ${repository.catalog.clients.length + 1}`}
+          embedded
+          initialClient={clientProfileDialogMode === "edit" ? editingClient : null}
+          mode={clientProfileDialogMode}
+          onCancel={closeClientProfileDialog}
+          onSave={submitClientProfile}
+          submitting={catalogDialogSubmitting}
+        />
+      );
+    }
+    if (renamingProject) {
+      return (
+        <CatalogItemForm
+          contextPreview={formatCatalogPath(catalogPathForProject(renamingProject.id))}
+          createButtonLabel="Rename"
+          defaultName={renamingProject.name}
+          embedded
+          helper="Rename updates the local project document and catalog row without changing projected XY geometry."
+          mode="project"
+          onCancel={() => {
+            if (!catalogDialogSubmitting) {
+              setRenamingProjectId(null);
+              closeInlineCatalogForm();
+            }
+          }}
+          onCreate={(name) => renameProjectFolder(renamingProject.id, name)}
+          submitting={catalogDialogSubmitting}
+          title="Rename Project"
+        />
+      );
+    }
+    if (movingProject) {
+      return (
+        <MoveProjectForm
+          currentClientId={movingProject.clientId}
+          clients={repository.catalog.clients}
+          embedded
+          onCancel={() => {
+            if (!catalogDialogSubmitting) {
+              setMovingProjectId(null);
+              closeInlineCatalogForm();
+            }
+          }}
+          onMove={(clientId) => moveProjectFolder(movingProject.id, clientId)}
+          projectName={movingProject.name}
+          submitting={catalogDialogSubmitting}
+        />
+      );
+    }
+    if (deletingProject) {
+      return (
+        <ConfirmActionPanel
+          confirmLabel="Delete Project"
+          embedded
+          message={`Delete ${deletingProject.name} and its contained field maps/designs from the local catalog. Project ZIP archives are not changed.`}
+          onCancel={() => {
+            if (!catalogDialogSubmitting) {
+              setDeletingProjectId(null);
+              closeInlineCatalogForm();
+            }
+          }}
+          onConfirm={confirmDeleteProject}
+          submitting={catalogDialogSubmitting}
+          testID="delete-project-dialog"
+          title="Delete Project"
+        />
+      );
+    }
+    if (deletingClient) {
+      return (
+        <ConfirmActionPanel
+          confirmLabel="Delete Client"
+          embedded
+          message={`Delete the empty client folder ${deletingClient.displayName}. This is blocked automatically if any projects remain inside it.`}
+          onCancel={() => {
+            if (!catalogDialogSubmitting) {
+              setDeletingClientId(null);
+              closeInlineCatalogForm();
+            }
+          }}
+          onConfirm={confirmDeleteClient}
+          submitting={catalogDialogSubmitting}
+          testID="delete-client-dialog"
+          title="Delete Client"
+        />
+      );
+    }
+    return (
+      <View style={styles.mapFeatureEditor}>
+        <Text style={styles.mapFeatureTitle}>No catalog form open</Text>
+        <Text style={styles.mapFeatureMeta}>Use the catalog rail or client details to create, rename, move, or delete local catalog records.</Text>
+      </View>
+    );
+  }
+
   return (
       <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea} testID="workspace-screen">
       <AndroidNativeProofRunner enabled={androidNativeProofEnabled} />
@@ -968,12 +1419,12 @@ function AppContent(): React.JSX.Element {
             onResetWalkthrough={resetWalkthrough}
             onSave={saveCurrentProject}
             onShowMetrics={() => {
-              setActiveInspectorPage("metrics");
+              setActiveSidebarPage("overview");
               setRightDrawerOpen(true);
               setActiveView("map");
             }}
             onShowWarnings={() => {
-              setActiveInspectorPage("warnings");
+              setActiveSidebarPage("warnings");
               setRightDrawerOpen(true);
               setActiveView("map");
             }}
@@ -1014,7 +1465,7 @@ function AppContent(): React.JSX.Element {
           <ScrollView
             scrollEnabled={activeView !== "map" || windowWidth < 700}
             style={[styles.workspaceScroll, activeView === "map" && windowWidth >= 700 && styles.workspaceScrollConsole]}
-            contentContainerStyle={activeView === "map" ? styles.contentConsole : [styles.content, compactLayout && styles.contentCompact]}
+            contentContainerStyle={activeView === "map" ? styles.contentConsole : [styles.content, styles.contentWithAndroidReviewInset, compactLayout && styles.contentCompact]}
           >
           {activeView === "dashboard" && (
             <ProjectDashboard
@@ -1052,17 +1503,14 @@ function AppContent(): React.JSX.Element {
                   activeToolRequestId={guidedMapTool?.requestId}
                   advisoryFieldPivotPlan={!homeMapView ? advisoryFieldPivotPlan : undefined}
                   controlLayout="externalHud"
-                  bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled ? (
+                  bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled && !sidebarInlineWorkflow && !(compactLayout && rightDrawerOpen) ? (
                     <DesignActionHud
                       activeModal={designConsoleModal}
                       activeTool={guidedMapTool}
                       onActivateTool={activateDesignConsoleTool}
-                      onCalculate={() => {
-                        calculateDesignScenarios();
-                        setDesignConsoleModal("calculate");
-                      }}
-                      onOpenModal={setDesignConsoleModal}
-                      onToggleLayers={() => setDesignConsoleModal((current) => current === "layers" ? null : "layers")}
+                      onCalculate={calculateAndOpenPanel}
+                      onOpenModal={openDesignConsolePanel}
+                      onToggleLayers={toggleLayersPanel}
                       settings={settings}
                     />
                   ) : null}
@@ -1090,142 +1538,15 @@ function AppContent(): React.JSX.Element {
                   />
               </View>
               {nativeMapLibreProofEnabled ? null : (
-                <InspectorDrawer
-                  activePage={activeInspectorPage}
-                  homeView={homeMapView}
-                  onPageChange={setActiveInspectorPage}
+                <RightWorkflowSidebar
+                  activePage={effectiveSidebarPage}
                   onToggle={() => setRightDrawerOpen((open) => !open)}
                   open={rightDrawerOpen}
+                  pages={visibleSidebarPages}
+                  onPageChange={(page) => setActiveSidebarPage(page)}
                 >
-                  {homeMapView ? (
-                    selectedClient ? (
-                      <ClientDetailPanel
-                        activeProjectId={activeCatalogContext.projectId}
-                        catalog={repository.catalog}
-                        client={selectedClient}
-                        notice={catalogNotice}
-                        onCreateProject={() => openCatalogDialog("project")}
-                        onDeleteClient={(clientId) => setDeletingClientId(clientId)}
-                        onDeleteProject={(projectId) => setDeletingProjectId(projectId)}
-                        onEditClient={openClientEditDialog}
-                        onMoveProject={(projectId) => setMovingProjectId(projectId)}
-                        onOpenProject={selectProjectCatalogOnly}
-                        onRenameProject={(projectId) => setRenamingProjectId(projectId)}
-                        onSelectProject={(projectId) => {
-                          const record = repository.catalog.projects.find((candidate) => candidate.id === projectId) ?? null;
-                          setActiveCatalogContext({
-                            clientId: record?.clientId ?? selectedClient.id,
-                            projectId,
-                            fieldMapId: null,
-                            designId: null,
-                          });
-                        }}
-                      />
-                    ) : (
-                      <CatalogHomePanel
-                        catalog={repository.catalog}
-                        notice={catalogNotice}
-                        onCreateClient={openClientCreateDialog}
-                        onStartBlankDesign={startBlankDesign}
-                        repository={repository}
-                        settings={settings}
-                      />
-                    )
-                  ) : (
-                    <>
-                    {activeInspectorPage === "metrics" ? (
-                      <>
-                        <Text style={styles.sectionTitle}>Metrics</Text>
-                        <View style={styles.metricGrid}>
-                          <MetricTile label="Irrigated" value={formatAreaFromAcres(result.metrics.irrigatedAcres, settings.unitSystem)} tone="good" />
-                          <MetricTile label="Dry / non-irrigated" value={formatAreaFromAcres(result.metrics.nonIrrigatedAcres, settings.unitSystem)} tone="warn" />
-                          <MetricTile label="Coverage" value={`${result.metrics.coveragePercent.toFixed(1)}%`} tone="neutral" />
-                          <MetricTile label="End gun" value={formatAreaFromAcres(result.metrics.endGunAcres, settings.unitSystem)} tone="neutral" />
-                          <MetricTile label="Outside field" value={formatAreaFromAcres(result.metrics.outsideFieldAcres, settings.unitSystem)} tone={result.metrics.outsideFieldAcres > 0 ? "danger" : "good"} />
-                          <MetricTile label="Obstacle hits" value={`${result.metrics.obstacleConflictCount}`} tone={result.metrics.obstacleConflictCount > 0 ? "danger" : "good"} />
-                          <MetricTile label="Hard path conflicts" value={`${result.metrics.hardMechanicalConflictCount}`} tone={result.metrics.hardMechanicalConflictCount > 0 ? "danger" : "good"} />
-                        </View>
-                        <View style={styles.mapFeatureEditor} testID="design-console-status">
-                          <Text style={styles.mapFeatureTitle}>Design Console</Text>
-                          <Text style={styles.mapFeatureMeta}>Use the bottom HUD for drawing and focused inputs. GPS entry uses decimal degrees; projected XY is available only in Expert XY disclosures.</Text>
-                        </View>
-                      </>
-                    ) : null}
-
-                    {activeInspectorPage === "layers" ? (
-                      <>
-                        <Text style={styles.sectionTitle}>Layers</Text>
-                        <LayersSheet
-                          mapPackages={runtimeProject.mapPackages ?? []}
-                          onOpenFiles={() => {
-                            setDesignConsoleModal(null);
-                            setActiveView("files");
-                          }}
-                          onSettingsChange={commitSettings}
-                          project={runtimeProject}
-                          settings={settings}
-                        />
-                      </>
-                    ) : null}
-
-                      {activeInspectorPage === "rtk" && settings.mappingWorkflowMode === "layout" ? (
-                        <>
-                          <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
-                          <BrowserRtkReceiverPanel
-                            onAddMapFeature={addMapFeature}
-                            onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
-                            onCommitBoundaryDraft={(vertices) => dispatchProject({ type: "commit_boundary_draft", vertices })}
-                            onCommitObstacleDraft={(vertices, kind, confidence) => dispatchProject({ type: "commit_obstacle_draft", vertices, kind, confidence })}
-                            onStatusChange={setRtkReceiverStatus}
-                            project={project}
-                            settings={settings}
-                          />
-                        </>
-                      ) : null}
-                    {activeInspectorPage === "rtk" && settings.mappingWorkflowMode !== "layout" ? (
-                      <>
-                        <Text style={styles.sectionTitle}>RTK Layout Capture</Text>
-                        <View style={styles.mapFeatureEditor}>
-                          <Text style={styles.mapFeatureTitle}>Layout mode inactive</Text>
-                          <Text style={styles.mapFeatureMeta}>Switch to Layout when RTK-only capture is needed. Design mode keeps pointer edits separate from survey capture.</Text>
-                        </View>
-                      </>
-                    ) : null}
-
-                    {activeInspectorPage === "feature" ? (
-                      <>
-                        <Text style={styles.sectionTitle}>Feature</Text>
-                        <MapFeatureEditor
-                          feature={selectedMapFeature}
-                          onDelete={deleteMapFeature}
-                          onRename={updateMapFeatureName}
-                          onUpdate={updateMapFeature}
-                        />
-                      </>
-                    ) : null}
-
-                    {activeInspectorPage === "warnings" ? (
-                      <>
-                        <Text style={styles.sectionTitle}>Warnings</Text>
-                        <View style={styles.warningList}>
-                          {editor.lastError ? (
-                            <View style={styles.warningItem}>
-                              <AlertTriangle size={17} color="#9a4c1c" />
-                              <Text style={styles.warningText}>{editor.lastError}</Text>
-                            </View>
-                          ) : null}
-                          {result.warnings.map((warning) => (
-                            <View key={warning} style={styles.warningItem}>
-                              <AlertTriangle size={17} color="#9a4c1c" />
-                              <Text style={styles.warningText}>{warning}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      </>
-                    ) : null}
-                  </>
-                )}
-              </InspectorDrawer>
+                  {renderRightWorkflowSidebarContent(effectiveSidebarPage)}
+                </RightWorkflowSidebar>
               )}
             </WorkspaceConsoleShell>
           )}
@@ -1328,7 +1649,7 @@ function AppContent(): React.JSX.Element {
             workflowLabel={homeMapView ? "Catalog" : workflowModeLabel(settings.mappingWorkflowMode)}
           />
         </View>
-      {!homeMapView ? (
+      {!homeMapView && !sidebarInlineWorkflow ? (
           <DesignConsoleDialog
             activeModal={designConsoleModal}
             advisoryCostDraft={advisoryCostDraft}
@@ -1340,7 +1661,7 @@ function AppContent(): React.JSX.Element {
             onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
             onCalculate={calculateDesignScenarios}
             onClose={() => setDesignConsoleModal(null)}
-            onOpenModal={setDesignConsoleModal}
+            onOpenModal={openDesignConsolePanel}
             onOpenFiles={() => {
               setDesignConsoleModal(null);
               setActiveView("files");
@@ -1360,7 +1681,7 @@ function AppContent(): React.JSX.Element {
           visible={designConsoleModal !== null}
         />
       ) : null}
-      {catalogDialogMode ? (
+      {catalogDialogMode && !inlineCatalogForms ? (
         <ProjectCatalogDialog
           contextPreview={catalogDialogContextPreview(catalogDialogMode)}
           defaultName={catalogDialogDefaultName}
@@ -1371,7 +1692,7 @@ function AppContent(): React.JSX.Element {
           visible
         />
       ) : null}
-      {clientProfileDialogMode ? (
+      {clientProfileDialogMode && !inlineCatalogForms ? (
         <ClientProfileDialog
           defaultDisplayName={`Client ${repository.catalog.clients.length + 1}`}
           initialClient={clientProfileDialogMode === "edit" ? editingClient : null}
@@ -1382,7 +1703,7 @@ function AppContent(): React.JSX.Element {
           visible
         />
       ) : null}
-      {renamingProject ? (
+      {renamingProject && !inlineCatalogForms ? (
         <ProjectCatalogDialog
           contextPreview={formatCatalogPath(catalogPathForProject(renamingProject.id))}
           createButtonLabel="Rename"
@@ -1390,7 +1711,10 @@ function AppContent(): React.JSX.Element {
           helper="Rename updates the local project document and catalog row without changing projected XY geometry."
           mode="project"
           onCancel={() => {
-            if (!catalogDialogSubmitting) setRenamingProjectId(null);
+            if (!catalogDialogSubmitting) {
+              setRenamingProjectId(null);
+              closeInlineCatalogForm();
+            }
           }}
           onCreate={(name) => renameProjectFolder(renamingProject.id, name)}
           submitting={catalogDialogSubmitting}
@@ -1398,12 +1722,15 @@ function AppContent(): React.JSX.Element {
           visible
         />
       ) : null}
-      {movingProject ? (
+      {movingProject && !inlineCatalogForms ? (
         <MoveProjectDialog
           currentClientId={movingProject.clientId}
           clients={repository.catalog.clients}
           onCancel={() => {
-            if (!catalogDialogSubmitting) setMovingProjectId(null);
+            if (!catalogDialogSubmitting) {
+              setMovingProjectId(null);
+              closeInlineCatalogForm();
+            }
           }}
           onMove={(clientId) => moveProjectFolder(movingProject.id, clientId)}
           projectName={movingProject.name}
@@ -1411,12 +1738,15 @@ function AppContent(): React.JSX.Element {
           visible
         />
       ) : null}
-      {deletingProject ? (
+      {deletingProject && !inlineCatalogForms ? (
         <ConfirmActionDialog
           confirmLabel="Delete Project"
           message={`Delete ${deletingProject.name} and its contained field maps/designs from the local catalog. Project ZIP archives are not changed.`}
           onCancel={() => {
-            if (!catalogDialogSubmitting) setDeletingProjectId(null);
+            if (!catalogDialogSubmitting) {
+              setDeletingProjectId(null);
+              closeInlineCatalogForm();
+            }
           }}
           onConfirm={confirmDeleteProject}
           submitting={catalogDialogSubmitting}
@@ -1425,12 +1755,15 @@ function AppContent(): React.JSX.Element {
           visible
         />
       ) : null}
-      {deletingClient ? (
+      {deletingClient && !inlineCatalogForms ? (
         <ConfirmActionDialog
           confirmLabel="Delete Client"
           message={`Delete the empty client folder ${deletingClient.displayName}. This is blocked automatically if any projects remain inside it.`}
           onCancel={() => {
-            if (!catalogDialogSubmitting) setDeletingClientId(null);
+            if (!catalogDialogSubmitting) {
+              setDeletingClientId(null);
+              closeInlineCatalogForm();
+            }
           }}
           onConfirm={confirmDeleteClient}
           submitting={catalogDialogSubmitting}
@@ -1663,7 +1996,7 @@ function WorkspaceCommandSurface({
         { id: "survey", label: "Survey", description: "Open local browser RTK receiver and survey capture readiness.", icon: <Satellite />, onPress: () => onNavigate("survey"), testID: "command-view-survey" },
         { id: "files", label: "Files / GIS Exchange", icon: <Download />, onPress: () => onNavigate("files"), testID: "command-view-files" },
         { id: "project-drawer", label: leftDrawerOpen ? "Collapse Project Drawer" : "Open Project Drawer", disabled: activeView !== "map", icon: <FolderOpen />, onPress: onToggleLeftDrawer, testID: "command-view-project-drawer" },
-        { id: "inspector", label: rightDrawerOpen ? "Collapse Inspector" : "Open Inspector", disabled: activeView !== "map", icon: <SlidersHorizontal />, onPress: onToggleRightDrawer, testID: "command-view-inspector" },
+        { id: "workflow-sidebar", label: rightDrawerOpen ? "Collapse Workflow Sidebar" : "Open Workflow Sidebar", disabled: activeView !== "map", icon: <SlidersHorizontal />, onPress: onToggleRightDrawer, testID: "command-view-inspector" },
       ],
       testID: "command-menu-view",
     });
@@ -1707,7 +2040,52 @@ function DesignActionHud({
   );
 }
 
+type DesignConsolePanelProps = {
+  activeModal: DesignConsoleModal;
+  advisoryCostDraft: AdvisoryCostDraft;
+  advisoryCostInput: AdvisoryCostInput | undefined;
+  cornerArmEvaluation: AdvisoryCornerArmEvaluation;
+  editorError: string | null;
+  fieldPivotPlan: AdvisoryFieldPivotPlan;
+  onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
+  onApplyPivot: (point: XY, wgs84?: LonLat) => boolean;
+  onCalculate: () => void;
+  onClose?: () => void;
+  onOpenModal: (modal: DesignConsoleModal) => void;
+  onOpenFiles: () => void;
+  onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
+  onRequestSaveCornerArm: (config: AdvisoryCornerArmConfig) => void;
+  onSaveGeneratedFieldPivotZones: (plan: AdvisoryFieldPivotPlan) => void;
+  onUpdateAdvisoryCostDraft: (draft: AdvisoryCostDraft) => void;
+  onSettingsChange: (settings: AppSettings) => void;
+  onUpdateMachine: (machine: PivotMachine) => boolean;
+  idealCenterAnalysis: IdealCenterPointAnalysis | null;
+  placementCandidates: PivotPlacementCandidate[] | null;
+  preview: DesignScenarioPreview[] | null;
+  project: PivotProject;
+  result: ReturnType<typeof evaluateLayout>;
+  settings: AppSettings;
+  testID?: string;
+};
+
 function DesignConsoleDialog({
+  visible,
+  ...panelProps
+}: DesignConsolePanelProps & { visible: boolean }): React.JSX.Element | null {
+  if (!panelProps.activeModal) return null;
+  return (
+    <Modal animationType="fade" onRequestClose={panelProps.onClose} transparent visible={visible}>
+      <View style={styles.consoleModalBackdrop} testID="design-console-dialog-backdrop">
+        <DesignConsolePanel
+          {...panelProps}
+          testID="design-console-dialog"
+        />
+      </View>
+    </Modal>
+  );
+}
+
+function DesignConsolePanel({
   activeModal,
   advisoryCostDraft,
   advisoryCostInput,
@@ -1732,111 +2110,83 @@ function DesignConsoleDialog({
   project,
   result,
   settings,
-  visible,
-}: {
-  activeModal: DesignConsoleModal;
-  advisoryCostDraft: AdvisoryCostDraft;
-  advisoryCostInput: AdvisoryCostInput | undefined;
-  cornerArmEvaluation: AdvisoryCornerArmEvaluation;
-  editorError: string | null;
-  fieldPivotPlan: AdvisoryFieldPivotPlan;
-  onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
-  onApplyPivot: (point: XY, wgs84?: LonLat) => boolean;
-  onCalculate: () => void;
-  onClose: () => void;
-  onOpenModal: (modal: DesignConsoleModal) => void;
-  onOpenFiles: () => void;
-  onRequestApplyPivotCandidate: (candidate: PivotPlacementCandidate) => void;
-  onRequestSaveCornerArm: (config: AdvisoryCornerArmConfig) => void;
-  onSaveGeneratedFieldPivotZones: (plan: AdvisoryFieldPivotPlan) => void;
-  onUpdateAdvisoryCostDraft: (draft: AdvisoryCostDraft) => void;
-  onSettingsChange: (settings: AppSettings) => void;
-  onUpdateMachine: (machine: PivotMachine) => boolean;
-  idealCenterAnalysis: IdealCenterPointAnalysis | null;
-  placementCandidates: PivotPlacementCandidate[] | null;
-  preview: DesignScenarioPreview[] | null;
-  project: PivotProject;
-  result: ReturnType<typeof evaluateLayout>;
-  settings: AppSettings;
-  visible: boolean;
-}): React.JSX.Element | null {
+  testID = "design-console-panel",
+}: DesignConsolePanelProps): React.JSX.Element | null {
   if (!activeModal) return null;
   const copy = designConsoleCopy(activeModal);
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-      <View style={styles.consoleModalBackdrop} testID="design-console-dialog-backdrop">
-        <View accessibilityViewIsModal style={styles.consoleDialog} testID="design-console-dialog">
-          <View style={styles.consoleDialogHeader}>
-            <View style={styles.consoleIconBadge}>{copy.icon}</View>
-            <View style={styles.consoleDialogTitleBlock}>
-              <Text style={styles.consoleDialogTitle}>{copy.title}</Text>
-              <Text style={styles.consoleDialogMeta}>{copy.meta}</Text>
-            </View>
-            <Pressable accessibilityLabel="Close design console dialog" accessibilityRole="button" onPress={onClose} style={styles.consoleCloseButton} testID="design-console-close">
-              <Text style={styles.consoleCloseText}>Close</Text>
-            </Pressable>
-          </View>
-
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.consoleDialogBody} contentContainerStyle={styles.consoleDialogBodyContent}>
-            {activeModal === "point" ? <PointToolSheet onActivateTool={onActivateTool} onOpenModal={onOpenModal} /> : null}
-            {activeModal === "line" ? <LineToolSheet onActivateTool={onActivateTool} /> : null}
-            {activeModal === "polygon" ? <PolygonToolSheet onActivateTool={onActivateTool} /> : null}
-            {activeModal === "circle" ? <CircleToolSheet onActivateTool={onActivateTool} /> : null}
-            {activeModal === "obstacle" ? <ObstacleToolSheet onActivateTool={onActivateTool} /> : null}
-            {activeModal === "pivot" ? <PivotGpsCoordinateForm onApply={onApplyPivot} project={project} /> : null}
-            {activeModal === "machine" ? (
-              <MachineToolSheet
-                machine={project.machine}
-                onChange={onUpdateMachine}
-                onOpenModal={onOpenModal}
-                unitSystem={settings.unitSystem}
-              />
-            ) : null}
-            {activeModal === "endGun" ? (
-              <EndGunSettingsForm machine={project.machine} onChange={onUpdateMachine} result={result} unitSystem={settings.unitSystem} />
-            ) : null}
-            {activeModal === "cornerArm" ? (
-              <CornerArmSheet
-                evaluation={cornerArmEvaluation}
-                footprintCount={(project.mapFeatures ?? []).filter((feature) => feature.kind === "corner_swing_limit").length}
-                machine={project.machine}
-                onActivateTool={onActivateTool}
-                onRequestSave={onRequestSaveCornerArm}
-                result={result}
-                unitSystem={settings.unitSystem}
-              />
-            ) : null}
-            {activeModal === "calculate" ? (
-              <CalculateSheet
-                advisoryCostDraft={advisoryCostDraft}
-                advisoryCostInput={advisoryCostInput}
-                editorError={editorError}
-                fieldPivotPlan={fieldPivotPlan}
-                idealCenterAnalysis={idealCenterAnalysis}
-                onCalculate={onCalculate}
-                onRequestApplyPivotCandidate={onRequestApplyPivotCandidate}
-                onSaveGeneratedFieldPivotZones={onSaveGeneratedFieldPivotZones}
-                onUpdateAdvisoryCostDraft={onUpdateAdvisoryCostDraft}
-                placementCandidates={placementCandidates}
-                preview={preview}
-                project={project}
-                result={result}
-                settings={settings}
-              />
-            ) : null}
-            {activeModal === "layers" ? (
-              <LayersSheet
-                mapPackages={project.mapPackages ?? []}
-                onOpenFiles={onOpenFiles}
-                onSettingsChange={onSettingsChange}
-                project={project}
-                settings={settings}
-              />
-            ) : null}
-          </ScrollView>
+    <View accessibilityViewIsModal={testID === "design-console-dialog"} style={styles.consoleDialog} testID={testID}>
+      <View style={styles.consoleDialogHeader}>
+        <View style={styles.consoleIconBadge}>{copy.icon}</View>
+        <View style={styles.consoleDialogTitleBlock}>
+          <Text style={styles.consoleDialogTitle}>{copy.title}</Text>
+          <Text style={styles.consoleDialogMeta}>{copy.meta}</Text>
         </View>
+        {onClose ? (
+          <Pressable accessibilityLabel="Close design console dialog" accessibilityRole="button" onPress={onClose} style={styles.consoleCloseButton} testID="design-console-close">
+            <Text style={styles.consoleCloseText}>Close</Text>
+          </Pressable>
+        ) : null}
       </View>
-    </Modal>
+
+      <ScrollView keyboardShouldPersistTaps="handled" style={styles.consoleDialogBody} contentContainerStyle={styles.consoleDialogBodyContent}>
+          {activeModal === "point" ? <PointToolSheet onActivateTool={onActivateTool} onOpenModal={onOpenModal} /> : null}
+          {activeModal === "line" ? <LineToolSheet onActivateTool={onActivateTool} /> : null}
+          {activeModal === "polygon" ? <PolygonToolSheet onActivateTool={onActivateTool} /> : null}
+          {activeModal === "circle" ? <CircleToolSheet onActivateTool={onActivateTool} /> : null}
+          {activeModal === "obstacle" ? <ObstacleToolSheet onActivateTool={onActivateTool} /> : null}
+          {activeModal === "pivot" ? <PivotGpsCoordinateForm onApply={onApplyPivot} project={project} /> : null}
+          {activeModal === "machine" ? (
+            <MachineToolSheet
+              machine={project.machine}
+              onChange={onUpdateMachine}
+              onOpenModal={onOpenModal}
+              unitSystem={settings.unitSystem}
+            />
+          ) : null}
+          {activeModal === "endGun" ? (
+            <EndGunSettingsForm machine={project.machine} onChange={onUpdateMachine} result={result} unitSystem={settings.unitSystem} />
+          ) : null}
+          {activeModal === "cornerArm" ? (
+            <CornerArmSheet
+              evaluation={cornerArmEvaluation}
+              footprintCount={(project.mapFeatures ?? []).filter((feature) => feature.kind === "corner_swing_limit").length}
+              machine={project.machine}
+              onActivateTool={onActivateTool}
+              onRequestSave={onRequestSaveCornerArm}
+              result={result}
+              unitSystem={settings.unitSystem}
+            />
+          ) : null}
+          {activeModal === "calculate" ? (
+            <CalculateSheet
+              advisoryCostDraft={advisoryCostDraft}
+              advisoryCostInput={advisoryCostInput}
+              editorError={editorError}
+              fieldPivotPlan={fieldPivotPlan}
+              idealCenterAnalysis={idealCenterAnalysis}
+              onCalculate={onCalculate}
+              onRequestApplyPivotCandidate={onRequestApplyPivotCandidate}
+              onSaveGeneratedFieldPivotZones={onSaveGeneratedFieldPivotZones}
+              onUpdateAdvisoryCostDraft={onUpdateAdvisoryCostDraft}
+              placementCandidates={placementCandidates}
+              preview={preview}
+              project={project}
+              result={result}
+              settings={settings}
+            />
+          ) : null}
+          {activeModal === "layers" ? (
+            <LayersSheet
+              mapPackages={project.mapPackages ?? []}
+              onOpenFiles={onOpenFiles}
+              onSettingsChange={onSettingsChange}
+              project={project}
+              settings={settings}
+            />
+          ) : null}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -4546,34 +4896,66 @@ function WorkspaceConsoleShell({
   );
 }
 
-const INSPECTOR_PAGES: Array<{ id: InspectorPage; label: string; shortLabel: string }> = [
-  { id: "metrics", label: "Metrics", shortLabel: "MET" },
-  { id: "layers", label: "Layers", shortLabel: "LAY" },
-  { id: "feature", label: "Feature", shortLabel: "FEAT" },
-  { id: "rtk", label: "RTK", shortLabel: "RTK" },
-  { id: "warnings", label: "Warnings", shortLabel: "WARN" },
-];
+type RightWorkflowSidebarTab = {
+  count?: number;
+  id: RightWorkflowSidebarPage;
+  label: string;
+  shortLabel: string;
+};
 
-function InspectorDrawer({
+function rightWorkflowSidebarPages({
+  activeCatalogForm,
+  activeToolForm,
+  homeView,
+  mappingWorkflowMode,
+  selectedMapFeature,
+  warningCount,
+}: {
+  activeCatalogForm: boolean;
+  activeToolForm: boolean;
+  homeView: boolean;
+  mappingWorkflowMode: AppSettings["mappingWorkflowMode"];
+  selectedMapFeature: boolean;
+  warningCount: number;
+}): RightWorkflowSidebarTab[] {
+  if (homeView) {
+    return [
+      { id: "catalog", label: "Catalog", shortLabel: "CAT" },
+      ...(activeCatalogForm ? [{ id: "catalogForm" as const, label: "Form", shortLabel: "FORM" }] : []),
+    ];
+  }
+  return [
+    { id: "overview", label: "Overview", shortLabel: "MAP" },
+    ...(activeCatalogForm ? [{ id: "catalogForm" as const, label: "Form", shortLabel: "FORM" }] : []),
+    ...(mappingWorkflowMode === "design" ? [{ id: "tools" as const, label: "Tools", shortLabel: "TOOL" }] : []),
+    ...(mappingWorkflowMode === "design" && activeToolForm ? [{ id: "toolForm" as const, label: "Form", shortLabel: "FORM" }] : []),
+    { id: "layers", label: "Layers", shortLabel: "LAY" },
+    { id: "rtk", label: "RTK", shortLabel: "RTK" },
+    ...(selectedMapFeature ? [{ id: "feature" as const, label: "Feature", shortLabel: "FEAT" }] : []),
+    { id: "warnings", label: "Warnings", shortLabel: "WARN", count: warningCount },
+  ];
+}
+
+function RightWorkflowSidebar({
   activePage,
   children,
-  homeView,
   onPageChange,
   onToggle,
   open,
+  pages,
 }: {
-  activePage: InspectorPage;
+  activePage: RightWorkflowSidebarPage;
   children: React.ReactNode;
-  homeView: boolean;
-  onPageChange: (page: InspectorPage) => void;
+  onPageChange: (page: RightWorkflowSidebarPage) => void;
   onToggle: () => void;
   open: boolean;
+  pages: RightWorkflowSidebarTab[];
 }): React.JSX.Element {
-  const activePageLabel = INSPECTOR_PAGES.find((page) => page.id === activePage)?.shortLabel ?? "MAP";
+  const activePageLabel = pages.find((page) => page.id === activePage)?.shortLabel ?? "MAP";
   return (
-    <View style={[styles.inspectorDrawer, !open && styles.inspectorDrawerCollapsed]} testID="inspector-drawer">
+    <View style={[styles.inspectorDrawer, !open && styles.inspectorDrawerCollapsed]} testID="right-workflow-sidebar">
       <Pressable
-        accessibilityLabel={open ? "Collapse map inspector" : "Open map inspector"}
+        accessibilityLabel={open ? "Collapse right workflow sidebar" : "Open right workflow sidebar"}
         accessibilityRole="button"
         onPress={onToggle}
         style={styles.inspectorDrawerHandle}
@@ -4581,30 +4963,30 @@ function InspectorDrawer({
       >
         {open ? <ChevronRight size={21} color="#d5e2db" /> : <ChevronLeft size={21} color="#d5e2db" />}
       </Pressable>
-      {!open && !homeView ? (
+      {!open ? (
         <View style={styles.inspectorCollapsedStatus} testID="inspector-collapsed-status">
           <Text style={styles.inspectorCollapsedStatusText} numberOfLines={1}>{activePageLabel}</Text>
         </View>
       ) : null}
       {open ? (
-        <View style={styles.inspectorDrawerBody}>
-          {!homeView ? (
-            <View style={styles.inspectorTabs} testID="inspector-tabs">
-              {INSPECTOR_PAGES.map((page) => (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: activePage === page.id }}
-                  aria-selected={activePage === page.id}
-                  key={page.id}
-                  onPress={() => onPageChange(page.id)}
-                  style={[styles.inspectorTab, activePage === page.id && styles.inspectorTabActive]}
-                  testID={`inspector-tab-${page.id}`}
-                >
-                  <Text style={[styles.inspectorTabText, activePage === page.id && styles.inspectorTabTextActive]}>{page.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
+        <View style={styles.inspectorDrawerBody} testID="inspector-drawer">
+          <View style={styles.inspectorTabs} testID="workflow-sidebar-tabs">
+            {pages.map((page) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: activePage === page.id }}
+                aria-selected={activePage === page.id}
+                key={page.id}
+                onPress={() => onPageChange(page.id)}
+                style={[styles.inspectorTab, activePage === page.id && styles.inspectorTabActive]}
+                testID={`workflow-sidebar-tab-${page.id}`}
+              >
+                <Text style={[styles.inspectorTabText, activePage === page.id && styles.inspectorTabTextActive]}>
+                  {page.count && page.count > 0 ? `${page.label} ${page.count}` : page.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
           <ScrollView style={styles.inspectorScroll} contentContainerStyle={styles.inspectorContent} testID="inspector-scroll">
             {children}
           </ScrollView>
@@ -5642,6 +6024,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 18,
   },
+  contentWithAndroidReviewInset: {
+    paddingBottom: 96,
+  },
   contentCompact: {
     padding: 10,
   },
@@ -5757,7 +6142,7 @@ const styles = StyleSheet.create({
     borderColor: "#cbd8ce",
     borderRadius: 8,
     borderWidth: 1,
-    minHeight: 44,
+    minHeight: 48,
     paddingHorizontal: 10,
     paddingVertical: 9,
   },
@@ -6473,6 +6858,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
+  sidebarSectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between",
+  },
   sectionTitle: {
     color: "#17241c",
     fontSize: 17,
@@ -6493,6 +6884,7 @@ const styles = StyleSheet.create({
     borderColor: "#cdd8ca",
     borderRadius: 8,
     borderWidth: 1,
+    minHeight: 48,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },

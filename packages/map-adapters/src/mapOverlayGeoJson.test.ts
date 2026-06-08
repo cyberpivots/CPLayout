@@ -63,10 +63,18 @@ const workbenchStyleWithAdvisoryPlan = buildWorkbenchStyle(
 
 assert.equal(featureCollection.type, "FeatureCollection");
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "field_boundary"));
+assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "wheel_track_path" && feature.properties.renderOnly === true && feature.properties.canonicalGeometryMutation === false));
+assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "end_machine_path" && feature.properties.renderOnly === true && feature.properties.canonicalGeometryMutation === false));
+assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "wheel_track_path" && feature.geometry.type === "MultiPolygon"));
+assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "end_machine_path" && feature.geometry.type === "MultiPolygon"));
 assert.ok(featureCollectionWithAdvisoryPlan.features.some((feature) => feature.properties.layerType === "advisory_generated_field_pivot_coverage" && feature.properties.canonicalGeometryMutation === false));
 assert.ok(featureCollectionWithAdvisoryPlan.features.some((feature) => feature.properties.layerType === "advisory_generated_field_pivot_center" && feature.properties.advisoryOnly === true));
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "advisory-generated-field-pivot-fill"));
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "advisory-generated-field-pivot-center"));
+assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "wheel-track-fill"));
+assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "wheel-track-line"));
+assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "end-machine-path-fill"));
+assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "end-machine-path-line"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Pipeline A"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Corner Footprint A" && feature.geometry.type === "MultiPolygon"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "End Gun Circle A" && feature.geometry.type === "MultiPolygon"));

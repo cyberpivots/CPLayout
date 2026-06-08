@@ -235,6 +235,7 @@ function addMapFeature(state: ProjectEditorState, feature: ProjectMapFeature): P
   if ((state.project.mapFeatures ?? []).some((mapFeature) => mapFeature.id === feature.id)) {
     throw new Error(`Map feature ${feature.id} already exists.`);
   }
+  assertMapFeatureBoundaryPolicy(state.project, feature);
   return applyProjectChange(state, {
     ...state.project,
     mapFeatures: [...(state.project.mapFeatures ?? []), feature],
@@ -250,7 +251,10 @@ function upsertMapFeatures(state: ProjectEditorState, features: ProjectMapFeatur
   }
   const currentFeatures = state.project.mapFeatures ?? [];
   const nextById = new Map(currentFeatures.map((feature) => [feature.id, feature]));
-  for (const feature of features) nextById.set(feature.id, feature);
+  for (const feature of features) {
+    assertMapFeatureBoundaryPolicy(state.project, feature);
+    nextById.set(feature.id, feature);
+  }
   const currentIds = new Set(currentFeatures.map((feature) => feature.id));
   return applyProjectChange(state, {
     ...state.project,
@@ -265,6 +269,7 @@ function updateMapFeature(state: ProjectEditorState, feature: ProjectMapFeature)
   if (!(state.project.mapFeatures ?? []).some((mapFeature) => mapFeature.id === feature.id)) {
     throw new Error(`Map feature ${feature.id} was not found.`);
   }
+  assertMapFeatureBoundaryPolicy(state.project, feature);
   return applyProjectChange(state, {
     ...state.project,
     mapFeatures: (state.project.mapFeatures ?? []).map((mapFeature) => mapFeature.id === feature.id ? feature : mapFeature),
@@ -286,6 +291,7 @@ function moveMapFeatureVertex(state: ProjectEditorState, featureId: string, vert
   const feature = features.find((candidate) => candidate.id === featureId);
   if (!feature) throw new Error(`Map feature ${featureId} was not found.`);
   const geometry = moveMapFeatureGeometryVertex(feature.geometry, vertexIndex, point);
+  assertMapFeatureBoundaryPolicy(state.project, { ...feature, geometry });
   return applyProjectChange(state, {
     ...state.project,
     mapFeatures: features.map((candidate) => candidate.id === featureId ? { ...candidate, geometry } : candidate),
@@ -297,6 +303,7 @@ function deleteMapFeatureVertex(state: ProjectEditorState, featureId: string, ve
   const feature = features.find((candidate) => candidate.id === featureId);
   if (!feature) throw new Error(`Map feature ${featureId} was not found.`);
   const geometry = deleteMapFeatureGeometryVertex(feature.geometry, vertexIndex);
+  assertMapFeatureBoundaryPolicy(state.project, { ...feature, geometry });
   return applyProjectChange(state, {
     ...state.project,
     mapFeatures: features.map((candidate) => candidate.id === featureId ? { ...candidate, geometry } : candidate),
@@ -361,6 +368,26 @@ function deleteMapFeatureGeometryVertex(geometry: ProjectMapFeatureGeometry, ver
     ...geometry,
     vertices: validatedRing(removeVertex(geometry.vertices, vertexIndex, "Map feature vertex"), "Map feature polygon"),
   };
+}
+
+function assertMapFeatureBoundaryPolicy(project: PivotProject, feature: ProjectMapFeature): void {
+  if (!isLayoutControlFeature(feature.kind)) return;
+  for (const point of mapFeatureControlPoints(feature.geometry)) {
+    assertPointInsideRing(point, project.fieldBoundary, `${titleCase(feature.kind)} map feature`);
+  }
+}
+
+function isLayoutControlFeature(kind: ProjectMapFeature["kind"]): boolean {
+  return kind === "planning_boundary"
+    || kind === "machine_zone"
+    || kind === "end_gun_arc"
+    || kind === "corner_swing_limit";
+}
+
+function mapFeatureControlPoints(geometry: ProjectMapFeatureGeometry): XY[] {
+  if (geometry.type === "Point") return [geometry.point];
+  if (geometry.type === "Circle") return [geometry.center];
+  return geometry.vertices;
 }
 
 function upsertMapPackage(state: ProjectEditorState, mapPackage: MapPackageManifest): ProjectEditorState {

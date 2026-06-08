@@ -59,10 +59,10 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
 
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await expect(page.getByTestId("design-action-hud")).toBeVisible();
   await expect(page.getByTestId("design-builder-panel")).toHaveCount(0);
   await openInspectorIfCollapsed(page);
-  await expect(page.getByTestId("design-console-status")).toContainText("Use the bottom HUD");
+  await expect(page.getByTestId("workflow-sidebar-tab-tools")).toBeVisible();
+  await expect(page.getByTestId("design-action-pan")).toBeVisible();
   await closeInspectorIfOpen(page);
   await clickHudAction(page, "design-action-calculate");
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
@@ -89,7 +89,7 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   if (testInfo.project.name === "mobile-390") {
     await expect(page.getByText("Saved")).toBeVisible();
-    await expectNoOverlap(page, "workspace-bottom-status-bar", "map-bottom-hud");
+    await expectNoOverlapIfVisible(page, "workspace-bottom-status-bar", "map-bottom-hud");
     await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-status-hud");
     await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-attribution-hud");
     await saveScreen(page, testInfo, "mobile-map-route-sweep-compact");
@@ -102,7 +102,7 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await expect(page.getByText("Layout mode is RTK-only; switch to Design for pointer-based geometry edits.")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
   await expectNoOverlap(page, "browser-map-status-hud", "browser-map-attribution-hud");
-  await expectNoOverlap(page, "workspace-bottom-status-bar", "map-bottom-hud");
+  await expectNoOverlapIfVisible(page, "workspace-bottom-status-bar", "map-bottom-hud");
   await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-status-hud");
   await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-attribution-hud");
 
@@ -217,9 +217,7 @@ test("catalog blank design starts a drawable boundary workflow", async ({ page }
   await startBlankDesignFromFile(page);
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Blank Field Design");
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await expect(page.getByTestId("design-action-hud")).toBeVisible();
   await expect(page.getByTestId("design-builder-panel")).toHaveCount(0);
-  await expect(page.getByTestId("design-action-polygon")).toBeVisible();
 
   await selectBoundaryTool(page);
   const mapBox = await page.getByLabel("CPLayout MapLibre imagery workbench").boundingBox();
@@ -251,7 +249,6 @@ test("design console pivot entry defaults to decimal GPS with expert XY hidden",
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
-  await expect(page.getByTestId("design-action-hud")).toBeVisible();
   await openPivotGpsSheet(page);
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByLabel("Pivot latitude and longitude decimal degrees")).toBeVisible();
@@ -317,6 +314,7 @@ test("map-first catalog tree creates client projects and field maps without hidd
   await openBaselineSample(page);
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await page.getByTestId("workspace-nav-map").click();
+  await openInspectorIfCollapsed(page);
   await expect(page.getByTestId("design-action-polygon")).toBeVisible();
   expect(nativeDialogs).toEqual([]);
   await saveScreen(page, testInfo, "map-first-catalog-tree-create");
@@ -546,24 +544,17 @@ test("tablet portrait map console keeps drawers collapsed and HUD above the view
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("right-drawer-handle")).toBeVisible();
-  await expect(page.getByTestId("design-action-hud")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud-toggle")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud")).toHaveCount(0);
   await expectNoPageScroll(page);
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "left-drawer-handle", 56, 56);
   await expectMinTargetSize(page, "right-drawer-handle", 56, 56);
   await expectInsideContainer(page, "browser-map-bottom-dock", "browser-map-frame");
   await expectBottomGap(page, "browser-map-bottom-dock", "browser-map-frame", 4, 18);
-  await expectInsideContainer(page, "design-action-hud", "map-bottom-hud");
-  await expectInsideContainer(page, "map-bottom-hud", "browser-map-frame");
-  await expectInsideViewport(page, "map-bottom-hud");
-  await expectInsideViewport(page, "design-action-hud");
   const collapsedMap = await page.getByTestId("browser-map-frame").boundingBox();
   await page.getByTestId("right-drawer-handle").click();
-  await expect(page.getByTestId("design-console-status")).toContainText("Use the bottom HUD");
-  await expectInsideViewport(page, "map-bottom-hud");
-  await expectInsideViewport(page, "design-action-hud");
+  await expect(page.getByTestId("workflow-sidebar-tab-tools")).toBeVisible();
+  await expectInsideViewport(page, "design-action-pan");
   await expect(page.getByTestId("design-action-files")).toHaveCount(0);
   const expandedMap = await page.getByTestId("browser-map-frame").boundingBox();
   expect(collapsedMap, "collapsed map bounding box").not.toBeNull();
@@ -583,8 +574,7 @@ test("tablet landscape map console has fixed page bounds and drawer handles", as
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("right-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await expect(page.getByTestId("design-action-hud")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud")).toHaveCount(0);
   await expectNoPageScroll(page);
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "workspace-nav-map", 48, 48);
@@ -592,9 +582,8 @@ test("tablet landscape map console has fixed page bounds and drawer handles", as
   await expectMinTargetSize(page, "right-drawer-handle", 56, 56);
   await expectInsideContainer(page, "browser-map-bottom-dock", "browser-map-frame");
   await expectBottomGap(page, "browser-map-bottom-dock", "browser-map-frame", 4, 18);
-  await expectInsideContainer(page, "map-bottom-hud", "browser-map-frame");
-  await expectInsideViewport(page, "design-action-hud");
-  await expectInsideViewport(page, "map-bottom-hud");
+  await page.getByTestId("right-drawer-handle").click();
+  await expectInsideViewport(page, "design-action-pan");
   await saveScreen(page, testInfo, "tablet-landscape-map-console");
 });
 
@@ -987,6 +976,7 @@ test("browser map tool buttons expose active state", async ({ page }, testInfo) 
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
+  await openInspectorIfCollapsed(page);
   await expect(page.getByTestId("design-action-pan")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "false");
   await selectBoundaryTool(page);
@@ -1188,15 +1178,15 @@ test("browser map compact HUD actions stay inside the status panel", async ({ pa
   await expectInsideContainer(page, "browser-map-bottom-dock", "browser-map-frame");
   await expectBottomGap(page, "browser-map-bottom-dock", "browser-map-frame", 4, 18);
   await expectInsideContainer(page, "browser-map-status-hud", "browser-map-frame");
-  await expectInsideContainer(page, "map-bottom-hud", "browser-map-frame");
+  await expectInsideContainerIfVisible(page, "map-bottom-hud", "browser-map-frame");
   await expectInsideContainer(page, "browser-map-hud-actions", "browser-map-status-hud");
   await expectInsideContainer(page, "browser-action-commit", "browser-map-hud-actions");
   await expectInsideContainer(page, "browser-action-save-feature", "browser-map-hud-actions");
   await expectInsideContainer(page, "browser-action-clear", "browser-map-hud-actions");
   await expectNoOverlap(page, "browser-map-status-hud", "browser-map-attribution-hud");
-  await expectNoOverlap(page, "map-bottom-hud", "browser-map-attribution-hud");
-  await expectNoOverlap(page, "map-bottom-hud", "browser-map-status-hud");
-  await expectNoOverlap(page, "workspace-bottom-status-bar", "map-bottom-hud");
+  await expectNoOverlapIfVisible(page, "map-bottom-hud", "browser-map-attribution-hud");
+  await expectNoOverlapIfVisible(page, "map-bottom-hud", "browser-map-status-hud");
+  await expectNoOverlapIfVisible(page, "workspace-bottom-status-bar", "map-bottom-hud");
   await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-status-hud");
   await expectNoOverlap(page, "workspace-bottom-status-bar", "browser-map-attribution-hud");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
@@ -2197,13 +2187,13 @@ async function closeProjectDrawerIfOpen(page: Page): Promise<void> {
 }
 
 async function openInspectorIfCollapsed(page: Page): Promise<void> {
-  const openButton = page.getByRole("button", { name: "Open map inspector" });
+  const openButton = page.getByRole("button", { name: /Open (map inspector|right workflow sidebar)/ });
   if (await openButton.count() === 0) return;
   if (await openButton.first().isVisible()) await openButton.first().click();
 }
 
 async function closeInspectorIfOpen(page: Page): Promise<void> {
-  const closeButton = page.getByRole("button", { name: "Collapse map inspector" });
+  const closeButton = page.getByRole("button", { name: /Collapse (map inspector|right workflow sidebar)/ });
   if (await closeButton.count() === 0) return;
   if (await closeButton.first().isVisible()) await closeButton.first().click();
 }
@@ -2418,7 +2408,13 @@ async function saveScreen(page: Page, testInfo: TestInfo, label: string): Promis
 }
 
 async function clickHudAction(page: Page, testId: string): Promise<void> {
-  const action = page.getByTestId(testId);
+  let action = page.getByTestId(testId).first();
+  if (await action.count() === 0 || !await action.isVisible()) {
+    await openInspectorIfCollapsed(page);
+    const toolsTab = page.getByTestId("workflow-sidebar-tab-tools");
+    if (await toolsTab.count() > 0 && await toolsTab.first().isVisible()) await toolsTab.first().click();
+    action = page.getByTestId(testId).first();
+  }
   await action.evaluate((node) => {
     (node as HTMLElement).scrollIntoView({ block: "nearest", inline: "center" });
   });
@@ -2428,6 +2424,10 @@ async function clickHudAction(page: Page, testId: string): Promise<void> {
 
 async function openDesignToolPanel(page: Page, action: "point" | "line" | "polygon" | "circle" | "machine" | "layers" | "calculate"): Promise<void> {
   await clickHudAction(page, `design-action-${action}`);
+  if (action === "layers") {
+    await expect(page.getByTestId("places-layers-summary")).toBeVisible();
+    return;
+  }
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
 }
 
@@ -2522,6 +2522,14 @@ async function expectNoOverlap(page: Page, firstTestId: string, secondTestId: st
   expect(overlaps, `${firstTestId} should not overlap ${secondTestId}`).toBe(false);
 }
 
+async function expectNoOverlapIfVisible(page: Page, firstTestId: string, secondTestId: string): Promise<void> {
+  const first = page.getByTestId(firstTestId).first();
+  const second = page.getByTestId(secondTestId).first();
+  if (await first.count() === 0 || await second.count() === 0) return;
+  if (!await first.isVisible() || !await second.isVisible()) return;
+  await expectNoOverlap(page, firstTestId, secondTestId);
+}
+
 async function expectInsideContainer(page: Page, childTestId: string, containerTestId: string): Promise<void> {
   const child = await page.getByTestId(childTestId).boundingBox();
   const container = await page.getByTestId(containerTestId).boundingBox();
@@ -2532,6 +2540,14 @@ async function expectInsideContainer(page: Page, childTestId: string, containerT
   expect(child.y, `${childTestId} top edge`).toBeGreaterThanOrEqual(container.y - 2);
   expect(child.x + child.width, `${childTestId} right edge`).toBeLessThanOrEqual(container.x + container.width + 2);
   expect(child.y + child.height, `${childTestId} bottom edge`).toBeLessThanOrEqual(container.y + container.height + 2);
+}
+
+async function expectInsideContainerIfVisible(page: Page, childTestId: string, containerTestId: string): Promise<void> {
+  const child = page.getByTestId(childTestId).first();
+  const container = page.getByTestId(containerTestId).first();
+  if (await child.count() === 0 || await container.count() === 0) return;
+  if (!await child.isVisible() || !await container.isVisible()) return;
+  await expectInsideContainer(page, childTestId, containerTestId);
 }
 
 async function expectBottomGap(page: Page, childTestId: string, containerTestId: string, minGap: number, maxGap: number): Promise<void> {

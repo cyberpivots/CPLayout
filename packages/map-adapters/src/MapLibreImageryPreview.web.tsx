@@ -138,7 +138,17 @@ function buildPreviewStyle(
       fillLayer("allowed-fill", "allowed_coverage", "#6cb6df", 0.36),
       fillLayer("end-gun-fill", "end_gun_coverage", "#63c7cf", 0.28),
       fillLayer("outside-fill", "outside_field_coverage", "#e68b58", 0.22),
+      fillLayer("wheel-track-fill", "wheel_track_path", "#54645a", 0.18),
+      fillLayer("wheel-track-outside-fill", "wheel_track_outside_field", "#e68b58", 0.2),
+      fillLayer("end-machine-path-fill", "end_machine_path", "#253f2f", 0.16),
+      fillLayer("end-machine-path-outside-fill", "end_machine_outside_field", "#e68b58", 0.24),
       fillLayer("obstacle-fill", "obstacle", "#c64f43", 0.52),
+      lineLayer("wheel-track-line", "wheel_track_path", "#54645a", 1.5, { "line-dasharray": [1.4, 1.1] }),
+      lineLayer("wheel-track-outside-line", "wheel_track_outside_field", "#a14322", 2, { "line-dasharray": [1, 1] }),
+      lineLayer("end-machine-path-halo", "end_machine_path", "#fffef8", 5),
+      lineLayer("end-machine-path-line", "end_machine_path", "#15241b", 2.5),
+      lineLayer("end-machine-path-outside-halo", "end_machine_outside_field", "#fff4e8", 5),
+      lineLayer("end-machine-path-outside-line", "end_machine_outside_field", "#a14322", 2.5, { "line-dasharray": [2, 1.2] }),
       lineLayer("field-line", "field_boundary", "#15241b", 3),
       lineLayer("obstacle-line", "obstacle", "#70271f", 2),
       circleLayer("pivot-point", "pivot_center", "#151c2a", 6),
@@ -164,7 +174,7 @@ function fillLayer(id: string, layerType: string, color: string, opacity: number
   };
 }
 
-function lineLayer(id: string, layerType: string, color: string, width: number): StyleSpecification["layers"][number] {
+function lineLayer(id: string, layerType: string, color: string, width: number, paintOverrides: Record<string, unknown> = {}): StyleSpecification["layers"][number] {
   return {
     id,
     type: "line",
@@ -173,6 +183,7 @@ function lineLayer(id: string, layerType: string, color: string, width: number):
     paint: {
       "line-color": color,
       "line-width": width,
+      ...paintOverrides,
     },
   };
 }

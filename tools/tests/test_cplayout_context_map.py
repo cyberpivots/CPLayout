@@ -97,9 +97,18 @@ class ContextMapTests(unittest.TestCase):
         self.assertIn("interface_ui", ui_context)
         self.assertNotIn("storage_archive_native", ui_context)
 
+        right_sidebar_context = self.hook_context("Refactor right-drawer toolbar UI-proof controls.")
+        self.assertIn("interface_ui", right_sidebar_context)
+        self.assertIn("right drawer/sidebar", right_sidebar_context)
+
         db_context = self.hook_context("Review SQLite project archive ZIP schema migration.")
         self.assertIn("storage_archive_native", db_context)
         self.assertNotIn("interface_ui", db_context)
+
+    def test_map_visual_elements_prompt_selects_interface_and_geometry_packs(self) -> None:
+        pack_ids = self.pack_ids_for_prompt("Improve map visual elements for wheel tracks and end-of-machine indicators.")
+        self.assertIn("interface_ui", pack_ids)
+        self.assertIn("geometry_design", pack_ids)
 
     def test_invalid_context_map_degrades_gracefully(self) -> None:
         context = self.hook_context(

@@ -19,7 +19,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import Svg, { Circle, G, Image as SvgImage, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
-import { boundsForGeometry, createCirclePolygon, planOnlineImageryTiles, ringsToSvgPath, supportsSvgOnlineImageryOverlay } from "@cplayout/geometry";
+import { buildLayoutPathOverlays, boundsForGeometry, createCirclePolygon, planOnlineImageryTiles, ringsToSvgPath, supportsSvgOnlineImageryOverlay } from "@cplayout/geometry";
 import {
   createDrawingMapState,
   createInitialViewport,
@@ -35,7 +35,7 @@ import {
   visibleWidthMeters,
 } from "@cplayout/geometry";
 import type { InfrastructurePoint, MapStyle, MappingWorkflowMode, ObstacleZone, ProjectMapFeature, ProjectMapFeatureKind, SurveyPoint } from "@cplayout/core";
-import type { AdvisoryFieldPivotPlan } from "@cplayout/geometry";
+import type { AdvisoryFieldPivotPlan, LayoutPathOverlay } from "@cplayout/geometry";
 import { resolveReferenceOverlaySource } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
@@ -114,6 +114,10 @@ export function SvgMapSurface({
       ...advisoryFieldPivotPlan.candidates.flatMap((candidate) => candidate.machineEnvelope.flat()),
     ]
     : [];
+  const layoutPathOverlays = useMemo(
+    () => showProjectGeometry ? buildLayoutPathOverlays(project) : [],
+    [project, showProjectGeometry],
+  );
   const allRings = showProjectGeometry
     ? [
       project.fieldBoundary,
@@ -121,6 +125,10 @@ export function SvgMapSurface({
       ...result.outsideFieldCoverage.flat(),
       ...result.endGunCoverage.flat(),
       ...advisoryFieldPivotPlanRings,
+      ...layoutPathOverlays.flatMap((overlay) => [
+        ...overlay.insideFieldEnvelope.flat(),
+        ...overlay.outsideFieldEnvelope.flat(),
+      ]),
       ...project.obstacles.map((obstacle) => obstacle.polygon),
       ...mapFeatures.flatMap(mapFeatureRings),
     ]
@@ -613,6 +621,7 @@ export function SvgMapSurface({
               {advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan ? (
                 <AdvisoryFieldPivotOverlay palette={palette} plan={advisoryFieldPivotPlan} />
               ) : null}
+              <LayoutPathOverlayLayer overlays={layoutPathOverlays} palette={palette} pivotCenter={project.pivotCenter} />
               <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
               <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
               <EditableRing
@@ -780,6 +789,7 @@ export function SvgMapSurface({
         {!catalogHomeView && externalHudLayout ? (
           <View pointerEvents="none" style={styles.compactLegendBadge} testID="svg-map-compact-legend">
             <LegendSwatch color="#6cb6df" label="Wet" />
+            <LegendSwatch color={palette.wheelTrack} label="Track" />
             <LegendSwatch color="#e68b58" label="Outside" />
             <LegendSwatch color="#c64f43" label="Obstacle" />
             <LegendSwatch color={palette.utility} label="Feature" />
@@ -836,6 +846,8 @@ export function SvgMapSurface({
         <View style={styles.legend}>
           <LegendSwatch color="#6cb6df" label="Allowed wet area" />
           <LegendSwatch color="#63c7cf" label="End gun" />
+          <LegendSwatch color={palette.wheelTrack} label="Wheel track" />
+          <LegendSwatch color={palette.machinePath} label="End-machine path" />
           <LegendSwatch color="#e68b58" label="Outside field" />
           <LegendSwatch color={palette.advisory} label="Generated advisory plan" />
           <LegendSwatch color="#c64f43" label="Obstacle/no-spray" />
@@ -1039,6 +1051,71 @@ function AdvisoryFieldPivotOverlay({
       })}
     </G>
   );
+}
+
+function LayoutPathOverlayLayer({ overlays, palette, pivotCenter }: { overlays: LayoutPathOverlay[]; palette: MapPalette; pivotCenter: XY }): React.JSX.Element | null {
+  if (overlays.length === 0) return null;
+  return (
+    <G accessibilityLabel="Wheel track and end of machine path overlays" testID="svg-layout-path-overlays">
+      {overlays.map((overlay) => {
+        const insidePath = ringsToSvgPath(overlay.insideFieldEnvelope);
+        const outsidePath = ringsToSvgPath(overlay.outsideFieldEnvelope);
+        const key = `${overlay.kind}-${overlay.towerIndex ?? "machine"}`;
+        const labelPoint = polarLabelPoint(pivotCenter, overlay.radiusMeters, overlay.kind === "wheel_track" ? 225 : 315);
+        return (
+          <React.Fragment key={key}>
+            {insidePath && overlay.kind === "wheel_track" ? (
+              <Path
+                d={insidePath}
+                fill={palette.wheelTrack}
+                opacity={0.13}
+                stroke={palette.wheelTrack}
+                strokeDasharray="8 9"
+                strokeLinejoin="round"
+                strokeWidth={1.8}
+              />
+            ) : null}
+            {insidePath && overlay.kind === "end_of_machine" ? (
+              <>
+                <Path d={insidePath} fill={palette.machinePath} opacity={0.1} stroke={palette.markerFill} strokeLinejoin="round" strokeWidth={8} />
+                <Path d={insidePath} fill="none" stroke={palette.machinePath} strokeLinejoin="round" strokeWidth={3.2} />
+              </>
+            ) : null}
+            {outsidePath ? (
+              <Path
+                d={outsidePath}
+                fill={overlay.kind === "wheel_track" ? palette.wheelTrackOutside : palette.machinePathOutside}
+                opacity={overlay.kind === "wheel_track" ? 0.18 : 0.24}
+                stroke={overlay.kind === "wheel_track" ? palette.wheelTrackOutside : palette.machinePathOutside}
+                strokeDasharray={overlay.kind === "wheel_track" ? "5 6" : "12 7"}
+                strokeLinejoin="round"
+                strokeWidth={overlay.kind === "wheel_track" ? 2.2 : 3.2}
+              />
+            ) : null}
+            {insidePath ? (
+              <SvgText
+                x={labelPoint.x}
+                y={-labelPoint.y}
+                fill={overlay.kind === "wheel_track" ? palette.wheelTrack : palette.machinePath}
+                fontSize={overlay.kind === "wheel_track" ? 13 : 15}
+                fontWeight="900"
+              >
+                {overlay.kind === "wheel_track" ? `T${overlay.towerIndex}` : "EOM"}
+              </SvgText>
+            ) : null}
+          </React.Fragment>
+        );
+      })}
+    </G>
+  );
+}
+
+function polarLabelPoint(center: XY, radiusMeters: number, angleDegrees: number): XY {
+  const radians = (angleDegrees * Math.PI) / 180;
+  return {
+    x: center.x + Math.cos(radians) * radiusMeters,
+    y: center.y + Math.sin(radians) * radiusMeters,
+  };
 }
 
 function ObstacleSymbol({ color, obstacle }: { color: string; obstacle: ObstacleZone }): React.JSX.Element {
@@ -1512,6 +1589,10 @@ function paletteForMapStyle(style: MapStyle): {
   allowed: string;
   advisory: string;
   advisoryStroke: string;
+  wheelTrack: string;
+  wheelTrackOutside: string;
+  machinePath: string;
+  machinePathOutside: string;
   fieldStroke: string;
   obstacle: string;
   obstacleStroke: string;
@@ -1534,6 +1615,10 @@ function paletteForMapStyle(style: MapStyle): {
       allowed: "#006bb0",
       advisory: "#8b5cf6",
       advisoryStroke: "#4c1d95",
+      wheelTrack: "#1a1f1c",
+      wheelTrackOutside: "#b84b2f",
+      machinePath: "#000000",
+      machinePathOutside: "#b84b2f",
       fieldStroke: "#0b160f",
       obstacle: "#b00020",
       obstacleStroke: "#3b0008",
@@ -1558,6 +1643,10 @@ function paletteForMapStyle(style: MapStyle): {
       allowed: "#458fc4",
       advisory: "#9b5de5",
       advisoryStroke: "#5b21b6",
+      wheelTrack: "#4f5a50",
+      wheelTrackOutside: "#d77b46",
+      machinePath: "#203526",
+      machinePathOutside: "#d77b46",
       fieldStroke: "#203526",
       obstacle: "#bb4b42",
       obstacleStroke: "#70271f",
@@ -1582,6 +1671,10 @@ function paletteForMapStyle(style: MapStyle): {
       allowed: "#5e9dcc",
       advisory: "#8b5cf6",
       advisoryStroke: "#5b21b6",
+      wheelTrack: "#5b624e",
+      wheelTrackOutside: "#db844d",
+      machinePath: "#2b3c24",
+      machinePathOutside: "#db844d",
       fieldStroke: "#2b3c24",
       obstacle: "#c4513f",
       obstacleStroke: "#71301e",
@@ -1605,6 +1698,10 @@ function paletteForMapStyle(style: MapStyle): {
     allowed: "#6cb6df",
     advisory: "#9b5de5",
     advisoryStroke: "#5b21b6",
+    wheelTrack: "#54645a",
+    wheelTrackOutside: "#e68b58",
+    machinePath: "#253f2f",
+    machinePathOutside: "#e68b58",
     fieldStroke: "#253f2f",
     obstacle: "#c64f43",
     obstacleStroke: "#70271f",
@@ -1710,7 +1807,7 @@ const styles = StyleSheet.create({
   },
   workflowSegmentButton: {
     borderRadius: 6,
-    minHeight: 34,
+    minHeight: 48,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -1872,9 +1969,9 @@ const styles = StyleSheet.create({
     borderColor: "#aebbae",
     borderRadius: 8,
     borderWidth: 1,
-    height: 46,
+    height: 48,
     justifyContent: "center",
-    width: 46,
+    width: 48,
   },
   layerRow: {
     borderTopColor: "#dde3da",

@@ -134,6 +134,42 @@ state = reduceProjectEditorState(state, {
   },
 });
 assert.equal(state.project.mapFeatures?.some((feature) => feature.id === "pipeline-a"), true);
+const outsideUtilityFeatureState = reduceProjectEditorState(state, {
+  type: "add_map_feature",
+  feature: {
+    id: "outside-road-context",
+    name: "Outside Road Context",
+    kind: "road",
+    geometry: {
+      type: "LineString",
+      vertices: [
+        { x: 501230, y: 4506010 },
+        { x: 501260, y: 4506050 },
+      ],
+    },
+    confidence: "user_estimated",
+  },
+});
+assert.equal(outsideUtilityFeatureState.project.mapFeatures?.some((feature) => feature.id === "outside-road-context"), true);
+const invalidPlanningBoundaryState = reduceProjectEditorState(state, {
+  type: "add_map_feature",
+  feature: {
+    id: "outside-planning-boundary",
+    name: "Outside Planning Boundary",
+    kind: "planning_boundary",
+    geometry: {
+      type: "Polygon",
+      vertices: [
+        { x: 501020, y: 4506020 },
+        { x: 501230, y: 4506020 },
+        { x: 501050, y: 4506060 },
+      ],
+    },
+    confidence: "user_estimated",
+  },
+});
+assert.equal(invalidPlanningBoundaryState.lastError, "Planning Boundary map feature must be inside the field boundary.");
+assert.equal(invalidPlanningBoundaryState.project, state.project);
 const beforeLineFeatureEditPivotCenter = state.project.pivotCenter;
 state = reduceProjectEditorState(state, {
   type: "move_map_feature_vertex",
@@ -213,28 +249,41 @@ const invalidPolygonDelete = reduceProjectEditorState(state, {
 });
 assert.equal(invalidPolygonDelete.lastError, "Map feature polygon needs at least three vertices before commit.");
 assert.equal(invalidPolygonDelete.project, state.project);
+const insideControlCenter = { x: 501080, y: 4506080 };
 state = reduceProjectEditorState(state, {
   type: "add_map_feature",
   feature: {
     id: "end-gun-circle-a",
     name: "End Gun Circle A",
     kind: "end_gun_arc",
-    geometry: { type: "Circle", center: state.project.pivotCenter, radiusMeters: 24 },
+    geometry: { type: "Circle", center: insideControlCenter, radiusMeters: 24 },
     confidence: "user_estimated",
   },
 });
 assert.equal(state.project.mapFeatures?.find((feature) => feature.id === "end-gun-circle-a")?.geometry.type, "Circle");
 assert.equal(state.project.wgs84Companion?.mapFeatures?.some((feature) => feature.id === "end-gun-circle-a" && feature.geometry.type === "Circle"), true);
+const invalidEndGunCenterState = reduceProjectEditorState(state, {
+  type: "add_map_feature",
+  feature: {
+    id: "outside-end-gun-circle",
+    name: "Outside End Gun Circle",
+    kind: "end_gun_arc",
+    geometry: { type: "Circle", center: { x: 501260, y: 4506020 }, radiusMeters: 24 },
+    confidence: "user_estimated",
+  },
+});
+assert.equal(invalidEndGunCenterState.lastError, "End Gun Arc map feature must be inside the field boundary.");
+assert.equal(invalidEndGunCenterState.project, state.project);
 state = reduceProjectEditorState(state, {
   type: "move_map_feature_vertex",
   featureId: "end-gun-circle-a",
   vertexIndex: 0,
-  point: { x: state.project.pivotCenter.x + 14, y: state.project.pivotCenter.y + 6 },
+  point: { x: insideControlCenter.x + 14, y: insideControlCenter.y + 6 },
 });
 const movedEndGunGeometry = state.project.mapFeatures?.find((feature) => feature.id === "end-gun-circle-a")?.geometry;
 assert.equal(movedEndGunGeometry?.type, "Circle");
 if (movedEndGunGeometry?.type === "Circle") {
-  assert.deepEqual(movedEndGunGeometry.center, { x: state.project.pivotCenter.x + 14, y: state.project.pivotCenter.y + 6 });
+  assert.deepEqual(movedEndGunGeometry.center, { x: insideControlCenter.x + 14, y: insideControlCenter.y + 6 });
 }
 const invalidCircleFeatureDelete = reduceProjectEditorState(state, {
   type: "delete_map_feature_vertex",
@@ -246,7 +295,7 @@ assert.equal(invalidCircleFeatureDelete.project, state.project);
 state = reduceProjectEditorState(state, {
   type: "move_map_feature_circle_radius_handle",
   featureId: "end-gun-circle-a",
-  point: { x: state.project.pivotCenter.x + 64, y: state.project.pivotCenter.y + 6 },
+  point: { x: insideControlCenter.x + 64, y: insideControlCenter.y + 6 },
 });
 const resizedEndGunGeometry = state.project.mapFeatures?.find((feature) => feature.id === "end-gun-circle-a")?.geometry;
 assert.equal(resizedEndGunGeometry?.type, "Circle");
@@ -304,7 +353,7 @@ const machineZoneUpsertState = reduceProjectEditorState(state, {
       id: "generated-field-pivot-zone-1",
       name: "Generated Pivot Zone 1",
       kind: "machine_zone",
-      geometry: { type: "Circle", center: { x: state.project.pivotCenter.x + 10, y: state.project.pivotCenter.y + 10 }, radiusMeters: 180 },
+      geometry: { type: "Circle", center: { x: 501080, y: 4506080 }, radiusMeters: 180 },
       confidence: "optimized",
       notes: "Generated advisory review zone; not a saved pivot.",
       properties: {
@@ -318,7 +367,7 @@ const machineZoneUpsertState = reduceProjectEditorState(state, {
       id: "generated-field-pivot-zone-2",
       name: "Generated Pivot Zone 2",
       kind: "machine_zone",
-      geometry: { type: "Circle", center: { x: state.project.pivotCenter.x + 260, y: state.project.pivotCenter.y + 10 }, radiusMeters: 180 },
+      geometry: { type: "Circle", center: { x: 501120, y: 4506120 }, radiusMeters: 180 },
       confidence: "optimized",
     },
   ],

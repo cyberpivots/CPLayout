@@ -17,6 +17,7 @@ import {
   Map as MapIcon,
   MapPin,
   MapPinned,
+  Monitor,
   PackageCheck,
   Pentagon,
   Route,
@@ -119,6 +120,7 @@ import {
   auditGeneratedFieldPivotReviewZones,
   buildAdvisoryDesignReport,
   buildAdvisoryEndGunSensitivityReview,
+  buildAdvisoryMachineRenderModel,
   buildAdvisoryGeneratedMultiPivotScenarioReview,
   buildAdvisoryRadiusSensitivityReview,
   buildAdvisorySweepEfficiencyReview,
@@ -141,6 +143,7 @@ import {
   type AdvisoryGeneratedMultiPivotScenarioReview,
   type AdvisoryMachineStrategyComparison,
   type AdvisoryMachineStrategyResult,
+  type AdvisoryMachineRenderModel,
   type AdvisoryMultiMachineReview,
   type AdvisoryObstacleInteractionReview,
   type AdvisoryRadiusSensitivityReview,
@@ -292,6 +295,14 @@ function AppContent(): React.JSX.Element {
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
     costInput: advisoryCostInput,
   }), [advisoryCostInput, project]);
+  const advisoryMultiMachineReview = useMemo<AdvisoryMultiMachineReview>(() => analyzeAdvisoryMultiMachineLayout(project, {
+    maxCandidates: 3,
+    collisionBufferMeters: project.machine.machineClearanceBufferMeters,
+  }), [project]);
+  const advisoryMachineRenderModel = useMemo<AdvisoryMachineRenderModel>(() => buildAdvisoryMachineRenderModel(project, {
+    maxInstances: 2,
+    endGunThrowMeters: 30.48,
+  }), [project]);
   const cornerArmEvaluation = useMemo(() => evaluateAdvisoryCornerArm(project), [project]);
   const androidNativeProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_ANDROID_NATIVE_PROOF === "1";
   const nativeMapLibreProofEnabled = Platform.OS === "android" && process.env.EXPO_PUBLIC_CPLAYOUT_NATIVE_MAPLIBRE_PROOF === "1";
@@ -322,6 +333,7 @@ function AppContent(): React.JSX.Element {
   const inlineCatalogForms = sidebarInlineWorkflow && activeView === "map";
   const activeCatalogForm = Boolean(catalogDialogMode || clientProfileDialogMode || renamingProject || movingProject || deletingProject || deletingClient);
   const warningCount = result.warnings.length + (editor.lastError ? 1 : 0);
+  const powerEvidenceStatus = useMemo(() => projectPowerLineEvidenceStatus(project), [project]);
   const visibleSidebarPages = useMemo(
     () => rightWorkflowSidebarPages({
       activeCatalogForm: inlineCatalogForms && activeCatalogForm,
@@ -1123,6 +1135,14 @@ function AppContent(): React.JSX.Element {
             <Text style={styles.mapFeatureTitle}>Workflow Sidebar</Text>
             <Text style={styles.mapFeatureMeta}>Drawing tools, focused inputs, layers, RTK capture, selected features, and warnings are managed from this right sidebar. Draft vertices and save/clear actions remain on the map.</Text>
           </View>
+          <AdvisoryEvidenceStatusPanel
+            advisoryMachineRenderModel={advisoryMachineRenderModel}
+            multiMachineReview={advisoryMultiMachineReview}
+            project={project}
+            result={result}
+            settings={settings}
+            surface="overview"
+          />
         </>
       );
     }
@@ -1131,16 +1151,13 @@ function AppContent(): React.JSX.Element {
       return (
         <>
           <Text style={styles.sectionTitle}>Tools</Text>
-          <DrawingToolLauncher
-            activeModal={designConsoleModal}
-            activeTool={guidedMapTool}
-            onActivateTool={activateDesignConsoleTool}
-            onCalculate={calculateAndOpenPanel}
-            onOpenModal={openDesignConsolePanel}
-            onToggleLayers={toggleLayersPanel}
-            settings={settings}
-            variant="sidebar"
-          />
+          <View style={styles.mapFeatureEditor} testID="sidebar-tool-hud-summary">
+            <Text style={styles.mapFeatureTitle}>Map HUD</Text>
+            <View style={styles.metricGrid}>
+              <MetricTile label="Active" value={guidedMapTool?.mode.replaceAll("_", " ") ?? "Pan"} />
+              <MetricTile label="Panel" value={designConsoleModal ? designConsoleCopy(designConsoleModal).title : "Closed"} />
+            </View>
+          </View>
           {settings.mappingWorkflowMode === "layout" ? (
             <View style={styles.mapFeatureEditor}>
               <Text style={styles.mapFeatureTitle}>Layout mode</Text>
@@ -1158,6 +1175,7 @@ function AppContent(): React.JSX.Element {
             activeModal={designConsoleModal}
             advisoryCostDraft={advisoryCostDraft}
             advisoryCostInput={advisoryCostInput}
+            advisoryMachineRenderModel={advisoryMachineRenderModel}
             cornerArmEvaluation={cornerArmEvaluation}
             editorError={editor.lastError}
             fieldPivotPlan={advisoryFieldPivotPlan}
@@ -1508,8 +1526,9 @@ function AppContent(): React.JSX.Element {
                   activeToolMode={guidedMapTool?.mode}
                   activeToolRequestId={guidedMapTool?.requestId}
                   advisoryFieldPivotPlan={!homeMapView ? advisoryFieldPivotPlan : undefined}
+                  advisoryMachineRenderModel={!homeMapView ? advisoryMachineRenderModel : undefined}
                   controlLayout="externalHud"
-                  bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled && !sidebarInlineWorkflow && !(compactLayout && rightDrawerOpen) ? (
+                  bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled ? (
                     <DesignActionHud
                       activeModal={designConsoleModal}
                       activeTool={guidedMapTool}
@@ -1645,14 +1664,11 @@ function AppContent(): React.JSX.Element {
             </ScrollView>
           </View>
           <WorkspaceBottomStatusBar
-            coordinateLabel={COORDINATE_FORMAT_LABELS[settings.coordinateDisplayFormat]}
             dirty={isDirty}
             gpsGateLabel={`${fixTypeLabel(settings.gpsQuality.minimumFixType)} gate`}
-            imageryLabel={settings.onlineImagery.enabled ? "USGS preview on" : "Imagery off"}
-            regionLabel={homeMapView ? "North America" : project.projectCrs}
+            powerEvidenceStatus={powerEvidenceStatus}
             rtkStatus={rtkReceiverStatus}
-            warningCount={result.warnings.length + (editor.lastError ? 1 : 0)}
-            workflowLabel={homeMapView ? "Catalog" : workflowModeLabel(settings.mappingWorkflowMode)}
+            warningCount={warningCount}
           />
         </View>
       {!homeMapView && !sidebarInlineWorkflow ? (
@@ -1660,6 +1676,7 @@ function AppContent(): React.JSX.Element {
             activeModal={designConsoleModal}
             advisoryCostDraft={advisoryCostDraft}
             advisoryCostInput={advisoryCostInput}
+            advisoryMachineRenderModel={advisoryMachineRenderModel}
             cornerArmEvaluation={cornerArmEvaluation}
             editorError={editor.lastError}
             fieldPivotPlan={advisoryFieldPivotPlan}
@@ -1846,37 +1863,30 @@ function WorkspaceTopToolbar({
 }
 
 function WorkspaceBottomStatusBar({
-  coordinateLabel,
   dirty,
   gpsGateLabel,
-  imageryLabel,
-  regionLabel,
+  powerEvidenceStatus,
   rtkStatus,
   warningCount,
-  workflowLabel,
 }: {
-  coordinateLabel: string;
   dirty: boolean;
   gpsGateLabel: string;
-  imageryLabel: string;
-  regionLabel: string;
+  powerEvidenceStatus: ReturnType<typeof projectPowerLineEvidenceStatus>;
   rtkStatus: BrowserRtkReceiverStatus | null;
   warningCount: number;
-  workflowLabel: string;
 }): React.JSX.Element {
   const liveRtkLabel = formatLiveRtkStatus(rtkStatus);
+  const powerEvidenceIconColor = powerEvidenceStatus.status === "verified" || powerEvidenceStatus.status === "verified_exclusion"
+    ? "#254234"
+    : "#7a4a00";
   return (
     <View style={styles.workspaceBottomStatusBar} testID="workspace-bottom-status-bar">
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bottomStatusScroll} contentContainerStyle={styles.bottomStatusContent}>
         <BottomStatusChip icon={<ClipboardList size={12} color="#254234" />} label={dirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
         <BottomStatusChip icon={<AlertTriangle size={12} color="#254234" />} label={warningCount === 0 ? "0 warnings" : `${warningCount} warnings`} />
-        <BottomStatusChip icon={<MapPinned size={12} color="#254234" />} label={workflowLabel} />
-        <BottomStatusChip icon={<Ruler size={12} color="#254234" />} label={regionLabel} />
-        <BottomStatusChip icon={<SlidersHorizontal size={12} color="#254234" />} label={coordinateLabel} />
         <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={gpsGateLabel} />
         {liveRtkLabel ? <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={liveRtkLabel} testID="workspace-live-rtk-status" /> : null}
-        <BottomStatusChip icon={<WifiOff size={12} color="#254234" />} label="Offline storage" />
-        <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={imageryLabel} />
+        <BottomStatusChip icon={<UtilityPole size={12} color={powerEvidenceIconColor} />} label={`Power ${powerEvidenceStatus.status.replaceAll("_", " ")}`} testID="workspace-power-evidence-status" />
       </ScrollView>
     </View>
   );
@@ -2050,6 +2060,7 @@ type DesignConsolePanelProps = {
   activeModal: DesignConsoleModal;
   advisoryCostDraft: AdvisoryCostDraft;
   advisoryCostInput: AdvisoryCostInput | undefined;
+  advisoryMachineRenderModel: AdvisoryMachineRenderModel;
   cornerArmEvaluation: AdvisoryCornerArmEvaluation;
   editorError: string | null;
   fieldPivotPlan: AdvisoryFieldPivotPlan;
@@ -2095,6 +2106,7 @@ function DesignConsolePanel({
   activeModal,
   advisoryCostDraft,
   advisoryCostInput,
+  advisoryMachineRenderModel,
   cornerArmEvaluation,
   editorError,
   fieldPivotPlan,
@@ -2168,6 +2180,7 @@ function DesignConsolePanel({
             <CalculateSheet
               advisoryCostDraft={advisoryCostDraft}
               advisoryCostInput={advisoryCostInput}
+              advisoryMachineRenderModel={advisoryMachineRenderModel}
               editorError={editorError}
               fieldPivotPlan={fieldPivotPlan}
               idealCenterAnalysis={idealCenterAnalysis}
@@ -2660,6 +2673,7 @@ function CornerArmSheet({
 function CalculateSheet({
   advisoryCostDraft,
   advisoryCostInput,
+  advisoryMachineRenderModel,
   editorError,
   fieldPivotPlan,
   idealCenterAnalysis,
@@ -2676,6 +2690,7 @@ function CalculateSheet({
 }: {
   advisoryCostDraft: AdvisoryCostDraft;
   advisoryCostInput: AdvisoryCostInput | undefined;
+  advisoryMachineRenderModel: AdvisoryMachineRenderModel;
   editorError: string | null;
   fieldPivotPlan: AdvisoryFieldPivotPlan;
   idealCenterAnalysis: IdealCenterPointAnalysis | null;
@@ -2833,6 +2848,14 @@ function CalculateSheet({
         <Text style={styles.rowMeta}>{formatFullScopeBoundarySummary(multiMachineReview, settings)}</Text>
         <Text style={styles.mapFeatureMeta}>Compiled full-scope boundary review is advisory only and leaves canonical projected XY, field boundary, machine zones, and project storage unchanged.</Text>
       </View>
+      <AdvisoryEvidenceStatusPanel
+        advisoryMachineRenderModel={advisoryMachineRenderModel}
+        multiMachineReview={multiMachineReview}
+        project={project}
+        result={result}
+        settings={settings}
+        surface="calculate"
+      />
       <View style={styles.placementReviewPanel} testID="advisory-generated-field-pivot-plan">
         <View style={styles.scenarioRowHeader}>
           <Text style={styles.rowTitle}>Generated Field Pivot Plan</Text>
@@ -3676,6 +3699,79 @@ function DesignAwarenessPanel({
   );
 }
 
+function AdvisoryEvidenceStatusPanel({
+  advisoryMachineRenderModel,
+  multiMachineReview,
+  project,
+  result,
+  settings,
+  surface,
+}: {
+  advisoryMachineRenderModel: AdvisoryMachineRenderModel | null;
+  multiMachineReview: AdvisoryMultiMachineReview | null;
+  project: PivotProject;
+  result: ReturnType<typeof evaluateLayout>;
+  settings: AppSettings;
+  surface: "overview" | "calculate";
+}): React.JSX.Element {
+  const features = project.mapFeatures ?? [];
+  const planningBoundaryCount = features.filter((feature) => feature.kind === "planning_boundary").length;
+  const machineZoneCount = features.filter((feature) => feature.kind === "machine_zone").length;
+  const preferredOutlineCount = features.filter((feature) => (
+    feature.kind === "machine_zone"
+    && (
+      feature.properties?.preferredMachineOutline === true
+      || feature.properties?.advisoryDesignRole === "preferred_machine_outline"
+    )
+  )).length;
+  const powerEvidence = projectPowerLineEvidenceStatus(project);
+  const compiled = multiMachineReview?.compilation ?? null;
+  const renderLedger = advisoryMachineRenderModel?.instances.length ? advisoryMachineRenderModel.acreLedger : null;
+  const totalDeduplicatedAcres = compiled && compiled.modeledIrrigatedUnionAcres > 0
+    ? compiled.modeledIrrigatedUnionAcres
+    : result.metrics.irrigatedAcres;
+  const renderDeduplicatedAcres = renderLedger?.deduplicatedTotalAcres ?? totalDeduplicatedAcres;
+  const overlapAcres = renderLedger?.overlapAcres ?? compiled?.duplicateModeledCoverageAcres ?? 0;
+  const outsideFullScopeAcres = compiled?.outsideFullScopeAcres ?? 0;
+  const outsideFieldAcres = renderLedger?.outsideFieldAcres ?? result.metrics.outsideFieldAcres;
+  const verifiedBlockedAcres = renderLedger?.verifiedBlockedAcres ?? result.metrics.blockedByNoSprayAcres ?? 0;
+  const title = surface === "overview" ? "Advisory Map Evidence" : "Acre And Evidence Ledger";
+  return (
+    <View style={styles.placementReviewPanel} testID={`advisory-evidence-status-${surface}`}>
+      <View style={styles.scenarioRowHeader}>
+        <View style={styles.rowTitleWithIcon}>
+          <Monitor size={16} color="#254234" />
+          <Text style={styles.rowTitle}>{title}</Text>
+        </View>
+        <Text style={powerEvidence.status === "missing" ? styles.scenarioScoreWarn : styles.scenarioScore}>{powerEvidence.status.replaceAll("_", " ")}</Text>
+      </View>
+      <View style={styles.metricGrid}>
+        <MetricTile label="Field boundary" value={formatAreaFromAcres(result.metrics.fieldAcres, settings.unitSystem)} />
+        <MetricTile label="Design area" value={compiled ? formatAreaFromAcres(compiled.compiledBoundaryAcres, settings.unitSystem) : "pending"} tone={compiled ? "neutral" : "warn"} />
+        <MetricTile label="Machine zones" value={`${machineZoneCount}`} tone={machineZoneCount > 0 ? "neutral" : "warn"} />
+        <MetricTile label="Preferred outlines" value={`${preferredOutlineCount}`} tone={preferredOutlineCount > 0 ? "neutral" : "warn"} />
+        <MetricTile label="Render machines" value={`${advisoryMachineRenderModel?.instances.length ?? 0}`} tone={(advisoryMachineRenderModel?.instances.length ?? 0) === 2 ? "good" : "warn"} />
+        <MetricTile label="Planning boundaries" value={`${planningBoundaryCount}`} />
+        <MetricTile label="Standard pivot" value={formatAreaFromAcres(renderLedger?.standardPivotAcres ?? result.metrics.standardPivotAcres ?? Math.max(0, result.metrics.irrigatedAcres - result.metrics.endGunAcres), settings.unitSystem)} />
+        <MetricTile label="End gun" value={formatAreaFromAcres(renderLedger?.endGunAcres ?? result.metrics.endGunAcres, settings.unitSystem)} />
+        <MetricTile label="Corner arm" value={formatAreaFromAcres(renderLedger?.cornerArmAcres ?? result.metrics.cornerArmAcres ?? 0, settings.unitSystem)} />
+        <MetricTile label="De-duped total" value={formatAreaFromAcres(renderDeduplicatedAcres, settings.unitSystem)} />
+        <MetricTile label="Overlap" value={formatAreaFromAcres(overlapAcres, settings.unitSystem)} tone={overlapAcres > 0 ? "warn" : "good"} />
+        <MetricTile label="Outside field" value={formatAreaFromAcres(outsideFieldAcres, settings.unitSystem)} tone={outsideFieldAcres > 0 ? "danger" : "good"} />
+        <MetricTile label="Outside full scope" value={formatAreaFromAcres(outsideFullScopeAcres, settings.unitSystem)} tone={outsideFullScopeAcres > 0 ? "danger" : "good"} />
+        <MetricTile label="Blocked acres" value={formatAreaFromAcres(verifiedBlockedAcres, settings.unitSystem)} tone={verifiedBlockedAcres > 0 ? "warn" : "good"} />
+        <MetricTile label="Power evidence" value={powerEvidence.status.replaceAll("_", " ")} tone={powerEvidence.status === "missing" ? "warn" : "good"} />
+      </View>
+      <Text style={styles.mapFeatureMeta} testID={`advisory-evidence-power-status-${surface}`}>
+        {powerEvidence.message}
+      </Text>
+      <Text style={styles.mapFeatureMeta}>
+        Full field boundary remains the clipping boundary. South and middle machine-zone evidence and preferred outlines guide advisory map context only; internal zone edges are not blockers. The render ledger is display/report data only and leaves project storage unchanged.
+      </Text>
+    </View>
+  );
+}
+
 function DesignStep({ children, index, meta, title }: { children: React.ReactNode; index: number; meta: string; title: string }): React.JSX.Element {
   return (
     <View style={styles.designStep}>
@@ -4152,6 +4248,41 @@ function formatFullScopeBoundarySummary(review: AdvisoryMultiMachineReview, sett
     ? "no scenario zones"
     : `${review.compilation.scenarioBoundarySource.replaceAll("_", " ")} scenarios`;
   return `${formatAreaFromAcres(review.compilation.compiledBoundaryAcres, settings.unitSystem)} ${fullScopeSource} full scope · ${review.compilation.fullScopeCoveragePercent.toFixed(1)}% modeled coverage · ${formatAreaFromAcres(review.compilation.fullScopeUnirrigatedAcres, settings.unitSystem)} remaining dry · ${scenarioSource}`;
+}
+
+function projectPowerLineEvidenceStatus(project: PivotProject): { status: "missing" | "provisional" | "verified" | "verified_exclusion"; message: string } {
+  const powerFeatures = (project.mapFeatures ?? []).filter((feature) => feature.kind === "power_line" || feature.kind === "power_pole");
+  if (powerFeatures.length === 0) {
+    return {
+      status: "missing",
+      message: "No separate power_line or power_pole evidence is supplied; machine-zone boundaries are not power-line blockers.",
+    };
+  }
+  if (powerFeatures.some((feature) => (
+    feature.properties?.powerLineExclusion === true
+    || feature.properties?.power_line_exclusion === true
+    || feature.properties?.powerLineEvidenceStatus === "verified_exclusion"
+    || feature.properties?.power_line_evidence_status === "verified_exclusion"
+  ))) {
+    return {
+      status: "verified_exclusion",
+      message: "Verified power-line exclusion evidence is present and must block approval-ready layouts until reviewed.",
+    };
+  }
+  if (powerFeatures.some((feature) => (
+    feature.properties?.powerLineEvidenceStatus === "provisional"
+    || feature.properties?.power_line_evidence_status === "provisional"
+    || feature.confidence === "user_estimated"
+  ))) {
+    return {
+      status: "provisional",
+      message: "Provisional power evidence is present; verify overhead geometry or record an explicit exclusion before approval.",
+    };
+  }
+  return {
+    status: "verified",
+    message: "Separate power evidence is present; qualified utility and field review remain required.",
+  };
 }
 
 function generatedFieldPivotZoneFeature(project: PivotProject, candidate: AdvisoryFieldPivotPlan["candidates"][number]): ProjectMapFeature {
@@ -6828,8 +6959,20 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: "space-between",
   },
+  rowTitleWithIcon: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 7,
+    minWidth: 0,
+  },
   scenarioScore: {
     color: "#254234",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  scenarioScoreWarn: {
+    color: "#9a5d08",
     fontSize: 13,
     fontWeight: "900",
   },

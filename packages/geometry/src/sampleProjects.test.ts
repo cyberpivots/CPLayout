@@ -19,6 +19,7 @@ import {
   planAdvisoryFieldPivots,
 } from "./advisoryPivotPlacement";
 import { buildAdvisoryDesignReport } from "./advisoryDesignReport";
+import { buildAdvisoryMachineRenderModel } from "./advisoryMachineRenderModel";
 import { buildDesignScenarioPreview } from "./designScenarios";
 import { evaluateLayout } from "./geometry";
 import { rankLayoutAlternatives } from "./layoutScoring";
@@ -45,7 +46,17 @@ const willRheaFeatureCounts = (willRheaJasonHarmelinkExampleProject.mapFeatures 
 }, {});
 assert.equal(willRheaFeatureCounts.planning_boundary, 1);
 assert.equal(willRheaFeatureCounts.measurement_line, 1);
-assert.equal(willRheaFeatureCounts.machine_zone, 3);
+assert.equal(willRheaFeatureCounts.machine_zone, 5);
+const willRheaPreferredOutlines = (willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).filter((feature) => (
+  feature.kind === "machine_zone"
+  && feature.properties?.preferredMachineOutline === true
+));
+assert.equal(willRheaPreferredOutlines.length, 2);
+assert.deepEqual(willRheaPreferredOutlines.map((feature) => feature.name).sort(), ["Middle Part Circle", "South East Circle"]);
+const willRheaRenderModel = buildAdvisoryMachineRenderModel(willRheaJasonHarmelinkExampleProject);
+assert.equal(willRheaRenderModel.instances.length, 2);
+assert.equal(willRheaRenderModel.instances.some((instance) => instance.label === "South East Circle" && instance.sweep.mode === "full_circle"), true);
+assert.equal(willRheaRenderModel.instances.some((instance) => instance.label === "Middle Part Circle" && instance.sweep.mode === "partial_circle"), true);
 assert.ok((willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).every((feature) => feature.properties?.canonicalGeometryMutation === false));
 assert.ok((willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).every((feature) => feature.properties?.evidenceOnly === true));
 assert.ok((willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).every((feature) => feature.properties?.sourceKmzSha256 === "895e9367fd07c730572618d5ed01b96a66519de725faab082d6f1714ef827401"));

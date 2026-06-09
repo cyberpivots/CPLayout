@@ -30,7 +30,27 @@ assert.equal(parsedWillRhea.projectCrs, "EPSG:32614");
 assert.deepEqual(parsedWillRhea.fieldBoundary, willRheaJasonHarmelinkExampleProject.fieldBoundary);
 assert.deepEqual(parsedWillRhea.pivotCenter, willRheaJasonHarmelinkExampleProject.pivotCenter);
 assert.equal(parsedWillRhea.wgs84Companion?.source, "derived_from_project_xy");
-assert.equal(parsedWillRhea.mapFeatures?.filter((feature) => feature.kind === "machine_zone").length, 3);
+assert.equal(parsedWillRhea.mapFeatures?.filter((feature) => feature.kind === "machine_zone").length, 5);
+const preferredWillRheaOutlines = parsedWillRhea.mapFeatures?.filter((feature) => (
+  feature.kind === "machine_zone"
+  && feature.properties?.preferredMachineOutline === true
+  && feature.properties?.advisoryDesignRole === "preferred_machine_outline"
+));
+assert.equal(preferredWillRheaOutlines?.length, 2);
+assert.deepEqual(
+  preferredWillRheaOutlines?.map((feature) => feature.name).sort(),
+  ["Middle Part Circle", "South East Circle"],
+);
+assert.equal(
+  preferredWillRheaOutlines?.every((feature) => (
+    feature.properties?.canonicalGeometryMutation === false
+    && feature.properties?.sourceFileName === "Will Rhea.kmz"
+    && feature.properties?.sourceKmzSha256 === "895e9367fd07c730572618d5ed01b96a66519de725faab082d6f1714ef827401"
+    && typeof feature.properties?.sourcePath === "string"
+    && feature.properties.sourcePath.startsWith("docs/evidence/client-kmz-advisory/will-rhea/")
+  )),
+  true,
+);
 assert.equal(
   parsedWillRhea.mapFeatures?.find((feature) => feature.id === "will-rhea-full-scope-field-boundary-evidence")?.kind,
   "planning_boundary",

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { AppSettings, InfrastructurePoint, LayoutResult, LonLat, MappingWorkflowMode, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
-import type { AdvisoryFieldPivotPlan, DrawingLayerType, DrawingMode } from "@cplayout/geometry";
+import type { AdvisoryFieldPivotPlan, AdvisoryMachineRenderModel, DrawingLayerType, DrawingMode } from "@cplayout/geometry";
 
 export interface MapSurfaceProps {
   project: PivotProject;
@@ -11,6 +11,7 @@ export interface MapSurfaceProps {
   activeMapFeatureKind?: ProjectMapFeatureKind;
   activeToolRequestId?: number;
   advisoryFieldPivotPlan?: AdvisoryFieldPivotPlan;
+  advisoryMachineRenderModel?: AdvisoryMachineRenderModel;
   bottomOverlay?: ReactNode;
   controlLayout?: "internalRows" | "externalHud";
   draftVertices?: XY[];

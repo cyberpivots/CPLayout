@@ -20,9 +20,12 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-na
 
 import { resolveDraftVertexIntent } from "@cplayout/geometry";
 import {
+  projectLonLatToXy,
   resolveAerialReferenceImagerySource,
   resolveReferenceOverlaySource,
+  type LonLat,
   type ObstacleZone,
+  type ProjectMapFeature,
   type ProjectMapFeatureKind,
   type ReferenceOverlayLayerKey,
   type XY,
@@ -83,6 +86,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     activeToolMode,
     activeToolRequestId,
     advisoryFieldPivotPlan,
+    advisoryMachineRenderModel,
     bottomOverlay,
     controlLayout = "internalRows",
     project,
@@ -170,7 +174,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     }
     try {
       return {
-        featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices, advisoryFieldPivotPlan),
+        featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices, advisoryFieldPivotPlan, advisoryMachineRenderModel),
         error: null as string | null,
       };
     } catch (error) {
@@ -179,7 +183,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [advisoryFieldPivotPlan, draftVertices, homeView, project, result]);
+  }, [advisoryFieldPivotPlan, advisoryMachineRenderModel, draftVertices, homeView, project, result]);
   const projectionError = projectionFrame.error ?? overlayState.error;
   const aerialImagery = useMemo(
     () => resolveAerialReferenceImagerySource({
@@ -334,7 +338,8 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
         setStatus("North America map is a catalog view. Open a field map or design before editing projected XY geometry.");
         return;
       }
-      const selectedFeatureId = mapFeatureIdAtPoint(map, point);
+      const selectedFeatureId = mapFeatureIdAtPoint(map, point)
+        ?? mapFeatureIdNearLonLat(project, { longitude: lngLat.lng, latitude: lngLat.lat });
       if (selectedFeatureId && (current.mode === "pan" || current.workflowMode === "layout")) {
         callbacksRef.current.onSelectMapFeature?.(selectedFeatureId);
         setStatus(`Selected map feature ${selectedFeatureId}. Project geometry is unchanged.`);
@@ -828,11 +833,69 @@ function syncLayoutSource(
 }
 
 function mapFeatureIdAtPoint(map: maplibregl.Map, point: maplibregl.PointLike): string | null {
-  const features = map.queryRenderedFeatures(point, {
+  const screenPoint = pointLikeToXY(point);
+  const tolerancePixels = 10;
+  const features = map.queryRenderedFeatures([
+    [screenPoint.x - tolerancePixels, screenPoint.y - tolerancePixels],
+    [screenPoint.x + tolerancePixels, screenPoint.y + tolerancePixels],
+  ], {
     layers: ["map-feature-polygon", "map-feature-line", "map-feature-point"],
   });
   const id = features.find((feature) => typeof feature.properties?.id === "string")?.properties?.id;
   return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+function mapFeatureIdNearLonLat(project: MapSurfaceProps["project"], lonLat: LonLat): string | null {
+  const point = projectLonLatToXy(lonLat, project.projectCrs);
+  const selectionToleranceMeters = 80;
+  const candidates = (project.mapFeatures ?? [])
+    .map((feature) => ({ feature, distanceMeters: distanceToMapFeature(point, feature) }))
+    .filter((candidate) => candidate.distanceMeters <= selectionToleranceMeters)
+    .sort((left, right) => left.distanceMeters - right.distanceMeters);
+  return candidates[0]?.feature.id ?? null;
+}
+
+function distanceToMapFeature(point: XY, feature: ProjectMapFeature): number {
+  if (feature.geometry.type === "Point") return distanceBetweenPoints(point, feature.geometry.point);
+  if (feature.geometry.type === "Circle") {
+    return Math.abs(distanceBetweenPoints(point, feature.geometry.center) - feature.geometry.radiusMeters);
+  }
+  if (feature.geometry.type === "Polygon") {
+    if (pointInPolygon(point, feature.geometry.vertices)) return 0;
+    return minDistanceToPolyline(point, [...feature.geometry.vertices, feature.geometry.vertices[0]]);
+  }
+  return minDistanceToPolyline(point, feature.geometry.vertices);
+}
+
+function minDistanceToPolyline(point: XY, vertices: XY[]): number {
+  if (vertices.length === 0) return Number.POSITIVE_INFINITY;
+  if (vertices.length === 1) return distanceBetweenPoints(point, vertices[0]);
+  let best = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < vertices.length; index += 1) {
+    best = Math.min(best, distanceToSegment(point, vertices[index - 1], vertices[index]));
+  }
+  return best;
+}
+
+function distanceToSegment(point: XY, start: XY, end: XY): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return distanceBetweenPoints(point, start);
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  return distanceBetweenPoints(point, { x: start.x + t * dx, y: start.y + t * dy });
+}
+
+function pointInPolygon(point: XY, vertices: XY[]): boolean {
+  let inside = false;
+  for (let index = 0, previousIndex = vertices.length - 1; index < vertices.length; previousIndex = index, index += 1) {
+    const current = vertices[index];
+    const previous = vertices[previousIndex];
+    const crosses = (current.y > point.y) !== (previous.y > point.y)
+      && point.x < ((previous.x - current.x) * (point.y - current.y)) / (previous.y - current.y) + current.x;
+    if (crosses) inside = !inside;
+  }
+  return inside;
 }
 
 function obstacleKindForLayer(layer: DrawingLayerType): ObstacleZone["kind"] {

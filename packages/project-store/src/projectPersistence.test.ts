@@ -72,7 +72,11 @@ assert.ok(mapFeatureRows[3].vertices.length > 8);
 const willRheaRows = buildProjectGeometryRows(willRheaJasonHarmelinkExampleProject);
 const willRheaMapFeatureRows = willRheaRows.filter((row) => row.layerType === "map_feature");
 const willRheaMachineZoneRows = willRheaMapFeatureRows.filter((row) => row.featureKind === "machine_zone");
-assert.equal(willRheaMachineZoneRows.length, 3);
+assert.equal(willRheaMachineZoneRows.length, 5);
+assert.equal(willRheaMachineZoneRows.filter((row) => (
+  row.properties.preferredMachineOutline === true
+  && row.properties.advisoryDesignRole === "preferred_machine_outline"
+)).length, 2);
 assert.equal(willRheaMapFeatureRows.some((row) => row.featureKind === "planning_boundary"), true);
 assert.ok(willRheaMachineZoneRows.every((row) => row.properties.canonicalGeometryMutation === false));
 assert.ok(willRheaMachineZoneRows.every((row) => row.properties.evidenceOnly === true));

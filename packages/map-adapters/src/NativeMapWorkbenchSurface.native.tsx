@@ -77,6 +77,8 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
     activeMapFeatureKind,
     activeToolMode,
     activeToolRequestId,
+    advisoryFieldPivotPlan,
+    advisoryMachineRenderModel,
     bottomOverlay,
     homeView = false,
     project,
@@ -158,7 +160,7 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
     }
     try {
       return {
-        featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices),
+        featureCollection: projectLayoutToWgs84FeatureCollection(project, result, draftVertices, advisoryFieldPivotPlan, advisoryMachineRenderModel),
         error: null as string | null,
       };
     } catch (error) {
@@ -167,7 +169,7 @@ export function NativeMapWorkbenchSurface(props: MapSurfaceProps): React.JSX.Ele
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [draftVertices, homeView, project, result]);
+  }, [advisoryFieldPivotPlan, advisoryMachineRenderModel, draftVertices, homeView, project, result]);
   const projectionError = projectionFrame.error ?? overlayState.error;
   const aerialImagery = useMemo(
     () => resolveAerialReferenceImagerySource({

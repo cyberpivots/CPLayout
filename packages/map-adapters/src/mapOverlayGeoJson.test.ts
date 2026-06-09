@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { defaultAppSettings, resolveReferenceOverlaySource, sampleProject } from "@cplayout/core";
-import { evaluateLayout, planAdvisoryFieldPivots } from "@cplayout/geometry";
+import { buildAdvisoryMachineRenderModel, evaluateLayout, planAdvisoryFieldPivots } from "@cplayout/geometry";
 import { projectLayoutToWgs84FeatureCollection, projectWgs84Bounds, projectWgs84Center } from "./mapOverlayGeoJson";
 import { buildWorkbenchStyle } from "./mapWorkbenchStyle";
 
@@ -45,9 +45,32 @@ const projectWithMapFeature = {
       geometry: { type: "Circle" as const, center: sampleProject.pivotCenter, radiusMeters: 24 },
       confidence: "user_estimated" as const,
     },
+    {
+      id: "preferred-machine-outline-a",
+      name: "Preferred Machine Outline A",
+      kind: "machine_zone" as const,
+      geometry: { type: "LineString" as const, vertices: sampleProject.fieldBoundary.slice(0, 4) },
+      confidence: "imagery_digitized" as const,
+      properties: {
+        preferredMachineOutline: true,
+        advisoryDesignRole: "preferred_machine_outline",
+        canonicalGeometryMutation: false,
+      },
+    },
   ],
 };
 const featureCollectionWithMapFeature = projectLayoutToWgs84FeatureCollection(projectWithMapFeature, evaluateLayout(projectWithMapFeature));
+const advisoryMachineRenderModel = buildAdvisoryMachineRenderModel(projectWithMapFeature, {
+  featureIds: ["preferred-machine-outline-a"],
+  includePublicVflexFallbackCornerArm: false,
+});
+const featureCollectionWithAdvisoryMachineRender = projectLayoutToWgs84FeatureCollection(
+  projectWithMapFeature,
+  evaluateLayout(projectWithMapFeature),
+  [],
+  undefined,
+  advisoryMachineRenderModel,
+);
 const projectWithCornerArm = {
   ...sampleProject,
   machine: {
@@ -85,6 +108,16 @@ const workbenchStyleWithAdvisoryPlan = buildWorkbenchStyle(
   }),
   { ...settings.referenceOverlay, mode: "off" },
 );
+const workbenchStyleWithAdvisoryMachineRender = buildWorkbenchStyle(
+  null,
+  featureCollectionWithAdvisoryMachineRender,
+  resolveReferenceOverlaySource({
+    preferences: { ...settings.referenceOverlay, mode: "off" },
+    mapPackages: [],
+    target: "web_maplibre_gl_js",
+  }),
+  { ...settings.referenceOverlay, mode: "off" },
+);
 
 assert.equal(featureCollection.type, "FeatureCollection");
 assert.ok(featureCollection.features.some((feature) => feature.properties.layerType === "field_boundary"));
@@ -115,6 +148,13 @@ assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "wh
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "wheel-track-line"));
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "end-machine-path-fill"));
 assert.ok(workbenchStyleWithAdvisoryPlan.layers.some((layer) => layer.id === "end-machine-path-line"));
+assert.ok(featureCollectionWithAdvisoryMachineRender.features.some((feature) => feature.properties.layerType === "advisory_machine_preferred_outline" && feature.geometry.type === "LineString"));
+assert.ok(featureCollectionWithAdvisoryMachineRender.features.some((feature) => feature.properties.layerType === "advisory_machine_standard_coverage" && feature.properties.renderOnly === true && feature.properties.canonicalGeometryMutation === false));
+assert.ok(featureCollectionWithAdvisoryMachineRender.features.some((feature) => feature.properties.layerType === "advisory_machine_end_gun_annulus" && feature.properties.endGunAcres !== undefined));
+assert.ok(featureCollectionWithAdvisoryMachineRender.features.some((feature) => feature.properties.layerType === "advisory_machine_physical_envelope" && feature.properties.advisoryOnly === true));
+assert.ok(featureCollectionWithAdvisoryMachineRender.features.some((feature) => feature.properties.layerType === "advisory_machine_lrdu_path" && feature.geometry.type === "MultiPolygon"));
+assert.ok(workbenchStyleWithAdvisoryMachineRender.layers.some((layer) => layer.id === "advisory-machine-preferred-outline-line"));
+assert.ok(workbenchStyleWithAdvisoryMachineRender.layers.some((layer) => layer.id === "advisory-machine-pivot-center"));
 assert.ok(buildWorkbenchStyle(
   null,
   featureCollectionWithCornerArm,
@@ -128,6 +168,14 @@ assert.ok(buildWorkbenchStyle(
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Pipeline A"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "Corner Footprint A" && feature.geometry.type === "MultiPolygon"));
 assert.ok(featureCollectionWithMapFeature.features.some((feature) => feature.properties.layerType === "map_feature" && feature.properties.name === "End Gun Circle A" && feature.geometry.type === "MultiPolygon"));
+assert.ok(featureCollectionWithMapFeature.features.some((feature) => (
+  feature.properties.layerType === "map_feature"
+  && feature.properties.id === "preferred-machine-outline-a"
+  && feature.properties.preferredMachineOutline === true
+  && feature.properties.canonicalGeometryMutation === false
+)));
+const mapFeaturePointLayer = workbenchStyleWithAdvisoryMachineRender.layers.find((layer) => layer.id === "map-feature-point");
+assert.deepEqual(mapFeaturePointLayer && "filter" in mapFeaturePointLayer ? mapFeaturePointLayer.filter : undefined, ["all", ["==", ["geometry-type"], "Point"], ["==", ["get", "layerType"], "map_feature"]]);
 assert.ok(bounds.every((value) => Number.isFinite(value)));
 assert.ok(boundsWithMapFeature.every((value) => Number.isFinite(value)));
 assert.ok(center.every((value) => Number.isFinite(value)));

@@ -255,8 +255,16 @@ assert.equal(importedWillRhea.projectCrs, "EPSG:32614");
 assert.equal(importedWillRhea.wgs84Companion?.source, "derived_from_project_xy");
 assert.deepEqual(importedWillRhea.fieldBoundary, willRheaJasonHarmelinkExampleProject.fieldBoundary);
 assert.equal(importedWillRheaFeatureCounts.planning_boundary, 1);
-assert.equal(importedWillRheaFeatureCounts.machine_zone, 3);
+assert.equal(importedWillRheaFeatureCounts.machine_zone, 5);
 assert.equal(importedWillRheaFeatureCounts.measurement_line, 1);
+assert.equal(
+  (importedWillRhea.mapFeatures ?? []).filter((feature) => (
+    feature.kind === "machine_zone"
+    && feature.properties?.preferredMachineOutline === true
+    && feature.properties?.advisoryDesignRole === "preferred_machine_outline"
+  )).length,
+  2,
+);
 assert.equal(
   importedWillRhea.mapFeatures?.find((feature) => feature.id === "will-rhea-middle-machine-field-boundary")?.properties?.sourceKmzSha256,
   "895e9367fd07c730572618d5ed01b96a66519de725faab082d6f1714ef827401",

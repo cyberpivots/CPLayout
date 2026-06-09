@@ -35,7 +35,7 @@ import {
   visibleWidthMeters,
 } from "@cplayout/geometry";
 import type { InfrastructurePoint, MapStyle, MappingWorkflowMode, ObstacleZone, ProjectMapFeature, ProjectMapFeatureKind, SurveyPoint } from "@cplayout/core";
-import type { AdvisoryFieldPivotPlan, LayoutPathOverlay } from "@cplayout/geometry";
+import type { AdvisoryFieldPivotPlan, AdvisoryMachineRenderModel, AdvisoryMachineRenderSurface, LayoutPathOverlay } from "@cplayout/geometry";
 import { resolveReferenceOverlaySource } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
@@ -77,6 +77,7 @@ export function SvgMapSurface({
   activeToolMode,
   activeToolRequestId,
   advisoryFieldPivotPlan,
+  advisoryMachineRenderModel,
   bottomOverlay,
   controlLayout = "internalRows",
   homeView = false,
@@ -108,11 +109,26 @@ export function SvgMapSurface({
   const showProjectGeometry = !catalogHomeView;
   const mapFeatures = project.mapFeatures ?? [];
   const advisoryFieldPivotPlanVisible = showProjectGeometry && (advisoryFieldPivotPlan?.selectedMachineCount ?? 0) > 0;
+  const advisoryMachineRenderVisible = showProjectGeometry && (advisoryMachineRenderModel?.instances.length ?? 0) > 0;
   const advisoryFieldPivotPlanRings = advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan
     ? [
       ...advisoryFieldPivotPlan.modeledCoverageUnion.flat(),
       ...advisoryFieldPivotPlan.candidates.flatMap((candidate) => candidate.machineEnvelope.flat()),
     ]
+    : [];
+  const advisoryMachineRenderRings = advisoryMachineRenderVisible && advisoryMachineRenderModel
+    ? advisoryMachineRenderModel.surfaces.flatMap((surface) => [
+      surface.preferredOutlinePath,
+      ...surface.standardPivotCoverage.flat(),
+      ...surface.endGunWetAnnulus.flat(),
+      ...surface.cornerArmCoverage.flat(),
+      ...surface.clippedWetCoverage.flat(),
+      ...surface.physicalEnvelope.flat(),
+      ...(surface.lrduPath ? surface.lrduPath.insideFieldEnvelope.flat() : []),
+      ...surface.towerPaths.flatMap((overlay) => overlay.insideFieldEnvelope.flat()),
+      ...(surface.cornerArmWheelPath ? surface.cornerArmWheelPath.insideFieldEnvelope.flat() : []),
+      ...(surface.cornerArmOverhangEndPath ? surface.cornerArmOverhangEndPath.insideFieldEnvelope.flat() : []),
+    ])
     : [];
   const layoutPathOverlays = useMemo(
     () => showProjectGeometry ? buildLayoutPathOverlays(project) : [],
@@ -125,6 +141,7 @@ export function SvgMapSurface({
       ...result.outsideFieldCoverage.flat(),
       ...result.endGunCoverage.flat(),
       ...advisoryFieldPivotPlanRings,
+      ...advisoryMachineRenderRings,
       ...layoutPathOverlays.flatMap((overlay) => [
         ...overlay.insideFieldEnvelope.flat(),
         ...overlay.outsideFieldEnvelope.flat(),
@@ -621,6 +638,9 @@ export function SvgMapSurface({
               {advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan ? (
                 <AdvisoryFieldPivotOverlay palette={palette} plan={advisoryFieldPivotPlan} />
               ) : null}
+              {advisoryMachineRenderVisible && advisoryMachineRenderModel ? (
+                <AdvisoryMachineRenderOverlay model={advisoryMachineRenderModel} palette={palette} />
+              ) : null}
               <LayoutPathOverlayLayer overlays={layoutPathOverlays} palette={palette} pivotCenter={project.pivotCenter} />
               <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
               <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
@@ -651,7 +671,7 @@ export function SvgMapSurface({
                     selected={activeSelectedMapFeatureId === feature.id}
                     onSelect={() => selectMapFeature(feature.id)}
                   />
-                  {designMode ? (
+                  {shouldShowEditableMapFeatureHandles(feature, designMode, mapState.mode, activeSelectedMapFeatureId === feature.id) ? (
                     <EditableMapFeatureHandles
                       feature={feature}
                       palette={palette}
@@ -846,6 +866,7 @@ export function SvgMapSurface({
         <View style={styles.legend}>
           <LegendSwatch color="#6cb6df" label="Allowed wet area" />
           <LegendSwatch color="#63c7cf" label="End gun" />
+          <LegendSwatch color={palette.machinePath} label="Advisory machine paths" />
           <LegendSwatch color={palette.wheelTrack} label="Wheel track" />
           <LegendSwatch color={palette.machinePath} label="End-machine path" />
           <LegendSwatch color="#e68b58" label="Outside field" />
@@ -871,6 +892,23 @@ function canCommitDraft(mapState: DrawingMapState): boolean {
 
 function canSaveMapFeature(mapState: DrawingMapState, geometry: UtilityFeatureGeometry): boolean {
   return mapState.mode === "measure" && (geometry === "Point" || mapState.draftVertices.length >= featureDraftMinimumVertices(geometry));
+}
+
+function shouldShowEditableMapFeatureHandles(
+  feature: ProjectMapFeature,
+  designMode: boolean,
+  mode: DrawingMapState["mode"],
+  selected: boolean,
+): boolean {
+  if (!designMode) return false;
+  if (!isEvidencePreferredMapFeature(feature)) return true;
+  return selected && mode === "edit_vertices";
+}
+
+function isEvidencePreferredMapFeature(feature: ProjectMapFeature): boolean {
+  return feature.properties?.preferredMachineOutline === true
+    || feature.properties?.advisoryDesignRole === "preferred_machine_outline"
+    || feature.properties?.evidenceOnly === true;
 }
 
 function mapFeatureRings(feature: ProjectMapFeature): XY[][] {
@@ -1051,6 +1089,120 @@ function AdvisoryFieldPivotOverlay({
       })}
     </G>
   );
+}
+
+function AdvisoryMachineRenderOverlay({
+  model,
+  palette,
+}: {
+  model: AdvisoryMachineRenderModel;
+  palette: MapPalette;
+}): React.JSX.Element | null {
+  if (model.surfaces.length === 0) return null;
+  return (
+    <G accessibilityLabel="Advisory machine render overlay" testID="svg-advisory-machine-render-overlay">
+      {model.surfaces.map((surface) => (
+        <AdvisoryMachineSurfaceOverlay key={surface.instanceId} palette={palette} surface={surface} />
+      ))}
+      {model.instances.map((instance, index) => (
+        <React.Fragment key={instance.id}>
+          <Circle cx={instance.pivotCenter.x} cy={-instance.pivotCenter.y} r={13} fill="#fffef8" stroke={palette.machinePath} strokeWidth={5} />
+          <Circle cx={instance.pivotCenter.x} cy={-instance.pivotCenter.y} r={4.5} fill={palette.machinePath} />
+          <SvgText x={instance.pivotCenter.x + 16} y={-instance.pivotCenter.y - 14} fill={palette.machinePath} fontSize={19} fontWeight="900">
+            A{index + 1}
+          </SvgText>
+        </React.Fragment>
+      ))}
+      {model.conflicts.map((conflict) => {
+        const conflictPath = ringsToSvgPath(conflict.collisionZone);
+        return conflictPath ? (
+          <Path
+            key={conflict.id}
+            d={conflictPath}
+            fill="#b00020"
+            opacity={0.28}
+            stroke="#7f1d1d"
+            strokeLinejoin="round"
+            strokeWidth={3}
+          />
+        ) : null;
+      })}
+    </G>
+  );
+}
+
+function AdvisoryMachineSurfaceOverlay({
+  palette,
+  surface,
+}: {
+  palette: MapPalette;
+  surface: AdvisoryMachineRenderSurface;
+}): React.JSX.Element {
+  const preferredPath = lineSvgPath(surface.preferredOutlinePath);
+  const standardPath = ringsToSvgPath(surface.standardPivotCoverage);
+  const endGunPath = ringsToSvgPath(surface.endGunWetAnnulus);
+  const cornerArmPath = ringsToSvgPath(surface.cornerArmCoverage);
+  const wetPath = ringsToSvgPath(surface.clippedWetCoverage);
+  const physicalPath = ringsToSvgPath(surface.physicalEnvelope);
+  return (
+    <G>
+      {wetPath ? <Path d={wetPath} fill={palette.endGun} opacity={0.08} stroke="none" /> : null}
+      {standardPath ? <Path d={standardPath} fill={palette.allowed} opacity={0.1} stroke={palette.allowed} strokeLinejoin="round" strokeWidth={1.5} /> : null}
+      {endGunPath ? <Path d={endGunPath} fill={palette.endGun} opacity={0.11} stroke={palette.endGun} strokeDasharray="6 5" strokeLinejoin="round" strokeWidth={1.7} /> : null}
+      {cornerArmPath ? <Path d={cornerArmPath} fill={palette.cornerArmReach} opacity={0.11} stroke={palette.cornerArmReach} strokeDasharray="7 5" strokeLinejoin="round" strokeWidth={1.8} /> : null}
+      {physicalPath ? <Path d={physicalPath} fill="none" opacity={0.9} stroke={palette.machinePath} strokeLinejoin="round" strokeWidth={2.4} /> : null}
+      <AdvisoryMachinePathEnvelope overlay={surface.lrduPath} stroke={palette.machinePath} width={2.8} />
+      {surface.towerPaths.map((overlay) => (
+        <AdvisoryMachinePathEnvelope key={`${surface.instanceId}-${overlay.kind}-${overlay.towerIndex}`} overlay={overlay} stroke={palette.wheelTrack} width={1.7} dash="2 3" />
+      ))}
+      <AdvisoryMachinePathEnvelope overlay={surface.cornerArmWheelPath} stroke={palette.cornerArmTrack} width={2.1} dash="5 5" />
+      <AdvisoryMachinePathEnvelope overlay={surface.cornerArmOverhangEndPath} stroke={palette.cornerArmReach} width={2.3} dash="12 7" />
+      {preferredPath ? (
+        <Path
+          d={preferredPath}
+          fill="none"
+          opacity={0.9}
+          stroke={palette.fieldStroke}
+          strokeDasharray="13 7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={3.2}
+        />
+      ) : null}
+    </G>
+  );
+}
+
+function AdvisoryMachinePathEnvelope({
+  dash,
+  overlay,
+  stroke,
+  width,
+}: {
+  dash?: string;
+  overlay: LayoutPathOverlay | null;
+  stroke: string;
+  width: number;
+}): React.JSX.Element | null {
+  if (!overlay) return null;
+  const path = ringsToSvgPath(overlay.insideFieldEnvelope);
+  if (!path) return null;
+  return (
+    <Path
+      d={path}
+      fill={stroke}
+      opacity={0.11}
+      stroke={stroke}
+      strokeDasharray={dash}
+      strokeLinejoin="round"
+      strokeWidth={width}
+    />
+  );
+}
+
+function lineSvgPath(vertices: XY[]): string {
+  if (vertices.length < 2) return "";
+  return `M ${vertices.map((vertex) => `${vertex.x} ${-vertex.y}`).join(" L ")}`;
 }
 
 function LayoutPathOverlayLayer({ overlays, palette, pivotCenter }: { overlays: LayoutPathOverlay[]; palette: MapPalette; pivotCenter: XY }): React.JSX.Element | null {

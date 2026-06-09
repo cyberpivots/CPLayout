@@ -219,6 +219,10 @@ const SCENARIO_SPECS: Record<ScenarioId, ScenarioSpec> = {
       required("workspace top toolbar", "high", [{ attr: "resource-id", value: "workspace-top-toolbar", mode: "contains" }]),
       required("workspace bottom status bar", "high", [{ attr: "resource-id", value: "workspace-bottom-status-bar", mode: "contains" }]),
       required("map route", "critical", [{ attr: "resource-id", value: "map-view", mode: "contains" }]),
+      required("map bottom HUD drawer", "high", [
+        { attr: "resource-id", value: "map-bottom-hud", mode: "contains" },
+        { attr: "resource-id", value: "map-bottom-hud-toggle", mode: "contains" },
+      ]),
       required("map surface", "critical", [
         { attr: "resource-id", value: "native-map-workbench", mode: "contains" },
         { attr: "resource-id", value: "native-map-workbench-map", mode: "contains" },
@@ -235,6 +239,10 @@ const SCENARIO_SPECS: Record<ScenarioId, ScenarioSpec> = {
       required("map route", "critical", [{ attr: "resource-id", value: "map-view", mode: "contains" }]),
       required("workspace top toolbar", "high", [{ attr: "resource-id", value: "workspace-top-toolbar", mode: "contains" }]),
       required("workspace bottom status bar", "high", [{ attr: "resource-id", value: "workspace-bottom-status-bar", mode: "contains" }]),
+      required("map bottom HUD drawer", "high", [
+        { attr: "resource-id", value: "map-bottom-hud", mode: "contains" },
+        { attr: "resource-id", value: "map-bottom-hud-toggle", mode: "contains" },
+      ]),
       required("project drawer handle", "high", [{ attr: "resource-id", value: "left-drawer-handle", mode: "contains" }]),
       required("inspector drawer", "high", [{ attr: "resource-id", value: "inspector-drawer", mode: "contains" }]),
     ],
@@ -247,6 +255,10 @@ const SCENARIO_SPECS: Record<ScenarioId, ScenarioSpec> = {
       required("map route", "critical", [{ attr: "resource-id", value: "map-view", mode: "contains" }]),
       required("workspace top toolbar", "high", [{ attr: "resource-id", value: "workspace-top-toolbar", mode: "contains" }]),
       required("workspace bottom status bar", "high", [{ attr: "resource-id", value: "workspace-bottom-status-bar", mode: "contains" }]),
+      required("map bottom HUD drawer", "high", [
+        { attr: "resource-id", value: "map-bottom-hud", mode: "contains" },
+        { attr: "resource-id", value: "map-bottom-hud-toggle", mode: "contains" },
+      ]),
       required("project drawer handle", "high", [{ attr: "resource-id", value: "left-drawer-handle", mode: "contains" }]),
       required("inspector drawer handle", "high", [{ attr: "resource-id", value: "right-drawer-handle", mode: "contains" }]),
     ],

@@ -93,7 +93,7 @@ interface LonLat {
   latitude: number;
 }
 
-const DEFAULT_INPUT_PATH = "tmp/Will Rhea.kmz";
+const DEFAULT_INPUT_PATH = "docs/evidence/client-kmz-advisory/will-rhea/Will Rhea.kmz";
 const DEFAULT_OUTPUT_ROOT = "reports/client-kmz-advisory";
 const DEFAULT_PREFERRED_MACHINE_OUTLINE_PATHS = [
   "docs/evidence/client-kmz-advisory/will-rhea/Middle Part Circle.kml",

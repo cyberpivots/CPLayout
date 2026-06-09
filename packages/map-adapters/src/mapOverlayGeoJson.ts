@@ -1,5 +1,11 @@
 import { projectXyToLonLat, type LayoutResult, type PivotProject, type XY } from "@cplayout/core";
-import { buildLayoutPathOverlays, type AdvisoryFieldPivotPlan, type LayoutPathOverlay } from "@cplayout/geometry";
+import {
+  buildLayoutPathOverlays,
+  type AdvisoryFieldPivotPlan,
+  type AdvisoryMachineRenderModel,
+  type AdvisoryMachineRenderSurface,
+  type LayoutPathOverlay,
+} from "@cplayout/geometry";
 
 type GeoJsonFeature = {
   type: "Feature";
@@ -17,6 +23,7 @@ export function projectLayoutToWgs84FeatureCollection(
   result: LayoutResult,
   draftVertices: XY[] = [],
   advisoryFieldPivotPlan?: AdvisoryFieldPivotPlan,
+  advisoryMachineRenderModel?: AdvisoryMachineRenderModel,
 ): { type: "FeatureCollection"; features: GeoJsonFeature[] } {
   const advisoryFieldPivotFeatures = advisoryFieldPivotPlan && advisoryFieldPivotPlan.selectedMachineCount > 0
     ? [
@@ -41,6 +48,9 @@ export function projectLayoutToWgs84FeatureCollection(
       })),
     ]
     : [];
+  const advisoryMachineRenderFeatures = advisoryMachineRenderModel
+    ? advisoryMachineRenderModelFeatures(project, advisoryMachineRenderModel)
+    : [];
   const layoutPathFeatures = buildLayoutPathOverlays(project).flatMap((overlay) => layoutPathOverlayFeatures(project, overlay));
   return {
     type: "FeatureCollection",
@@ -50,6 +60,7 @@ export function projectLayoutToWgs84FeatureCollection(
       polygonFeature(project, "outside_field_coverage", result.outsideFieldCoverage, { acres: result.metrics.outsideFieldAcres }),
       polygonFeature(project, "end_gun_coverage", result.endGunCoverage, { acres: result.metrics.endGunAcres }),
       ...advisoryFieldPivotFeatures,
+      ...advisoryMachineRenderFeatures,
       ...layoutPathFeatures,
       polygonFeature(project, "obstacle", result.obstacles, { count: project.obstacles.length }),
       pointFeature(project, "pivot_center", project.pivotCenter, { label: "Pivot" }),
@@ -61,6 +72,7 @@ export function projectLayoutToWgs84FeatureCollection(
       })),
       ...(project.mapFeatures ?? []).map((feature) => {
         const properties = {
+          ...feature.properties,
           id: feature.id,
           name: feature.name,
           kind: feature.kind,
@@ -80,6 +92,101 @@ export function projectLayoutToWgs84FeatureCollection(
       ...(draftVertices.length >= 2 ? [lineFeature(project, "draft_vertices", draftVertices, { count: draftVertices.length })] : []),
     ],
   };
+}
+
+function advisoryMachineRenderModelFeatures(project: PivotProject, model: AdvisoryMachineRenderModel): GeoJsonFeature[] {
+  const modelProperties = {
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    qualifiedReviewRequired: true,
+    renderOnly: true,
+    modelStatus: model.status,
+    modelInstanceCount: model.instances.length,
+    standardPivotAcres: model.acreLedger.standardPivotAcres,
+    endGunAcres: model.acreLedger.endGunAcres,
+    cornerArmAcres: model.acreLedger.cornerArmAcres,
+    deduplicatedTotalAcres: model.acreLedger.deduplicatedTotalAcres,
+    overlapAcres: model.acreLedger.overlapAcres,
+    outsideFieldAcres: model.acreLedger.outsideFieldAcres,
+    verifiedBlockedAcres: model.acreLedger.verifiedBlockedAcres,
+  };
+  return [
+    ...model.surfaces.flatMap((surface) => advisoryMachineSurfaceFeatures(project, surface, modelProperties)),
+    ...model.instances.map((instance) => pointFeature(project, "advisory_machine_pivot_center", instance.pivotCenter, {
+      ...modelProperties,
+      instanceId: instance.id,
+      label: instance.label,
+      sourceFeatureIds: instance.sourceFeatureIds,
+      sweepMode: instance.sweep.mode,
+      endGunThrowMeters: instance.machine.endGunThrowMeters,
+    })),
+    ...model.conflicts.map((conflict) => polygonFeature(project, "advisory_machine_collision_conflict", conflict.collisionZone, {
+      ...modelProperties,
+      id: conflict.id,
+      leftInstanceId: conflict.leftInstanceId,
+      rightInstanceId: conflict.rightInstanceId,
+      status: conflict.status,
+      severity: conflict.severity,
+      collisionZoneAcres: conflict.collisionZoneAcres,
+      operatorCollisionReviewRequired: conflict.operatorCollisionReviewRequired,
+    })),
+  ];
+}
+
+function advisoryMachineSurfaceFeatures(
+  project: PivotProject,
+  surface: AdvisoryMachineRenderSurface,
+  modelProperties: Record<string, unknown>,
+): GeoJsonFeature[] {
+  const baseProperties = {
+    ...modelProperties,
+    instanceId: surface.instanceId,
+    label: surface.label,
+    sourceFeatureIds: surface.sourceFeatureIds,
+    standardPivotAcres: surface.standardPivotAcres,
+    endGunAcres: surface.endGunAcres,
+    cornerArmAcres: surface.cornerArmAcres,
+    wetCoverageAcres: surface.wetCoverageAcres,
+    physicalEnvelopeAcres: surface.physicalEnvelopeAcres,
+    outsideFieldWetAcres: surface.outsideFieldWetAcres,
+    verifiedBlockedAcres: surface.verifiedBlockedAcres,
+    warningCount: surface.warnings.length,
+  };
+  return [
+    lineFeature(project, "advisory_machine_preferred_outline", surface.preferredOutlinePath, baseProperties),
+    polygonFeature(project, "advisory_machine_standard_coverage", surface.standardPivotCoverage, baseProperties),
+    polygonFeature(project, "advisory_machine_end_gun_annulus", surface.endGunWetAnnulus, baseProperties),
+    polygonFeature(project, "advisory_machine_corner_arm_coverage", surface.cornerArmCoverage, baseProperties),
+    polygonFeature(project, "advisory_machine_wet_coverage", surface.clippedWetCoverage, baseProperties),
+    polygonFeature(project, "advisory_machine_physical_envelope", surface.physicalEnvelope, baseProperties),
+    ...(surface.lrduPath ? advisoryMachinePathOverlayFeatures(project, "advisory_machine_lrdu_path", surface.lrduPath, baseProperties) : []),
+    ...surface.towerPaths.flatMap((overlay) => advisoryMachinePathOverlayFeatures(project, "advisory_machine_tower_path", overlay, baseProperties)),
+    ...(surface.cornerArmWheelPath ? advisoryMachinePathOverlayFeatures(project, "advisory_machine_corner_arm_wheel_path", surface.cornerArmWheelPath, baseProperties) : []),
+    ...(surface.cornerArmOverhangEndPath ? advisoryMachinePathOverlayFeatures(project, "advisory_machine_corner_arm_overhang_end_path", surface.cornerArmOverhangEndPath, baseProperties) : []),
+  ];
+}
+
+function advisoryMachinePathOverlayFeatures(
+  project: PivotProject,
+  layerType: string,
+  overlay: LayoutPathOverlay,
+  baseProperties: Record<string, unknown>,
+): GeoJsonFeature[] {
+  return [
+    polygonFeature(project, layerType, overlay.insideFieldEnvelope, {
+      ...baseProperties,
+      kind: overlay.kind,
+      pathLabel: overlay.label,
+      radiusMeters: overlay.radiusMeters,
+      bufferMeters: overlay.bufferMeters,
+      ...(overlay.towerIndex === undefined ? {} : { towerIndex: overlay.towerIndex }),
+      ...(overlay.anchorRadiusMeters === undefined ? {} : { anchorRadiusMeters: overlay.anchorRadiusMeters }),
+      ...(overlay.pathModel === undefined ? {} : { pathModel: overlay.pathModel }),
+      ...(overlay.modelFamily === undefined ? {} : { modelFamily: overlay.modelFamily }),
+      ...(overlay.sampledPathPointCount === undefined ? {} : { sampledPathPointCount: overlay.sampledPathPointCount }),
+      ...(overlay.maxExtensionMeters === undefined ? {} : { maxExtensionMeters: overlay.maxExtensionMeters }),
+    }),
+  ];
 }
 
 function layoutPathOverlayFeatures(project: PivotProject, overlay: LayoutPathOverlay): GeoJsonFeature[] {

@@ -199,7 +199,7 @@ test("file menu opens curated sample designs with projected xy status", async ({
     await openCommandMenu(page, "file");
     await page.getByTestId(sample.testId).click();
     await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText(sample.title);
-    await expect(page.getByText("EPSG:32613").first()).toBeVisible();
+    await expect(page.getByText("Projected XY").first()).toBeVisible();
     await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   }
   await saveScreen(page, testInfo, "file-menu-curated-samples");
@@ -454,7 +454,7 @@ test("public proof map features can select the side-panel editor without geometr
     await saveScreen(page, testInfo, "public-proof-feature-mobile-map-visible");
     return;
   }
-  await clickWorkbenchMap(page, { x: box.width / 2, y: box.height / 2 });
+  await clickWorkbenchMap(page, { x: box.width * 0.61, y: box.height * 0.68 });
   await expect(page.getByText(/Selected map feature/)).toBeVisible();
   await expect(page.getByLabel("Selected map feature name")).toHaveValue("Power feed from 112th Avenue");
   await expect(page.getByText("Saved")).toBeVisible();
@@ -544,7 +544,8 @@ test("tablet portrait map console keeps drawers collapsed and HUD above the view
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("right-drawer-handle")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud")).toHaveCount(0);
+  await expect(page.getByTestId("map-bottom-hud")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud-toggle")).toBeVisible();
   await expectNoPageScroll(page);
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "left-drawer-handle", 56, 56);
@@ -574,7 +575,8 @@ test("tablet landscape map console has fixed page bounds and drawer handles", as
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("right-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud")).toHaveCount(0);
+  await expect(page.getByTestId("map-bottom-hud")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud-toggle")).toBeVisible();
   await expectNoPageScroll(page);
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "workspace-nav-map", 48, 48);
@@ -2408,7 +2410,15 @@ async function saveScreen(page: Page, testInfo: TestInfo, label: string): Promis
 }
 
 async function clickHudAction(page: Page, testId: string): Promise<void> {
+  const viewport = page.viewportSize();
+  if (viewport && viewport.width < 700) await closeInspectorIfOpen(page);
+
+  const bottomHud = page.getByTestId("map-bottom-hud");
   let action = page.getByTestId(testId).first();
+  if (await bottomHud.count() > 0 && await bottomHud.first().isVisible()) {
+    const bottomHudAction = bottomHud.getByTestId(testId).first();
+    if (await bottomHudAction.count() > 0 && await bottomHudAction.isVisible()) action = bottomHudAction;
+  }
   if (await action.count() === 0 || !await action.isVisible()) {
     await openInspectorIfCollapsed(page);
     const toolsTab = page.getByTestId("workflow-sidebar-tab-tools");

@@ -75,7 +75,7 @@ This record provides compact route-to-context references for hooks, coordinators
 - `AGENTS.md`: `c4d4433bbdc8c0a1c1a46c3a134518d0b6d6a66e82fba774371356480f7bfbf9`
 - `docs/agent-known-gaps.md`: `3e22440b0906cbb0501923322940045c88e72b19eebfad7f4ad97d0be9009335`
 - `docs/agent-prompt-registry.md`: `356d28efe3eef62ce4b87897d88822e5dde32f79771e0c34e5ea78aa9c956926`
-- `docs/agent-source-ledger.md`: `88d563c13e71d23b850be194061195601b0b2c25620c0a525abf5e837d5d9af5`
+- `docs/agent-source-ledger.md`: `2ffdf9a95f535e251cb508c33e2e2b88dfd8ccaa4c83b619ebcde541be0c02da`
 - `docs/codex-managed-hook-deployment.md`: `75a3ef85b723b66de5284feee9e3630d52f347a202414da5809474fea2ff5318`
 - `package.json`: `31576f902c9f7fd0b43e451d3a3594f297258dbcc7e14a81ed6239181d6d6ace`
 - `tools/build_cplayout_context_map.py`: `f00d65aca984528e4045bae56fc42a7299705cd17e7e4d981c6d359b0a955108`

@@ -91,6 +91,8 @@ const projectWithFeatures: PivotProject = {
       lengthMeters: 91,
       wheelTrackLengthMeters: 78,
       overhangLengthMeters: 13,
+      maxSteerAngleDegrees: 162,
+      maxExtensionRateMetersPerMinute: 0.47,
       metadataSource: "operator_supplied" as const,
       modelFamily: "single_span_lrdu_sdu" as const,
       guidanceType: "gps_guidance" as const,
@@ -106,6 +108,47 @@ const projectWithFeatures: PivotProject = {
         checkedAt: "2026-06-05",
         limit: "Manufacturer public feature/specification reference only; CPLayout does not certify compatibility or kinematics.",
       }],
+      speedEvidenceSourceRefs: [{
+        sourceId: "SRC-LOCAL-CURATED-SPEED",
+        limit: "Curated local line reference required; test fixture only.",
+      }],
+    },
+    driveUnits: {
+      lrdu: {
+        role: "lrdu" as const,
+        advisoryOnly: true as const,
+        tire: {
+          id: "valley-standard-11-2-38",
+          label: "11.2-38",
+          advisoryOnly: true as const,
+          roleCompatibility: ["lrdu" as const, "sdu" as const],
+          sourceRefs: [{
+            sourceId: "SRC-VALLEY-STANDARD-DRIVE-UNIT-PUBLIC",
+            url: "https://valleyirrigation.com/standard-drive-unit",
+            checkedAt: "2026-06-09",
+            limit: "Public tire label only.",
+          }],
+          caveats: ["Operator/vendor review required."],
+          customValueFallback: false,
+        },
+        customMotorRpm: 0.75,
+        operatorMeasuredSpeedMetersPerMinute: 1.2,
+        sourceRefs: [{
+          sourceId: "SRC-OPERATOR-LRDU",
+          limit: "Operator-supplied advisory metadata only.",
+        }],
+        caveats: ["Custom RPM is not a manual-derived preset."],
+      },
+      sdu: {
+        role: "sdu" as const,
+        advisoryOnly: true as const,
+        customTireLabel: "operator SDU tire",
+        sourceRefs: [{
+          sourceId: "SRC-OPERATOR-SDU",
+          limit: "Operator-supplied advisory metadata only.",
+        }],
+        caveats: ["Metadata only; not SDU kinematics."],
+      },
     },
   },
 };
@@ -124,8 +167,13 @@ assert.match(xml, /catalogId="valley-8000-public-preset"/);
 assert.match(xml, /<cornerArm id="corner-arm-a"/);
 assert.match(xml, /wheelTrackLengthMeters="78"/);
 assert.match(xml, /overhangLengthMeters="13"/);
+assert.match(xml, /maxSteerAngleDegrees="162"/);
 assert.match(xml, /modelFamily="single_span_lrdu_sdu"/);
 assert.match(xml, /sourceId="SRC-VALLEY-VFLEX-CORNER"/);
+assert.match(xml, /<driveUnits advisoryOnly="true">/);
+assert.match(xml, /<driveUnit role="lrdu" advisoryOnly="true"/);
+assert.match(xml, /customMotorRpm="0.75"/);
+assert.match(xml, /<tire id="valley-standard-11-2-38"/);
 assert.doesNotMatch(xml, /tileUrlTemplate|packageDirectory|hidden/i);
 
 const imported = importProjectMapXmlToProject(xml);
@@ -143,9 +191,14 @@ assert.equal(imported.project.machine.catalogSelection?.catalogId, "valley-8000-
 assert.equal(imported.project.machine.cornerArm?.id, "corner-arm-a");
 assert.equal(imported.project.machine.cornerArm?.wheelTrackLengthMeters, 78);
 assert.equal(imported.project.machine.cornerArm?.overhangLengthMeters, 13);
+assert.equal(imported.project.machine.cornerArm?.maxSteerAngleDegrees, 162);
+assert.equal(imported.project.machine.cornerArm?.speedEvidenceSourceRefs?.[0].sourceId, "SRC-LOCAL-CURATED-SPEED");
 assert.equal(imported.project.machine.cornerArm?.metadataSource, "operator_supplied");
 assert.equal(imported.project.machine.cornerArm?.modelFamily, "single_span_lrdu_sdu");
 assert.equal(imported.project.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");
+assert.equal(imported.project.machine.driveUnits?.lrdu?.tire?.label, "11.2-38");
+assert.equal(imported.project.machine.driveUnits?.lrdu?.customMotorRpm, 0.75);
+assert.equal(imported.project.machine.driveUnits?.sdu?.customTireLabel, "operator SDU tire");
 assert.equal(imported.project.wgs84Companion?.status, "projected");
 assert.equal(imported.project.wgs84Companion?.coordinateSystem, "decimal_degrees");
 assert.match(imported.warnings.join("\n"), /projected XY as canonical/);

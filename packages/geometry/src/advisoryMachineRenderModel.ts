@@ -10,7 +10,7 @@ import type {
   ProjectMapFeature,
   XY,
 } from "@cplayout/core";
-import { squareMetersToAcres } from "@cplayout/core";
+import { feetToMeters, squareMetersToAcres } from "@cplayout/core";
 
 import {
   buildLayoutPathOverlays,
@@ -42,6 +42,7 @@ const DEFAULT_END_GUN_THROW_METERS = 30.48;
 const DEFAULT_TOWER_SPAN_METERS = 54;
 const DEFAULT_VFLEX_WHEEL_TRACK_EXTENSION_METERS = 66;
 const DEFAULT_VFLEX_OVERHANG_EXTENSION_METERS = 25;
+const DEFAULT_SAFETY_ZONE_METERS = feetToMeters(15);
 const AREA_EPSILON_SQUARE_METERS = 0.000001;
 
 export interface AdvisoryMachineRenderOptions {
@@ -49,6 +50,7 @@ export interface AdvisoryMachineRenderOptions {
   maxInstances?: number;
   endGunThrowMeters?: number;
   includePublicVflexFallbackCornerArm?: boolean;
+  safetyZoneMeters?: number;
   sourceRefs?: AdvisorySourceReference[];
 }
 
@@ -79,6 +81,8 @@ export interface AdvisoryMachineRenderSurface {
   towerPaths: LayoutPathOverlay[];
   cornerArmWheelPath: LayoutPathOverlay | null;
   cornerArmOverhangEndPath: LayoutPathOverlay | null;
+  safetyZoneMeters: number;
+  pathBoundaryShortfalls: AdvisoryMachinePathBoundaryShortfall[];
   standardPivotAcres: number;
   endGunAcres: number;
   cornerArmAcres: number;
@@ -86,6 +90,23 @@ export interface AdvisoryMachineRenderSurface {
   physicalEnvelopeAcres: number;
   outsideFieldWetAcres: number;
   verifiedBlockedAcres: number;
+  warnings: string[];
+}
+
+export interface AdvisoryMachinePathBoundaryShortfall {
+  kind: "lrdu" | "tower" | "corner_arm_wheel_track" | "corner_arm_overhang_end" | "end_gun_reach";
+  label: string;
+  advisoryOnly: true;
+  canonicalGeometryMutation: false;
+  radiusMeters: number;
+  pathBufferMeters: number;
+  safetyZoneMeters: number;
+  minimumSignedDistanceToBoundaryMeters: number;
+  minimumShortfallMeters: number;
+  shortfallSampleCount: number;
+  sampledPointCount: number;
+  shortfallEnvelopeAcres: number;
+  towerIndex?: number;
   warnings: string[];
 }
 
@@ -159,7 +180,7 @@ export function buildAdvisoryMachineRenderModel(
   const completeBuilds = instanceBuilds.filter(isCompleteInstanceBuild);
   const instances = completeBuilds.map((build) => build.instance);
   const surfaces = completeBuilds
-    .map((build) => surfaceForInstance(project, build.instance, build.outline, build.warnings));
+    .map((build) => surfaceForInstance(project, build.instance, build.outline, build.warnings, Math.max(0, options.safetyZoneMeters ?? DEFAULT_SAFETY_ZONE_METERS)));
   const conflicts = buildPhysicalEnvelopeConflicts(surfaces);
   const acreLedger = buildAcreLedger(surfaces);
   const blockers = instanceBuilds.flatMap((build) => build.blockers);
@@ -305,6 +326,7 @@ function surfaceForInstance(
   instance: AdvisoryMachineRenderInstance,
   preferredOutlinePath: XY[],
   inheritedWarnings: string[],
+  safetyZoneMeters: number,
 ): AdvisoryMachineRenderSurface {
   const field = toClipMultiPolygon([[project.fieldBoundary]]);
   const noSpray = toClipMultiPolygon(project.obstacles.filter((obstacle) => obstacle.noSpray).map((obstacle) => [obstacle.polygon]));
@@ -343,6 +365,15 @@ function surfaceForInstance(
   const pathOverlays = buildLayoutPathOverlays(variantProject);
   const lrduPath = pathOverlays.find((overlay) => overlay.kind === "end_of_machine") ?? null;
   const towerPaths = pathOverlays.filter((overlay) => overlay.kind === "wheel_track");
+  const cornerArmWheelPath = pathOverlays.find((overlay) => overlay.kind === "corner_arm_wheel_track") ?? null;
+  const cornerArmOverhangEndPath = pathOverlays.find((overlay) => overlay.kind === "corner_arm_overhang_end") ?? null;
+  const pathBoundaryShortfalls = [
+    ...(lrduPath ? [pathBoundaryShortfall(variantProject, lrduPath, safetyZoneMeters, "lrdu")] : []),
+    ...towerPaths.map((overlay) => pathBoundaryShortfall(variantProject, overlay, safetyZoneMeters, "tower")),
+    ...(cornerArmWheelPath ? [pathBoundaryShortfall(variantProject, cornerArmWheelPath, safetyZoneMeters, "corner_arm_wheel_track")] : []),
+    ...(cornerArmOverhangEndPath ? [pathBoundaryShortfall(variantProject, cornerArmOverhangEndPath, safetyZoneMeters, "corner_arm_overhang_end")] : []),
+    endGunPathBoundaryShortfall(variantProject, safetyZoneMeters),
+  ].filter((shortfall): shortfall is AdvisoryMachinePathBoundaryShortfall => Boolean(shortfall));
 
   return {
     instanceId: instance.id,
@@ -358,8 +389,10 @@ function surfaceForInstance(
     physicalEnvelope,
     lrduPath,
     towerPaths,
-    cornerArmWheelPath: pathOverlays.find((overlay) => overlay.kind === "corner_arm_wheel_track") ?? null,
-    cornerArmOverhangEndPath: pathOverlays.find((overlay) => overlay.kind === "corner_arm_overhang_end") ?? null,
+    cornerArmWheelPath,
+    cornerArmOverhangEndPath,
+    safetyZoneMeters: round(safetyZoneMeters),
+    pathBoundaryShortfalls,
     standardPivotAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(standardPivotCoverage))),
     endGunAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(endGunWetAnnulus))),
     cornerArmAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(cornerArmCoverage))),
@@ -367,7 +400,89 @@ function surfaceForInstance(
     physicalEnvelopeAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(physicalEnvelope))),
     outsideFieldWetAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(outsideWet))),
     verifiedBlockedAcres: round(squareMetersToAcres(blockedByNoSprayArea)),
-    warnings: inheritedWarnings,
+    warnings: [
+      ...inheritedWarnings,
+      ...(pathBoundaryShortfalls.some((shortfall) => shortfall.minimumShortfallMeters > 0)
+        ? ["One or more advisory machine paths are short of the sampled boundary safety zone; review pathBoundaryShortfalls before operator approval."]
+        : []),
+    ],
+  };
+}
+
+function endGunPathBoundaryShortfall(project: PivotProject, safetyZoneMeters: number): AdvisoryMachinePathBoundaryShortfall | null {
+  const endGunRadius = radiusWithEndGun(project.machine);
+  if (endGunRadius <= machineRadiusMeters(project.machine)) return null;
+  return sampledPathShortfall({
+    project,
+    kind: "end_gun_reach",
+    label: "End-gun wet reach",
+    radiusMeters: endGunRadius,
+    pathBufferMeters: 0,
+    safetyZoneMeters,
+    shortfallEnvelope: [],
+    warnings: ["End-gun reach is wet coverage only and is not a physical collision path."],
+  });
+}
+
+function pathBoundaryShortfall(
+  project: PivotProject,
+  overlay: LayoutPathOverlay,
+  safetyZoneMeters: number,
+  kind: AdvisoryMachinePathBoundaryShortfall["kind"],
+): AdvisoryMachinePathBoundaryShortfall {
+  return sampledPathShortfall({
+    project,
+    kind,
+    label: overlay.label,
+    radiusMeters: overlay.radiusMeters,
+    pathBufferMeters: overlay.bufferMeters,
+    safetyZoneMeters,
+    shortfallEnvelope: overlay.outsideFieldEnvelope,
+    towerIndex: overlay.towerIndex,
+    warnings: overlay.warnings ?? [],
+  });
+}
+
+function sampledPathShortfall(input: {
+  project: PivotProject;
+  kind: AdvisoryMachinePathBoundaryShortfall["kind"];
+  label: string;
+  radiusMeters: number;
+  pathBufferMeters: number;
+  safetyZoneMeters: number;
+  shortfallEnvelope: MultiPolygonXY;
+  towerIndex?: number;
+  warnings: string[];
+}): AdvisoryMachinePathBoundaryShortfall {
+  const angles = input.project.machine.sweep.mode === "full_circle"
+    ? Array.from({ length: 144 }, (_value, index) => (index / 144) * 360)
+    : buildSweepAngles(input.project.machine.sweep.startAngleDegrees, input.project.machine.sweep.stopAngleDegrees, input.project.machine.sweep.direction, 144);
+  const shortfalls = angles.map((angle) => {
+    const point = polarOffset(input.project.pivotCenter, input.radiusMeters, angle);
+    const signedDistance = signedDistanceToBoundary(point, input.project.fieldBoundary);
+    return signedDistance - input.pathBufferMeters - input.safetyZoneMeters;
+  });
+  const minimumShortfall = shortfalls.reduce((minimum, value) => Math.min(minimum, value), Number.POSITIVE_INFINITY);
+  const shortfallSampleCount = shortfalls.filter((value) => value < 0).length;
+  return {
+    kind: input.kind,
+    label: input.label,
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    radiusMeters: round(input.radiusMeters),
+    pathBufferMeters: round(input.pathBufferMeters),
+    safetyZoneMeters: round(input.safetyZoneMeters),
+    minimumSignedDistanceToBoundaryMeters: round(minimumShortfall + input.pathBufferMeters + input.safetyZoneMeters),
+    minimumShortfallMeters: round(Math.max(0, -minimumShortfall)),
+    shortfallSampleCount,
+    sampledPointCount: angles.length,
+    shortfallEnvelopeAcres: round(squareMetersToAcres(multiPolygonAreaSquareMeters(input.shortfallEnvelope))),
+    ...(input.towerIndex === undefined ? {} : { towerIndex: input.towerIndex }),
+    warnings: [
+      "Path shortfall is sampled advisory projected/local XY evidence and does not mutate canonical project geometry.",
+      ...(shortfallSampleCount > 0 ? [`${shortfallSampleCount} sampled path points are short of the path buffer plus safety zone.`] : []),
+      ...input.warnings,
+    ],
   };
 }
 
@@ -574,6 +689,64 @@ function normalizeDegrees(angle: number): number {
 function shortestSignedDelta(from: number, to: number): number {
   const delta = normalizeDegrees(to - from);
   return delta > 180 ? delta - 360 : delta;
+}
+
+function buildSweepAngles(startDegrees: number, stopDegrees: number, direction: "clockwise" | "counterclockwise", segments: number): number[] {
+  const start = normalizeDegrees(startDegrees);
+  const stop = normalizeDegrees(stopDegrees);
+  const clockwiseSpan = normalizeDegrees(start - stop) || 360;
+  const counterclockwiseSpan = normalizeDegrees(stop - start) || 360;
+  const span = direction === "clockwise" ? -clockwiseSpan : counterclockwiseSpan;
+  return Array.from({ length: segments + 1 }, (_value, index) => start + (span * index) / segments);
+}
+
+function polarOffset(center: XY, radiusMeters: number, angleDegreesValue: number): XY {
+  const angle = (angleDegreesValue * Math.PI) / 180;
+  return {
+    x: center.x + Math.cos(angle) * radiusMeters,
+    y: center.y + Math.sin(angle) * radiusMeters,
+  };
+}
+
+function signedDistanceToBoundary(point: XY, ring: XY[]): number {
+  const boundaryDistance = distanceToRing(point, ring);
+  return pointInPolygon(point, ring) ? boundaryDistance : -boundaryDistance;
+}
+
+function distanceToRing(point: XY, ring: XY[]): number {
+  if (ring.length === 0) return Number.POSITIVE_INFINITY;
+  let minimum = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < ring.length; index += 1) {
+    const start = ring[index];
+    const end = ring[(index + 1) % ring.length];
+    minimum = Math.min(minimum, distanceToSegment(point, start, end));
+  }
+  return minimum;
+}
+
+function distanceToSegment(point: XY, start: XY, end: XY): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= 0) return distance(point, start);
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  return distance(point, { x: start.x + t * dx, y: start.y + t * dy });
+}
+
+function pointInPolygon(point: XY, polygon: XY[]): boolean {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+    const a = polygon[index];
+    const b = polygon[previous];
+    const intersects = ((a.y > point.y) !== (b.y > point.y))
+      && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y || Number.EPSILON) + a.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function radiusWithEndGun(machine: PivotMachine): number {
+  return machineRadiusMeters(machine) + Math.max(0, machine.endGunThrowMeters);
 }
 
 function distance(a: XY, b: XY): number {

@@ -63,6 +63,16 @@ REQUIRED_ROUTE_KEYWORDS = {
         "toolbar",
         "ui-proof",
     },
+    "cplayout_center_pivot_designer": {
+        "lrdu",
+        "sdu",
+        "safety zone",
+        "drive unit tire",
+        "motor rpm",
+        "corner angle",
+        "corner arm extension",
+        "corner arm retraction",
+    },
     "cplayout_kb_curator": {
         "advisory hooks",
         "context-map",
@@ -527,6 +537,14 @@ def validate_ge_inventory_help() -> list[str]:
     return [] if ok else [f"inventory_ge_artifacts.py --help failed: {output}"]
 
 
+def validate_gitignore_boundaries() -> list[str]:
+    gitignore = ROOT / ".gitignore"
+    text = gitignore.read_text(encoding="utf-8")
+    required = "reports/cornergps-flt-inventory/"
+    print(f"[gitignore] {required}: " + ("ok" if required in text else "missing"))
+    return [] if required in text else [f".gitignore must ignore {required}"]
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(validate_required_files())
@@ -537,6 +555,7 @@ def main() -> int:
     errors.extend(validate_hooks())
     errors.extend(validate_hook_tests())
     errors.extend(validate_ge_inventory_help())
+    errors.extend(validate_gitignore_boundaries())
 
     if errors:
         print("\nValidation failed:")

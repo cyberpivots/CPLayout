@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { COORDINATE_FORMATS, type CoordinateDisplayFormat } from "./coordinates";
 import type { TileScheme, UnitSystem } from "./types";
+import { feetToMeters } from "./units";
 
 export const MAP_STYLES = ["field_light", "high_contrast", "imagery_package", "topographic"] as const;
 export type MapStyle = typeof MAP_STYLES[number];
@@ -224,11 +225,13 @@ export const AerialImageryPreferencesSchema = z.object({
   sourcePackageId: z.string().trim().min(1).optional(),
 }).default({ mode: "auto" });
 
+export const DEFAULT_LAYOUT_SAFETY_ZONE_METERS = feetToMeters(15);
+
 export const LayoutReviewSettingsSchema = z.object({
-  requiredBoundaryClearanceMeters: z.number().min(0).max(1000).default(0),
+  requiredBoundaryClearanceMeters: z.number().min(0).max(1000).default(DEFAULT_LAYOUT_SAFETY_ZONE_METERS),
   showMachineBoundaryDistances: z.boolean().default(true),
 }).default({
-  requiredBoundaryClearanceMeters: 0,
+  requiredBoundaryClearanceMeters: DEFAULT_LAYOUT_SAFETY_ZONE_METERS,
   showMachineBoundaryDistances: true,
 });
 
@@ -273,7 +276,7 @@ export function defaultAppSettings(): AppSettings {
       maxCorrectionAgeSeconds: 3,
     },
     layoutReview: {
-      requiredBoundaryClearanceMeters: 0,
+      requiredBoundaryClearanceMeters: DEFAULT_LAYOUT_SAFETY_ZONE_METERS,
       showMachineBoundaryDistances: true,
     },
     offlineMaps: {

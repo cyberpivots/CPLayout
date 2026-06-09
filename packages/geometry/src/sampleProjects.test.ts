@@ -46,7 +46,8 @@ const willRheaFeatureCounts = (willRheaJasonHarmelinkExampleProject.mapFeatures 
 }, {});
 assert.equal(willRheaFeatureCounts.planning_boundary, 1);
 assert.equal(willRheaFeatureCounts.measurement_line, 1);
-assert.equal(willRheaFeatureCounts.machine_zone, 5);
+assert.equal(willRheaFeatureCounts.machine_zone, 4);
+assert.equal((willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).some((feature) => feature.id === "will-rhea-existing-machine-zone"), false);
 const willRheaPreferredOutlines = (willRheaJasonHarmelinkExampleProject.mapFeatures ?? []).filter((feature) => (
   feature.kind === "machine_zone"
   && feature.properties?.preferredMachineOutline === true

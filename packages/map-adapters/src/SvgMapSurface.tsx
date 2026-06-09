@@ -110,6 +110,13 @@ export function SvgMapSurface({
   const mapFeatures = project.mapFeatures ?? [];
   const advisoryFieldPivotPlanVisible = showProjectGeometry && (advisoryFieldPivotPlan?.selectedMachineCount ?? 0) > 0;
   const advisoryMachineRenderVisible = showProjectGeometry && (advisoryMachineRenderModel?.instances.length ?? 0) > 0;
+  const readyTwoMachineAdvisoryRender = advisoryMachineRenderVisible
+    && advisoryMachineRenderModel?.status === "ready"
+    && advisoryMachineRenderModel.instances.length >= 2;
+  const canonicalMachineLayersVisible = showProjectGeometry && !readyTwoMachineAdvisoryRender;
+  const visibleMapFeatures = readyTwoMachineAdvisoryRender
+    ? mapFeatures.filter((feature) => !isGeneratedMeasurementCircleFeature(feature))
+    : mapFeatures;
   const advisoryFieldPivotPlanRings = advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan
     ? [
       ...advisoryFieldPivotPlan.modeledCoverageUnion.flat(),
@@ -131,15 +138,15 @@ export function SvgMapSurface({
     ])
     : [];
   const layoutPathOverlays = useMemo(
-    () => showProjectGeometry ? buildLayoutPathOverlays(project) : [],
-    [project, showProjectGeometry],
+    () => canonicalMachineLayersVisible ? buildLayoutPathOverlays(project) : [],
+    [canonicalMachineLayersVisible, project],
   );
   const allRings = showProjectGeometry
     ? [
       project.fieldBoundary,
-      ...result.allowedCoverage.flat(),
-      ...result.outsideFieldCoverage.flat(),
-      ...result.endGunCoverage.flat(),
+      ...(canonicalMachineLayersVisible ? result.allowedCoverage.flat() : []),
+      ...(canonicalMachineLayersVisible ? result.outsideFieldCoverage.flat() : []),
+      ...(canonicalMachineLayersVisible ? result.endGunCoverage.flat() : []),
       ...advisoryFieldPivotPlanRings,
       ...advisoryMachineRenderRings,
       ...layoutPathOverlays.flatMap((overlay) => [
@@ -147,7 +154,7 @@ export function SvgMapSurface({
         ...overlay.outsideFieldEnvelope.flat(),
       ]),
       ...project.obstacles.map((obstacle) => obstacle.polygon),
-      ...mapFeatures.flatMap(mapFeatureRings),
+      ...visibleMapFeatures.flatMap(mapFeatureRings),
     ]
     : [];
   const bounds = showProjectGeometry ? boundsForGeometry(allRings) : CATALOG_HOME_BOUNDS;
@@ -632,16 +639,16 @@ export function SvgMapSurface({
             <CatalogHomeOverlay minX={minX} maxX={maxX} minY={minY} maxY={maxY} palette={palette} />
           ) : (
             <>
-              <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} />
-              <Path d={ringsToSvgPath(result.endGunCoverage)} fill={palette.endGun} opacity={0.25} />
-              <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} />
+              {canonicalMachineLayersVisible ? <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} /> : null}
+              {canonicalMachineLayersVisible ? <Path d={ringsToSvgPath(result.endGunCoverage)} fill={palette.endGun} opacity={0.25} /> : null}
+              {canonicalMachineLayersVisible ? <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} /> : null}
               {advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan ? (
                 <AdvisoryFieldPivotOverlay palette={palette} plan={advisoryFieldPivotPlan} />
               ) : null}
               {advisoryMachineRenderVisible && advisoryMachineRenderModel ? (
                 <AdvisoryMachineRenderOverlay model={advisoryMachineRenderModel} palette={palette} />
               ) : null}
-              <LayoutPathOverlayLayer overlays={layoutPathOverlays} palette={palette} pivotCenter={project.pivotCenter} />
+              {canonicalMachineLayersVisible ? <LayoutPathOverlayLayer overlays={layoutPathOverlays} palette={palette} pivotCenter={project.pivotCenter} /> : null}
               <Path d={fieldPath} fill="none" stroke={palette.fieldStroke} strokeWidth={7} strokeLinejoin="round" />
               <Path d={ringsToSvgPath(result.obstacles)} fill={palette.obstacle} opacity={0.78} stroke={palette.obstacleStroke} strokeWidth={3} />
               <EditableRing
@@ -663,7 +670,7 @@ export function SvgMapSurface({
                   />
                 </React.Fragment>
               ))}
-              {mapFeatures.map((feature) => (
+              {visibleMapFeatures.map((feature) => (
                 <React.Fragment key={feature.id}>
                   <MapFeatureSymbol
                     feature={feature}
@@ -689,7 +696,7 @@ export function SvgMapSurface({
               {project.surveyPoints.map((point) => (
                 <SurveyPointSymbol key={point.id} point={point} color={palette.survey} />
               ))}
-              {result.towers.map((tower) => (
+              {canonicalMachineLayersVisible ? result.towers.map((tower) => (
                 <React.Fragment key={tower.towerIndex}>
                   <Line
                     x1={project.pivotCenter.x}
@@ -705,7 +712,7 @@ export function SvgMapSurface({
                     T{tower.towerIndex}
                   </SvgText>
                 </React.Fragment>
-              ))}
+              )) : null}
             </>
           )}
         </Svg>
@@ -909,6 +916,11 @@ function isEvidencePreferredMapFeature(feature: ProjectMapFeature): boolean {
   return feature.properties?.preferredMachineOutline === true
     || feature.properties?.advisoryDesignRole === "preferred_machine_outline"
     || feature.properties?.evidenceOnly === true;
+}
+
+function isGeneratedMeasurementCircleFeature(feature: ProjectMapFeature): boolean {
+  return feature.geometry.type === "Circle"
+    && feature.properties?.generatedFromImportedMeasurement === true;
 }
 
 function mapFeatureRings(feature: ProjectMapFeature): XY[][] {

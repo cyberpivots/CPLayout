@@ -1,4 +1,4 @@
-import type { MachineCatalogSelection, PivotMachine } from "./types";
+import type { AdvisorySourceReference, AdvisoryTireOption, MachineCatalogSelection, PivotMachine } from "./types";
 import { feetToMeters } from "./units";
 
 export interface MachineCatalogPreset {
@@ -91,6 +91,32 @@ export const MACHINE_CATALOG_PRESETS: MachineCatalogPreset[] = [
   },
 ];
 
+const VALLEY_STANDARD_DRIVE_UNIT_SOURCE: AdvisorySourceReference = {
+  sourceId: "SRC-VALLEY-STANDARD-DRIVE-UNIT-PUBLIC",
+  title: "Valley Standard Drive Unit",
+  url: "https://valleyirrigation.com/standard-drive-unit",
+  checkedAt: "2026-06-09",
+  limit: "Public tire option labels only; not a field-specific tire recommendation, RPM preset, soil compaction certification, or LRDU/SDU compatibility proof.",
+};
+
+const VALLEY_8000_SERIES_SOURCE: AdvisorySourceReference = {
+  sourceId: "SRC-VALLEY-8000-PUBLIC",
+  title: "Valley 8000 Series Center Pivot",
+  url: "https://www.valleyirrigation.com/8000",
+  checkedAt: "2026-06-09",
+  limit: "Public tire option labels only; not a field-specific tire recommendation, RPM preset, or compatibility proof.",
+};
+
+export const ADVISORY_DRIVE_UNIT_TIRE_OPTIONS: AdvisoryTireOption[] = [
+  tireOption("valley-standard-11-2-24", "11.2-24", VALLEY_STANDARD_DRIVE_UNIT_SOURCE),
+  tireOption("valley-standard-16-9-24", "16.9-24", VALLEY_STANDARD_DRIVE_UNIT_SOURCE),
+  tireOption("valley-standard-11-2-38", "11.2-38", VALLEY_STANDARD_DRIVE_UNIT_SOURCE),
+  tireOption("valley-standard-18-4-26", "18.4-26", VALLEY_STANDARD_DRIVE_UNIT_SOURCE),
+  tireOption("valley-standard-14-9-24", "14.9-24", VALLEY_STANDARD_DRIVE_UNIT_SOURCE),
+  tireOption("valley-8000-12-4r38", "12.4R38", VALLEY_8000_SERIES_SOURCE),
+  tireOption("valley-public-custom-required", "Custom / source required", VALLEY_STANDARD_DRIVE_UNIT_SOURCE, true),
+];
+
 export function applyMachineCatalogPreset(machine: PivotMachine, presetId: string): PivotMachine {
   const preset = MACHINE_CATALOG_PRESETS.find((candidate) => candidate.id === presetId);
   if (!preset) throw new Error(`Machine catalog preset ${presetId} was not found.`);
@@ -110,6 +136,21 @@ export function applyMachineCatalogPreset(machine: PivotMachine, presetId: strin
     spanLengthsMeters: [selectedSpan, selectedSpan, selectedSpan],
     overhangMeters: selectedOverhang,
     catalogSelection,
+  };
+}
+
+function tireOption(id: string, label: string, sourceRef: AdvisorySourceReference, customValueFallback = false): AdvisoryTireOption {
+  return {
+    id,
+    label,
+    advisoryOnly: true,
+    roleCompatibility: ["lrdu", "sdu"],
+    sourceRefs: [sourceRef],
+    caveats: [
+      "Tire label is source-backed public equipment context only.",
+      "Operator/vendor review is required before using the tire choice for clearance, traction, speed, or rutting decisions.",
+    ],
+    customValueFallback,
   };
 }
 

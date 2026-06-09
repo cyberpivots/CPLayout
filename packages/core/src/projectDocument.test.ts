@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import { PROJECT_DOCUMENT_VERSION, parseProjectDocument, serializeProjectDocument } from "./projectDocument";
 import { sampleProject, willRheaJasonHarmelinkExampleProject } from "./sampleProject";
+import { DEFAULT_LAYOUT_SAFETY_ZONE_METERS } from "./settings";
 
 const serialized = serializeProjectDocument(sampleProject);
 assert.match(serialized, new RegExp(PROJECT_DOCUMENT_VERSION));
@@ -20,7 +21,7 @@ assert.equal("onlineImagery" in (parsed.settings ?? {}), false);
 assert.equal("referenceOverlay" in (parsed.settings ?? {}), false);
 assert.doesNotMatch(serialized, /onlineImagery|referenceOverlay|tileUrlTemplate|walkthroughProgress|packageDirectory/);
 assert.equal(parsed.settings?.mappingWorkflowMode, "design");
-assert.equal(parsed.settings?.layoutReview.requiredBoundaryClearanceMeters, 0);
+assert.equal(parsed.settings?.layoutReview.requiredBoundaryClearanceMeters, DEFAULT_LAYOUT_SAFETY_ZONE_METERS);
 assert.equal(parsed.settings?.layoutReview.showMachineBoundaryDistances, true);
 assert.deepEqual(parsed.mapFeatures, []);
 
@@ -30,7 +31,9 @@ assert.equal(parsedWillRhea.projectCrs, "EPSG:32614");
 assert.deepEqual(parsedWillRhea.fieldBoundary, willRheaJasonHarmelinkExampleProject.fieldBoundary);
 assert.deepEqual(parsedWillRhea.pivotCenter, willRheaJasonHarmelinkExampleProject.pivotCenter);
 assert.equal(parsedWillRhea.wgs84Companion?.source, "derived_from_project_xy");
-assert.equal(parsedWillRhea.mapFeatures?.filter((feature) => feature.kind === "machine_zone").length, 5);
+assert.equal(parsedWillRhea.mapFeatures?.filter((feature) => feature.kind === "machine_zone").length, 4);
+assert.equal(parsedWillRhea.mapFeatures?.some((feature) => feature.id === "will-rhea-existing-machine-zone"), false);
+assert.equal(parsedWillRhea.mapFeatures?.some((feature) => feature.id === "will-rhea-lrdu-distance" && feature.kind === "measurement_line"), true);
 const preferredWillRheaOutlines = parsedWillRhea.mapFeatures?.filter((feature) => (
   feature.kind === "machine_zone"
   && feature.properties?.preferredMachineOutline === true
@@ -137,6 +140,55 @@ const parsedMapFeatures = parseProjectDocument({
   ],
 });
 assert.equal(parsedMapFeatures.mapFeatures?.[0].kind, "underground_pipeline");
+
+const projectWithDriveUnits = {
+  ...sampleProject,
+  machine: {
+    ...sampleProject.machine,
+    driveUnits: {
+      lrdu: {
+        role: "lrdu" as const,
+        advisoryOnly: true as const,
+        tire: {
+          id: "public-tire-11-2-38",
+          label: "11.2-38",
+          advisoryOnly: true as const,
+          roleCompatibility: ["lrdu" as const, "sdu" as const],
+          sourceRefs: [{
+            sourceId: "SRC-VALLEY-STANDARD-DRIVE-UNIT-PUBLIC",
+            url: "https://valleyirrigation.com/standard-drive-unit",
+            checkedAt: "2026-06-09",
+            limit: "Public tire option label only; not field-specific compatibility proof.",
+          }],
+          caveats: ["Operator/vendor review required."],
+          customValueFallback: false,
+        },
+        customMotorRpm: 0.75,
+        operatorMeasuredSpeedMetersPerMinute: 1.2,
+        sourceRefs: [{
+          sourceId: "SRC-OPERATOR-LRDU",
+          limit: "Operator-supplied advisory metadata only.",
+        }],
+        caveats: ["RPM is custom operator input, not a manual-derived preset."],
+      },
+      sdu: {
+        role: "sdu" as const,
+        advisoryOnly: true as const,
+        customTireLabel: "operator-supplied SDU tire",
+        sourceRefs: [{
+          sourceId: "SRC-OPERATOR-SDU",
+          limit: "Operator-supplied advisory metadata only.",
+        }],
+        caveats: ["SDU metadata does not imply proprietary SDU path reproduction."],
+      },
+    },
+  },
+};
+const parsedDriveUnits = parseProjectDocument(serializeProjectDocument(projectWithDriveUnits));
+assert.equal(parsedDriveUnits.machine.driveUnits?.lrdu?.tire?.label, "11.2-38");
+assert.equal(parsedDriveUnits.machine.driveUnits?.lrdu?.customMotorRpm, 0.75);
+assert.equal(parsedDriveUnits.machine.driveUnits?.sdu?.customTireLabel, "operator-supplied SDU tire");
+assert.deepEqual(parsedDriveUnits.pivotCenter, sampleProject.pivotCenter);
 
 const parsedExtendedMapFeatures = parseProjectDocument({
   ...sampleProject,
@@ -313,7 +365,7 @@ const parsedLegacySettings = parseProjectDocument({
 assert.equal(parsedLegacySettings.settings?.coordinateDisplayFormat, "decimal_degrees");
 assert.equal(parsedLegacySettings.settings?.mappingWorkflowMode, "design");
 assert.equal(parsedLegacySettings.settings?.aerialImagery.mode, "auto");
-assert.equal(parsedLegacySettings.settings?.layoutReview.requiredBoundaryClearanceMeters, 0);
+assert.equal(parsedLegacySettings.settings?.layoutReview.requiredBoundaryClearanceMeters, DEFAULT_LAYOUT_SAFETY_ZONE_METERS);
 assert.equal(parsedLegacySettings.settings?.layoutReview.showMachineBoundaryDistances, true);
 
 const parsedLayoutSettings = parseProjectDocument({

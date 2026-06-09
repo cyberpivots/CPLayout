@@ -69,6 +69,11 @@ const AdvisoryCornerArmConfigSchema = z.object({
   lengthMeters: z.number().positive(),
   wheelTrackLengthMeters: z.number().positive().optional(),
   overhangLengthMeters: z.number().min(0).optional(),
+  maxSteerAngleDegrees: z.number().finite().optional(),
+  minSteerAngleDegrees: z.number().finite().optional(),
+  maxExtensionRateMetersPerMinute: z.number().positive().optional(),
+  maxRetractionRateMetersPerMinute: z.number().positive().optional(),
+  speedEvidenceSourceRefs: z.array(AdvisorySourceReferenceSchema).optional(),
   metadataSource: z.enum(["operator_supplied", "cornergpsmap_config", "manufacturer_public", "local_design_guide", "unknown"]).optional(),
   modelFamily: z.enum(["single_span_lrdu_sdu", "dualspan", "operator_supplied", "unknown"]).optional(),
   guidanceType: z.enum(["gps_guidance", "below_ground_guidance", "operator_supplied", "unknown"]),
@@ -78,6 +83,54 @@ const AdvisoryCornerArmConfigSchema = z.object({
   sourceRefs: z.array(AdvisorySourceReferenceSchema).min(1),
   operatorConfirmedAt: z.string().min(1).optional(),
   notes: z.string().optional(),
+});
+
+const AdvisoryDriveUnitRoleSchema = z.enum(["lrdu", "sdu"]);
+
+const AdvisoryTireOptionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  advisoryOnly: z.literal(true),
+  roleCompatibility: z.array(AdvisoryDriveUnitRoleSchema).min(1),
+  sourceRefs: z.array(AdvisorySourceReferenceSchema).min(1),
+  caveats: z.array(z.string().min(1)).default([]),
+  customValueFallback: z.boolean(),
+});
+
+const AdvisoryDriveMotorOptionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  advisoryOnly: z.literal(true),
+  roleCompatibility: z.array(AdvisoryDriveUnitRoleSchema).min(1),
+  rpm: z.number().positive().optional(),
+  sourceRefs: z.array(AdvisorySourceReferenceSchema).min(1),
+  caveats: z.array(z.string().min(1)).default([]),
+  customValueFallback: z.boolean(),
+});
+
+const AdvisoryDriveUnitConfigSchema = z.object({
+  role: AdvisoryDriveUnitRoleSchema,
+  advisoryOnly: z.literal(true),
+  tire: AdvisoryTireOptionSchema.optional(),
+  driveMotor: AdvisoryDriveMotorOptionSchema.optional(),
+  customTireLabel: z.string().min(1).optional(),
+  customMotorRpm: z.number().positive().optional(),
+  operatorMeasuredSpeedMetersPerMinute: z.number().positive().optional(),
+  sourceRefs: z.array(AdvisorySourceReferenceSchema).min(1),
+  caveats: z.array(z.string().min(1)).default([]),
+}).superRefine((config, context) => {
+  if (config.role === "lrdu" && config.tire && !config.tire.roleCompatibility.includes("lrdu")) {
+    context.addIssue({ code: "custom", message: "LRDU tire option is not LRDU-compatible.", path: ["tire", "roleCompatibility"] });
+  }
+  if (config.role === "sdu" && config.tire && !config.tire.roleCompatibility.includes("sdu")) {
+    context.addIssue({ code: "custom", message: "SDU tire option is not SDU-compatible.", path: ["tire", "roleCompatibility"] });
+  }
+  if (config.role === "lrdu" && config.driveMotor && !config.driveMotor.roleCompatibility.includes("lrdu")) {
+    context.addIssue({ code: "custom", message: "LRDU drive motor option is not LRDU-compatible.", path: ["driveMotor", "roleCompatibility"] });
+  }
+  if (config.role === "sdu" && config.driveMotor && !config.driveMotor.roleCompatibility.includes("sdu")) {
+    context.addIssue({ code: "custom", message: "SDU drive motor option is not SDU-compatible.", path: ["driveMotor", "roleCompatibility"] });
+  }
 });
 
 const PivotMachineSchema = z.object({
@@ -107,6 +160,10 @@ const PivotMachineSchema = z.object({
     advisoryOnly: z.literal(true),
   }).optional(),
   cornerArm: AdvisoryCornerArmConfigSchema.optional(),
+  driveUnits: z.object({
+    lrdu: AdvisoryDriveUnitConfigSchema.optional(),
+    sdu: AdvisoryDriveUnitConfigSchema.optional(),
+  }).optional(),
 });
 
 const ObstacleZoneSchema = z.object({

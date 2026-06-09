@@ -65,8 +65,16 @@ class PromptTriageTests(unittest.TestCase):
         routes = self.route_ids("Score a center pivot corner arm irrigation layout around obstacles.")
         self.assertEqual(routes[0], "cplayout_center_pivot_designer")
 
+    def test_lrdu_sdu_safety_zone_tire_rpm_prompt_selects_pivot_route(self) -> None:
+        routes = self.route_ids("Review LRDU SDU safety-zone drive unit tire and motor RPM advisory inputs.")
+        self.assertEqual(routes[0], "cplayout_center_pivot_designer")
+
+    def test_corner_angle_extension_retraction_phrases_select_pivot_route(self) -> None:
+        routes = self.route_ids("Review corner angle, steer angle, corner arm extension, and corner arm retraction evidence.")
+        self.assertEqual(routes[0], "cplayout_center_pivot_designer")
+
     def test_broad_terms_do_not_overmatch(self) -> None:
-        for prompt in ("agent", "hook", "layout", "web", "help"):
+        for prompt in ("agent", "hook", "layout", "web", "help", "angle", "extension", "retraction", "tire", "rpm"):
             with self.subTest(prompt=prompt):
                 self.assertEqual(self.route_ids(prompt), [])
 

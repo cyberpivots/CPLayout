@@ -10,6 +10,7 @@ reports/android-layout/
 reports/android-app-review/
 reports/continuous-improvement/
 reports/corner-service-manuals/
+reports/cornergps-flt-inventory/
 reports/design-guides/
 reports/google-earth-visual-fidelity/
 reports/ml-cv-pivot-locating/
@@ -19,6 +20,7 @@ reports/native-maplibre/
 reports/real-pivot-fixtures/
 reports/roadmap-completion/
 reports/runtime-logs/
+reports/visual-layout-review/
 reports/visual-proof/
 tools/local-ml-companion/.dvc/cache/
 tools/local-ml-companion/.dvc/tmp/

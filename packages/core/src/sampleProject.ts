@@ -887,15 +887,6 @@ export const willRheaJasonHarmelinkExampleProject: PivotProject = {
       notes: "Google Earth length-to-last-wheel evidence from local KMZ; not an overhang/end-boom measurement.",
       properties: willRheaEvidenceProperties("LRDU Distance", { derivedLengthMeters: willRheaLastWheelRadiusMeters }),
     },
-    {
-      id: "will-rhea-existing-machine-zone",
-      name: "Existing machine radius review",
-      kind: "machine_zone",
-      geometry: { type: "Circle", center: willRheaPivotPoint, radiusMeters: willRheaLastWheelRadiusMeters },
-      confidence: "imagery_digitized",
-      notes: "Advisory machine-zone visualization from the imported LRDU distance line.",
-      properties: willRheaEvidenceProperties("LRDU Distance", { derivedLengthMeters: willRheaLastWheelRadiusMeters, generatedFromImportedMeasurement: true }),
-    },
   ],
 };
 

@@ -19,7 +19,7 @@ This record provides compact route-to-context references for hooks, coordinators
 | `workspace_preflight` | Load the durable CPLayout work contract and dirty-tree/validation expectations before non-trivial changes. | `AGENTS.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md` | `npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 | `governance_hooks_skills` | Review and update prompt triage, route data, hooks, custom agents, skills, and process records. | `.codex/hooks/cplayout_prompt_triage.py`<br>`.codex/hooks/cplayout_route_data.json`<br>`.codex/hooks.json`<br>`tools/validate_cplayout_skills.py`<br>`docs/agent-prompt-registry.md` | `npm run context-map:check`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 | `interface_ui` | Map Expo React Native, browser UI, HUD, right drawer/sidebar, toolbar, component, UI-proof, and visible workflow work to proof gates. | `apps/mobile/App.tsx`<br>`apps/mobile/src/components`<br>`packages/map-adapters`<br>`.agents/skills/cplayout-interface-development-agent/SKILL.md` | `npm run validate`<br>`npm run proof:web`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
-| `geometry_design` | Route center pivot, corner-arm, lateral/linear move, and sprinkler design prompts to advisory geometry evidence. | `packages/geometry`<br>`docs/design-guides/topic-index.md`<br>`.agents/skills/cplayout-center-pivot-design-agent/SKILL.md`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.ts` | `npm run validate`<br>`npm run validate:design-guides`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `geometry_design` | Route center pivot, corner-arm, lateral/linear move, and sprinkler design prompts to advisory geometry evidence. | `packages/geometry`<br>`docs/design-guides/topic-index.md`<br>`.agents/skills/cplayout-center-pivot-design-agent/SKILL.md`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.ts` | `npm run validate`<br>`npm run validate:design-guides`<br>`npm run validate:corner-service-manuals`<br>`git diff --check`<br>`npm audit` |
 | `core_project_geometry` | Route project document, KML/XML, sample fixture, and canonical geometry contract work. | `packages/core`<br>`packages/core/src/projectDocument.ts`<br>`packages/core/src/projectKml.ts`<br>`packages/core/src/sampleProject.ts` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 | `storage_archive_native` | Route SQLite, project-store, project archive, ZIP, and native/web persistence contract work. | `packages/project-store`<br>`packages/project-store/src/projectArchive.ts`<br>`packages/project-store/src/projectRepository.native.ts`<br>`packages/core/src/projectDocument.ts`<br>`.agents/skills/cplayout-database-agent/SKILL.md` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 | `imagery_kml_evidence` | Route imagery, Google Earth, KML/KMZ, local CV, and evidence packet prompts. | `docs/kml-kmz-google-earth-source-ledger.md`<br>`.agents/skills/cplayout-imagery-mapping-agent/SKILL.md`<br>`.agents/skills/cplayout-google-earth-imagery-analysis/SKILL.md`<br>`packages/core/src/imageryEvidence.ts`<br>`packages/map-adapters/src/MapLibreImageryPreview.tsx` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
@@ -70,13 +70,13 @@ This record provides compact route-to-context references for hooks, coordinators
 - `.codex/agents/cplayout_kb_curator.toml`: `28a28a37e94e016b0ffa0bb89899f4ec725146566b9ee8d30083db1e3b423ae7`
 - `.codex/hooks.json`: `2bdbfed0fcdfb1b3351a8834b89f11fb3e6f0cedda9491107b0d5c3c7b3174ca`
 - `.codex/hooks/cplayout_prompt_triage.py`: `f4238d68cbaf72a2dd3537d41c0debe2aabf39401fe498a31f3a0f59392dc3da`
-- `.codex/hooks/cplayout_route_data.json`: `6596229abb5739177fabbd70493ea4296e4383d997bc27bb9ed006a3a74814f7`
+- `.codex/hooks/cplayout_route_data.json`: `c19b966c4c0d8e415ef9f162d94281fe318a386102c52e8c512ffcab6089fd09`
 - `.codex/hooks/cplayout_subagent_start.py`: `2c54b41069c7cc68a380788735a4d5c7b1209ea83e24c4f5a0ea614645fac8a5`
 - `AGENTS.md`: `c4d4433bbdc8c0a1c1a46c3a134518d0b6d6a66e82fba774371356480f7bfbf9`
-- `docs/agent-known-gaps.md`: `3e22440b0906cbb0501923322940045c88e72b19eebfad7f4ad97d0be9009335`
-- `docs/agent-prompt-registry.md`: `356d28efe3eef62ce4b87897d88822e5dde32f79771e0c34e5ea78aa9c956926`
-- `docs/agent-source-ledger.md`: `2ffdf9a95f535e251cb508c33e2e2b88dfd8ccaa4c83b619ebcde541be0c02da`
+- `docs/agent-known-gaps.md`: `f6e459dfe6581275520acb7298c50829d3a2dab8639060bf9a47756d56ad99c9`
+- `docs/agent-prompt-registry.md`: `21e53b9fc72a3308e82225ed8a133fe3dcc12d4159d55e0ee2f3bcde55e377fc`
+- `docs/agent-source-ledger.md`: `97c08baddc1847a086dd613f209e524de61da093929dc6b51c78eba54cf8d1e6`
 - `docs/codex-managed-hook-deployment.md`: `75a3ef85b723b66de5284feee9e3630d52f347a202414da5809474fea2ff5318`
-- `package.json`: `31576f902c9f7fd0b43e451d3a3594f297258dbcc7e14a81ed6239181d6d6ace`
-- `tools/build_cplayout_context_map.py`: `f00d65aca984528e4045bae56fc42a7299705cd17e7e4d981c6d359b0a955108`
-- `tools/validate_cplayout_skills.py`: `e429cc2ed171764154d87934f2c570afd35f0590e51f8469dc7f348a6690349e`
+- `package.json`: `0bfd0ce60dfaf35431fe1463bc88e4e4a6b961fea4f94ab70a0b778f7f093bab`
+- `tools/build_cplayout_context_map.py`: `9255d688af7cbc13e7690cbd83260db65501f32dc4de03b79b659457ae57ca5f`
+- `tools/validate_cplayout_skills.py`: `1c44fdbdf2d409cea1e8438a8d837179fca1a25ffebef692fe4f2faf17c731b8`

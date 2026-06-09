@@ -75,6 +75,7 @@ import type { ClientRecord } from "@cplayout/project-store";
 import { exportFileAsync, rehydrateInstalledMapPackageManifestsAsync } from "@cplayout/project-store";
 import {
   COORDINATE_FORMAT_LABELS,
+  ADVISORY_DRIVE_UNIT_TIRE_OPTIONS,
   MACHINE_CATALOG_PRESETS,
   applyMachineCatalogPreset,
   createProjectEditorState,
@@ -102,6 +103,7 @@ import {
   type CornerGpsMapBpfImportPreview,
   type GoogleEarthKmlImportResult,
   type AdvisoryCornerArmConfig,
+  type AdvisoryDriveUnitConfig,
   type LonLat,
   type MapPackageManifest,
   type PivotMachine,
@@ -2750,7 +2752,8 @@ function CalculateSheet({
     sweepEfficiencyReview,
     generatedMultiPivotScenarioReview,
     reviewZoneAudit,
-  }), [endGunSensitivityReview, fieldPivotPlan, generatedMultiPivotScenarioReview, multiMachineReview, obstacleInteractionReview, project, radiusSensitivityReview, result, reviewZoneAudit, strategyComparison, sweepEfficiencyReview]);
+    advisoryMachineRenderAcreLedger: advisoryMachineRenderModel.status === "ready" ? advisoryMachineRenderModel.acreLedger : null,
+  }), [advisoryMachineRenderModel, endGunSensitivityReview, fieldPivotPlan, generatedMultiPivotScenarioReview, multiMachineReview, obstacleInteractionReview, project, radiusSensitivityReview, result, reviewZoneAudit, strategyComparison, sweepEfficiencyReview]);
 
   async function exportAdvisoryDesignReport(): Promise<void> {
     try {
@@ -5685,6 +5688,11 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
   const [stopAngle, setStopAngle] = useState(machine.sweep.mode === "partial_circle" ? String(machine.sweep.stopAngleDegrees) : "35");
   const [direction, setDirection] = useState<"clockwise" | "counterclockwise">(machine.sweep.mode === "partial_circle" ? machine.sweep.direction : "counterclockwise");
   const [mode, setMode] = useState<PivotSweep["mode"]>(machine.sweep.mode);
+  const [lrduTireId, setLrduTireId] = useState(machine.driveUnits?.lrdu?.tire?.id ?? "valley-public-custom-required");
+  const [sduTireId, setSduTireId] = useState(machine.driveUnits?.sdu?.tire?.id ?? "valley-public-custom-required");
+  const [lrduRpm, setLrduRpm] = useState(machine.driveUnits?.lrdu?.customMotorRpm !== undefined ? String(machine.driveUnits.lrdu.customMotorRpm) : "");
+  const [sduRpm, setSduRpm] = useState(machine.driveUnits?.sdu?.customMotorRpm !== undefined ? String(machine.driveUnits.sdu.customMotorRpm) : "");
+  const [operatorSpeed, setOperatorSpeed] = useState(machine.driveUnits?.lrdu?.operatorMeasuredSpeedMetersPerMinute !== undefined ? String(machine.driveUnits.lrdu.operatorMeasuredSpeedMetersPerMinute) : "");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -5692,6 +5700,11 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
     setOverhang(formatDistanceInputValue(machine.overhangMeters, unitSystem));
     setTowerClearance(formatDistanceInputValue(machine.towerClearanceBufferMeters, unitSystem));
     setMachineClearance(formatDistanceInputValue(machine.machineClearanceBufferMeters, unitSystem));
+    setLrduTireId(machine.driveUnits?.lrdu?.tire?.id ?? "valley-public-custom-required");
+    setSduTireId(machine.driveUnits?.sdu?.tire?.id ?? "valley-public-custom-required");
+    setLrduRpm(machine.driveUnits?.lrdu?.customMotorRpm !== undefined ? String(machine.driveUnits.lrdu.customMotorRpm) : "");
+    setSduRpm(machine.driveUnits?.sdu?.customMotorRpm !== undefined ? String(machine.driveUnits.sdu.customMotorRpm) : "");
+    setOperatorSpeed(machine.driveUnits?.lrdu?.operatorMeasuredSpeedMetersPerMinute !== undefined ? String(machine.driveUnits.lrdu.operatorMeasuredSpeedMetersPerMinute) : "");
     setMode(machine.sweep.mode);
     if (machine.sweep.mode === "partial_circle") {
       setStartAngle(String(machine.sweep.startAngleDegrees));
@@ -5717,6 +5730,10 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
             stopAngleDegrees: requiredFiniteNumber(stopAngle, "Stop angle"),
             direction,
           },
+        driveUnits: {
+          lrdu: driveUnitConfig("lrdu", lrduTireId, lrduRpm, operatorSpeed),
+          sdu: driveUnitConfig("sdu", sduTireId, sduRpm),
+        },
       };
       setError(null);
       onChange(nextMachine);
@@ -5736,6 +5753,8 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
 
   const unitLabel = unitSystem === "metric" ? "m" : "ft/in";
   const wetRadiusMeters = machineRadiusMeters(machine) + Math.max(0, machine.endGunThrowMeters);
+  const selectedLrduTire = ADVISORY_DRIVE_UNIT_TIRE_OPTIONS.find((option) => option.id === lrduTireId);
+  const selectedSduTire = ADVISORY_DRIVE_UNIT_TIRE_OPTIONS.find((option) => option.id === sduTireId);
 
   return (
     <View style={styles.machineForm}>
@@ -5785,8 +5804,63 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
           </>
         ) : null}
       </View>
+      <View style={styles.machineCatalogPanel}>
+        <Text style={styles.formLabel}>Advisory drive units</Text>
+        <View style={styles.formGrid}>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>LRDU tire</Text>
+            <View style={styles.controlRow}>
+              {ADVISORY_DRIVE_UNIT_TIRE_OPTIONS.map((option) => (
+                <ActionButton key={`lrdu-${option.id}`} label={option.label} selected={lrduTireId === option.id} onPress={() => setLrduTireId(option.id)} />
+              ))}
+            </View>
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>SDU tire</Text>
+            <View style={styles.controlRow}>
+              {ADVISORY_DRIVE_UNIT_TIRE_OPTIONS.map((option) => (
+                <ActionButton key={`sdu-${option.id}`} label={option.label} selected={sduTireId === option.id} onPress={() => setSduTireId(option.id)} />
+              ))}
+            </View>
+          </View>
+          <FormField label="LRDU motor RPM custom" value={lrduRpm} onChangeText={setLrduRpm} />
+          <FormField label="SDU motor RPM custom" value={sduRpm} onChangeText={setSduRpm} />
+          <FormField label="Measured speed (m/min)" value={operatorSpeed} onChangeText={setOperatorSpeed} />
+        </View>
+        <Text style={styles.mapFeatureMeta}>
+          Tire options are public source labels. RPM fields require operator or curated manual evidence; blank RPM stays unverified/source required. {selectedLrduTire?.sourceRefs[0]?.sourceId ?? "LRDU source required"} · {selectedSduTire?.sourceRefs[0]?.sourceId ?? "SDU source required"}.
+        </Text>
+      </View>
     </View>
   );
+}
+
+function driveUnitConfig(
+  role: AdvisoryDriveUnitConfig["role"],
+  tireId: string,
+  rpmInput: string,
+  speedInput = "",
+): AdvisoryDriveUnitConfig {
+  const tire = ADVISORY_DRIVE_UNIT_TIRE_OPTIONS.find((option) => option.id === tireId);
+  const customMotorRpm = rpmInput.trim() ? requiredFiniteNumber(rpmInput, `${role.toUpperCase()} motor RPM`) : undefined;
+  if (customMotorRpm !== undefined && customMotorRpm <= 0) throw new Error(`${role.toUpperCase()} motor RPM must be greater than zero.`);
+  const operatorMeasuredSpeedMetersPerMinute = speedInput.trim() ? requiredPositiveDistanceInput(speedInput, "metric", "Measured speed") : undefined;
+  return {
+    role,
+    advisoryOnly: true,
+    ...(tire && !tire.customValueFallback ? { tire } : {}),
+    ...(tire?.customValueFallback ? { customTireLabel: "custom/source required" } : {}),
+    ...(customMotorRpm === undefined ? {} : { customMotorRpm }),
+    ...(operatorMeasuredSpeedMetersPerMinute === undefined ? {} : { operatorMeasuredSpeedMetersPerMinute }),
+    sourceRefs: tire?.sourceRefs ?? [{
+      sourceId: `SRC-${role.toUpperCase()}-CUSTOM-SOURCE-REQUIRED`,
+      limit: "Custom advisory drive-unit metadata requires operator/vendor or curated manual source evidence before use as a preset.",
+    }],
+    caveats: [
+      "Advisory drive-unit metadata does not alter projected XY geometry, path sampling, storage schema semantics, or controller settings.",
+      ...(customMotorRpm === undefined ? ["Motor RPM is unverified/source required until a curated page/line/source record or operator measurement is supplied."] : ["Motor RPM is custom input, not a manual-derived preset."]),
+    ],
+  };
 }
 
 function FormField({

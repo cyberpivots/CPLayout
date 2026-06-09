@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { defaultAppSettings, resolveReferenceOverlaySource, sampleProject } from "@cplayout/core";
+import { defaultAppSettings, resolveReferenceOverlaySource, sampleProject, willRheaJasonHarmelinkExampleProject } from "@cplayout/core";
 import { buildAdvisoryMachineRenderModel, evaluateLayout, planAdvisoryFieldPivots } from "@cplayout/geometry";
 import { projectLayoutToWgs84FeatureCollection, projectWgs84Bounds, projectWgs84Center } from "./mapOverlayGeoJson";
 import { buildWorkbenchStyle } from "./mapWorkbenchStyle";
@@ -70,6 +70,35 @@ const featureCollectionWithAdvisoryMachineRender = projectLayoutToWgs84FeatureCo
   [],
   undefined,
   advisoryMachineRenderModel,
+);
+const willRheaWithGeneratedCircle = {
+  ...willRheaJasonHarmelinkExampleProject,
+  mapFeatures: [
+    ...(willRheaJasonHarmelinkExampleProject.mapFeatures ?? []),
+    {
+      id: "will-rhea-generated-lrdu-circle-test",
+      name: "Generated LRDU Circle Test",
+      kind: "machine_zone" as const,
+      geometry: {
+        type: "Circle" as const,
+        center: willRheaJasonHarmelinkExampleProject.pivotCenter,
+        radiusMeters: 462.9,
+      },
+      confidence: "imagery_digitized" as const,
+      properties: {
+        generatedFromImportedMeasurement: true,
+        canonicalGeometryMutation: false,
+      },
+    },
+  ],
+};
+const willRheaRenderModel = buildAdvisoryMachineRenderModel(willRheaWithGeneratedCircle, { maxInstances: 2 });
+const willRheaFeatureCollectionWithReadyRender = projectLayoutToWgs84FeatureCollection(
+  willRheaWithGeneratedCircle,
+  evaluateLayout(willRheaWithGeneratedCircle),
+  [],
+  undefined,
+  willRheaRenderModel,
 );
 const projectWithCornerArm = {
   ...sampleProject,
@@ -155,6 +184,14 @@ assert.ok(featureCollectionWithAdvisoryMachineRender.features.some((feature) => 
 assert.ok(featureCollectionWithAdvisoryMachineRender.features.some((feature) => feature.properties.layerType === "advisory_machine_lrdu_path" && feature.geometry.type === "MultiPolygon"));
 assert.ok(workbenchStyleWithAdvisoryMachineRender.layers.some((layer) => layer.id === "advisory-machine-preferred-outline-line"));
 assert.ok(workbenchStyleWithAdvisoryMachineRender.layers.some((layer) => layer.id === "advisory-machine-pivot-center"));
+assert.equal(willRheaRenderModel.status, "ready");
+assert.equal(willRheaRenderModel.instances.length, 2);
+assert.equal(willRheaFeatureCollectionWithReadyRender.features.some((feature) => feature.properties.layerType === "allowed_coverage"), false);
+assert.equal(willRheaFeatureCollectionWithReadyRender.features.some((feature) => feature.properties.layerType === "wheel_track_path"), false);
+assert.equal(willRheaFeatureCollectionWithReadyRender.features.some((feature) => feature.properties.layerType === "tower_location"), false);
+assert.equal(willRheaFeatureCollectionWithReadyRender.features.some((feature) => feature.properties.id === "will-rhea-generated-lrdu-circle-test"), false);
+assert.equal(willRheaFeatureCollectionWithReadyRender.features.some((feature) => feature.properties.id === "will-rhea-lrdu-distance" && feature.properties.kind === "measurement_line"), true);
+assert.equal(willRheaFeatureCollectionWithReadyRender.features.some((feature) => feature.properties.layerType === "advisory_machine_lrdu_path"), true);
 assert.ok(buildWorkbenchStyle(
   null,
   featureCollectionWithCornerArm,

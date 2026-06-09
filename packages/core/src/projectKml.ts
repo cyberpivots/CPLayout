@@ -669,8 +669,10 @@ export function exportProjectGoogleEarthKml(project: PivotProject, result?: Layo
 
 function cornerArmKmlProperties(project: PivotProject): Record<string, string> {
   const cornerArm = project.machine.cornerArm;
-  if (!cornerArm) return {};
+  const driveUnits = driveUnitKmlProperties(project);
+  if (!cornerArm) return driveUnits;
   return {
+    ...driveUnits,
     cornerArmAdvisoryOnly: "true",
     cornerArmCanonicalGeometryMutation: "false",
     cornerArmId: cornerArm.id,
@@ -678,6 +680,10 @@ function cornerArmKmlProperties(project: PivotProject): Record<string, string> {
     cornerArmLengthMeters: String(cornerArm.lengthMeters),
     ...(cornerArm.wheelTrackLengthMeters !== undefined ? { cornerArmWheelTrackLengthMeters: String(cornerArm.wheelTrackLengthMeters) } : {}),
     ...(cornerArm.overhangLengthMeters !== undefined ? { cornerArmOverhangLengthMeters: String(cornerArm.overhangLengthMeters) } : {}),
+    ...(cornerArm.maxSteerAngleDegrees !== undefined ? { cornerArmMaxSteerAngleDegrees: String(cornerArm.maxSteerAngleDegrees) } : {}),
+    ...(cornerArm.minSteerAngleDegrees !== undefined ? { cornerArmMinSteerAngleDegrees: String(cornerArm.minSteerAngleDegrees) } : {}),
+    ...(cornerArm.maxExtensionRateMetersPerMinute !== undefined ? { cornerArmMaxExtensionRateMetersPerMinute: String(cornerArm.maxExtensionRateMetersPerMinute) } : {}),
+    ...(cornerArm.maxRetractionRateMetersPerMinute !== undefined ? { cornerArmMaxRetractionRateMetersPerMinute: String(cornerArm.maxRetractionRateMetersPerMinute) } : {}),
     ...(cornerArm.metadataSource ? { cornerArmMetadataSource: cornerArm.metadataSource } : {}),
     ...(cornerArm.modelFamily ? { cornerArmModelFamily: cornerArm.modelFamily } : {}),
     cornerArmGuidanceType: cornerArm.guidanceType,
@@ -685,8 +691,28 @@ function cornerArmKmlProperties(project: PivotProject): Record<string, string> {
     cornerArmOrientation: cornerArm.orientation,
     cornerArmConfidence: cornerArm.confidence,
     cornerArmSourceIds: cornerArm.sourceRefs.map((sourceRef) => sourceRef.sourceId).join(","),
+    ...(cornerArm.speedEvidenceSourceRefs?.length ? { cornerArmSpeedEvidenceSourceIds: cornerArm.speedEvidenceSourceRefs.map((sourceRef) => sourceRef.sourceId).join(",") } : {}),
     cornerArmLimit: "Visual interchange metadata only; advisory corner-arm config does not alter projected XY or layout coverage metrics.",
   };
+}
+
+function driveUnitKmlProperties(project: PivotProject): Record<string, string> {
+  const units = [project.machine.driveUnits?.lrdu, project.machine.driveUnits?.sdu].filter((unit) => unit !== undefined);
+  if (units.length === 0) return {};
+  return Object.fromEntries(units.flatMap((unit) => {
+    const prefix = unit.role === "lrdu" ? "lrduDriveUnit" : "sduDriveUnit";
+    return [
+      [`${prefix}AdvisoryOnly`, "true"],
+      [`${prefix}CanonicalGeometryMutation`, "false"],
+      ...(unit.tire ? [[`${prefix}TireId`, unit.tire.id], [`${prefix}TireLabel`, unit.tire.label]] : []),
+      ...(unit.driveMotor ? [[`${prefix}MotorId`, unit.driveMotor.id], [`${prefix}MotorLabel`, unit.driveMotor.label]] : []),
+      ...(unit.customTireLabel ? [[`${prefix}CustomTireLabel`, unit.customTireLabel]] : []),
+      ...(unit.customMotorRpm !== undefined ? [[`${prefix}CustomMotorRpm`, String(unit.customMotorRpm)]] : []),
+      ...(unit.operatorMeasuredSpeedMetersPerMinute !== undefined ? [[`${prefix}OperatorMeasuredSpeedMetersPerMinute`, String(unit.operatorMeasuredSpeedMetersPerMinute)]] : []),
+      [`${prefix}SourceIds`, unit.sourceRefs.map((sourceRef) => sourceRef.sourceId).join(",")],
+      [`${prefix}Limit`, "Visual interchange metadata only; advisory drive-unit config does not alter projected XY, path geometry, or controller settings."],
+    ];
+  }));
 }
 
 function googleEarthLookAt(project: PivotProject, result?: LayoutResult): GoogleEarthLookAt {

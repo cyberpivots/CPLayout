@@ -157,6 +157,11 @@ export interface AdvisoryCornerArmConfig {
   lengthMeters: number;
   wheelTrackLengthMeters?: number;
   overhangLengthMeters?: number;
+  maxSteerAngleDegrees?: number;
+  minSteerAngleDegrees?: number;
+  maxExtensionRateMetersPerMinute?: number;
+  maxRetractionRateMetersPerMinute?: number;
+  speedEvidenceSourceRefs?: AdvisorySourceReference[];
   metadataSource?: AdvisoryCornerArmMetadataSource;
   modelFamily?: AdvisoryCornerArmModelFamily;
   guidanceType: AdvisoryCornerArmGuidanceType;
@@ -166,6 +171,41 @@ export interface AdvisoryCornerArmConfig {
   sourceRefs: AdvisorySourceReference[];
   operatorConfirmedAt?: string;
   notes?: string;
+}
+
+export type AdvisoryDriveUnitRole = "lrdu" | "sdu";
+
+export interface AdvisoryTireOption {
+  id: string;
+  label: string;
+  advisoryOnly: true;
+  roleCompatibility: AdvisoryDriveUnitRole[];
+  sourceRefs: AdvisorySourceReference[];
+  caveats: string[];
+  customValueFallback: boolean;
+}
+
+export interface AdvisoryDriveMotorOption {
+  id: string;
+  label: string;
+  advisoryOnly: true;
+  roleCompatibility: AdvisoryDriveUnitRole[];
+  rpm?: number;
+  sourceRefs: AdvisorySourceReference[];
+  caveats: string[];
+  customValueFallback: boolean;
+}
+
+export interface AdvisoryDriveUnitConfig {
+  role: AdvisoryDriveUnitRole;
+  advisoryOnly: true;
+  tire?: AdvisoryTireOption;
+  driveMotor?: AdvisoryDriveMotorOption;
+  customTireLabel?: string;
+  customMotorRpm?: number;
+  operatorMeasuredSpeedMetersPerMinute?: number;
+  sourceRefs: AdvisorySourceReference[];
+  caveats: string[];
 }
 
 export interface PivotMachine {
@@ -180,6 +220,10 @@ export interface PivotMachine {
   sweep: PivotSweep;
   catalogSelection?: MachineCatalogSelection;
   cornerArm?: AdvisoryCornerArmConfig;
+  driveUnits?: {
+    lrdu?: AdvisoryDriveUnitConfig;
+    sdu?: AdvisoryDriveUnitConfig;
+  };
 }
 
 export interface ObstacleZone {

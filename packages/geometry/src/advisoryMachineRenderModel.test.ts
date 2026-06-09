@@ -121,6 +121,11 @@ assert.equal(model.surfaces.every((surface) => surface.lrduPath !== null), true)
 assert.equal(model.surfaces.every((surface) => surface.towerPaths.length > 0), true);
 assert.equal(model.surfaces.every((surface) => surface.cornerArmWheelPath !== null), true);
 assert.equal(model.surfaces.every((surface) => surface.cornerArmOverhangEndPath !== null), true);
+assert.equal(model.surfaces.every((surface) => surface.safetyZoneMeters === 4.572), true);
+assert.equal(model.surfaces.every((surface) => surface.pathBoundaryShortfalls.some((shortfall) => shortfall.kind === "lrdu")), true);
+assert.equal(model.surfaces.every((surface) => surface.pathBoundaryShortfalls.some((shortfall) => shortfall.kind === "end_gun_reach")), true);
+assert.equal(model.surfaces.every((surface) => surface.pathBoundaryShortfalls.every((shortfall) => shortfall.canonicalGeometryMutation === false)), true);
+assert.ok(model.surfaces.flatMap((surface) => surface.pathBoundaryShortfalls).some((shortfall) => shortfall.minimumShortfallMeters > 0));
 assert.ok(model.acreLedger.standardPivotAcres > 0);
 assert.ok(model.acreLedger.endGunAcres > 0);
 assert.ok(model.acreLedger.cornerArmAcres > 0);
@@ -130,6 +135,9 @@ assert.ok(model.acreLedger.verifiedBlockedAcres > 0);
 assert.equal(model.warnings.some((warning) => warning.includes("End-gun wet annulus")), true);
 assert.equal(model.warnings.some((warning) => warning.includes("Internal machine-zone edges")), true);
 assert.equal(JSON.stringify(project), before);
+
+const customSafetyModel = buildAdvisoryMachineRenderModel(project, { safetyZoneMeters: 9 });
+assert.equal(customSafetyModel.surfaces.every((surface) => surface.safetyZoneMeters === 9), true);
 
 const insufficient = buildAdvisoryMachineRenderModel({
   ...project,

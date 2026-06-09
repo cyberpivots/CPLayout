@@ -1,4 +1,4 @@
-import { projectXyToLonLat, type LayoutResult, type PivotProject, type XY } from "@cplayout/core";
+import { projectXyToLonLat, type LayoutResult, type PivotProject, type ProjectMapFeature, type XY } from "@cplayout/core";
 import {
   buildLayoutPathOverlays,
   type AdvisoryFieldPivotPlan,
@@ -51,14 +51,24 @@ export function projectLayoutToWgs84FeatureCollection(
   const advisoryMachineRenderFeatures = advisoryMachineRenderModel
     ? advisoryMachineRenderModelFeatures(project, advisoryMachineRenderModel)
     : [];
-  const layoutPathFeatures = buildLayoutPathOverlays(project).flatMap((overlay) => layoutPathOverlayFeatures(project, overlay));
+  const readyTwoMachineAdvisoryRender = advisoryMachineRenderModel?.status === "ready"
+    && advisoryMachineRenderModel.instances.length >= 2;
+  const canonicalMachineLayersVisible = !readyTwoMachineAdvisoryRender;
+  const layoutPathFeatures = canonicalMachineLayersVisible
+    ? buildLayoutPathOverlays(project).flatMap((overlay) => layoutPathOverlayFeatures(project, overlay))
+    : [];
+  const visibleMapFeatures = readyTwoMachineAdvisoryRender
+    ? (project.mapFeatures ?? []).filter((feature) => !isGeneratedMeasurementCircleFeature(feature))
+    : (project.mapFeatures ?? []);
   return {
     type: "FeatureCollection",
     features: [
       polygonFeature(project, "field_boundary", [[project.fieldBoundary]], { name: "Field boundary" }),
-      polygonFeature(project, "allowed_coverage", result.allowedCoverage, { ...result.metrics }),
-      polygonFeature(project, "outside_field_coverage", result.outsideFieldCoverage, { acres: result.metrics.outsideFieldAcres }),
-      polygonFeature(project, "end_gun_coverage", result.endGunCoverage, { acres: result.metrics.endGunAcres }),
+      ...(canonicalMachineLayersVisible ? [
+        polygonFeature(project, "allowed_coverage", result.allowedCoverage, { ...result.metrics }),
+        polygonFeature(project, "outside_field_coverage", result.outsideFieldCoverage, { acres: result.metrics.outsideFieldAcres }),
+        polygonFeature(project, "end_gun_coverage", result.endGunCoverage, { acres: result.metrics.endGunAcres }),
+      ] : []),
       ...advisoryFieldPivotFeatures,
       ...advisoryMachineRenderFeatures,
       ...layoutPathFeatures,
@@ -66,11 +76,11 @@ export function projectLayoutToWgs84FeatureCollection(
       pointFeature(project, "pivot_center", project.pivotCenter, { label: "Pivot" }),
       pointFeature(project, "water_source", project.waterSource, { label: "Water" }),
       pointFeature(project, "power_source", project.powerSource, { label: "Power" }),
-      ...result.towers.map((tower) => pointFeature(project, "tower_location", tower.point, {
+      ...(canonicalMachineLayersVisible ? result.towers.map((tower) => pointFeature(project, "tower_location", tower.point, {
         towerIndex: tower.towerIndex,
         radiusMeters: tower.radiusMeters,
-      })),
-      ...(project.mapFeatures ?? []).map((feature) => {
+      })) : []),
+      ...visibleMapFeatures.map((feature) => {
         const properties = {
           ...feature.properties,
           id: feature.id,
@@ -92,6 +102,11 @@ export function projectLayoutToWgs84FeatureCollection(
       ...(draftVertices.length >= 2 ? [lineFeature(project, "draft_vertices", draftVertices, { count: draftVertices.length })] : []),
     ],
   };
+}
+
+function isGeneratedMeasurementCircleFeature(feature: ProjectMapFeature): boolean {
+  return feature.geometry.type === "Circle"
+    && feature.properties?.generatedFromImportedMeasurement === true;
 }
 
 function advisoryMachineRenderModelFeatures(project: PivotProject, model: AdvisoryMachineRenderModel): GeoJsonFeature[] {
@@ -150,6 +165,8 @@ function advisoryMachineSurfaceFeatures(
     physicalEnvelopeAcres: surface.physicalEnvelopeAcres,
     outsideFieldWetAcres: surface.outsideFieldWetAcres,
     verifiedBlockedAcres: surface.verifiedBlockedAcres,
+    safetyZoneMeters: surface.safetyZoneMeters,
+    pathShortfallCount: surface.pathBoundaryShortfalls.filter((shortfall) => shortfall.minimumShortfallMeters > 0).length,
     warningCount: surface.warnings.length,
   };
   return [

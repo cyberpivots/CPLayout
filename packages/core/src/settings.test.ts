@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   buildOnlineImageryTileUrl,
+  DEFAULT_LAYOUT_SAFETY_ZONE_METERS,
   defaultAppSettings,
   gpsFixMeetsThreshold,
   mergeAppSettings,
@@ -20,7 +21,7 @@ assert.equal(defaults.onlineImagery.providerId, "usgs_imagery_only");
 assert.equal(defaults.aerialImagery.mode, "auto");
 assert.equal(defaults.referenceOverlay.mode, "auto");
 assert.equal(defaults.referenceOverlay.schema, "cplayout_reference_v1");
-assert.equal(defaults.layoutReview.requiredBoundaryClearanceMeters, 0);
+assert.equal(defaults.layoutReview.requiredBoundaryClearanceMeters, DEFAULT_LAYOUT_SAFETY_ZONE_METERS);
 assert.equal(defaults.layoutReview.showMachineBoundaryDistances, true);
 assert.match(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileUrlTemplate, /basemap\.nationalmap\.gov/);
 assert.equal(ONLINE_IMAGERY_PROVIDER_CATALOG.usgs_imagery_only.tileScheme, "xyz");

@@ -113,6 +113,17 @@ const report = buildAdvisoryDesignReport({
   radiusSensitivityReview,
   endGunSensitivityReview,
   sweepEfficiencyReview,
+  advisoryMachineRenderAcreLedger: {
+    advisoryOnly: true,
+    canonicalGeometryMutation: false,
+    standardPivotAcres: 22,
+    endGunAcres: 3,
+    cornerArmAcres: 4,
+    deduplicatedTotalAcres: 26,
+    overlapAcres: 3,
+    outsideFieldAcres: 1,
+    verifiedBlockedAcres: 0.5,
+  },
   reviewZoneAudit: currentZoneAudit,
   generatedAt: "2026-06-06T12:00:00.000Z",
 });
@@ -145,6 +156,8 @@ assert.match(report.text, /Generated Multi-Pivot Scenario Review/);
 assert.match(report.text, /Acre Ledger/);
 assert.match(report.text, /Standard pivot acres/);
 assert.match(report.text, /Total de-duplicated irrigated acres/);
+assert.match(report.text, /Advisory render corner-arm acres: 4\.00 ac/);
+assert.match(report.text, /Advisory render de-duplicated total acres: 26\.00 ac/);
 assert.match(report.text, /Power-line evidence status:/);
 assert.match(report.text, /Selected centers: \d+\/\d+/);
 assert.match(report.text, /Generated multi-pivot scenario review is advisory only/);

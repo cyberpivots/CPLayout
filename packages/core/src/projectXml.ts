@@ -5,7 +5,10 @@ import { defaultProjectSettings } from "./settings";
 import { PivotProjectSchema, withWgs84Companion } from "./projectDocument";
 import type {
   AdvisoryCornerArmConfig,
+  AdvisoryDriveUnitConfig,
+  AdvisoryDriveMotorOption,
   AdvisorySourceReference,
+  AdvisoryTireOption,
   LonLat,
   ObstacleZone,
   PivotAngleRange,
@@ -159,6 +162,7 @@ function machineXml(machine: PivotMachine): string[] {
     ...(machine.endGunAngleRanges ?? []).map((range, index) => `      <angleRange index="${index}" startAngleDegrees="${range.startAngleDegrees}" stopAngleDegrees="${range.stopAngleDegrees}" direction="${range.direction}"/>`),
     `    </endGunAngleRanges>`,
     ...cornerArmXml(machine.cornerArm),
+    ...driveUnitsXml(machine.driveUnits),
     `  </machine>`,
   ];
 }
@@ -168,19 +172,71 @@ function cornerArmXml(cornerArm: AdvisoryCornerArmConfig | undefined): string[] 
   const optionalAttrs = [
     cornerArm.wheelTrackLengthMeters !== undefined ? ` wheelTrackLengthMeters="${cornerArm.wheelTrackLengthMeters}"` : "",
     cornerArm.overhangLengthMeters !== undefined ? ` overhangLengthMeters="${cornerArm.overhangLengthMeters}"` : "",
+    cornerArm.maxSteerAngleDegrees !== undefined ? ` maxSteerAngleDegrees="${cornerArm.maxSteerAngleDegrees}"` : "",
+    cornerArm.minSteerAngleDegrees !== undefined ? ` minSteerAngleDegrees="${cornerArm.minSteerAngleDegrees}"` : "",
+    cornerArm.maxExtensionRateMetersPerMinute !== undefined ? ` maxExtensionRateMetersPerMinute="${cornerArm.maxExtensionRateMetersPerMinute}"` : "",
+    cornerArm.maxRetractionRateMetersPerMinute !== undefined ? ` maxRetractionRateMetersPerMinute="${cornerArm.maxRetractionRateMetersPerMinute}"` : "",
     cornerArm.metadataSource ? ` metadataSource="${cornerArm.metadataSource}"` : "",
     cornerArm.modelFamily ? ` modelFamily="${cornerArm.modelFamily}"` : "",
   ].join("");
   return [
     `    <cornerArm id="${escapeXml(cornerArm.id)}" name="${escapeXml(cornerArm.name)}" advisoryOnly="true" lengthMeters="${cornerArm.lengthMeters}"${optionalAttrs} guidanceType="${cornerArm.guidanceType}" sequencingType="${cornerArm.sequencingType}" orientation="${cornerArm.orientation}" confidence="${cornerArm.confidence}"${cornerArm.operatorConfirmedAt ? ` operatorConfirmedAt="${escapeXml(cornerArm.operatorConfirmedAt)}"` : ""}${cornerArm.notes ? ` notes="${escapeXml(cornerArm.notes)}"` : ""}>`,
-    ...cornerArm.sourceRefs.map(sourceRefXml),
+    ...cornerArm.sourceRefs.map((sourceRef) => sourceRefXml(sourceRef)),
+    ...(cornerArm.speedEvidenceSourceRefs ?? []).map((sourceRef) => sourceRefXml(sourceRef, "speedSourceRef")),
     `    </cornerArm>`,
   ];
 }
 
-function sourceRefXml(sourceRef: AdvisorySourceReference): string {
+function driveUnitsXml(driveUnits: PivotMachine["driveUnits"]): string[] {
+  const units = [driveUnits?.lrdu, driveUnits?.sdu].filter((unit): unit is AdvisoryDriveUnitConfig => Boolean(unit));
+  if (units.length === 0) return [];
   return [
-    `      <sourceRef sourceId="${escapeXml(sourceRef.sourceId)}"`,
+    `    <driveUnits advisoryOnly="true">`,
+    ...units.flatMap(driveUnitXml),
+    `    </driveUnits>`,
+  ];
+}
+
+function driveUnitXml(unit: AdvisoryDriveUnitConfig): string[] {
+  const attrs = [
+    `role="${unit.role}"`,
+    `advisoryOnly="true"`,
+    unit.customTireLabel ? `customTireLabel="${escapeXml(unit.customTireLabel)}"` : "",
+    unit.customMotorRpm !== undefined ? `customMotorRpm="${unit.customMotorRpm}"` : "",
+    unit.operatorMeasuredSpeedMetersPerMinute !== undefined ? `operatorMeasuredSpeedMetersPerMinute="${unit.operatorMeasuredSpeedMetersPerMinute}"` : "",
+  ].filter(Boolean).join(" ");
+  return [
+    `      <driveUnit ${attrs}>`,
+    ...(unit.tire ? [tireOptionXml(unit.tire)] : []),
+    ...(unit.driveMotor ? [driveMotorOptionXml(unit.driveMotor)] : []),
+    ...unit.sourceRefs.map((sourceRef) => sourceRefXml(sourceRef)),
+    ...unit.caveats.map((caveat) => `        <caveat value="${escapeXml(caveat)}"/>`),
+    `      </driveUnit>`,
+  ];
+}
+
+function tireOptionXml(tire: AdvisoryTireOption): string {
+  return [
+    `        <tire id="${escapeXml(tire.id)}" label="${escapeXml(tire.label)}" advisoryOnly="true" roleCompatibility="${escapeXml(tire.roleCompatibility.join(","))}" customValueFallback="${tire.customValueFallback}">`,
+    ...tire.sourceRefs.map((sourceRef) => sourceRefXml(sourceRef, "sourceRef", 10)),
+    ...tire.caveats.map((caveat) => `          <caveat value="${escapeXml(caveat)}"/>`),
+    `        </tire>`,
+  ].join("\n");
+}
+
+function driveMotorOptionXml(motor: AdvisoryDriveMotorOption): string {
+  return [
+    `        <driveMotor id="${escapeXml(motor.id)}" label="${escapeXml(motor.label)}" advisoryOnly="true" roleCompatibility="${escapeXml(motor.roleCompatibility.join(","))}" customValueFallback="${motor.customValueFallback}"${motor.rpm !== undefined ? ` rpm="${motor.rpm}"` : ""}>`,
+    ...motor.sourceRefs.map((sourceRef) => sourceRefXml(sourceRef, "sourceRef", 10)),
+    ...motor.caveats.map((caveat) => `          <caveat value="${escapeXml(caveat)}"/>`),
+    `        </driveMotor>`,
+  ].join("\n");
+}
+
+function sourceRefXml(sourceRef: AdvisorySourceReference, tagName = "sourceRef", indent = 6): string {
+  const pad = " ".repeat(indent);
+  return [
+    `${pad}<${tagName} sourceId="${escapeXml(sourceRef.sourceId)}"`,
     sourceRef.title ? ` title="${escapeXml(sourceRef.title)}"` : "",
     sourceRef.url ? ` url="${escapeXml(sourceRef.url)}"` : "",
     sourceRef.guideId ? ` guideId="${escapeXml(sourceRef.guideId)}"` : "",
@@ -288,6 +344,13 @@ function machineFrom(element: XmlElement): PivotMachine {
   if (cornerArmElement) {
     machine.cornerArm = cornerArmFrom(cornerArmElement);
   }
+  const driveUnitElements = children(optionalChild(element, "driveUnits"), "driveUnit").map(driveUnitFrom);
+  if (driveUnitElements.length > 0) {
+    machine.driveUnits = {
+      lrdu: driveUnitElements.find((unit) => unit.role === "lrdu"),
+      sdu: driveUnitElements.find((unit) => unit.role === "sdu"),
+    };
+  }
   return machine;
 }
 
@@ -299,6 +362,10 @@ function cornerArmFrom(element: XmlElement): AdvisoryCornerArmConfig {
     lengthMeters: positiveNumberAttr(element, "lengthMeters"),
     wheelTrackLengthMeters: attr(element, "wheelTrackLengthMeters") ? positiveNumberAttr(element, "wheelTrackLengthMeters") : undefined,
     overhangLengthMeters: attr(element, "overhangLengthMeters") ? nonNegativeNumberAttr(element, "overhangLengthMeters") : undefined,
+    maxSteerAngleDegrees: attr(element, "maxSteerAngleDegrees") ? finiteNumberAttr(element, "maxSteerAngleDegrees") : undefined,
+    minSteerAngleDegrees: attr(element, "minSteerAngleDegrees") ? finiteNumberAttr(element, "minSteerAngleDegrees") : undefined,
+    maxExtensionRateMetersPerMinute: attr(element, "maxExtensionRateMetersPerMinute") ? positiveNumberAttr(element, "maxExtensionRateMetersPerMinute") : undefined,
+    maxRetractionRateMetersPerMinute: attr(element, "maxRetractionRateMetersPerMinute") ? positiveNumberAttr(element, "maxRetractionRateMetersPerMinute") : undefined,
     metadataSource: attr(element, "metadataSource")
       ? enumAttr<NonNullable<AdvisoryCornerArmConfig["metadataSource"]>>(element, "metadataSource", ["operator_supplied", "cornergpsmap_config", "manufacturer_public", "local_design_guide", "unknown"])
       : undefined,
@@ -310,9 +377,59 @@ function cornerArmFrom(element: XmlElement): AdvisoryCornerArmConfig {
     orientation: enumAttr(element, "orientation", ["leading", "trailing", "operator_supplied", "unknown"]),
     confidence: enumAttr(element, "confidence", SOURCE_CONFIDENCES),
     sourceRefs: children(element, "sourceRef").map(sourceRefFrom),
+    speedEvidenceSourceRefs: children(element, "speedSourceRef").map(sourceRefFrom),
     operatorConfirmedAt: attr(element, "operatorConfirmedAt") || undefined,
     notes: attr(element, "notes") || undefined,
   };
+}
+
+function driveUnitFrom(element: XmlElement): AdvisoryDriveUnitConfig {
+  const tire = optionalChild(element, "tire");
+  const driveMotor = optionalChild(element, "driveMotor");
+  return {
+    role: enumAttr(element, "role", ["lrdu", "sdu"]),
+    advisoryOnly: true,
+    tire: tire ? tireOptionFrom(tire) : undefined,
+    driveMotor: driveMotor ? driveMotorOptionFrom(driveMotor) : undefined,
+    customTireLabel: attr(element, "customTireLabel") || undefined,
+    customMotorRpm: attr(element, "customMotorRpm") ? positiveNumberAttr(element, "customMotorRpm") : undefined,
+    operatorMeasuredSpeedMetersPerMinute: attr(element, "operatorMeasuredSpeedMetersPerMinute") ? positiveNumberAttr(element, "operatorMeasuredSpeedMetersPerMinute") : undefined,
+    sourceRefs: children(element, "sourceRef").map(sourceRefFrom),
+    caveats: children(element, "caveat").map((caveat) => requiredAttr(caveat, "value")),
+  };
+}
+
+function tireOptionFrom(element: XmlElement): AdvisoryTireOption {
+  return {
+    id: requiredAttr(element, "id"),
+    label: requiredAttr(element, "label"),
+    advisoryOnly: true,
+    roleCompatibility: roleCompatibilityFrom(element),
+    sourceRefs: children(element, "sourceRef").map(sourceRefFrom),
+    caveats: children(element, "caveat").map((caveat) => requiredAttr(caveat, "value")),
+    customValueFallback: booleanAttr(element, "customValueFallback"),
+  };
+}
+
+function driveMotorOptionFrom(element: XmlElement): AdvisoryDriveMotorOption {
+  return {
+    id: requiredAttr(element, "id"),
+    label: requiredAttr(element, "label"),
+    advisoryOnly: true,
+    roleCompatibility: roleCompatibilityFrom(element),
+    rpm: attr(element, "rpm") ? positiveNumberAttr(element, "rpm") : undefined,
+    sourceRefs: children(element, "sourceRef").map(sourceRefFrom),
+    caveats: children(element, "caveat").map((caveat) => requiredAttr(caveat, "value")),
+    customValueFallback: booleanAttr(element, "customValueFallback"),
+  };
+}
+
+function roleCompatibilityFrom(element: XmlElement): Array<AdvisoryDriveUnitConfig["role"]> {
+  const roles = requiredAttr(element, "roleCompatibility").split(",").map((role) => role.trim()).filter(Boolean);
+  return roles.map((role) => {
+    if (role !== "lrdu" && role !== "sdu") throw new Error(`CPLayout XML ${localName(element)} has invalid roleCompatibility ${role}.`);
+    return role;
+  });
 }
 
 function sourceRefFrom(element: XmlElement): AdvisorySourceReference {

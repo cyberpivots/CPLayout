@@ -110,6 +110,10 @@ class ContextMapTests(unittest.TestCase):
         self.assertIn("interface_ui", pack_ids)
         self.assertIn("geometry_design", pack_ids)
 
+    def test_lrdu_sdu_safety_zone_prompt_selects_geometry_pack(self) -> None:
+        pack_ids = self.pack_ids_for_prompt("Review LRDU SDU safety zone tire RPM corner arm extension and retraction evidence.")
+        self.assertIn("geometry_design", pack_ids)
+
     def test_invalid_context_map_degrades_gracefully(self) -> None:
         context = self.hook_context(
             "Improve token efficient subagent reasoning and prompt triage.",

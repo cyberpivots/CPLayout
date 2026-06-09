@@ -255,8 +255,9 @@ assert.equal(importedWillRhea.projectCrs, "EPSG:32614");
 assert.equal(importedWillRhea.wgs84Companion?.source, "derived_from_project_xy");
 assert.deepEqual(importedWillRhea.fieldBoundary, willRheaJasonHarmelinkExampleProject.fieldBoundary);
 assert.equal(importedWillRheaFeatureCounts.planning_boundary, 1);
-assert.equal(importedWillRheaFeatureCounts.machine_zone, 5);
+assert.equal(importedWillRheaFeatureCounts.machine_zone, 4);
 assert.equal(importedWillRheaFeatureCounts.measurement_line, 1);
+assert.equal((importedWillRhea.mapFeatures ?? []).some((feature) => feature.id === "will-rhea-existing-machine-zone"), false);
 assert.equal(
   (importedWillRhea.mapFeatures ?? []).filter((feature) => (
     feature.kind === "machine_zone"
@@ -299,6 +300,32 @@ const projectWithCornerArm = {
         limit: "Manufacturer public feature/specification reference only; CPLayout does not certify compatibility or kinematics.",
       }],
     },
+    driveUnits: {
+      lrdu: {
+        role: "lrdu" as const,
+        advisoryOnly: true as const,
+        tire: {
+          id: "valley-standard-14-9-24",
+          label: "14.9-24",
+          advisoryOnly: true as const,
+          roleCompatibility: ["lrdu" as const, "sdu" as const],
+          sourceRefs: [{
+            sourceId: "SRC-VALLEY-STANDARD-DRIVE-UNIT-PUBLIC",
+            url: "https://valleyirrigation.com/standard-drive-unit",
+            checkedAt: "2026-06-09",
+            limit: "Public tire option label only; not field-specific compatibility proof.",
+          }],
+          caveats: ["Operator/vendor review required."],
+          customValueFallback: false,
+        },
+        customMotorRpm: 0.6,
+        sourceRefs: [{
+          sourceId: "SRC-OPERATOR-LRDU-ARCHIVE",
+          limit: "Operator-supplied advisory metadata only.",
+        }],
+        caveats: ["RPM is custom input, not a manual-derived preset."],
+      },
+    },
   },
 };
 const cornerArmBundle = buildProjectArchiveBundle(
@@ -310,8 +337,10 @@ const cornerArmBundle = buildProjectArchiveBundle(
 assert.match(cornerArmBundle.files[PROJECT_JSON_FILENAME], /corner-arm-archive/);
 assert.match(cornerArmBundle.files[PROJECT_MAP_XML_FILENAME], /<cornerArm id="corner-arm-archive"/);
 assert.match(cornerArmBundle.files[PROJECT_MAP_XML_FILENAME], /modelFamily="single_span_lrdu_sdu"/);
+assert.match(cornerArmBundle.files[PROJECT_MAP_XML_FILENAME], /<driveUnit role="lrdu" advisoryOnly="true"/);
 assert.match(cornerArmBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /cornerArmModelFamily/);
 assert.match(cornerArmBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /cornerArmCanonicalGeometryMutation/);
+assert.match(cornerArmBundle.files[PROJECT_GOOGLE_EARTH_KML_FILENAME], /lrduDriveUnitTireLabel/);
 const importedCornerArmProject = importProjectArchiveZip(exportProjectArchiveZip(cornerArmBundle));
 assert.equal(importedCornerArmProject.machine.cornerArm?.id, "corner-arm-archive");
 assert.equal(importedCornerArmProject.machine.cornerArm?.wheelTrackLengthMeters, 78);
@@ -319,6 +348,9 @@ assert.equal(importedCornerArmProject.machine.cornerArm?.overhangLengthMeters, 1
 assert.equal(importedCornerArmProject.machine.cornerArm?.metadataSource, "operator_supplied");
 assert.equal(importedCornerArmProject.machine.cornerArm?.modelFamily, "single_span_lrdu_sdu");
 assert.equal(importedCornerArmProject.machine.cornerArm?.sourceRefs[0].sourceId, "SRC-VALLEY-VFLEX-CORNER");
+assert.equal(importedCornerArmProject.machine.driveUnits?.lrdu?.tire?.label, "14.9-24");
+assert.equal(importedCornerArmProject.machine.driveUnits?.lrdu?.customMotorRpm, 0.6);
+assert.deepEqual(importedCornerArmProject.pivotCenter, sampleProject.pivotCenter);
 
 const zipped = exportProjectArchiveZip(bundle);
 assert.ok(zipped.byteLength > 500);

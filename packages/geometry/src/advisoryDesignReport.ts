@@ -1,6 +1,7 @@
 import type { AdvisorySourceReference, LayoutResult, PivotProject, ProjectMapFeature, XY } from "@cplayout/core";
 
 import { buildAdvisoryGeneratedMultiPivotScenarioReview } from "./advisoryPivotPlacement";
+import type { AdvisoryMachineRenderAcreLedger } from "./advisoryMachineRenderModel";
 import type {
   AdvisoryEndGunSensitivityReview,
   AdvisoryFieldPivotPlan,
@@ -62,6 +63,7 @@ export interface AdvisoryDesignReportInput {
   sweepEfficiencyReview?: AdvisorySweepEfficiencyReview;
   generatedMultiPivotScenarioReview?: AdvisoryGeneratedMultiPivotScenarioReview;
   reviewZoneAudit?: AdvisoryGeneratedReviewZoneAudit;
+  advisoryMachineRenderAcreLedger?: AdvisoryMachineRenderAcreLedger | null;
   generatedAt?: string;
 }
 
@@ -262,6 +264,15 @@ export function buildAdvisoryDesignReport(input: AdvisoryDesignReportInput): Adv
         `Modeled overlap acres: ${formatAcres(acreLedger.overlapAcres)}`,
         `Outside-field acres: ${formatAcres(acreLedger.outsideFieldAcres)}`,
         `Verified obstacle/no-spray blocked acres: ${formatAcres(acreLedger.verifiedBlockedAcres)}`,
+        ...(input.advisoryMachineRenderAcreLedger ? [
+          `Advisory render standard pivot acres: ${formatAcres(input.advisoryMachineRenderAcreLedger.standardPivotAcres)}`,
+          `Advisory render end-gun acres: ${formatAcres(input.advisoryMachineRenderAcreLedger.endGunAcres)}`,
+          `Advisory render corner-arm acres: ${formatAcres(input.advisoryMachineRenderAcreLedger.cornerArmAcres)} (render/display ledger only)`,
+          `Advisory render de-duplicated total acres: ${formatAcres(input.advisoryMachineRenderAcreLedger.deduplicatedTotalAcres)}`,
+          `Advisory render overlap acres: ${formatAcres(input.advisoryMachineRenderAcreLedger.overlapAcres)}`,
+          `Advisory render outside-field acres: ${formatAcres(input.advisoryMachineRenderAcreLedger.outsideFieldAcres)}`,
+          `Advisory render no-spray blocked acres: ${formatAcres(input.advisoryMachineRenderAcreLedger.verifiedBlockedAcres)}`,
+        ] : []),
         `Full-scope outside acres: ${formatAcres(input.multiMachineReview.compilation.outsideFullScopeAcres)}`,
         `Power-line evidence status: ${readable(powerLineEvidence.status)}`,
         `Power-line exclusion conflicts: ${input.multiMachineReview.verifiedPowerExclusionConflictCount}`,

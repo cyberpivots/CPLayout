@@ -1,6 +1,7 @@
 export * from "./advisoryPivotPlacement";
 export * from "./advisoryMachineRenderModel";
 export * from "./advisoryDesignReport";
+export * from "./cornerArmKinematics";
 export * from "./cornerGpsMapAdvisoryReview";
 export * from "./designScenarios";
 export * from "./geometry";

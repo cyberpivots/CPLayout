@@ -1,4 +1,5 @@
 export * from "./coordinates";
+export * from "./cornerArmCatalog";
 export * from "./cornerGpsMapExport";
 export * from "./cornerGpsMapImport";
 export * from "./cornerGpsMapLegacyEvidence";

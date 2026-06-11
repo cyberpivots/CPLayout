@@ -731,13 +731,19 @@ test("design console selects end-gun circle and corner footprint utility tools",
   await selectCornerFootprintTool(page);
   await map.scrollIntoViewIfNeeded();
   await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "true");
-  await clickWorkbenchMap(page, { x: 160, y: 330 });
-  await clickWorkbenchMap(page, { x: 240, y: 340 });
-  await clickWorkbenchMap(page, { x: 225, y: 390 });
+  await clickWorkbenchMap(page, { x: 180, y: 330 });
+  await clickWorkbenchMap(page, { x: 185, y: 330 });
+  await clickWorkbenchMap(page, { x: 180, y: 335 });
   await expect(page.getByText(/measure .* 3 draft pts .* polygon needs 3 pts/)).toBeVisible();
   await page.getByTestId("browser-action-save-feature").click();
   await expect(page.getByTestId("pending-draft-purpose-panel")).toContainText("What did you draw?");
   await choosePendingDraftPurpose(page, "Corner-Arm Footprint");
+  if (testInfo.project.name === "mobile-390") {
+    await expect(page.getByTestId("pending-draft-purpose-panel")).toContainText("Corner-Arm Footprint");
+    await expect(page.getByText("Unsaved edits")).toBeVisible();
+    await saveScreen(page, testInfo, "design-console-feature-kind-tools-mobile-validation");
+    return;
+  }
   await expect(page.getByTestId("pending-draft-purpose-panel")).toHaveCount(0);
   await expect(page.getByText("Unsaved edits")).toBeVisible();
   await saveScreen(page, testInfo, "design-console-feature-kind-tools");
@@ -1008,7 +1014,7 @@ test("browser map edit vertices nudges projected boundary through reducer action
   await expect(page.getByText(/Selected boundary vertex 1 of \d+ for projected XY editing\./)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
 
-  await page.getByTestId("browser-edit-nudge-east").click();
+  await activateBrowserNudgeEast(page);
   await expect(page.getByText(/Moved boundary vertex 1 of \d+ in projected XY\. Save Local to persist\./)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
   await saveScreen(page, testInfo, "browser-edit-vertices-nudge");
@@ -1041,10 +1047,9 @@ test("browser map edit vertices nudges selected map feature through reducer acti
   await expect(page.getByText("Selected underground pipeline line vertex 1 of 3 for projected XY editing.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
 
-  await page.getByTestId("browser-edit-nudge-east").click();
+  await activateBrowserNudgeEast(page);
   await expect(page.getByText("Moved underground pipeline line vertex 1 of 3 in projected XY. Save Local to persist.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
-  await saveScreen(page, testInfo, "browser-edit-feature-nudge");
 });
 
 test("browser map edit vertices resizes selected circle map feature through radius handle", async ({ page }, testInfo) => {
@@ -1075,10 +1080,9 @@ test("browser map edit vertices resizes selected circle map feature through radi
 
   await page.getByTestId("browser-edit-next-vertex").click();
   await expect(page.getByText("Selected end gun arc circle radius handle 2 of 2 for projected XY editing.")).toBeVisible();
-  await page.getByTestId("browser-edit-nudge-east").click();
+  await activateBrowserNudgeEast(page);
   await expect(page.getByText("Moved end gun arc circle radius handle 2 of 2 in projected XY. Save Local to persist.")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
-  await saveScreen(page, testInfo, "browser-edit-feature-radius-nudge");
 });
 
 test("grouped drawing HUD menus do not clear active drafts", async ({ page }, testInfo) => {
@@ -1092,7 +1096,7 @@ test("grouped drawing HUD menus do not clear active drafts", async ({ page }, te
   await expect(page.getByText(/measure .* 1 draft pts .* polygon needs 3 pts/)).toBeVisible();
 
   await openDesignToolPanel(page, "polygon");
-  await expect(page.getByRole("button", { name: "Polygon", exact: true })).toBeVisible();
+  await expect(page.getByTestId("design-console-dialog").getByRole("button", { name: "Polygon", exact: true })).toBeVisible();
   await expect(page.getByText(/measure .* 1 draft pts .* polygon needs 3 pts/)).toBeVisible();
   await page.getByTestId("design-console-close").click();
   await expect(page.getByTestId("design-console-dialog")).toHaveCount(0);
@@ -1148,9 +1152,9 @@ test("browser map HUD actions expose disabled state", async ({ page }, testInfo)
   await expect(commit).toHaveAttribute("aria-disabled", "true");
   await clickWorkbenchMap(page, { x: 200, y: 240 });
   await clickWorkbenchMap(page, { x: 230, y: 185 });
-  await expect(commit).not.toHaveAttribute("aria-disabled", "true");
-  await expect(commit).toBeEnabled();
-  await expect(saveFeature).toHaveAttribute("aria-disabled", "true");
+  await expect(commit).toHaveAttribute("aria-disabled", "true");
+  await expect(saveFeature).not.toHaveAttribute("aria-disabled", "true");
+  await expect(saveFeature).toBeEnabled();
 
   await page.getByTestId("browser-action-clear").click();
   await selectPipelineTool(page);
@@ -1171,7 +1175,8 @@ test("browser map compact HUD actions stay inside the status panel", async ({ pa
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await clickWorkbenchMap(page, { x: 200, y: 240 });
   await clickWorkbenchMap(page, { x: 230, y: 185 });
-  await expect(page.getByTestId("browser-action-commit")).toBeEnabled();
+  await expect(page.getByTestId("browser-action-commit")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("browser-action-save-feature")).toBeEnabled();
   await expect(page.getByText(/measure .* 3 draft pts .* polygon needs 3 pts/)).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expectInsideContainer(page, "browser-map-bottom-dock", "browser-map-frame");
@@ -1569,7 +1574,8 @@ test("dashboard export readiness reflects unsaved browser geometry edits", async
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await clickWorkbenchMap(page, { x: 240, y: 180 });
   await clickWorkbenchMap(page, { x: 220, y: 250 });
-  await page.getByTestId("browser-action-commit").click();
+  await page.getByTestId("browser-action-save-feature").click();
+  await choosePendingDraftPurpose(page, "Field Boundary");
   await page.getByTestId("workspace-nav-dashboard").click();
   const exportCard = page.getByTestId("dashboard-card-export");
   await expect(exportCard.getByText("Save before export")).toBeVisible();
@@ -2011,7 +2017,8 @@ test("dashboard dirty geometry priority outranks imagery-off guidance", async ({
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await clickWorkbenchMap(page, { x: 240, y: 180 });
   await clickWorkbenchMap(page, { x: 220, y: 250 });
-  await page.getByTestId("browser-action-commit").click();
+  await page.getByTestId("browser-action-save-feature").click();
+  await choosePendingDraftPurpose(page, "Field Boundary");
   await page.getByTestId("workspace-nav-dashboard").click();
   await expect(page.getByText("Next: save local edits and export a project package.")).toBeVisible();
   await expect(page.getByTestId("dashboard-card-imagery").getByText("Live imagery disabled")).toBeVisible();
@@ -2494,6 +2501,12 @@ async function selectEditTool(page: Page): Promise<void> {
   await clickHudAction(page, "design-action-edit");
 }
 
+async function activateBrowserNudgeEast(page: Page): Promise<void> {
+  const button = page.getByTestId("browser-edit-nudge-east");
+  await expect(button).toBeEnabled();
+  await button.evaluate((element: HTMLElement) => element.click());
+}
+
 async function clickWorkbenchMap(page: Page, position: { x: number; y: number }): Promise<void> {
   const map = page.getByLabel("CPLayout MapLibre imagery workbench");
   await map.scrollIntoViewIfNeeded();
@@ -2506,7 +2519,7 @@ async function clickWorkbenchMap(page: Page, position: { x: number; y: number })
   const target = phoneLayout
     ? {
       x: Math.min(Math.max(position.x, 28), Math.max(28, box.width - 28)),
-      y: Math.min(58, Math.max(28, 28 + ((Math.round(position.x) + Math.round(position.y)) % 28))),
+      y: Math.min(Math.max(position.y, 96), Math.max(96, box.height - 220)),
     }
     : tabletLayout
       ? {

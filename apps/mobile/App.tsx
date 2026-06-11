@@ -84,6 +84,7 @@ import { exportFileAsync, rehydrateInstalledMapPackageManifestsAsync } from "@cp
 import {
   COORDINATE_FORMAT_LABELS,
   ADVISORY_DRIVE_UNIT_TIRE_OPTIONS,
+  VALLEY_CORNER_ARM_SCAFFOLD_CATALOG,
   MACHINE_CATALOG_PRESETS,
   applyMachineCatalogPreset,
   createProjectEditorState,
@@ -113,6 +114,7 @@ import {
   type CornerGpsMapBpfImportPreview,
   type GoogleEarthKmlImportResult,
   type AdvisoryCornerArmConfig,
+  type CornerArmModelCatalogEntry,
   type CornerGpsMapModelPreset,
   type AdvisoryDriveUnitConfig,
   type LonLat,
@@ -141,6 +143,7 @@ import {
   buildDesignScenarioPreview,
   compareAdvisoryMachineStrategies,
   evaluateAdvisoryCornerArm,
+  evaluateCornerArmKinematics,
   evaluateLayout,
   evaluateMachineBoundaryClearance,
   exportScenarioGeoJson,
@@ -149,6 +152,7 @@ import {
   type AdvisoryCostAssessment,
   type AdvisoryCostInput,
   type AdvisoryCornerArmEvaluation,
+  type CornerArmKinematicResult,
   type AdvisoryDesignReport,
   type AdvisoryEndGunSensitivityReview,
   type AdvisoryEndGunSensitivityRow,
@@ -2657,6 +2661,11 @@ function CornerArmSheet({
   const [sequencingType, setSequencingType] = useState<AdvisoryCornerArmConfig["sequencingType"]>(machine.cornerArm?.sequencingType ?? "operator_supplied");
   const [orientation, setOrientation] = useState<AdvisoryCornerArmConfig["orientation"]>(machine.cornerArm?.orientation ?? "operator_supplied");
   const [confidence, setConfidence] = useState<AdvisoryCornerArmConfig["confidence"]>(machine.cornerArm?.confidence ?? "user_estimated");
+  const [selectedScaffoldModelId, setSelectedScaffoldModelId] = useState<string | null>(
+    machine.cornerArm && VALLEY_CORNER_ARM_SCAFFOLD_CATALOG.some((entry) => entry.id === machine.cornerArm?.id)
+      ? machine.cornerArm.id
+      : null,
+  );
   const [xmlConfig, setXmlConfig] = useState("");
   const [xmlPresets, setXmlPresets] = useState<CornerGpsMapModelPreset[]>([]);
   const [xmlStatus, setXmlStatus] = useState<string | null>(null);
@@ -2673,9 +2682,25 @@ function CornerArmSheet({
     setSequencingType(machine.cornerArm?.sequencingType ?? "operator_supplied");
     setOrientation(machine.cornerArm?.orientation ?? "operator_supplied");
     setConfidence(machine.cornerArm?.confidence ?? "user_estimated");
+    setSelectedScaffoldModelId(machine.cornerArm && VALLEY_CORNER_ARM_SCAFFOLD_CATALOG.some((entry) => entry.id === machine.cornerArm?.id) ? machine.cornerArm.id : null);
     setSelectedXmlPresetId(machine.cornerArm?.metadataSource === "cornergpsmap_config" ? machine.cornerArm.id : null);
     setError(null);
   }, [machine.cornerArm, unitSystem]);
+
+  function selectScaffoldModel(model: CornerArmModelCatalogEntry): void {
+    setSelectedScaffoldModelId(model.id);
+    setSelectedXmlPresetId(null);
+    setName(model.label);
+    setLength(formatDistanceInputValue(model.spanLengthMeters + model.overhangLengthMeters, unitSystem));
+    setWheelTrackLength(formatDistanceInputValue(model.spanLengthMeters, unitSystem));
+    setOverhangLength(formatDistanceInputValue(model.overhangLengthMeters, unitSystem));
+    setMetadataSource("local_design_guide");
+    setGuidanceType("unknown");
+    setSequencingType("unknown");
+    setOrientation("unknown");
+    setConfidence("user_estimated");
+    setXmlStatus(`${model.label} selected as scaffold-only advisory metadata.`);
+  }
 
   function parseXmlPresets(): void {
     try {
@@ -2724,8 +2749,11 @@ function CornerArmSheet({
         ? xmlPresets.find((preset) => cornerGpsMapPresetToAdvisoryCornerArmConfig(preset).id === selectedXmlPresetId)
         : undefined;
       const selectedPresetConfig = selectedPreset ? cornerGpsMapPresetToAdvisoryCornerArmConfig(selectedPreset) : null;
+      const selectedScaffoldModel = selectedScaffoldModelId
+        ? VALLEY_CORNER_ARM_SCAFFOLD_CATALOG.find((entry) => entry.id === selectedScaffoldModelId) ?? null
+        : null;
       const config: AdvisoryCornerArmConfig = {
-        id: selectedPresetConfig?.id ?? machine.cornerArm?.id ?? "operator-corner-arm-advisory",
+        id: selectedPresetConfig?.id ?? selectedScaffoldModel?.id ?? machine.cornerArm?.id ?? "operator-corner-arm-advisory",
         name: trimmedName.length > 0 ? trimmedName : "Operator corner-arm advisory",
         advisoryOnly: true,
         lengthMeters: requiredPositiveDistanceInput(length, unitSystem, "Corner-arm length"),
@@ -2734,12 +2762,14 @@ function CornerArmSheet({
         ...(selectedPresetConfig?.maxSteerAngleDegrees === undefined ? {} : { maxSteerAngleDegrees: selectedPresetConfig.maxSteerAngleDegrees }),
         ...(selectedPresetConfig?.minSteerAngleDegrees === undefined ? {} : { minSteerAngleDegrees: selectedPresetConfig.minSteerAngleDegrees }),
         metadataSource,
+        modelFamily: selectedScaffoldModel ? "single_span_lrdu_sdu" : selectedPresetConfig?.modelFamily,
         guidanceType,
         sequencingType,
         orientation,
         confidence,
-        sourceRefs: selectedPresetConfig?.sourceRefs ?? (machine.cornerArm?.sourceRefs?.length ? machine.cornerArm.sourceRefs : DEFAULT_CORNER_ARM_SOURCE_REFS),
+        sourceRefs: selectedPresetConfig?.sourceRefs ?? selectedScaffoldModel?.sourceRefs ?? (machine.cornerArm?.sourceRefs?.length ? machine.cornerArm.sourceRefs : DEFAULT_CORNER_ARM_SOURCE_REFS),
         ...(selectedPresetConfig?.notes ? { notes: selectedPresetConfig.notes } : {}),
+        ...(selectedScaffoldModel ? { notes: `${selectedScaffoldModel.label} scaffold-only model selection. ${selectedScaffoldModel.notes.join(" ")}` } : {}),
       };
       setError(null);
       onRequestSave(config);
@@ -2762,6 +2792,20 @@ function CornerArmSheet({
       <Text style={styles.mapFeatureMeta}>
         Catalog compatibility: {machine.catalogSelection ? `${machine.catalogSelection.manufacturer} ${machine.catalogSelection.model} is selected as an advisory snapshot.` : "No catalog preset selected; verify compatibility from operator/vendor sources."}
       </Text>
+      <View style={styles.machineCatalogPanel} testID="corner-arm-scaffold-models">
+        <Text style={styles.formLabel}>Scaffold model records</Text>
+        <Text style={styles.mapFeatureMeta}>These local artifact rows are source-hashed, scaffold-only, and production_ready=No. They populate advisory fields only.</Text>
+        <View style={styles.controlRow}>
+          {VALLEY_CORNER_ARM_SCAFFOLD_CATALOG.map((model) => (
+            <ActionButton
+              key={model.id}
+              label={model.label.replace("Valley ", "").replace(" scaffold", "")}
+              onPress={() => selectScaffoldModel(model)}
+              selected={selectedScaffoldModelId === model.id}
+            />
+          ))}
+        </View>
+      </View>
       <View style={styles.machineCatalogPanel}>
         <Text style={styles.formLabel}>CornerGPSMap XML presets</Text>
         <FormField keyboardType="default" label="Config XML paste" value={xmlConfig} onChangeText={setXmlConfig} testID="corner-gps-map-config-xml" />
@@ -2901,6 +2945,22 @@ function CalculateSheet({
   }), [advisoryCostInput, project]);
   const obstacleInteractionReview = useMemo<AdvisoryObstacleInteractionReview>(() => analyzeAdvisoryObstacleInteractions(project), [project]);
   const machineBoundaryClearanceRows = useMemo<MachineBoundaryClearanceRow[]>(() => evaluateMachineBoundaryClearance(project, settings), [project, settings]);
+  const cornerArmKinematicResult = useMemo<CornerArmKinematicResult>(() => evaluateCornerArmKinematics({
+    projectCrs: project.projectCrs,
+    pivotCenter: project.pivotCenter,
+    pivotCenterToLrduRadiusMeters: project.machine.spanLengthsMeters.reduce((sum, span) => sum + span, 0),
+    lrduSpeedMetersPerMinuteAt100Percent: project.machine.driveUnits?.lrdu?.operatorMeasuredSpeedMetersPerMinute,
+    modelSpec: project.machine.cornerArm ? VALLEY_CORNER_ARM_SCAFFOLD_CATALOG.find((entry) => entry.id === project.machine.cornerArm?.id) : undefined,
+    rotationDirection: project.machine.sweep.mode === "partial_circle" ? project.machine.sweep.direction : "counterclockwise",
+    orientation: project.machine.cornerArm?.orientation === "trailing" ? "trailing" : "leading",
+    sweep: project.machine.sweep,
+    fieldBoundary: project.fieldBoundary,
+    obstacles: project.obstacles,
+    guidancePath: cornerArmGuidancePath(project),
+    endGunThrowMeters: project.machine.endGunThrowMeters,
+    endGunAngleRanges: project.machine.endGunAngleRanges,
+    safetyZoneMeters: settings.layoutReview.requiredBoundaryClearanceMeters,
+  }), [project, settings.layoutReview.requiredBoundaryClearanceMeters]);
   const multiMachineReview = useMemo<AdvisoryMultiMachineReview>(() => analyzeAdvisoryMultiMachineLayout(project, {
     maxCandidates: 3,
     collisionBufferMeters: project.machine.machineClearanceBufferMeters,
@@ -2971,6 +3031,10 @@ function CalculateSheet({
       <MachineBoundaryClearancePanel
         onUpdateLayoutReview={updateLayoutReview}
         rows={machineBoundaryClearanceRows}
+        settings={settings}
+      />
+      <CornerArmKinematicStatusPanel
+        result={cornerArmKinematicResult}
         settings={settings}
       />
       <View style={styles.placementReviewPanel} testID="advisory-strategy-cost-summary">
@@ -4178,6 +4242,66 @@ function MachineBoundaryClearancePanel({
   );
 }
 
+function CornerArmKinematicStatusPanel({
+  result,
+  settings,
+}: {
+  result: CornerArmKinematicResult;
+  settings: AppSettings;
+}): React.JSX.Element {
+  const blockerCount = result.infeasibleDiagnostics.length;
+  const firstBlockers = result.infeasibleDiagnostics.slice(0, 3);
+  return (
+    <View style={styles.placementReviewPanel} testID="corner-arm-kinematics-panel">
+      <View style={styles.scenarioRowHeader}>
+        <Text style={styles.rowTitle}>Corner-Arm Kinematics</Text>
+        <Text style={result.status === "ready" ? styles.scenarioScore : styles.scenarioScoreWarn}>{result.status === "ready" ? "Ready" : `${blockerCount} blockers`}</Text>
+      </View>
+      <AdvisoryBadgeRow badges={["projected XY", "advisory", result.scaffoldSourceStatus.replaceAll("_", " "), "no controller proof"]} />
+      <View style={styles.metricGrid}>
+        <MetricTile label="LRDU path" value={`${result.lrduPath.length}`} tone={result.lrduPath.length > 0 ? "neutral" : "warn"} />
+        <MetricTile label="SDU path" value={`${result.sduPath.length}`} tone={result.sduPath.length > 0 ? "neutral" : "warn"} />
+        <MetricTile label="Endpoint path" value={`${result.overhangEndpointPath.length}`} tone={result.overhangEndpointPath.length > 0 ? "neutral" : "warn"} />
+        <MetricTile label="Safety zone" value={formatDistance(result.safetyZoneMeters, settings.unitSystem)} tone="neutral" />
+        <MetricTile label="Physical swept" value={formatAreaFromAcres(result.sweptPhysicalEnvelopeAcres, settings.unitSystem)} tone="neutral" />
+        <MetricTile label="Wetted/endgun" value={formatAreaFromAcres(result.wettedEndGunEnvelopeAcres, settings.unitSystem)} tone="neutral" />
+      </View>
+      {firstBlockers.length > 0 ? (
+        <View testID="corner-arm-kinematics-blockers">
+          {firstBlockers.map((diagnostic, index) => (
+            <Text key={`${diagnostic.code}-${diagnostic.stateIndex ?? index}`} style={styles.formError}>
+              {diagnostic.code.replaceAll("_", " ")}: {diagnostic.message}
+            </Text>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.mapFeatureMeta} testID="corner-arm-kinematics-ready">
+          Kinematic preview produced report rows for LRDU, SDU, overhang endpoint, physical swept envelope, and end-gun control angles. Qualified review remains required.
+        </Text>
+      )}
+      {result.endGunControlRows.length > 0 ? (
+        <View style={styles.costComparisonTable} testID="corner-arm-endgun-control-rows">
+          <View style={styles.costComparisonHeader}>
+            <Text style={styles.costComparisonHeaderText}>End-gun row</Text>
+            <Text style={styles.costComparisonHeaderText}>Start</Text>
+            <Text style={styles.costComparisonHeaderText}>Stop</Text>
+          </View>
+          {result.endGunControlRows.map((row) => (
+            <View key={row.rangeIndex} style={styles.costComparisonRow}>
+              <Text style={styles.costComparisonValue}>{row.direction}</Text>
+              <Text style={styles.costComparisonValue}>{row.startAngleDegrees.toFixed(1)} deg</Text>
+              <Text style={styles.costComparisonValue}>{row.stopAngleDegrees.toFixed(1)} deg</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <Text style={styles.mapFeatureMeta}>
+        This panel does not save geometry, change machine settings, prove proprietary Valley kinematics, certify a design, or write project storage. Existing advisory envelopes remain fallback display evidence when required inputs are missing.
+      </Text>
+    </View>
+  );
+}
+
 function IdealCenterSummary({
   analysis,
   onRequestApplyPivotCandidate,
@@ -4513,6 +4637,15 @@ function shortestBoundaryClearanceRow(rows: MachineBoundaryClearanceRow[]): Mach
   return rows.length > 0
     ? [...rows].sort((left, right) => left.minimumBoundaryDistanceMeters - right.minimumBoundaryDistanceMeters)[0]
     : null;
+}
+
+function cornerArmGuidancePath(project: PivotProject): XY[] | undefined {
+  const guidanceFeature = (project.mapFeatures ?? []).find((feature) => (
+    feature.kind === "linear_move_path"
+    && feature.geometry.type === "LineString"
+    && feature.geometry.vertices.length >= 2
+  ));
+  return guidanceFeature?.geometry.type === "LineString" ? guidanceFeature.geometry.vertices : undefined;
 }
 
 function layoutReviewClearanceStepMeters(unitSystem: AppSettings["unitSystem"]): number {

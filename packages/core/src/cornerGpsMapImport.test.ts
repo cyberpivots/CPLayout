@@ -135,6 +135,9 @@ assert.equal(advisoryConfig.lengthMeters, vflex.cornerLengthMeters);
 assert.equal(advisoryConfig.overhangLengthMeters, vflex.overhangLengthMeters);
 assert.equal(advisoryConfig.metadataSource, "cornergpsmap_config");
 assert.equal(advisoryConfig.modelFamily, "single_span_lrdu_sdu");
+assert.equal(advisoryConfig.maxSteerAngleDegrees, 100);
+assert.equal(advisoryConfig.minSteerAngleDegrees, -10);
+assert.equal(advisoryConfig.sourceRefs[0].sourceId, "SRC-CORNERGPSMAP-MODEL-17");
 assert.ok((advisoryConfig.wheelTrackLengthMeters ?? 0) > 0);
 assert.match(advisoryConfig.notes ?? "", /proprietary kinematics/);
 

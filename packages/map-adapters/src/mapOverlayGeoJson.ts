@@ -190,12 +190,14 @@ function advisoryMachinePathOverlayFeatures(
   baseProperties: Record<string, unknown>,
 ): GeoJsonFeature[] {
   return [
-    polygonFeature(project, layerType, overlay.insideFieldEnvelope, {
+    ...centerlineFeatures(project, layerType, overlay, {
       ...baseProperties,
       kind: overlay.kind,
       pathLabel: overlay.label,
       radiusMeters: overlay.radiusMeters,
       bufferMeters: overlay.bufferMeters,
+      centerline: true,
+      warningEnvelope: false,
       ...(overlay.towerIndex === undefined ? {} : { towerIndex: overlay.towerIndex }),
       ...(overlay.anchorRadiusMeters === undefined ? {} : { anchorRadiusMeters: overlay.anchorRadiusMeters }),
       ...(overlay.pathModel === undefined ? {} : { pathModel: overlay.pathModel }),
@@ -203,6 +205,18 @@ function advisoryMachinePathOverlayFeatures(
       ...(overlay.sampledPathPointCount === undefined ? {} : { sampledPathPointCount: overlay.sampledPathPointCount }),
       ...(overlay.maxExtensionMeters === undefined ? {} : { maxExtensionMeters: overlay.maxExtensionMeters }),
     }),
+    ...(overlay.outsideFieldEnvelope.length === 0 ? [] : [
+      polygonFeature(project, `${layerType}_outside_field`, overlay.outsideFieldEnvelope, {
+        ...baseProperties,
+        kind: overlay.kind,
+        pathLabel: overlay.label,
+        radiusMeters: overlay.radiusMeters,
+        bufferMeters: overlay.bufferMeters,
+        centerline: false,
+        warningEnvelope: true,
+        warning: "Path envelope extends outside the field boundary.",
+      }),
+    ]),
   ];
 }
 
@@ -232,18 +246,35 @@ function layoutPathOverlayFeatures(project: PivotProject, overlay: LayoutPathOve
   const insideLayer = layoutPathInsideLayerType(overlay);
   const outsideLayer = layoutPathOutsideLayerType(overlay);
   return [
-    polygonFeature(project, insideLayer, overlay.insideFieldEnvelope, {
+    ...centerlineFeatures(project, insideLayer, overlay, {
       ...baseProperties,
-      insideFieldEnvelope: true,
-      outsideFieldEnvelope: false,
+      centerline: true,
+      warningEnvelope: false,
+      centerlineSegmentCount: overlay.centerlineSegments.length,
     }),
-    polygonFeature(project, outsideLayer, overlay.outsideFieldEnvelope, {
+    ...(overlay.outsideFieldEnvelope.length === 0 ? [] : [polygonFeature(project, outsideLayer, overlay.outsideFieldEnvelope, {
       ...baseProperties,
+      centerline: false,
+      warningEnvelope: true,
       insideFieldEnvelope: false,
       outsideFieldEnvelope: true,
       warning: "Path envelope extends outside the field boundary.",
-    }),
+    })]),
   ];
+}
+
+function centerlineFeatures(
+  project: PivotProject,
+  layerType: string,
+  overlay: LayoutPathOverlay,
+  properties: Record<string, unknown>,
+): GeoJsonFeature[] {
+  return overlay.centerlineSegments
+    .filter((segment) => segment.length >= 2)
+    .map((segment, centerlineSegmentIndex) => lineFeature(project, layerType, segment, {
+      ...properties,
+      centerlineSegmentIndex,
+    }));
 }
 
 function layoutPathInsideLayerType(overlay: LayoutPathOverlay): string {

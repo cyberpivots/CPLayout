@@ -53,7 +53,15 @@ import { CoordinateFormatPanel } from "./src/components/CoordinateFormatPanel";
 import { AndroidNativeProofRunner } from "./src/components/AndroidNativeProofRunner";
 import { BrowserRtkReceiverPanel, type BrowserRtkReceiverStatus } from "./src/components/BrowserRtkReceiverPanel";
 import { CommandBar, IconCommandButton, type CommandIconButtonConfig, type CommandMenuConfig } from "./src/components/CommandSurface";
-import { MapSurface } from "@cplayout/map-adapters";
+import {
+  MapSurface,
+  defaultMapFeatureName,
+  draftVerticesToFeatureGeometry,
+  featureOptionsForGeometry,
+  type PendingMapFeatureDraft,
+  type UtilityFeatureGeometry,
+  type UtilityFeatureOption,
+} from "@cplayout/map-adapters";
 import { MetricTile } from "./src/components/MetricTile";
 import {
   CatalogItemForm,
@@ -93,6 +101,8 @@ import {
   importGoogleEarthKmlToProject,
   importProjectedGeoJsonToProject,
   importSurveyCsvToProject,
+  cornerGpsMapPresetToAdvisoryCornerArmConfig,
+  parseCornerGpsMapConfigXml,
   type CornerGpsMapSourceRef,
   previewCornerGpsMapBpfImport,
   improvedCenterPivotProofProject,
@@ -103,9 +113,11 @@ import {
   type CornerGpsMapBpfImportPreview,
   type GoogleEarthKmlImportResult,
   type AdvisoryCornerArmConfig,
+  type CornerGpsMapModelPreset,
   type AdvisoryDriveUnitConfig,
   type LonLat,
   type MapPackageManifest,
+  type ObstacleZone,
   type PivotMachine,
   type PivotProject,
   type ProjectEditorAction,
@@ -167,7 +179,7 @@ type WorkspaceView = "dashboard" | "map" | "survey" | "files" | "settings" | "he
 type Screen = "projects" | "workspace";
 type WalkthroughModuleId = "imagery" | "boundary" | "obstacles" | "pivot" | "survey" | "validation" | "export";
 type DesignConsoleModal = DrawingToolPaletteModal;
-type RightWorkflowSidebarPage = "overview" | "tools" | "toolForm" | "layers" | "rtk" | "feature" | "warnings" | "catalog" | "catalogForm";
+type RightWorkflowSidebarPage = "overview" | "tools" | "purpose" | "toolForm" | "layers" | "rtk" | "feature" | "warnings" | "catalog" | "catalogForm";
 type AdvisoryCostDraft = {
   fixedMachineCost: string;
   costPerMeter: string;
@@ -178,12 +190,20 @@ type PendingPlacementAction =
   | { kind: "pivot"; candidate: PivotPlacementCandidate }
   | { kind: "cornerArm"; config: AdvisoryCornerArmConfig };
 
+type MapDraftPurposeOption =
+  | (UtilityFeatureOption & { purposeType: "map_feature"; meta: string })
+  | { purposeType: "field_boundary"; kind: "field_boundary"; label: string; geometry: "Polygon"; meta: string }
+  | { purposeType: "obstacle"; kind: ObstacleZone["kind"]; label: string; geometry: "Polygon"; meta: string };
+
 const EMPTY_ADVISORY_COST_DRAFT: AdvisoryCostDraft = {
   fixedMachineCost: "",
   costPerMeter: "",
   costPerTower: "",
   currencyCode: "USD",
 };
+const DEFAULT_CORNER_ARM_LENGTH_METERS = 91;
+const DEFAULT_CORNER_ARM_WHEEL_TRACK_LENGTH_METERS = 66;
+const DEFAULT_CORNER_ARM_OVERHANG_LENGTH_METERS = 25;
 
 function createBlankDesignProject(settings: AppSettings): PivotProject {
   const timestamp = new Date().toISOString();
@@ -253,8 +273,10 @@ function AppContent(): React.JSX.Element {
   const [placementCandidates, setPlacementCandidates] = useState<PivotPlacementCandidate[] | null>(null);
   const [advisoryCostDraft, setAdvisoryCostDraft] = useState<AdvisoryCostDraft>(EMPTY_ADVISORY_COST_DRAFT);
   const [pendingPlacementAction, setPendingPlacementAction] = useState<PendingPlacementAction | null>(null);
+  const [pendingMapFeatureDraft, setPendingMapFeatureDraft] = useState<PendingMapFeatureDraft | null>(null);
   const [guidedMapTool, setGuidedMapTool] = useState<{
     activeLayer: DrawingLayerType;
+    draftGeometry?: UtilityFeatureGeometry;
     featureKind?: ProjectMapFeatureKind;
     mode: DrawingMode;
     requestId: number;
@@ -339,13 +361,14 @@ function AppContent(): React.JSX.Element {
   const visibleSidebarPages = useMemo(
     () => rightWorkflowSidebarPages({
       activeCatalogForm: inlineCatalogForms && activeCatalogForm,
+      activePurposeForm: Boolean(pendingMapFeatureDraft),
       activeToolForm: Boolean(designConsoleModal),
       homeView: homeMapView,
       mappingWorkflowMode: settings.mappingWorkflowMode,
       selectedMapFeature: Boolean(selectedMapFeature),
       warningCount,
     }),
-    [activeCatalogForm, designConsoleModal, homeMapView, inlineCatalogForms, selectedMapFeature, settings.mappingWorkflowMode, warningCount],
+    [activeCatalogForm, designConsoleModal, homeMapView, inlineCatalogForms, pendingMapFeatureDraft, selectedMapFeature, settings.mappingWorkflowMode, warningCount],
   );
   const requestedSidebarPage = inlineCatalogForms && activeCatalogForm ? "catalogForm" : activeSidebarPage;
   const effectiveSidebarPage = visibleSidebarPages.some((page) => page.id === requestedSidebarPage)
@@ -453,6 +476,11 @@ function AppContent(): React.JSX.Element {
 
   function setWorkflowMode(mappingWorkflowMode: AppSettings["mappingWorkflowMode"]): void {
     setSettings((current) => parseAppSettings({ ...current, mappingWorkflowMode }));
+    if (mappingWorkflowMode !== "design") {
+      setGuidedMapTool(null);
+      setDesignConsoleModal(null);
+      setPendingMapFeatureDraft(null);
+    }
   }
 
   function loadProject(nextProject: PivotProject, context?: Partial<typeof activeCatalogContext>): void {
@@ -465,6 +493,7 @@ function AppContent(): React.JSX.Element {
     setSettings((current) => browserLocalSettings(nextProject.settings, current));
     setWalkthroughProgress(loadWalkthroughProgress(nextProject.id));
     setSelectedMapFeatureId(null);
+    setPendingMapFeatureDraft(null);
     setHomeMapView(false);
     setActiveView("map");
     setWorkflowMode("design");
@@ -589,6 +618,58 @@ function AppContent(): React.JSX.Element {
     setSelectedMapFeatureId(id);
   }
 
+  function createPendingMapFeatureDraft(draft: PendingMapFeatureDraft): void {
+    setPendingMapFeatureDraft(draft);
+    setSelectedMapFeatureId(null);
+    setDesignConsoleModal(null);
+    setActiveSidebarPage("purpose");
+    setRightDrawerOpen(true);
+  }
+
+  function cancelPendingMapFeatureDraft(): void {
+    setPendingMapFeatureDraft(null);
+    setActiveSidebarPage("tools");
+  }
+
+  function savePendingMapFeatureDraft(option: MapDraftPurposeOption): void {
+    if (!pendingMapFeatureDraft) return;
+    if (option.geometry !== pendingMapFeatureDraft.geometryType) return;
+    if (option.purposeType === "field_boundary") {
+      if (dispatchProjectWithResult({ type: "commit_boundary_draft", vertices: pendingMapFeatureDraft.vertices })) {
+        setPendingMapFeatureDraft(null);
+        setActiveSidebarPage("tools");
+      }
+      return;
+    }
+    if (option.purposeType === "obstacle") {
+      if (dispatchProjectWithResult({
+        type: "commit_obstacle_draft",
+        vertices: pendingMapFeatureDraft.vertices,
+        kind: option.kind,
+        confidence: pendingMapFeatureDraft.sourceConfidence,
+      })) {
+        setPendingMapFeatureDraft(null);
+        setActiveSidebarPage("tools");
+      }
+      return;
+    }
+    const geometry = draftVerticesToFeatureGeometry(pendingMapFeatureDraft.geometryType, pendingMapFeatureDraft.vertices);
+    const id = `map-feature-${Date.now().toString(36)}-${(project.mapFeatures ?? []).length + 1}`;
+    const feature: ProjectMapFeature = {
+      id,
+      name: defaultMapFeatureName(option.kind, pendingMapFeatureDraft.geometryType, pendingMapFeatureDraft.vertices.length),
+      kind: option.kind,
+      geometry,
+      confidence: pendingMapFeatureDraft.sourceConfidence,
+      notes: pendingMapFeatureDraft.notes,
+    };
+    if (dispatchProjectWithResult({ type: "add_map_feature", feature })) {
+      setPendingMapFeatureDraft(null);
+      setSelectedMapFeatureId(id);
+      setActiveSidebarPage("feature");
+    }
+  }
+
   function saveGeneratedFieldPivotReviewZones(plan: AdvisoryFieldPivotPlan): void {
     if (plan.selectedMachineCount === 0) return;
     const features = plan.candidates.map((candidate) => generatedFieldPivotZoneFeature(project, candidate));
@@ -612,10 +693,11 @@ function AppContent(): React.JSX.Element {
     setSelectedMapFeatureId(null);
   }
 
-  function activateGuidedMapTool(mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind): void {
+  function activateGuidedMapTool(mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind, draftGeometry?: UtilityFeatureGeometry): void {
     setWorkflowMode("design");
     setGuidedMapTool((current) => ({
       activeLayer,
+      draftGeometry,
       featureKind,
       mode,
       requestId: (current?.requestId ?? 0) + 1,
@@ -624,6 +706,15 @@ function AppContent(): React.JSX.Element {
 
   function activateDesignConsoleTool(mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind): void {
     activateGuidedMapTool(mode, activeLayer, featureKind);
+    setSelectedMapFeatureId(null);
+    setDesignConsoleModal(null);
+    if (sidebarInlineWorkflow) setActiveSidebarPage("tools");
+    setActiveView("map");
+  }
+
+  function activatePrimitiveMapTool(geometry: UtilityFeatureGeometry): void {
+    activateGuidedMapTool("measure", "control_point", undefined, geometry);
+    setPendingMapFeatureDraft(null);
     setSelectedMapFeatureId(null);
     setDesignConsoleModal(null);
     if (sidebarInlineWorkflow) setActiveSidebarPage("tools");
@@ -1153,6 +1244,17 @@ function AppContent(): React.JSX.Element {
       return (
         <>
           <Text style={styles.sectionTitle}>Tools</Text>
+          <DrawingToolLauncher
+            activeModal={designConsoleModal}
+            activeTool={guidedMapTool}
+            onActivateTool={activateDesignConsoleTool}
+            onCalculate={calculateAndOpenPanel}
+            onOpenModal={openDesignConsolePanel}
+            onToggleLayers={toggleLayersPanel}
+            settings={settings}
+            showGeometryTools={sidebarInlineWorkflow}
+            variant="sidebar"
+          />
           <View style={styles.mapFeatureEditor} testID="sidebar-tool-hud-summary">
             <Text style={styles.mapFeatureTitle}>Map HUD</Text>
             <View style={styles.metricGrid}>
@@ -1170,6 +1272,20 @@ function AppContent(): React.JSX.Element {
       );
     }
 
+    if (page === "purpose") {
+      return (
+        <>
+          <Text style={styles.sectionTitle}>Purpose</Text>
+          <PendingDraftPurposePanel
+            draft={pendingMapFeatureDraft}
+            onCancel={cancelPendingMapFeatureDraft}
+            onSave={savePendingMapFeatureDraft}
+            unitSystem={settings.unitSystem}
+          />
+        </>
+      );
+    }
+
     if (page === "toolForm") {
       return designConsoleModal ? (
         <View testID="design-console-panel">
@@ -1181,6 +1297,7 @@ function AppContent(): React.JSX.Element {
             cornerArmEvaluation={cornerArmEvaluation}
             editorError={editor.lastError}
             fieldPivotPlan={advisoryFieldPivotPlan}
+            onActivatePrimitive={activatePrimitiveMapTool}
             onActivateTool={activateDesignConsoleTool}
             onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
             onCalculate={calculateDesignScenarios}
@@ -1524,13 +1641,14 @@ function AppContent(): React.JSX.Element {
               <View style={styles.mapConsoleFrame}>
                 <MapSurface
                   activeLayer={guidedMapTool?.activeLayer}
+                  activeDraftGeometry={guidedMapTool?.draftGeometry}
                   activeMapFeatureKind={guidedMapTool?.featureKind}
                   activeToolMode={guidedMapTool?.mode}
                   activeToolRequestId={guidedMapTool?.requestId}
                   advisoryFieldPivotPlan={!homeMapView ? advisoryFieldPivotPlan : undefined}
                   advisoryMachineRenderModel={!homeMapView ? advisoryMachineRenderModel : undefined}
                   controlLayout="externalHud"
-                  bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled ? (
+                  bottomOverlay={!homeMapView && !nativeMapLibreProofEnabled && !sidebarInlineWorkflow ? (
                     <DesignActionHud
                       activeModal={designConsoleModal}
                       activeTool={guidedMapTool}
@@ -1561,6 +1679,7 @@ function AppContent(): React.JSX.Element {
                   onMoveInfrastructurePoint={(pointType, point, wgs84) => dispatchProject({ type: "move_infrastructure", pointType, point, wgs84 })}
                   onAddSurveyPoint={(point) => dispatchProject({ type: "add_survey_point", point })}
                   onAddMapFeature={addMapFeature}
+                  onCreateMapFeatureDraft={createPendingMapFeatureDraft}
                   onSelectMapFeature={setSelectedMapFeatureId}
                   />
               </View>
@@ -1682,6 +1801,7 @@ function AppContent(): React.JSX.Element {
             cornerArmEvaluation={cornerArmEvaluation}
             editorError={editor.lastError}
             fieldPivotPlan={advisoryFieldPivotPlan}
+            onActivatePrimitive={activatePrimitiveMapTool}
             onActivateTool={activateDesignConsoleTool}
             onApplyPivot={(point, wgs84) => dispatchProjectWithResult({ type: "place_pivot", point, wgs84 })}
             onCalculate={calculateDesignScenarios}
@@ -2066,6 +2186,7 @@ type DesignConsolePanelProps = {
   cornerArmEvaluation: AdvisoryCornerArmEvaluation;
   editorError: string | null;
   fieldPivotPlan: AdvisoryFieldPivotPlan;
+  onActivatePrimitive: (geometry: UtilityFeatureGeometry) => void;
   onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
   onApplyPivot: (point: XY, wgs84?: LonLat) => boolean;
   onCalculate: () => void;
@@ -2112,6 +2233,7 @@ function DesignConsolePanel({
   cornerArmEvaluation,
   editorError,
   fieldPivotPlan,
+  onActivatePrimitive,
   onActivateTool,
   onApplyPivot,
   onCalculate,
@@ -2150,10 +2272,10 @@ function DesignConsolePanel({
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled" style={styles.consoleDialogBody} contentContainerStyle={styles.consoleDialogBodyContent}>
-          {activeModal === "point" ? <PointToolSheet onActivateTool={onActivateTool} onOpenModal={onOpenModal} /> : null}
-          {activeModal === "line" ? <LineToolSheet onActivateTool={onActivateTool} /> : null}
-          {activeModal === "polygon" ? <PolygonToolSheet onActivateTool={onActivateTool} /> : null}
-          {activeModal === "circle" ? <CircleToolSheet onActivateTool={onActivateTool} /> : null}
+          {activeModal === "point" ? <PointToolSheet onActivatePrimitive={onActivatePrimitive} onOpenModal={onOpenModal} /> : null}
+          {activeModal === "line" ? <LineToolSheet onActivatePrimitive={onActivatePrimitive} /> : null}
+          {activeModal === "polygon" ? <PolygonToolSheet onActivatePrimitive={onActivatePrimitive} /> : null}
+          {activeModal === "circle" ? <CircleToolSheet onActivatePrimitive={onActivatePrimitive} /> : null}
           {activeModal === "obstacle" ? <ObstacleToolSheet onActivateTool={onActivateTool} /> : null}
           {activeModal === "pivot" ? <PivotGpsCoordinateForm onApply={onApplyPivot} project={project} /> : null}
           {activeModal === "machine" ? (
@@ -2241,24 +2363,16 @@ function designConsoleCopy(modal: NonNullable<DesignConsoleModal>): { icon: Reac
 }
 
 function PointToolSheet({
-  onActivateTool,
+  onActivatePrimitive,
   onOpenModal,
 }: {
-  onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void;
+  onActivatePrimitive: (geometry: UtilityFeatureGeometry) => void;
   onOpenModal: (modal: DesignConsoleModal) => void;
 }): React.JSX.Element {
   return (
     <View style={styles.consoleChoiceGrid}>
       <ConsoleChoiceButton label="Pivot GPS Entry" meta="Type decimal GPS or expert projected XY for the pivot center." onPress={() => onOpenModal("pivot")} />
-      <ConsoleChoiceButton label="Pivot Map Click" meta="Click the map to place pivot center." onPress={() => onActivateTool("place_pivot", "pivot_center")} />
-      <ConsoleChoiceButton label="Water Source" meta="Click the map to move the water source." onPress={() => onActivateTool("place_pivot", "water_source")} />
-      <ConsoleChoiceButton label="Power Source" meta="Click the map to move the power source." onPress={() => onActivateTool("place_pivot", "power_source")} />
-      <ConsoleChoiceButton label="Control Point" meta="Capture a manual control point." onPress={() => onActivateTool("capture_point", "control_point")} />
-      <ConsoleChoiceButton label="Note Point" meta="Capture a map note point." onPress={() => onActivateTool("capture_point", "note_point")} />
-      <ConsoleChoiceButton label="Pump Feature" meta="Save a pump location map feature from one click." onPress={() => onActivateTool("measure", "control_point", "pump_location")} />
-      <ConsoleChoiceButton label="Well Feature" meta="Save a well or water-source evidence point from one click." onPress={() => onActivateTool("measure", "control_point", "well_location")} />
-      <ConsoleChoiceButton label="Power Pole" meta="Save a utility pole map feature from one click." onPress={() => onActivateTool("measure", "control_point", "power_pole")} />
-      <ConsoleChoiceButton label="Tree Point" meta="Save a tree map feature from one click." onPress={() => onActivateTool("measure", "control_point", "tree")} />
+      <ConsoleChoiceButton label="Point" meta="Click one projected-XY point, then choose pump, well, pole, tree, or evidence purpose." onPress={() => onActivatePrimitive("Point")} />
     </View>
   );
 }
@@ -2285,45 +2399,30 @@ function MachineToolSheet({
   );
 }
 
-function LineToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
-  const lineKinds: Array<{ kind: ProjectMapFeatureKind; label: string; meta: string }> = [
-    { kind: "underground_pipeline", label: "Pipeline", meta: "Click line vertices for buried main or lateral route." },
-    { kind: "underground_wire", label: "Underground Wire", meta: "Click vertices for buried power or control wire route evidence." },
-    { kind: "linear_move_path", label: "Linear Move Path", meta: "Click vertices for an advisory linear/lateral machine travel path." },
-    { kind: "measurement_line", label: "Measurement Line", meta: "Click vertices for imported or field-measured reference distance." },
-    { kind: "power_line", label: "Power Line", meta: "Click vertices for overhead or buried power path." },
-    { kind: "fence", label: "Fence", meta: "Trace fence path as a utility line." },
-    { kind: "access_lane", label: "Access Lane", meta: "Trace farm access or service path." },
-    { kind: "ditch", label: "Ditch", meta: "Trace ditch path as a utility line." },
-    { kind: "canal", label: "Canal", meta: "Trace canal path as a utility line." },
-    { kind: "road", label: "Road", meta: "Trace road edge or access road path." },
-  ];
+function LineToolSheet({ onActivatePrimitive }: { onActivatePrimitive: (geometry: UtilityFeatureGeometry) => void }): React.JSX.Element {
   return (
     <View style={styles.consoleChoiceGrid}>
-      {lineKinds.map((option) => (
-        <ConsoleChoiceButton key={option.kind} label={option.label} meta={option.meta} onPress={() => onActivateTool("measure", "control_point", option.kind)} />
-      ))}
+      <ConsoleChoiceButton label="Line" meta="Click two or more projected-XY vertices, then choose pipeline, wire, road, ditch, fence, measurement, or linear move purpose." onPress={() => onActivatePrimitive("LineString")} />
     </View>
   );
 }
 
-function PolygonToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
+function PolygonToolSheet({
+  onActivatePrimitive,
+}: {
+  onActivatePrimitive: (geometry: UtilityFeatureGeometry) => void;
+}): React.JSX.Element {
   return (
     <View style={styles.consoleChoiceGrid}>
-      <ConsoleChoiceButton label="Field Boundary" meta="Click vertices; snap or double-click near the first point to close." onPress={() => onActivateTool("draw_boundary", "field_boundary")} />
-      <ConsoleChoiceButton label="Planning Boundary" meta="Draw advisory full-scope boundary evidence without replacing the active field." onPress={() => onActivateTool("measure", "control_point", "planning_boundary")} />
-      <ConsoleChoiceButton label="Machine Zone" meta="Draw advisory zone evidence for a single pivot or machine footprint." onPress={() => onActivateTool("measure", "control_point", "machine_zone")} />
-      <ConsoleChoiceButton label="Obstacle / No-Spray" meta="Draw a hard-conflict no-spray exclusion polygon." onPress={() => onActivateTool("mark_obstacle", "exclusion")} />
-      <ConsoleChoiceButton label="Building Footprint" meta="Draw a building obstacle polygon." onPress={() => onActivateTool("mark_obstacle", "building")} />
-      <ConsoleChoiceButton label="Corner-Arm Footprint" meta="Draw advisory vendor/operator footprint evidence." onPress={() => onActivateTool("measure", "control_point", "corner_swing_limit")} />
+      <ConsoleChoiceButton label="Polygon" meta="Click three or more projected-XY vertices, then choose boundary, zone, obstacle, building, or corner-arm purpose." onPress={() => onActivatePrimitive("Polygon")} />
     </View>
   );
 }
 
-function CircleToolSheet({ onActivateTool }: { onActivateTool: (mode: DrawingMode, activeLayer: DrawingLayerType, featureKind?: ProjectMapFeatureKind) => void }): React.JSX.Element {
+function CircleToolSheet({ onActivatePrimitive }: { onActivatePrimitive: (geometry: UtilityFeatureGeometry) => void }): React.JSX.Element {
   return (
     <View style={styles.consoleChoiceGrid}>
-      <ConsoleChoiceButton label="End-Gun Circle" meta="Click center, then radius point; save as an advisory end-gun map feature." onPress={() => onActivateTool("measure", "control_point", "end_gun_arc")} />
+      <ConsoleChoiceButton label="Circle" meta="Click center and radius point, then choose end-gun radius review or circular evidence purpose." onPress={() => onActivatePrimitive("Circle")} />
     </View>
   );
 }
@@ -2550,47 +2649,97 @@ function CornerArmSheet({
   unitSystem: PivotProject["unitSystem"];
 }): React.JSX.Element {
   const [name, setName] = useState(machine.cornerArm?.name ?? "Operator corner-arm advisory");
-  const [length, setLength] = useState(formatDistanceInputValue(machine.cornerArm?.lengthMeters ?? 91, unitSystem));
-  const [wheelTrackLength, setWheelTrackLength] = useState(machine.cornerArm?.wheelTrackLengthMeters !== undefined ? formatDistanceInputValue(machine.cornerArm.wheelTrackLengthMeters, unitSystem) : "");
-  const [overhangLength, setOverhangLength] = useState(machine.cornerArm?.overhangLengthMeters !== undefined ? formatDistanceInputValue(machine.cornerArm.overhangLengthMeters, unitSystem) : "");
+  const [length, setLength] = useState(formatDistanceInputValue(machine.cornerArm?.lengthMeters ?? DEFAULT_CORNER_ARM_LENGTH_METERS, unitSystem));
+  const [wheelTrackLength, setWheelTrackLength] = useState(formatDistanceInputValue(machine.cornerArm?.wheelTrackLengthMeters ?? DEFAULT_CORNER_ARM_WHEEL_TRACK_LENGTH_METERS, unitSystem));
+  const [overhangLength, setOverhangLength] = useState(formatDistanceInputValue(machine.cornerArm?.overhangLengthMeters ?? DEFAULT_CORNER_ARM_OVERHANG_LENGTH_METERS, unitSystem));
   const [metadataSource, setMetadataSource] = useState<AdvisoryCornerArmConfig["metadataSource"]>(machine.cornerArm?.metadataSource ?? "operator_supplied");
   const [guidanceType, setGuidanceType] = useState<AdvisoryCornerArmConfig["guidanceType"]>(machine.cornerArm?.guidanceType ?? "operator_supplied");
   const [sequencingType, setSequencingType] = useState<AdvisoryCornerArmConfig["sequencingType"]>(machine.cornerArm?.sequencingType ?? "operator_supplied");
   const [orientation, setOrientation] = useState<AdvisoryCornerArmConfig["orientation"]>(machine.cornerArm?.orientation ?? "operator_supplied");
   const [confidence, setConfidence] = useState<AdvisoryCornerArmConfig["confidence"]>(machine.cornerArm?.confidence ?? "user_estimated");
+  const [xmlConfig, setXmlConfig] = useState("");
+  const [xmlPresets, setXmlPresets] = useState<CornerGpsMapModelPreset[]>([]);
+  const [xmlStatus, setXmlStatus] = useState<string | null>(null);
+  const [selectedXmlPresetId, setSelectedXmlPresetId] = useState<string | null>(machine.cornerArm?.metadataSource === "cornergpsmap_config" ? machine.cornerArm.id : null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setName(machine.cornerArm?.name ?? "Operator corner-arm advisory");
-    setLength(formatDistanceInputValue(machine.cornerArm?.lengthMeters ?? 91, unitSystem));
-    setWheelTrackLength(machine.cornerArm?.wheelTrackLengthMeters !== undefined ? formatDistanceInputValue(machine.cornerArm.wheelTrackLengthMeters, unitSystem) : "");
-    setOverhangLength(machine.cornerArm?.overhangLengthMeters !== undefined ? formatDistanceInputValue(machine.cornerArm.overhangLengthMeters, unitSystem) : "");
+    setLength(formatDistanceInputValue(machine.cornerArm?.lengthMeters ?? DEFAULT_CORNER_ARM_LENGTH_METERS, unitSystem));
+    setWheelTrackLength(formatDistanceInputValue(machine.cornerArm?.wheelTrackLengthMeters ?? DEFAULT_CORNER_ARM_WHEEL_TRACK_LENGTH_METERS, unitSystem));
+    setOverhangLength(formatDistanceInputValue(machine.cornerArm?.overhangLengthMeters ?? DEFAULT_CORNER_ARM_OVERHANG_LENGTH_METERS, unitSystem));
     setMetadataSource(machine.cornerArm?.metadataSource ?? "operator_supplied");
     setGuidanceType(machine.cornerArm?.guidanceType ?? "operator_supplied");
     setSequencingType(machine.cornerArm?.sequencingType ?? "operator_supplied");
     setOrientation(machine.cornerArm?.orientation ?? "operator_supplied");
     setConfidence(machine.cornerArm?.confidence ?? "user_estimated");
+    setSelectedXmlPresetId(machine.cornerArm?.metadataSource === "cornergpsmap_config" ? machine.cornerArm.id : null);
     setError(null);
   }, [machine.cornerArm, unitSystem]);
+
+  function parseXmlPresets(): void {
+    try {
+      const parsed = parseCornerGpsMapConfigXml(xmlConfig, {
+        sourceId: "SRC-CORNERGPSMAP-PASTED-XML-ADVISORY",
+        title: "Operator-provided CornerGPSMap config XML",
+        checkedAt: new Date(0).toISOString(),
+        limit: "In-memory advisory preset selection only; raw XML and local file paths are not persisted.",
+      });
+      const usablePresets = parsed.presets.filter((preset) => preset.kind === "pivot" && (preset.cornerLengthMeters ?? 0) > 0);
+      setXmlPresets(usablePresets);
+      setXmlStatus(`${usablePresets.length} advisory corner preset${usablePresets.length === 1 ? "" : "s"} available.`);
+      if (usablePresets.length === 0) setSelectedXmlPresetId(null);
+    } catch (err) {
+      setXmlPresets([]);
+      setSelectedXmlPresetId(null);
+      setXmlStatus(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function selectXmlPreset(preset: CornerGpsMapModelPreset): void {
+    try {
+      const config = cornerGpsMapPresetToAdvisoryCornerArmConfig(preset);
+      setSelectedXmlPresetId(config.id);
+      setName(config.name);
+      setLength(formatDistanceInputValue(config.lengthMeters, unitSystem));
+      setWheelTrackLength(config.wheelTrackLengthMeters !== undefined ? formatDistanceInputValue(config.wheelTrackLengthMeters, unitSystem) : "");
+      setOverhangLength(config.overhangLengthMeters !== undefined ? formatDistanceInputValue(config.overhangLengthMeters, unitSystem) : "");
+      setMetadataSource(config.metadataSource ?? "cornergpsmap_config");
+      setGuidanceType(config.guidanceType);
+      setSequencingType(config.sequencingType);
+      setOrientation(config.orientation);
+      setConfidence(config.confidence);
+      setXmlStatus(`${config.name} selected as advisory corner-arm metadata.`);
+    } catch (err) {
+      setXmlStatus(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   function requestSave(): void {
     try {
       const trimmedName = name.trim();
       const parsedWheelTrackLength = optionalPositiveDistanceInput(wheelTrackLength, unitSystem, "Corner-arm wheel track length");
       const parsedOverhangLength = optionalNonNegativeDistanceInput(overhangLength, unitSystem, "Corner-arm overhang length");
+      const selectedPreset = selectedXmlPresetId
+        ? xmlPresets.find((preset) => cornerGpsMapPresetToAdvisoryCornerArmConfig(preset).id === selectedXmlPresetId)
+        : undefined;
+      const selectedPresetConfig = selectedPreset ? cornerGpsMapPresetToAdvisoryCornerArmConfig(selectedPreset) : null;
       const config: AdvisoryCornerArmConfig = {
-        id: machine.cornerArm?.id ?? "operator-corner-arm-advisory",
+        id: selectedPresetConfig?.id ?? machine.cornerArm?.id ?? "operator-corner-arm-advisory",
         name: trimmedName.length > 0 ? trimmedName : "Operator corner-arm advisory",
         advisoryOnly: true,
         lengthMeters: requiredPositiveDistanceInput(length, unitSystem, "Corner-arm length"),
         ...(parsedWheelTrackLength === undefined ? {} : { wheelTrackLengthMeters: parsedWheelTrackLength }),
         ...(parsedOverhangLength === undefined ? {} : { overhangLengthMeters: parsedOverhangLength }),
+        ...(selectedPresetConfig?.maxSteerAngleDegrees === undefined ? {} : { maxSteerAngleDegrees: selectedPresetConfig.maxSteerAngleDegrees }),
+        ...(selectedPresetConfig?.minSteerAngleDegrees === undefined ? {} : { minSteerAngleDegrees: selectedPresetConfig.minSteerAngleDegrees }),
         metadataSource,
         guidanceType,
         sequencingType,
         orientation,
         confidence,
-        sourceRefs: machine.cornerArm?.sourceRefs?.length ? machine.cornerArm.sourceRefs : DEFAULT_CORNER_ARM_SOURCE_REFS,
+        sourceRefs: selectedPresetConfig?.sourceRefs ?? (machine.cornerArm?.sourceRefs?.length ? machine.cornerArm.sourceRefs : DEFAULT_CORNER_ARM_SOURCE_REFS),
+        ...(selectedPresetConfig?.notes ? { notes: selectedPresetConfig.notes } : {}),
       };
       setError(null);
       onRequestSave(config);
@@ -2613,11 +2762,34 @@ function CornerArmSheet({
       <Text style={styles.mapFeatureMeta}>
         Catalog compatibility: {machine.catalogSelection ? `${machine.catalogSelection.manufacturer} ${machine.catalogSelection.model} is selected as an advisory snapshot.` : "No catalog preset selected; verify compatibility from operator/vendor sources."}
       </Text>
+      <View style={styles.machineCatalogPanel}>
+        <Text style={styles.formLabel}>CornerGPSMap XML presets</Text>
+        <FormField keyboardType="default" label="Config XML paste" value={xmlConfig} onChangeText={setXmlConfig} testID="corner-gps-map-config-xml" />
+        <View style={styles.inlineActions}>
+          <SmallActionButton label="Parse XML Presets" onPress={parseXmlPresets} testID="corner-gps-map-parse-presets" />
+        </View>
+        {xmlPresets.length > 0 ? (
+          <View style={styles.controlRow}>
+            {xmlPresets.map((preset) => {
+              const presetConfig = cornerGpsMapPresetToAdvisoryCornerArmConfig(preset);
+              return (
+                <ActionButton
+                  key={presetConfig.id}
+                  label={preset.name}
+                  onPress={() => selectXmlPreset(preset)}
+                  selected={selectedXmlPresetId === presetConfig.id}
+                />
+              );
+            })}
+          </View>
+        ) : null}
+        {xmlStatus ? <Text style={styles.mapFeatureMeta}>{xmlStatus}</Text> : null}
+      </View>
       <View style={styles.formGrid} testID="corner-arm-advisory-form">
         <FormField label="Advisory name" value={name} onChangeText={setName} />
         <FormField label={`Length (${unitSystem === "metric" ? "m" : "ft/in"})`} value={length} onChangeText={setLength} />
-        <FormField label={`Wheel track (${unitSystem === "metric" ? "m" : "ft/in"}, optional)`} value={wheelTrackLength} onChangeText={setWheelTrackLength} />
-        <FormField label={`Overhang (${unitSystem === "metric" ? "m" : "ft/in"}, optional)`} value={overhangLength} onChangeText={setOverhangLength} />
+        <FormField label={`Wheel track (${unitSystem === "metric" ? "m" : "ft/in"})`} value={wheelTrackLength} onChangeText={setWheelTrackLength} />
+        <FormField label={`Overhang (${unitSystem === "metric" ? "m" : "ft/in"})`} value={overhangLength} onChangeText={setOverhangLength} />
         <View style={styles.formField}>
           <Text style={styles.formLabel}>Metadata source</Text>
           <View style={styles.controlRow}>
@@ -5194,6 +5366,7 @@ type RightWorkflowSidebarTab = {
 
 function rightWorkflowSidebarPages({
   activeCatalogForm,
+  activePurposeForm,
   activeToolForm,
   homeView,
   mappingWorkflowMode,
@@ -5201,6 +5374,7 @@ function rightWorkflowSidebarPages({
   warningCount,
 }: {
   activeCatalogForm: boolean;
+  activePurposeForm: boolean;
   activeToolForm: boolean;
   homeView: boolean;
   mappingWorkflowMode: AppSettings["mappingWorkflowMode"];
@@ -5217,6 +5391,7 @@ function rightWorkflowSidebarPages({
     { id: "overview", label: "Overview", shortLabel: "MAP" },
     ...(activeCatalogForm ? [{ id: "catalogForm" as const, label: "Form", shortLabel: "FORM" }] : []),
     ...(mappingWorkflowMode === "design" ? [{ id: "tools" as const, label: "Tools", shortLabel: "TOOL" }] : []),
+    ...(mappingWorkflowMode === "design" && activePurposeForm ? [{ id: "purpose" as const, label: "Purpose", shortLabel: "PURP" }] : []),
     ...(mappingWorkflowMode === "design" && activeToolForm ? [{ id: "toolForm" as const, label: "Form", shortLabel: "FORM" }] : []),
     { id: "layers", label: "Layers", shortLabel: "LAY" },
     { id: "rtk", label: "RTK", shortLabel: "RTK" },
@@ -5554,6 +5729,123 @@ function SmallActionButton({
   );
 }
 
+function PendingDraftPurposePanel({
+  draft,
+  onCancel,
+  onSave,
+  unitSystem,
+}: {
+  draft: PendingMapFeatureDraft | null;
+  onCancel: () => void;
+  onSave: (option: MapDraftPurposeOption) => void;
+  unitSystem: PivotProject["unitSystem"];
+}): React.JSX.Element {
+  if (!draft) {
+    return (
+      <View style={styles.mapFeatureEditor}>
+        <Text style={styles.mapFeatureTitle}>No Pending Draft</Text>
+        <Text style={styles.mapFeatureMeta}>Draw a point, line, polygon, or circle before choosing a purpose.</Text>
+      </View>
+    );
+  }
+  const options = draftPurposeOptions(draft.geometryType);
+  return (
+    <View style={styles.mapFeatureEditor} testID="pending-draft-purpose-panel">
+      <View>
+        <Text style={styles.mapFeatureTitle}>What did you draw?</Text>
+        <Text style={styles.mapFeatureMeta}>{draftGeometrySummary(draft, unitSystem)}</Text>
+        {draft.notes ? <Text style={styles.mapFeatureMeta}>{draft.notes}</Text> : null}
+      </View>
+      <View style={styles.consoleChoiceGrid}>
+        {options.map((option) => (
+          <ConsoleChoiceButton
+            key={`${option.purposeType}-${option.kind}`}
+            label={option.label}
+            meta={option.meta}
+            onPress={() => onSave(option)}
+          />
+        ))}
+      </View>
+      <View style={styles.inlineActions}>
+        <SmallActionButton label="Cancel Draft" onPress={onCancel} testID="pending-draft-cancel" />
+      </View>
+    </View>
+  );
+}
+
+function draftPurposeOptions(geometry: UtilityFeatureGeometry): MapDraftPurposeOption[] {
+  const mapFeatureOptions = featureOptionsForGeometry(geometry).map((option): MapDraftPurposeOption => ({
+    ...option,
+    purposeType: "map_feature",
+    meta: mapFeaturePurposeMeta(option.kind),
+  }));
+  if (geometry !== "Polygon") return mapFeatureOptions;
+  return [
+    { purposeType: "field_boundary", kind: "field_boundary", label: "Field Boundary", geometry: "Polygon", meta: "Replace the active projected-XY field boundary through reducer validation." },
+    { purposeType: "map_feature", kind: "planning_boundary", label: "Planning Boundary", geometry: "Polygon", meta: mapFeaturePurposeMeta("planning_boundary") },
+    { purposeType: "map_feature", kind: "machine_zone", label: "Machine Zone", geometry: "Polygon", meta: mapFeaturePurposeMeta("machine_zone") },
+    { purposeType: "obstacle", kind: "exclusion", label: "Obstacle / No-Spray", geometry: "Polygon", meta: "Commit a no-spray obstacle polygon with projected-XY vertices." },
+    { purposeType: "obstacle", kind: "building", label: "Building", geometry: "Polygon", meta: "Commit a building obstacle footprint for layout review." },
+    { purposeType: "map_feature", kind: "corner_swing_limit", label: "Corner-Arm Footprint", geometry: "Polygon", meta: mapFeaturePurposeMeta("corner_swing_limit") },
+  ];
+}
+
+function mapFeaturePurposeMeta(kind: ProjectMapFeatureKind): string {
+  switch (kind) {
+    case "pump_location":
+      return "Site utility evidence point; not hydraulic certification.";
+    case "well_location":
+      return "Water-source evidence point for operator review.";
+    case "power_pole":
+      return "Power-pole evidence point; not electrical certification.";
+    case "tree":
+      return "Tree/object evidence point for review.";
+    case "end_gun_mark":
+      return "Control or note-style evidence mark.";
+    case "underground_pipeline":
+      return "Pipeline route evidence; projected XY path only.";
+    case "underground_wire":
+      return "Wire route evidence; projected XY path only.";
+    case "power_line":
+      return "Power path evidence for layout review.";
+    case "road":
+      return "Road or access route evidence path.";
+    case "access_lane":
+      return "Access lane evidence path.";
+    case "ditch":
+      return "Ditch evidence path.";
+    case "canal":
+      return "Canal evidence path.";
+    case "fence":
+      return "Fence evidence path.";
+    case "linear_move_path":
+      return "Advisory linear/lateral travel-path evidence; does not create a machine.";
+    case "measurement_line":
+      return "Reference measurement line.";
+    case "planning_boundary":
+      return "Planning boundary evidence; does not replace the field boundary.";
+    case "machine_zone":
+      return "Advisory machine-zone evidence; does not create or certify a pivot.";
+    case "corner_swing_limit":
+      return "Advisory corner-arm footprint evidence; not proprietary kinematics.";
+    case "end_gun_arc":
+      return "Advisory end-gun radius review; actual throw and shutoff stay in machine settings.";
+  }
+}
+
+function draftGeometrySummary(draft: PendingMapFeatureDraft, unitSystem: PivotProject["unitSystem"]): string {
+  if (draft.geometryType === "Point") return "Point · 1 projected XY vertex";
+  if (draft.geometryType === "LineString") return `Line · ${draft.vertices.length} vertices · ${formatDistance(polylineLengthMeters(draft.vertices), unitSystem)}`;
+  if (draft.geometryType === "Polygon") return `Polygon · ${draft.vertices.length} vertices`;
+  const [center, radiusPoint] = draft.vertices;
+  const radiusMeters = center && radiusPoint ? Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y) : 0;
+  return `Circle · ${formatDistance(radiusMeters, unitSystem)} radius`;
+}
+
+function polylineLengthMeters(vertices: XY[]): number {
+  return vertices.slice(1).reduce((sum, vertex, index) => sum + Math.hypot(vertex.x - vertices[index].x, vertex.y - vertices[index].y), 0);
+}
+
 function MapFeatureEditor({
   feature,
   onDelete,
@@ -5693,6 +5985,7 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
   const [lrduRpm, setLrduRpm] = useState(machine.driveUnits?.lrdu?.customMotorRpm !== undefined ? String(machine.driveUnits.lrdu.customMotorRpm) : "");
   const [sduRpm, setSduRpm] = useState(machine.driveUnits?.sdu?.customMotorRpm !== undefined ? String(machine.driveUnits.sdu.customMotorRpm) : "");
   const [operatorSpeed, setOperatorSpeed] = useState(machine.driveUnits?.lrdu?.operatorMeasuredSpeedMetersPerMinute !== undefined ? String(machine.driveUnits.lrdu.operatorMeasuredSpeedMetersPerMinute) : "");
+  const [sduOperatorSpeed, setSduOperatorSpeed] = useState(machine.driveUnits?.sdu?.operatorMeasuredSpeedMetersPerMinute !== undefined ? String(machine.driveUnits.sdu.operatorMeasuredSpeedMetersPerMinute) : "");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -5705,6 +5998,7 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
     setLrduRpm(machine.driveUnits?.lrdu?.customMotorRpm !== undefined ? String(machine.driveUnits.lrdu.customMotorRpm) : "");
     setSduRpm(machine.driveUnits?.sdu?.customMotorRpm !== undefined ? String(machine.driveUnits.sdu.customMotorRpm) : "");
     setOperatorSpeed(machine.driveUnits?.lrdu?.operatorMeasuredSpeedMetersPerMinute !== undefined ? String(machine.driveUnits.lrdu.operatorMeasuredSpeedMetersPerMinute) : "");
+    setSduOperatorSpeed(machine.driveUnits?.sdu?.operatorMeasuredSpeedMetersPerMinute !== undefined ? String(machine.driveUnits.sdu.operatorMeasuredSpeedMetersPerMinute) : "");
     setMode(machine.sweep.mode);
     if (machine.sweep.mode === "partial_circle") {
       setStartAngle(String(machine.sweep.startAngleDegrees));
@@ -5732,7 +6026,7 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
           },
         driveUnits: {
           lrdu: driveUnitConfig("lrdu", lrduTireId, lrduRpm, operatorSpeed),
-          sdu: driveUnitConfig("sdu", sduTireId, sduRpm),
+          sdu: driveUnitConfig("sdu", sduTireId, sduRpm, sduOperatorSpeed),
         },
       };
       setError(null);
@@ -5825,7 +6119,8 @@ function MachineSettingsForm({ machine, onChange, unitSystem }: { machine: Pivot
           </View>
           <FormField label="LRDU motor RPM custom" value={lrduRpm} onChangeText={setLrduRpm} />
           <FormField label="SDU motor RPM custom" value={sduRpm} onChangeText={setSduRpm} />
-          <FormField label="Measured speed (m/min)" value={operatorSpeed} onChangeText={setOperatorSpeed} />
+          <FormField label="LRDU measured speed (m/min)" value={operatorSpeed} onChangeText={setOperatorSpeed} />
+          <FormField label="SDU measured speed (m/min)" value={sduOperatorSpeed} onChangeText={setSduOperatorSpeed} />
         </View>
         <Text style={styles.mapFeatureMeta}>
           Tire options are public source labels. RPM fields require operator or curated manual evidence; blank RPM stays unverified/source required. {selectedLrduTire?.sourceRefs[0]?.sourceId ?? "LRDU source required"} · {selectedSduTire?.sourceRefs[0]?.sourceId ?? "SDU source required"}.

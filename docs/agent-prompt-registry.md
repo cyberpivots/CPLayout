@@ -35,11 +35,13 @@ Every route declares `agent`, `complexityBand`, coordinator `reasoningEffort`, `
 
 Broad terms such as `agent`, `hook`, `layout`, and `web` are intentionally low weight. They should not route by themselves; they only help rank a route when stronger task-specific terms are also present.
 
+Token-efficiency guardrails are enforced in both hook code and validation. Prompt triage emits no more than three matched routes, context-pack hook summaries respect `maxEmittedPackSummaryChars` from `.codex/hooks/cplayout_context_map.json` (currently `1200` characters for the context-pack section), and `tools/validate_cplayout_skills.py` caps the curator positive-keyword surface so governance routing cannot expand indefinitely without an explicit budget decision. Route wording changes should add or update fixture tests instead of relying on broad standalone keywords.
+
 ## Generated Context Map
 
 `tools/build_cplayout_context_map.py` generates `.codex/hooks/cplayout_context_map.json` and `docs/agent-context-map.md`. The map gives each route and custom agent compact context-pack ids, read-first repo paths, validation commands, expected output shape, token budgets, panel weights, and hard vetoes. It does not include raw file content, ignored reports, local customer artifacts, secrets, absolute machine paths, or extracted PDF bodies.
 
-The prompt triage hook preserves existing route scoring, then emits at most three context packs for matched routes. The subagent-start hook emits matching agent context packs when a custom CPLayout agent starts. If the context map is missing or invalid, hooks fail open and keep the ordinary coordinator or subagent boundary text.
+The prompt triage hook preserves existing route scoring, then emits at most three context packs for matched routes and trims context-pack detail before it can exceed the context-map summary budget. The subagent-start hook emits matching agent context packs when a custom CPLayout agent starts. If the context map is missing or invalid, hooks fail open and keep the ordinary coordinator or subagent boundary text.
 
 Run `npm run context-map:build` after changing routes, hooks, custom agents, repo-local skills, validation records, or indexed docs. Run `npm run context-map:check` or `npm run validate:skills` before reporting success; the check fails when the checked-in JSON or Markdown is stale.
 

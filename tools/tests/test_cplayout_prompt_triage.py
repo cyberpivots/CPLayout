@@ -124,6 +124,63 @@ class PromptTriageTests(unittest.TestCase):
         routes = self.route_ids("Token efficient subagent reasoning with advisory hooks and xhigh coordinator route band.")
         self.assertEqual(routes[0], "cplayout_kb_curator")
 
+    def test_governance_prompt_context_pack_summary_stays_bounded(self) -> None:
+        context = self.hook_context(
+            "Use prompt triage, route data, governance keywords, and token efficient subagent reasoning."
+        )
+        start = context.index("- Context packs")
+        end = context.index("- Validation expectations")
+        pack_summary = context[start:end].strip()
+        self.assertLessEqual(len(pack_summary), 1200)
+        self.assertIn("workspace_preflight", pack_summary)
+        self.assertIn("governance_hooks_skills", pack_summary)
+
+    def test_context_pack_lines_obey_custom_summary_budget(self) -> None:
+        route_data = triage.load_route_data()
+        curator = next(route for route in route_data.routes if route.route_id == "cplayout_kb_curator")
+        context_map = {
+            "schemaVersion": 1,
+            "limits": {"maxContextPacksPerHook": 3, "maxEmittedPackSummaryChars": 180},
+            "validationCommands": {
+                "validate_skills": {
+                    "command": "npm run validate:skills && python3 -m unittest discover -s tools/tests",
+                },
+            },
+            "contextPacks": [
+                {
+                    "id": "workspace_preflight",
+                    "purpose": "Load a deliberately long CPLayout preflight context pack summary for test coverage.",
+                    "readFirstPaths": [
+                        "AGENTS.md",
+                        "package.json",
+                        "docs/center-pivot-package-surface-inventory.md",
+                    ],
+                    "validationCommandIds": ["validate_skills"],
+                    "triggerTerms": ["prompt triage"],
+                },
+                {
+                    "id": "governance_hooks_skills",
+                    "purpose": "Review and update prompt triage, route data, hooks, custom agents, skills, and records.",
+                    "readFirstPaths": [
+                        ".codex/hooks/cplayout_prompt_triage.py",
+                        ".codex/hooks/cplayout_route_data.json",
+                        "tools/validate_cplayout_skills.py",
+                    ],
+                    "validationCommandIds": ["validate_skills"],
+                    "triggerTerms": ["prompt triage"],
+                },
+            ],
+            "routeContext": {"cplayout_kb_curator": ["workspace_preflight", "governance_hooks_skills"]},
+        }
+        lines = triage._context_pack_lines(  # noqa: SLF001 - hook budget contract test.
+            "prompt triage",
+            [triage.RouteMatch(route=curator, score=99)],
+            context_map,
+        )
+        text = "\n".join(lines)
+        self.assertLessEqual(len(text), 180)
+        self.assertIn("omitted", text)
+
     def test_route_metadata_is_loaded(self) -> None:
         route_data = triage.load_route_data()
         curator = next(route for route in route_data.routes if route.route_id == "cplayout_kb_curator")

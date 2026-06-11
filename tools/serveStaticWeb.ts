@@ -1,5 +1,7 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
+import type { ReadStream } from "node:fs";
 import { createServer } from "node:http";
+import type { ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 
 const [rootArg = "apps/mobile/dist", portArg = "19006"] = process.argv.slice(2);
@@ -42,7 +44,8 @@ const server = createServer((request, response) => {
     "Cross-Origin-Opener-Policy": "same-origin",
     "content-type": contentTypes[extname(candidate)] ?? "application/octet-stream",
   });
-  createReadStream(candidate).pipe(response);
+  const stream = createReadStream(candidate);
+  pipeFileResponse(stream, response);
 });
 
 server.listen(port, "127.0.0.1", () => {
@@ -53,4 +56,17 @@ function fileForPath(filePath: string): string | null {
   if (existsSync(filePath) && statSync(filePath).isFile()) return filePath;
   const index = join(root, "index.html");
   return existsSync(index) ? index : null;
+}
+
+function pipeFileResponse(stream: ReadStream, response: ServerResponse): void {
+  stream.on("error", () => {
+    if (!response.headersSent) {
+      response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+    }
+    response.end("Static asset read failed");
+  });
+  response.on("close", () => {
+    stream.destroy();
+  });
+  stream.pipe(response);
 }

@@ -325,6 +325,8 @@ export function cornerGpsMapPresetToAdvisoryCornerArmConfig(
     ...(preset.overhangLengthMeters !== undefined && preset.cornerLengthMeters > preset.overhangLengthMeters
       ? { wheelTrackLengthMeters: preset.cornerLengthMeters - preset.overhangLengthMeters }
       : {}),
+    ...(preset.maxOutwardAngleDegrees !== undefined ? { maxSteerAngleDegrees: preset.maxOutwardAngleDegrees } : {}),
+    ...(preset.maxInwardAngleDegrees !== undefined ? { minSteerAngleDegrees: -Math.abs(preset.maxInwardAngleDegrees) } : {}),
     metadataSource: "cornergpsmap_config",
     modelFamily: cornerArmModelFamilyForPreset(preset),
     guidanceType: "gps_guidance",

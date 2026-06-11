@@ -40,8 +40,6 @@ import { resolveReferenceOverlaySource } from "@cplayout/core";
 import { XY } from "@cplayout/core";
 import { MapLibreImageryPreview } from "./MapLibreImageryPreview";
 import {
-  defaultMapFeatureName,
-  draftVerticesToFeatureGeometry,
   featureDraftMinimumVertices,
   featureOptionForKind,
   UTILITY_FEATURE_OPTIONS,
@@ -63,6 +61,7 @@ import {
 import type { MapSurfaceProps } from "./types";
 
 type MapPalette = ReturnType<typeof paletteForMapStyle>;
+type SvgSymbolScale = ReturnType<typeof createSvgSymbolScale>;
 
 const CATALOG_HOME_BOUNDS = {
   minX: -168,
@@ -73,6 +72,7 @@ const CATALOG_HOME_BOUNDS = {
 
 export function SvgMapSurface({
   activeLayer: externalActiveLayer,
+  activeDraftGeometry,
   activeMapFeatureKind,
   activeToolMode,
   activeToolRequestId,
@@ -98,7 +98,7 @@ export function SvgMapSurface({
   onPlacePivot,
   onMoveInfrastructurePoint,
   onAddSurveyPoint,
-  onAddMapFeature,
+  onCreateMapFeatureDraft,
   onSelectMapFeature,
 }: MapSurfaceProps): React.JSX.Element {
   const { width: windowWidth } = useWindowDimensions();
@@ -145,13 +145,10 @@ export function SvgMapSurface({
     ? [
       project.fieldBoundary,
       ...(canonicalMachineLayersVisible ? result.allowedCoverage.flat() : []),
-      ...(canonicalMachineLayersVisible ? result.outsideFieldCoverage.flat() : []),
-      ...(canonicalMachineLayersVisible ? result.endGunCoverage.flat() : []),
       ...advisoryFieldPivotPlanRings,
       ...advisoryMachineRenderRings,
       ...layoutPathOverlays.flatMap((overlay) => [
         ...overlay.insideFieldEnvelope.flat(),
-        ...overlay.outsideFieldEnvelope.flat(),
       ]),
       ...project.obstacles.map((obstacle) => obstacle.polygon),
       ...visibleMapFeatures.flatMap(mapFeatureRings),
@@ -179,9 +176,11 @@ export function SvgMapSurface({
   const pressStartPoint = useRef<{ x: number; y: number } | null>(null);
   const palette = paletteForMapStyle(settings.mapStyle);
   const mapFeatureOption = featureOptionForKind(mapFeatureKind);
+  const activeFeatureGeometry = activeDraftGeometry ?? mapFeatureOption.geometry;
   const activeSelectedMapFeatureId = selectedMapFeatureId ?? localSelectedMapFeatureId;
   const viewWidth = visibleWidthMeters(mapState.viewport);
   const viewHeight = visibleHeightMeters(mapState.viewport);
+  const symbolScale = useMemo(() => createSvgSymbolScale(mapState.viewport, mapPixelWidth), [mapPixelWidth, mapState.viewport]);
   const minX = mapState.viewport.center.x - viewWidth / 2;
   const maxX = mapState.viewport.center.x + viewWidth / 2;
   const minY = -mapState.viewport.center.y - viewHeight / 2;
@@ -240,7 +239,7 @@ export function SvgMapSurface({
     : { onPress: addDraftVertexFromPress };
   const mapClickLayerProps = Platform.OS === "web" ? { onClick: addDraftVertexFromWebClick, onDoubleClick: closeDraftFromWebDoubleClick } : {};
   const canCommitCurrentDraft = designMode && canCommitDraft(mapState);
-  const canSaveCurrentMapFeature = designMode && canSaveMapFeature(mapState, mapFeatureOption.geometry);
+  const canSaveCurrentMapFeature = designMode && canSaveMapFeature(mapState, activeFeatureGeometry);
   const mapClickLayerActive = designMode && mapState.mode !== "pan" && mapState.mode !== "edit_vertices";
   const canDeleteSelectedVertex = designMode && selectedVertex !== null && selectedProjectVertexCanDelete(project, selectedVertex);
 
@@ -346,8 +345,8 @@ export function SvgMapSurface({
       captureSurveyPoint(vertex);
       return;
     }
-    if (mapState.mode === "measure" && mapFeatureOption.geometry === "Point") {
-      commitMapFeaturePoint(vertex);
+    if (mapState.mode === "measure" && activeFeatureGeometry === "Point") {
+      createPendingMapFeatureDraft("Point", [vertex]);
       return;
     }
     if (mapState.mode === "edit_vertices" && selectedVertex) {
@@ -525,35 +524,28 @@ export function SvgMapSurface({
     });
   }
 
-  function commitMapFeaturePoint(point: XY): void {
+  function createPendingMapFeatureDraft(geometryType: UtilityFeatureGeometry, vertices: XY[]): void {
     if (!designMode) return;
-    onAddMapFeature?.({
-      name: defaultMapFeatureName(mapFeatureKind, mapFeatureOption.geometry, 1),
-      kind: mapFeatureKind,
-      geometry: { type: "Point", point },
-      confidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
+    onCreateMapFeatureDraft?.({
+      geometryType,
+      vertices,
+      sourceConfidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
       notes: settings.onlineImagery.enabled ? "Captured from online imagery preview; verify by field survey." : undefined,
     });
   }
 
   function commitMapFeatureFromDraft(): void {
     if (!designMode) return;
-    if (mapFeatureOption.geometry === "Point") return;
-    if (mapState.draftVertices.length < featureDraftMinimumVertices(mapFeatureOption.geometry)) return;
-    onAddMapFeature?.({
-      name: defaultMapFeatureName(mapFeatureKind, mapFeatureOption.geometry, mapState.draftVertices.length),
-      kind: mapFeatureKind,
-      geometry: draftVerticesToFeatureGeometry(mapFeatureOption.geometry, mapState.draftVertices),
-      confidence: settings.onlineImagery.enabled ? "imagery_digitized" : "user_estimated",
-      notes: settings.onlineImagery.enabled ? "Traced from online imagery preview; verify by field survey." : undefined,
-    });
+    if (activeFeatureGeometry === "Point") return;
+    if (mapState.draftVertices.length < featureDraftMinimumVertices(activeFeatureGeometry)) return;
+    createPendingMapFeatureDraft(activeFeatureGeometry, mapState.draftVertices);
     dispatch({ type: "clear_draft" });
   }
 
   function saveMapFeatureFromHud(): void {
     if (!designMode) return;
-    if (mapFeatureOption.geometry === "Point") {
-      commitMapFeaturePoint(snapWorldPoint(mapState.viewport.center));
+    if (activeFeatureGeometry === "Point") {
+      createPendingMapFeatureDraft("Point", [snapWorldPoint(mapState.viewport.center)]);
     } else {
       commitMapFeatureFromDraft();
     }
@@ -639,8 +631,6 @@ export function SvgMapSurface({
             <CatalogHomeOverlay minX={minX} maxX={maxX} minY={minY} maxY={maxY} palette={palette} />
           ) : (
             <>
-              {canonicalMachineLayersVisible ? <Path d={ringsToSvgPath(result.outsideFieldCoverage)} fill={palette.outside} opacity={0.28} /> : null}
-              {canonicalMachineLayersVisible ? <Path d={ringsToSvgPath(result.endGunCoverage)} fill={palette.endGun} opacity={0.25} /> : null}
               {canonicalMachineLayersVisible ? <Path d={ringsToSvgPath(result.allowedCoverage)} fill={palette.allowed} opacity={0.54} /> : null}
               {advisoryFieldPivotPlanVisible && advisoryFieldPivotPlan ? (
                 <AdvisoryFieldPivotOverlay palette={palette} plan={advisoryFieldPivotPlan} />
@@ -654,6 +644,7 @@ export function SvgMapSurface({
               <EditableRing
                 color={palette.fieldStroke}
                 layerLabel="Boundary"
+                scale={symbolScale}
                 selected={selectedVertex?.layer === "field_boundary" ? selectedVertex.vertexIndex : null}
                 vertices={project.fieldBoundary}
                 onSelect={designMode ? (vertexIndex) => selectVertex({ layer: "field_boundary", vertexIndex }) : undefined}
@@ -664,6 +655,7 @@ export function SvgMapSurface({
                   <EditableRing
                     color={palette.obstacleStroke}
                     layerLabel={`${obstacle.name} obstacle`}
+                    scale={symbolScale}
                     selected={selectedVertex?.layer === "obstacle" && selectedVertex.obstacleId === obstacle.id ? selectedVertex.vertexIndex : null}
                     vertices={obstacle.polygon}
                     onSelect={designMode ? (vertexIndex) => selectVertex({ layer: "obstacle", obstacleId: obstacle.id, vertexIndex }) : undefined}
@@ -672,29 +664,31 @@ export function SvgMapSurface({
               ))}
               {visibleMapFeatures.map((feature) => (
                 <React.Fragment key={feature.id}>
-                  <MapFeatureSymbol
-                    feature={feature}
-                    palette={palette}
-                    selected={activeSelectedMapFeatureId === feature.id}
-                    onSelect={() => selectMapFeature(feature.id)}
-                  />
+                <MapFeatureSymbol
+                  feature={feature}
+                  palette={palette}
+                  scale={symbolScale}
+                  selected={activeSelectedMapFeatureId === feature.id}
+                  onSelect={() => selectMapFeature(feature.id)}
+                />
                   {shouldShowEditableMapFeatureHandles(feature, designMode, mapState.mode, activeSelectedMapFeatureId === feature.id) ? (
                     <EditableMapFeatureHandles
                       feature={feature}
                       palette={palette}
+                      scale={symbolScale}
                       selected={selectedVertex?.layer === "map_feature" && selectedVertex.featureId === feature.id ? selectedVertex.vertexIndex : null}
                       onSelect={(vertexIndex) => selectVertex({ layer: "map_feature", featureId: feature.id, vertexIndex })}
                     />
                   ) : null}
                 </React.Fragment>
               ))}
-              <DraftVertices vertices={mapState.draftVertices} color={palette.draft} />
-              {lastSnap ? <SnapMarker point={lastSnap.point} color={palette.snap} label={lastSnap.kind} /> : null}
-              <InfrastructureSymbol point={project.pivotCenter} color={palette.pivot} kind="pivot_center" label="Pivot" />
-              <InfrastructureSymbol point={project.waterSource} color={palette.water} kind="water_source" label="Water" />
-              <InfrastructureSymbol point={project.powerSource} color={palette.power} kind="power_source" label="Power" />
+              <DraftVertices vertices={mapState.draftVertices} color={palette.draft} scale={symbolScale} />
+              {lastSnap ? <SnapMarker point={lastSnap.point} color={palette.snap} label={lastSnap.kind} scale={symbolScale} /> : null}
+              <InfrastructureSymbol point={project.pivotCenter} color={palette.pivot} kind="pivot_center" label="Pivot" scale={symbolScale} />
+              <InfrastructureSymbol point={project.waterSource} color={palette.water} kind="water_source" label="Water" scale={symbolScale} />
+              <InfrastructureSymbol point={project.powerSource} color={palette.power} kind="power_source" label="Power" scale={symbolScale} />
               {project.surveyPoints.map((point) => (
-                <SurveyPointSymbol key={point.id} point={point} color={palette.survey} />
+                <SurveyPointSymbol key={point.id} point={point} color={palette.survey} scale={symbolScale} />
               ))}
               {canonicalMachineLayersVisible ? result.towers.map((tower) => (
                 <React.Fragment key={tower.towerIndex}>
@@ -707,8 +701,8 @@ export function SvgMapSurface({
                     strokeDasharray="7 8"
                     strokeWidth={1.8}
                   />
-                  <Circle cx={tower.point.x} cy={-tower.point.y} r={8} fill={palette.markerFill} stroke={palette.fieldStroke} strokeWidth={4} />
-                  <SvgText x={tower.point.x + 12} y={-tower.point.y - 10} fill={palette.fieldStroke} fontSize={24} fontWeight="700">
+                  <Circle cx={tower.point.x} cy={-tower.point.y} r={symbolScale.px(8)} fill={palette.markerFill} stroke={palette.fieldStroke} strokeWidth={symbolScale.stroke(4)} />
+                  <SvgText x={tower.point.x + symbolScale.px(12)} y={-tower.point.y - symbolScale.px(10)} fill={palette.fieldStroke} fontSize={symbolScale.font(24)} fontWeight="700">
                     T{tower.towerIndex}
                   </SvgText>
                 </React.Fragment>
@@ -777,7 +771,7 @@ export function SvgMapSurface({
             <Text style={[styles.clearDraftText, canCommitCurrentDraft && styles.commitDraftText]}>{mapState.mode === "measure" ? "Measure Only" : "Commit"}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Save utility map feature" disabled={!canSaveCurrentMapFeature} onPress={saveMapFeatureFromHud} style={[styles.clearDraftButton, canSaveCurrentMapFeature && styles.commitDraftButton, !canSaveCurrentMapFeature && styles.disabledDraftButton]}>
-            <Text style={[styles.clearDraftText, canSaveCurrentMapFeature && styles.commitDraftText]}>{mapFeatureOption.geometry === "Point" ? "Save Center Feature" : "Save Feature"}</Text>
+            <Text style={[styles.clearDraftText, canSaveCurrentMapFeature && styles.commitDraftText]}>{activeFeatureGeometry === "Point" ? "Use Center Point" : "Choose Purpose"}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Delete selected vertex" disabled={!canDeleteSelectedVertex} onPress={deleteSelectedVertex} style={[styles.clearDraftButton, !canDeleteSelectedVertex && styles.disabledDraftButton]}>
             <Text style={styles.clearDraftText}>Delete Vertex</Text>
@@ -901,6 +895,20 @@ function canSaveMapFeature(mapState: DrawingMapState, geometry: UtilityFeatureGe
   return mapState.mode === "measure" && (geometry === "Point" || mapState.draftVertices.length >= featureDraftMinimumVertices(geometry));
 }
 
+function createSvgSymbolScale(viewport: DrawingMapState["viewport"], renderedPixelWidth: number): {
+  px: (screenPixels: number) => number;
+  stroke: (screenPixels: number) => number;
+  font: (screenPixels: number) => number;
+} {
+  const worldUnitsPerPixel = visibleWidthMeters(viewport) / Math.max(1, renderedPixelWidth);
+  const px = (screenPixels: number) => Math.max(0.5, screenPixels * worldUnitsPerPixel);
+  return {
+    px,
+    stroke: (screenPixels) => Math.max(0.35, px(screenPixels)),
+    font: (screenPixels) => Math.max(1, px(screenPixels)),
+  };
+}
+
 function shouldShowEditableMapFeatureHandles(
   feature: ProjectMapFeature,
   designMode: boolean,
@@ -1007,46 +1015,46 @@ function MapBackground({ minX, maxX, minY, maxY, styleName }: { minX: number; ma
   return <>{blocks}</>;
 }
 
-function InfrastructureSymbol({ color, kind, label, point }: { color: string; kind: InfrastructurePoint; label: string; point: XY }): React.JSX.Element {
+function InfrastructureSymbol({ color, kind, label, point, scale }: { color: string; kind: InfrastructurePoint; label: string; point: XY; scale: SvgSymbolScale }): React.JSX.Element {
   const y = -point.y;
   return (
     <>
       {kind === "pivot_center" ? (
         <>
-          <Circle cx={point.x} cy={y} r={18} fill="#fffef8" stroke={color} strokeWidth={5} />
-          <Circle cx={point.x} cy={y} r={6} fill={color} />
-          <Line x1={point.x - 25} y1={y} x2={point.x + 25} y2={y} stroke={color} strokeWidth={4} />
-          <Line x1={point.x} y1={y - 25} x2={point.x} y2={y + 25} stroke={color} strokeWidth={4} />
+          <Circle cx={point.x} cy={y} r={scale.px(18)} fill="#fffef8" stroke={color} strokeWidth={scale.stroke(5)} />
+          <Circle cx={point.x} cy={y} r={scale.px(6)} fill={color} />
+          <Line x1={point.x - scale.px(25)} y1={y} x2={point.x + scale.px(25)} y2={y} stroke={color} strokeWidth={scale.stroke(4)} />
+          <Line x1={point.x} y1={y - scale.px(25)} x2={point.x} y2={y + scale.px(25)} stroke={color} strokeWidth={scale.stroke(4)} />
         </>
       ) : null}
       {kind === "water_source" ? (
-        <Path d={`M ${point.x} ${y - 24} C ${point.x + 20} ${y - 2}, ${point.x + 16} ${y + 19}, ${point.x} ${y + 21} C ${point.x - 16} ${y + 19}, ${point.x - 20} ${y - 2}, ${point.x} ${y - 24} Z`} fill="#fffef8" stroke={color} strokeWidth={5} />
+        <Path d={`M ${point.x} ${y - scale.px(24)} C ${point.x + scale.px(20)} ${y - scale.px(2)}, ${point.x + scale.px(16)} ${y + scale.px(19)}, ${point.x} ${y + scale.px(21)} C ${point.x - scale.px(16)} ${y + scale.px(19)}, ${point.x - scale.px(20)} ${y - scale.px(2)}, ${point.x} ${y - scale.px(24)} Z`} fill="#fffef8" stroke={color} strokeWidth={scale.stroke(5)} />
       ) : null}
       {kind === "power_source" ? (
-        <Path d={`M ${point.x - 5} ${y - 25} L ${point.x + 18} ${y - 25} L ${point.x + 4} ${y - 3} L ${point.x + 20} ${y - 3} L ${point.x - 9} ${y + 26} L ${point.x - 1} ${y + 5} L ${point.x - 19} ${y + 5} Z`} fill="#fffef8" stroke={color} strokeWidth={5} />
+        <Path d={`M ${point.x - scale.px(5)} ${y - scale.px(25)} L ${point.x + scale.px(18)} ${y - scale.px(25)} L ${point.x + scale.px(4)} ${y - scale.px(3)} L ${point.x + scale.px(20)} ${y - scale.px(3)} L ${point.x - scale.px(9)} ${y + scale.px(26)} L ${point.x - scale.px(1)} ${y + scale.px(5)} L ${point.x - scale.px(19)} ${y + scale.px(5)} Z`} fill="#fffef8" stroke={color} strokeWidth={scale.stroke(5)} />
       ) : null}
-      <SvgText x={point.x + 28} y={y + 8} fill={color} fontSize={27} fontWeight="800">
+      <SvgText x={point.x + scale.px(28)} y={y + scale.px(8)} fill={color} fontSize={scale.font(27)} fontWeight="800">
         {label}
       </SvgText>
     </>
   );
 }
 
-function SurveyPointSymbol({ color, point }: { color: string; point: SurveyPoint }): React.JSX.Element {
+function SurveyPointSymbol({ color, point, scale }: { color: string; point: SurveyPoint; scale: SvgSymbolScale }): React.JSX.Element {
   const x = point.projected.x;
   const y = -point.projected.y;
   if (point.role === "note") {
     return (
       <>
-        <Rect x={x - 13} y={y - 13} width={26} height={26} rx={4} fill="#fffef8" stroke={color} strokeWidth={4} />
-        <SvgText x={x + 18} y={y + 7} fill={color} fontSize={20} fontWeight="900">Note</SvgText>
+        <Rect x={x - scale.px(13)} y={y - scale.px(13)} width={scale.px(26)} height={scale.px(26)} rx={scale.px(4)} fill="#fffef8" stroke={color} strokeWidth={scale.stroke(4)} />
+        <SvgText x={x + scale.px(18)} y={y + scale.px(7)} fill={color} fontSize={scale.font(20)} fontWeight="900">Note</SvgText>
       </>
     );
   }
   return (
     <>
-      <Circle cx={x} cy={y} r={10} fill="#fffef8" stroke={color} strokeWidth={4} />
-      <SvgText x={x + 14} y={y + 6} fill={color} fontSize={18} fontWeight="900">
+      <Circle cx={x} cy={y} r={scale.px(10)} fill="#fffef8" stroke={color} strokeWidth={scale.stroke(4)} />
+      <SvgText x={x + scale.px(14)} y={y + scale.px(6)} fill={color} fontSize={scale.font(18)} fontWeight="900">
         {shortSurveyLabel(point.role)}
       </SvgText>
     </>
@@ -1197,18 +1205,24 @@ function AdvisoryMachinePathEnvelope({
   width: number;
 }): React.JSX.Element | null {
   if (!overlay) return null;
-  const path = ringsToSvgPath(overlay.insideFieldEnvelope);
-  if (!path) return null;
+  const paths = overlay.centerlineSegments.map(lineSvgPath).filter(Boolean);
+  if (paths.length === 0) return null;
   return (
-    <Path
-      d={path}
-      fill={stroke}
-      opacity={0.11}
-      stroke={stroke}
-      strokeDasharray={dash}
-      strokeLinejoin="round"
-      strokeWidth={width}
-    />
+    <G>
+      {paths.map((path, index) => (
+        <Path
+          key={`${overlay.kind}-${overlay.towerIndex ?? "machine"}-${index}`}
+          d={path}
+          fill="none"
+          opacity={0.9}
+          stroke={stroke}
+          strokeDasharray={dash}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={width}
+        />
+      ))}
+    </G>
   );
 }
 
@@ -1222,63 +1236,28 @@ function LayoutPathOverlayLayer({ overlays, palette, pivotCenter }: { overlays: 
   return (
     <G accessibilityLabel="Wheel track and end of machine path overlays" testID="svg-layout-path-overlays">
       {overlays.map((overlay) => {
-        const insidePath = ringsToSvgPath(overlay.insideFieldEnvelope);
-        const outsidePath = ringsToSvgPath(overlay.outsideFieldEnvelope);
         const key = `${overlay.kind}-${overlay.towerIndex ?? "machine"}`;
         const labelPoint = polarLabelPoint(pivotCenter, overlay.radiusMeters, layoutPathLabelAngle(overlay.kind));
+        const centerlinePaths = overlay.centerlineSegments.map(lineSvgPath).filter(Boolean);
         return (
           <React.Fragment key={key}>
-            {insidePath && overlay.kind === "wheel_track" ? (
-              <Path
-                d={insidePath}
-                fill={palette.wheelTrack}
-                opacity={0.13}
-                stroke={palette.wheelTrack}
-                strokeDasharray="8 9"
-                strokeLinejoin="round"
-                strokeWidth={1.8}
-              />
-            ) : null}
-            {insidePath && overlay.kind === "end_of_machine" ? (
-              <>
-                <Path d={insidePath} fill={palette.machinePath} opacity={0.1} stroke={palette.markerFill} strokeLinejoin="round" strokeWidth={8} />
-                <Path d={insidePath} fill="none" stroke={palette.machinePath} strokeLinejoin="round" strokeWidth={3.2} />
-              </>
-            ) : null}
-            {insidePath && overlay.kind === "corner_arm_wheel_track" ? (
-              <Path
-                d={insidePath}
-                fill={palette.cornerArmTrack}
-                opacity={0.12}
-                stroke={palette.cornerArmTrack}
-                strokeDasharray="6 6"
-                strokeLinejoin="round"
-                strokeWidth={2.2}
-              />
-            ) : null}
-            {insidePath && overlay.kind === "corner_arm_overhang_end" ? (
-              <Path
-                d={insidePath}
-                fill={palette.cornerArmReach}
-                opacity={0.1}
-                stroke={palette.cornerArmReach}
-                strokeDasharray="15 7"
-                strokeLinejoin="round"
-                strokeWidth={2.6}
-              />
-            ) : null}
-            {outsidePath ? (
-              <Path
-                d={outsidePath}
-                fill={layoutPathOutsideColor(overlay.kind, palette)}
-                opacity={overlay.kind === "end_of_machine" ? 0.24 : 0.18}
-                stroke={layoutPathOutsideColor(overlay.kind, palette)}
-                strokeDasharray={overlay.kind === "wheel_track" || overlay.kind === "corner_arm_wheel_track" ? "5 6" : "12 7"}
-                strokeLinejoin="round"
-                strokeWidth={overlay.kind === "end_of_machine" ? 3.2 : 2.4}
-              />
-            ) : null}
-            {insidePath ? (
+            {centerlinePaths.map((centerlinePath, segmentIndex) => (
+              <React.Fragment key={`${key}-centerline-${segmentIndex}`}>
+                {overlay.kind === "end_of_machine" ? (
+                  <Path d={centerlinePath} fill="none" stroke={palette.markerFill} strokeLinecap="round" strokeLinejoin="round" strokeWidth={7} />
+                ) : null}
+                <Path
+                  d={centerlinePath}
+                  fill="none"
+                  stroke={layoutPathLabelColor(overlay.kind, palette)}
+                  strokeDasharray={layoutPathCenterlineDash(overlay.kind)}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={layoutPathCenterlineWidth(overlay.kind)}
+                />
+              </React.Fragment>
+            ))}
+            {centerlinePaths.length > 0 ? (
               <SvgText
                 x={labelPoint.x}
                 y={-labelPoint.y}
@@ -1303,6 +1282,19 @@ function layoutPathLabel(overlay: LayoutPathOverlay): string {
   return "CAO";
 }
 
+function layoutPathCenterlineDash(kind: LayoutPathOverlay["kind"]): string | undefined {
+  if (kind === "wheel_track" || kind === "corner_arm_wheel_track") return "6 7";
+  if (kind === "corner_arm_overhang_end") return "14 7";
+  return undefined;
+}
+
+function layoutPathCenterlineWidth(kind: LayoutPathOverlay["kind"]): number {
+  if (kind === "wheel_track") return 2;
+  if (kind === "end_of_machine") return 3.2;
+  if (kind === "corner_arm_wheel_track") return 2.2;
+  return 2.6;
+}
+
 function layoutPathLabelAngle(kind: LayoutPathOverlay["kind"]): number {
   if (kind === "wheel_track") return 225;
   if (kind === "end_of_machine") return 315;
@@ -1315,12 +1307,6 @@ function layoutPathLabelColor(kind: LayoutPathOverlay["kind"], palette: MapPalet
   if (kind === "end_of_machine") return palette.machinePath;
   if (kind === "corner_arm_wheel_track") return palette.cornerArmTrack;
   return palette.cornerArmReach;
-}
-
-function layoutPathOutsideColor(kind: LayoutPathOverlay["kind"], palette: MapPalette): string {
-  if (kind === "wheel_track") return palette.wheelTrackOutside;
-  if (kind === "end_of_machine") return palette.machinePathOutside;
-  return palette.cornerArmOutside;
 }
 
 function polarLabelPoint(center: XY, radiusMeters: number, angleDegrees: number): XY {
@@ -1378,15 +1364,17 @@ function MapFeatureSymbol({
   feature,
   onSelect,
   palette,
+  scale,
   selected,
 }: {
   feature: ProjectMapFeature;
   onSelect: () => void;
   palette: MapPalette;
+  scale: SvgSymbolScale;
   selected: boolean;
 }): React.JSX.Element {
   const color = colorForMapFeature(feature.kind, palette);
-  const strokeWidth = selected ? 7 : 4;
+  const strokeWidth = scale.stroke(selected ? 7 : 4);
   if (feature.geometry.type === "LineString") {
     const vertices = feature.geometry.vertices;
     if (vertices.length < 2) return <></>;
@@ -1404,7 +1392,7 @@ function MapFeatureSymbol({
           strokeWidth={strokeWidth}
           {...svgElementInteractionProps(onSelect)}
         />
-        <SvgText x={mid.x + 12} y={-mid.y - 10} fill={color} fontSize={18} fontWeight="900">
+        <SvgText x={mid.x + scale.px(12)} y={-mid.y - scale.px(10)} fill={color} fontSize={scale.font(18)} fontWeight="900">
           {feature.name}
         </SvgText>
       </>
@@ -1427,7 +1415,7 @@ function MapFeatureSymbol({
           strokeWidth={strokeWidth}
           {...svgElementInteractionProps(onSelect)}
         />
-        <SvgText x={mid.x + 12} y={-mid.y - 10} fill={color} fontSize={18} fontWeight="900">
+        <SvgText x={mid.x + scale.px(12)} y={-mid.y - scale.px(10)} fill={color} fontSize={scale.font(18)} fontWeight="900">
           {feature.name}
         </SvgText>
       </>
@@ -1449,8 +1437,8 @@ function MapFeatureSymbol({
           strokeWidth={strokeWidth}
           {...svgElementInteractionProps(onSelect)}
         />
-        <Circle cx={point.x} cy={y} fill="#fffef8" r={selected ? 10 : 7} stroke={color} strokeWidth={4} />
-        <SvgText x={point.x + feature.geometry.radiusMeters + 10} y={y + 6} fill={color} fontSize={18} fontWeight="900">
+        <Circle cx={point.x} cy={y} fill="#fffef8" r={scale.px(selected ? 10 : 7)} stroke={color} strokeWidth={scale.stroke(4)} />
+        <SvgText x={point.x + feature.geometry.radiusMeters + scale.px(10)} y={y + scale.px(6)} fill={color} fontSize={scale.font(18)} fontWeight="900">
           {feature.name}
         </SvgText>
       </>
@@ -1464,12 +1452,12 @@ function MapFeatureSymbol({
         cx={point.x}
         cy={y}
         fill={selected ? color : "#fffef8"}
-        r={selected ? 13 : 10}
+        r={scale.px(selected ? 13 : 10)}
         stroke={color}
-        strokeWidth={4}
+        strokeWidth={scale.stroke(4)}
         {...svgElementInteractionProps(onSelect)}
       />
-      <SvgText x={point.x + 15} y={y + 6} fill={color} fontSize={18} fontWeight="900">
+      <SvgText x={point.x + scale.px(15)} y={y + scale.px(6)} fill={color} fontSize={scale.font(18)} fontWeight="900">
         {shortMapFeatureLabel(feature.kind)}
       </SvgText>
     </>
@@ -1480,11 +1468,13 @@ function EditableMapFeatureHandles({
   feature,
   onSelect,
   palette,
+  scale,
   selected,
 }: {
   feature: ProjectMapFeature;
   onSelect: (vertexIndex: number) => void;
   palette: MapPalette;
+  scale: SvgSymbolScale;
   selected: number | null;
 }): React.JSX.Element {
   const color = colorForMapFeature(feature.kind, palette);
@@ -1493,6 +1483,7 @@ function EditableMapFeatureHandles({
       <EditableRing
         color={color}
         layerLabel={`${feature.name} map feature`}
+        scale={scale}
         selected={selected}
         vertices={feature.geometry.vertices}
         onSelect={onSelect}
@@ -1509,9 +1500,9 @@ function EditableMapFeatureHandles({
           cx={center.x}
           cy={-center.y}
           fill={selected === 0 ? color : "#fffef8"}
-          r={selected === 0 ? 11 : 7}
+          r={scale.px(selected === 0 ? 11 : 7)}
           stroke={color}
-          strokeWidth={4}
+          strokeWidth={scale.stroke(4)}
           {...svgElementInteractionProps(() => onSelect(0))}
         />
         <Circle
@@ -1519,10 +1510,10 @@ function EditableMapFeatureHandles({
           cx={radiusHandle.x}
           cy={-radiusHandle.y}
           fill={selected === 1 ? color : "#fffef8"}
-          r={selected === 1 ? 11 : 7}
+          r={scale.px(selected === 1 ? 11 : 7)}
           stroke={color}
           strokeDasharray="6 4"
-          strokeWidth={4}
+          strokeWidth={scale.stroke(4)}
           {...svgElementInteractionProps(() => onSelect(1))}
         />
       </>
@@ -1535,9 +1526,9 @@ function EditableMapFeatureHandles({
       cx={point.x}
       cy={-point.y}
       fill={selected === 0 ? color : "#fffef8"}
-      r={selected === 0 ? 11 : 7}
+      r={scale.px(selected === 0 ? 11 : 7)}
       stroke={color}
-      strokeWidth={4}
+      strokeWidth={scale.stroke(4)}
       {...svgElementInteractionProps(() => onSelect(0))}
     />
   );
@@ -1567,16 +1558,16 @@ function centroid(vertices: XY[]): XY {
   return { x: sum.x / Math.max(1, vertices.length), y: sum.y / Math.max(1, vertices.length) };
 }
 
-function DraftVertices({ vertices, color }: { vertices: XY[]; color: string }): React.JSX.Element {
+function DraftVertices({ vertices, color, scale }: { vertices: XY[]; color: string; scale: SvgSymbolScale }): React.JSX.Element {
   if (vertices.length === 0) return <></>;
   const path = vertices.length >= 2 ? `M ${vertices.map((vertex) => `${vertex.x} ${-vertex.y}`).join(" L ")}` : "";
   return (
     <>
-      {path ? <Path d={path} fill="none" stroke={color} strokeDasharray="10 8" strokeWidth={5} /> : null}
+      {path ? <Path d={path} fill="none" stroke={color} strokeDasharray="10 8" strokeWidth={scale.stroke(5)} /> : null}
       {vertices.map((vertex, index) => (
         <React.Fragment key={`${vertex.x}-${vertex.y}-${index}`}>
-          <Circle cx={vertex.x} cy={-vertex.y} r={10} fill="#ffffff" stroke={color} strokeWidth={5} />
-          <SvgText x={vertex.x + 12} y={-vertex.y - 10} fill={color} fontSize={22} fontWeight="900">
+          <Circle cx={vertex.x} cy={-vertex.y} r={scale.px(10)} fill="#ffffff" stroke={color} strokeWidth={scale.stroke(5)} />
+          <SvgText x={vertex.x + scale.px(12)} y={-vertex.y - scale.px(10)} fill={color} fontSize={scale.font(22)} fontWeight="900">
             {index + 1}
           </SvgText>
         </React.Fragment>
@@ -1629,12 +1620,14 @@ function EditableRing({
   color,
   layerLabel,
   onSelect,
+  scale,
   selected,
   vertices,
 }: {
   color: string;
   layerLabel: string;
   onSelect?: (vertexIndex: number) => void;
+  scale: SvgSymbolScale;
   selected: number | null;
   vertices: XY[];
 }): React.JSX.Element {
@@ -1647,9 +1640,9 @@ function EditableRing({
           cx={vertex.x}
           cy={-vertex.y}
           fill={selected === index ? color : "#fffef8"}
-          r={selected === index ? 11 : 7}
+          r={scale.px(selected === index ? 11 : 7)}
           stroke={color}
-          strokeWidth={4}
+          strokeWidth={scale.stroke(4)}
           {...(onSelect ? svgElementInteractionProps(() => onSelect(index)) : {})}
         />
       ))}
@@ -1669,11 +1662,11 @@ function svgElementInteractionProps(onActivate: () => void): object {
   return { onPress: onActivate };
 }
 
-function SnapMarker({ point, color, label }: { point: XY; color: string; label: string }): React.JSX.Element {
+function SnapMarker({ point, color, label, scale }: { point: XY; color: string; label: string; scale: SvgSymbolScale }): React.JSX.Element {
   return (
     <>
-      <Circle cx={point.x} cy={-point.y} r={16} fill="none" stroke={color} strokeDasharray="6 5" strokeWidth={4} />
-      <SvgText x={point.x + 18} y={-point.y - 14} fill={color} fontSize={20} fontWeight="900">
+      <Circle cx={point.x} cy={-point.y} r={scale.px(16)} fill="none" stroke={color} strokeDasharray="6 5" strokeWidth={scale.stroke(4)} />
+      <SvgText x={point.x + scale.px(18)} y={-point.y - scale.px(14)} fill={color} fontSize={scale.font(20)} fontWeight="900">
         Snap {label}
       </SvgText>
     </>

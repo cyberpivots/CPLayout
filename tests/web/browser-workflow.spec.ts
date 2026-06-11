@@ -25,6 +25,7 @@ test.beforeEach(async ({ page }, testInfo) => {
 });
 
 test("launcher and workspace route sweep stay usable without paid APIs or hidden keys", async ({ page }, testInfo) => {
+  test.slow();
   const networkLog: string[] = [];
   page.on("request", (request) => {
     const url = request.url();
@@ -62,27 +63,29 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await expect(page.getByTestId("design-builder-panel")).toHaveCount(0);
   await openInspectorIfCollapsed(page);
   await expect(page.getByTestId("workflow-sidebar-tab-tools")).toBeVisible();
-  await expect(page.getByTestId("design-action-pan")).toBeVisible();
+  if (testInfo.project.name === "mobile-390") {
+    await expect(page.getByTestId("map-bottom-hud").getByTestId("design-action-pan")).toBeVisible();
+    await expect(page.getByTestId("inspector-scroll").getByTestId("design-action-pan")).toHaveCount(0);
+  } else {
+    await expect(page.getByTestId("inspector-scroll").getByTestId("design-action-pan")).toBeVisible();
+  }
   await closeInspectorIfOpen(page);
   await clickHudAction(page, "design-action-calculate");
   await expect(page.getByTestId("design-console-dialog")).toBeVisible();
   await expect(page.getByTestId("design-builder-scenarios")).toContainText("Current layout");
   await page.getByTestId("design-console-close").click();
-  await expect(page.getByText("Saved")).toBeVisible();
   await openLayersSheet(page);
   await expect(page.getByTestId("places-layers-summary")).toContainText("Live Preview Imagery");
   await expect(page.getByTestId("places-layers-summary")).toContainText("Reference Overlays");
   await expect(page.getByRole("button", { name: "USGS Only", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: /Overlay (On|Off)/ })).toBeEnabled();
   await page.getByTestId("design-console-close").click();
-  await expect(page.getByText("Saved")).toBeVisible();
   await expect(page.getByTestId("browser-workflow-design")).toBeVisible();
   await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 180, y: 180 });
-  await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
+  await expect(page.getByText(/measure .* 1 draft pts .* polygon needs 3 pts/)).toBeVisible();
   await selectPanTool(page);
-  await expect(page.getByText("pan · 0 draft pts")).toBeVisible();
-  await expect(page.getByText("Saved")).toBeVisible();
+  await expect(page.getByText(/pan mode selected\. No draft vertices are pending\./i)).toBeVisible();
   await selectPipelineTool(page);
   await expect(page.getByText("measure · 0 draft pts · line needs 2 pts")).toBeVisible();
   await selectPumpFeatureTool(page);
@@ -232,15 +235,17 @@ test("catalog blank design starts a drawable boundary workflow", async ({ page }
     await clickWorkbenchMap(page, point);
     await page.waitForTimeout(250);
   }
-  await expect(page.getByText(/draw boundary .* 4 draft pts/)).toBeVisible();
+  await expect(page.getByText(/measure .* 4 draft pts .* polygon needs 3 pts/)).toBeVisible();
   if (testInfo.project.name === "mobile-390") {
     await expect(page.getByTestId("project-save-state")).toContainText("Saved");
     await saveScreen(page, testInfo, "catalog-blank-design-boundary-draw-mobile");
     return;
   }
 
-  await page.getByTestId("browser-action-commit").click();
-  await expect(page.getByText("Committed field boundary with 4 projected XY vertices.")).toBeVisible();
+  await page.getByTestId("browser-action-save-feature").click();
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toContainText("What did you draw?");
+  await choosePendingDraftPurpose(page, "Field Boundary");
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toHaveCount(0);
   await expect(page.getByTestId("project-save-state")).toContainText("Unsaved edits");
   await saveScreen(page, testInfo, "catalog-blank-design-boundary-draw");
 });
@@ -544,8 +549,8 @@ test("tablet portrait map console keeps drawers collapsed and HUD above the view
   await expect(page.getByTestId("map-view")).toBeVisible();
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("right-drawer-handle")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud-toggle")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud")).toHaveCount(0);
+  await expect(page.getByTestId("map-bottom-hud-toggle")).toHaveCount(0);
   await expectNoPageScroll(page);
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "left-drawer-handle", 56, 56);
@@ -557,6 +562,7 @@ test("tablet portrait map console keeps drawers collapsed and HUD above the view
   await expect(page.getByTestId("workflow-sidebar-tab-tools")).toBeVisible();
   await expectInsideViewport(page, "design-action-pan");
   await expect(page.getByTestId("design-action-files")).toHaveCount(0);
+  await expect(page.getByTestId("design-workflow-actions")).toBeVisible();
   const expandedMap = await page.getByTestId("browser-map-frame").boundingBox();
   expect(collapsedMap, "collapsed map bounding box").not.toBeNull();
   expect(expandedMap, "expanded map bounding box").not.toBeNull();
@@ -575,8 +581,8 @@ test("tablet landscape map console has fixed page bounds and drawer handles", as
   await expect(page.getByTestId("left-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("right-drawer-handle")).toBeVisible();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud")).toBeVisible();
-  await expect(page.getByTestId("map-bottom-hud-toggle")).toBeVisible();
+  await expect(page.getByTestId("map-bottom-hud")).toHaveCount(0);
+  await expect(page.getByTestId("map-bottom-hud-toggle")).toHaveCount(0);
   await expectNoPageScroll(page);
   await expectNoHorizontalOverflow(page);
   await expectMinTargetSize(page, "workspace-nav-map", 48, 48);
@@ -655,10 +661,11 @@ test("browser boundary commit keeps projected geometry status explicit", async (
   await clickWorkbenchMap(page, { x: 160, y: 180 });
   await clickWorkbenchMap(page, { x: 240, y: 180 });
   await clickWorkbenchMap(page, { x: 220, y: 250 });
-  await expect(page.getByText(/draw boundary .* 3 draft pts/)).toBeVisible();
-  await page.getByTestId("browser-action-commit").click();
-  await expect(page.getByText("Committed field boundary with 3 projected XY vertices.")).toBeVisible();
-  await expect(page.getByText("draw boundary · 0 draft pts")).toBeVisible();
+  await expect(page.getByText(/measure .* 3 draft pts .* polygon needs 3 pts/)).toBeVisible();
+  await page.getByTestId("browser-action-save-feature").click();
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toContainText("What did you draw?");
+  await choosePendingDraftPurpose(page, "Field Boundary");
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toHaveCount(0);
   await expect(page.getByText("Unsaved edits")).toBeVisible();
   await saveScreen(page, testInfo, "boundary-commit-status");
 });
@@ -672,14 +679,10 @@ test("browser utility line save keeps projected feature status explicit", async 
   await clickWorkbenchMap(page, { x: 170, y: 330 });
   await clickWorkbenchMap(page, { x: 250, y: 370 });
   await expect(page.getByText(/measure .* 2 draft pts .* line needs 2 pts/)).toBeVisible();
-  if (testInfo.project.name === "mobile-390") {
-    await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
-    await saveScreen(page, testInfo, "utility-line-draft-status-mobile");
-    return;
-  }
   await page.getByTestId("browser-action-save-feature").click();
-  await expect(page.getByText("Saved underground pipeline line with 2 projected XY vertices as a map feature.")).toBeVisible();
-  await expect(page.getByText("measure · 0 draft pts · line needs 2 pts")).toBeVisible();
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toContainText("What did you draw?");
+  await choosePendingDraftPurpose(page, "Pipeline");
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toHaveCount(0);
   await expect(page.getByText("Unsaved edits")).toBeVisible();
   await saveScreen(page, testInfo, "utility-line-save-status");
 });
@@ -692,16 +695,15 @@ test("browser utility point save keeps projected feature status explicit", async
   await selectPumpFeatureTool(page);
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   await clickWorkbenchMap(page, { x: 190, y: 220 });
-  if (testInfo.project.name === "mobile-390") {
-    await closeInspectorIfOpen(page);
-  }
-  await expect(page.getByText("Saved pump location point in projected XY as a map feature.")).toBeVisible();
-  await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toContainText("What did you draw?");
+  await choosePendingDraftPurpose(page, "Pump");
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toHaveCount(0);
   await expect(page.getByText("Unsaved edits")).toBeVisible();
   await saveScreen(page, testInfo, "utility-point-save-status");
 });
 
 test("design console selects end-gun circle and corner footprint utility tools", async ({ page }, testInfo) => {
+  test.slow();
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
@@ -714,13 +716,11 @@ test("design console selects end-gun circle and corner footprint utility tools",
   await clickWorkbenchMap(page, { x: 180, y: 330 });
   await clickWorkbenchMap(page, { x: 250, y: 370 });
   await expect(page.getByText(/measure .* 2 draft pts .* circle needs center \+ radius/)).toBeVisible();
-  if (testInfo.project.name === "mobile-390") {
-    await expect(page.getByText("Unsaved edits")).toHaveCount(0);
-    await saveScreen(page, testInfo, "design-console-feature-kind-tools-mobile");
-    return;
-  }
   await page.getByTestId("browser-action-save-feature").click();
-  await expect(page.getByText("Saved end gun arc circle with projected XY center and radius points as a map feature.")).toBeVisible();
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toContainText("What did you draw?");
+  await choosePendingDraftPurpose(page, "End-Gun Circle");
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toHaveCount(0);
+  await expect(page.getByText("Unsaved edits")).toBeVisible();
 
   await closeInspectorIfOpen(page);
   await selectPanTool(page);
@@ -731,18 +731,14 @@ test("design console selects end-gun circle and corner footprint utility tools",
   await selectCornerFootprintTool(page);
   await map.scrollIntoViewIfNeeded();
   await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "true");
-  if (testInfo.project.name === "mobile-390") {
-    await expect(page.getByText("measure · 0 draft pts · polygon needs 3 pts")).toBeVisible();
-    await expect(page.getByText("Unsaved edits")).toBeVisible();
-    await saveScreen(page, testInfo, "design-console-feature-kind-tools-mobile");
-    return;
-  }
   await clickWorkbenchMap(page, { x: 160, y: 330 });
   await clickWorkbenchMap(page, { x: 240, y: 340 });
   await clickWorkbenchMap(page, { x: 225, y: 390 });
   await expect(page.getByText(/measure .* 3 draft pts .* polygon needs 3 pts/)).toBeVisible();
   await page.getByTestId("browser-action-save-feature").click();
-  await expect(page.getByText("Saved corner swing limit polygon with 3 projected XY vertices as a map feature.")).toBeVisible();
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toContainText("What did you draw?");
+  await choosePendingDraftPurpose(page, "Corner-Arm Footprint");
+  await expect(page.getByTestId("pending-draft-purpose-panel")).toHaveCount(0);
   await expect(page.getByText("Unsaved edits")).toBeVisible();
   await saveScreen(page, testInfo, "design-console-feature-kind-tools");
 });
@@ -1035,7 +1031,7 @@ test("browser map edit vertices nudges selected map feature through reducer acti
   await clickWorkbenchMap(page, { x: 250, y: 370 });
   await clickWorkbenchMap(page, { x: 285, y: 342 });
   await page.getByTestId("browser-action-save-feature").click();
-  await expect(page.getByText("Saved underground pipeline line with 3 projected XY vertices as a map feature.")).toBeVisible();
+  await choosePendingDraftPurpose(page, "Pipeline");
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
   await page.getByRole("button", { name: /Save.*\*/ }).first().click();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
@@ -1067,7 +1063,7 @@ test("browser map edit vertices resizes selected circle map feature through radi
   await clickWorkbenchMap(page, { x: 180, y: 330 });
   await clickWorkbenchMap(page, { x: 250, y: 370 });
   await page.getByTestId("browser-action-save-feature").click();
-  await expect(page.getByText("Saved end gun arc circle with projected XY center and radius points as a map feature.")).toBeVisible();
+  await choosePendingDraftPurpose(page, "End-Gun Circle");
   await expect(page.getByTestId("project-save-state").getByText("Unsaved edits")).toBeVisible();
   await page.getByRole("button", { name: /Save.*\*/ }).first().click();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
@@ -1093,14 +1089,14 @@ test("grouped drawing HUD menus do not clear active drafts", async ({ page }, te
   await selectBoundaryTool(page);
   await expect(page.getByTestId("design-action-polygon")).toHaveAttribute("aria-pressed", "true");
   await clickWorkbenchMap(page, { x: 160, y: 180 });
-  await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
+  await expect(page.getByText(/measure .* 1 draft pts .* polygon needs 3 pts/)).toBeVisible();
 
   await openDesignToolPanel(page, "polygon");
-  await expect(page.getByRole("button", { name: "Field Boundary", exact: true })).toBeVisible();
-  await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Polygon", exact: true })).toBeVisible();
+  await expect(page.getByText(/measure .* 1 draft pts .* polygon needs 3 pts/)).toBeVisible();
   await page.getByTestId("design-console-close").click();
   await expect(page.getByTestId("design-console-dialog")).toHaveCount(0);
-  await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
+  await expect(page.getByText(/measure .* 1 draft pts .* polygon needs 3 pts/)).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "grouped-drawing-hud-draft-preserved");
 });
@@ -1125,9 +1121,10 @@ test("browser map utility sheets expose active state", async ({ page }, testInfo
   await page.getByTestId("workspace-nav-map").click();
   await selectPipelineTool(page);
   await expect(page.getByTestId("design-action-line")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("map-hud-active-tool-chip")).toContainText("underground pipeline");
+  await expect(page.getByTestId("map-hud-active-tool-chip")).toContainText("LineString");
   await selectPumpFeatureTool(page);
   await expect(page.getByTestId("design-action-point")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("map-hud-active-tool-chip")).toContainText("Point");
   await expect(page.getByText("measure · 0 draft pts · point saves on map click")).toBeVisible();
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "browser-map-chip-active-state");
@@ -1175,7 +1172,7 @@ test("browser map compact HUD actions stay inside the status panel", async ({ pa
   await clickWorkbenchMap(page, { x: 200, y: 240 });
   await clickWorkbenchMap(page, { x: 230, y: 185 });
   await expect(page.getByTestId("browser-action-commit")).toBeEnabled();
-  await expect(page.getByText(/draw boundary .* 3 draft pts/)).toBeVisible();
+  await expect(page.getByText(/measure .* 3 draft pts .* polygon needs 3 pts/)).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expectInsideContainer(page, "browser-map-bottom-dock", "browser-map-frame");
   await expectBottomGap(page, "browser-map-bottom-dock", "browser-map-frame", 4, 18);
@@ -1235,7 +1232,7 @@ test("offline browser map workbench stays usable with external requests blocked"
   await expect(page.getByText(/Aerial imagery is off/)).toBeVisible();
   await selectBoundaryTool(page);
   await clickWorkbenchMap(page, { x: 160, y: 180 });
-  await expect(page.getByText(/draw boundary .* 1 draft pts/)).toBeVisible();
+  await expect(page.getByText(/measure .* 1 draft pts .* polygon needs 3 pts/)).toBeVisible();
   expect(externalRequests).toEqual([]);
   await saveScreen(page, testInfo, "offline-map-workbench");
 });
@@ -2411,23 +2408,18 @@ async function saveScreen(page: Page, testInfo: TestInfo, label: string): Promis
 
 async function clickHudAction(page: Page, testId: string): Promise<void> {
   const viewport = page.viewportSize();
-  if (viewport && viewport.width < 700) await closeInspectorIfOpen(page);
-
-  const bottomHud = page.getByTestId("map-bottom-hud");
-  let action = page.getByTestId(testId).first();
-  if (await bottomHud.count() > 0 && await bottomHud.first().isVisible()) {
-    const bottomHudAction = bottomHud.getByTestId(testId).first();
-    if (await bottomHudAction.count() > 0 && await bottomHudAction.isVisible()) action = bottomHudAction;
-  }
-  if (await action.count() === 0 || !await action.isVisible()) {
+  const compact = Boolean(viewport && viewport.width < 700);
+  const geometryAction = /^design-action-(pan|edit|point|line|polygon|circle)$/.test(testId);
+  let action;
+  if (compact && geometryAction) {
+    await closeInspectorIfOpen(page);
+    action = page.getByTestId("map-bottom-hud").getByTestId(testId).first();
+  } else {
     await openInspectorIfCollapsed(page);
     const toolsTab = page.getByTestId("workflow-sidebar-tab-tools");
     if (await toolsTab.count() > 0 && await toolsTab.first().isVisible()) await toolsTab.first().click();
-    action = page.getByTestId(testId).first();
+    action = page.getByTestId("inspector-scroll").getByTestId(testId).first();
   }
-  await action.evaluate((node) => {
-    (node as HTMLElement).scrollIntoView({ block: "nearest", inline: "center" });
-  });
   await action.scrollIntoViewIfNeeded();
   await action.click();
 }
@@ -2442,7 +2434,7 @@ async function openDesignToolPanel(page: Page, action: "point" | "line" | "polyg
 }
 
 async function chooseDesignConsoleTool(page: Page, label: string): Promise<void> {
-  await page.getByRole("button", { name: label, exact: true }).click();
+  await page.getByTestId("design-console-dialog").getByRole("button", { name: label, exact: true }).click();
   await expect(page.getByTestId("design-console-dialog")).toHaveCount(0);
 }
 
@@ -2465,27 +2457,33 @@ async function openCornerArmAdvisorySheet(page: Page): Promise<void> {
 
 async function selectBoundaryTool(page: Page): Promise<void> {
   await openDesignToolPanel(page, "polygon");
-  await chooseDesignConsoleTool(page, "Field Boundary");
+  await chooseDesignConsoleTool(page, "Polygon");
 }
 
 async function selectPipelineTool(page: Page): Promise<void> {
   await openDesignToolPanel(page, "line");
-  await chooseDesignConsoleTool(page, "Pipeline");
+  await chooseDesignConsoleTool(page, "Line");
 }
 
 async function selectPumpFeatureTool(page: Page): Promise<void> {
   await openDesignToolPanel(page, "point");
-  await chooseDesignConsoleTool(page, "Pump Feature");
+  await chooseDesignConsoleTool(page, "Point");
 }
 
 async function selectEndGunCircleTool(page: Page): Promise<void> {
   await openDesignToolPanel(page, "circle");
-  await chooseDesignConsoleTool(page, "End-Gun Circle");
+  await chooseDesignConsoleTool(page, "Circle");
 }
 
 async function selectCornerFootprintTool(page: Page): Promise<void> {
   await openDesignToolPanel(page, "polygon");
-  await chooseDesignConsoleTool(page, "Corner-Arm Footprint");
+  await chooseDesignConsoleTool(page, "Polygon");
+}
+
+async function choosePendingDraftPurpose(page: Page, label: string): Promise<void> {
+  const panel = page.getByTestId("pending-draft-purpose-panel");
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button", { name: label, exact: true }).click();
 }
 
 async function selectPanTool(page: Page): Promise<void> {

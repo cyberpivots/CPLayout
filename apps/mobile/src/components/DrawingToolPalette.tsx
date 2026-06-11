@@ -2,12 +2,13 @@ import {
   Calculator,
   ChevronDown,
   ChevronUp,
+  Circle,
+  Hand,
   Layers,
   MapPin,
   MousePointer2,
   Pentagon,
-  Ruler,
-  UtilityPole,
+  Route,
   Wrench,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -21,6 +22,7 @@ export type DrawingToolPaletteModal = "point" | "line" | "polygon" | "circle" | 
 
 type ActiveTool = {
   activeLayer: DrawingLayerType;
+  draftGeometry?: "Point" | "LineString" | "Polygon" | "Circle";
   featureKind?: ProjectMapFeatureKind;
   mode: DrawingMode;
   requestId: number;
@@ -37,6 +39,7 @@ interface DrawingToolPaletteProps {
 }
 
 interface DrawingToolLauncherProps extends DrawingToolPaletteProps {
+  showGeometryTools?: boolean;
   variant: "compact" | "sidebar";
 }
 
@@ -73,6 +76,7 @@ export function DrawingToolLauncher({
   onOpenModal,
   onToggleLayers,
   settings,
+  showGeometryTools = true,
   variant,
 }: DrawingToolLauncherProps): React.JSX.Element {
   const [expandedHud, setExpandedHud] = useState(false);
@@ -89,14 +93,9 @@ export function DrawingToolLauncher({
       return;
     }
     if (action.type === "open_panel") {
+      if (!designMode) return;
       onOpenModal(action.panel);
-      return;
     }
-    if (action.command === "calculate") {
-      onCalculate();
-      return;
-    }
-    onToggleLayers();
   }
 
   return (
@@ -119,21 +118,30 @@ export function DrawingToolLauncher({
         </View>
       </View>
       {sidebar ? (
-        <View style={styles.sidebarToolGrid} testID="design-action-scroll">
-          {MAP_TOOL_CATALOG.map((tool) => (
-            <ToolButton
-              key={tool.id}
-              active={activeToolId === tool.id}
-              expanded={expanded}
-              icon={toolIcon(tool.id, activeToolId === tool.id)}
-              legacyTestID={legacyTestId(tool.id)}
-              onPress={() => runTool(tool)}
-              sidebar
-              testID={groupTestId(tool.id)}
-              tool={tool}
-            />
-          ))}
-        </View>
+        <>
+          {showGeometryTools ? (
+            <View style={styles.sidebarToolGrid} testID="design-action-scroll">
+              {MAP_TOOL_CATALOG.map((tool) => (
+                <ToolButton
+                  key={tool.id}
+                  active={activeToolId === tool.id}
+                  expanded={expanded}
+                  icon={toolIcon(tool.id, activeToolId === tool.id)}
+                  legacyTestID={legacyTestId(tool.id)}
+                  onPress={() => runTool(tool)}
+                  sidebar
+                  testID={groupTestId(tool.id)}
+                  tool={tool}
+                />
+              ))}
+            </View>
+          ) : null}
+          <View style={styles.workflowActionRow} testID="design-workflow-actions">
+            <WorkflowActionButton icon={<Wrench size={17} color="#173428" />} label="Machine" onPress={() => onOpenModal("machine")} testID="design-action-machine" />
+            <WorkflowActionButton icon={<Layers size={17} color="#173428" />} label="Layers" onPress={onToggleLayers} testID="design-action-layers" />
+            <WorkflowActionButton icon={<Calculator size={17} color="#173428" />} label="Calculate" onPress={onCalculate} testID="design-action-calculate" />
+          </View>
+        </>
       ) : (
         <ScrollView
           horizontal
@@ -216,12 +224,6 @@ function toolVisualGroup(id: MapToolId): { label: string; color: string; borderC
       return { label: "Areas", color: "#2d5f3a", borderColor: "#a8cdb1" };
     case "circle":
       return { label: "Coverage", color: "#006a9f", borderColor: "#9bc8df" };
-    case "machine":
-      return { label: "Machine", color: "#253f2f", borderColor: "#9db7a7" };
-    case "layers":
-      return { label: "Layers", color: "#53655a", borderColor: "#b9c8bd" };
-    case "calculate":
-      return { label: "Review", color: "#8b5cf6", borderColor: "#c9b9f8" };
   }
 }
 
@@ -230,15 +232,15 @@ function activeMapToolId(activeModal: DrawingToolPaletteModal, activeTool: Activ
   if (activeModal === "line") return "line";
   if (activeModal === "polygon" || activeModal === "obstacle") return "polygon";
   if (activeModal === "circle" || activeModal === "endGun" || activeModal === "cornerArm") return "circle";
-  if (activeModal === "machine") return "machine";
-  if (activeModal === "layers") return "layers";
-  if (activeModal === "calculate") return "calculate";
   if (activeTool?.mode === "pan") return "pan";
   if (activeTool?.mode === "edit_vertices") return "edit";
   if (activeTool?.mode === "place_pivot" || activeTool?.mode === "capture_point") return "point";
   if (activeTool?.featureKind === "end_gun_arc") return "circle";
   if (activeTool?.featureKind === "corner_swing_limit") return "polygon";
   if (activeTool?.mode === "measure") {
+    if (activeTool.draftGeometry === "LineString") return "line";
+    if (activeTool.draftGeometry === "Polygon") return "polygon";
+    if (activeTool.draftGeometry === "Circle") return "circle";
     const kind = activeTool.featureKind ?? "";
     if (kind.includes("line") || kind.includes("pipeline") || kind.includes("wire") || kind === "ditch" || kind === "canal" || kind === "fence" || kind === "road" || kind === "access_lane") return "line";
     if (kind.includes("boundary") || kind.includes("zone")) return "polygon";
@@ -252,7 +254,7 @@ function activeToolStatus(activeModal: DrawingToolPaletteModal, activeTool: Acti
   if (!designMode) return "Layout: inspect";
   if (activeModal) return `${activeModal.replaceAll("_", " ")} sheet`;
   if (!activeTool) return "Pan";
-  const layer = activeTool.featureKind ?? activeTool.activeLayer;
+  const layer = activeTool.featureKind ?? activeTool.draftGeometry ?? activeTool.activeLayer;
   return `${activeTool.mode.replaceAll("_", " ")} · ${layer.replaceAll("_", " ")}`;
 }
 
@@ -270,12 +272,6 @@ function groupTestId(id: MapToolId): string {
       return "drawing-tool-group-draw";
     case "circle":
       return "drawing-tool-group-coverage";
-    case "machine":
-      return "drawing-tool-group-machine";
-    case "layers":
-      return "drawing-tool-group-layers";
-    case "calculate":
-      return "drawing-tool-group-calculate";
   }
 }
 
@@ -291,12 +287,6 @@ function legacyTestId(id: MapToolId): string | undefined {
       return "design-action-point";
     case "circle":
       return "design-action-circle";
-    case "machine":
-      return "design-action-machine";
-    case "layers":
-      return "design-action-layers";
-    case "calculate":
-      return "design-action-calculate";
     case "edit":
       return "design-action-edit";
   }
@@ -306,24 +296,37 @@ function toolIcon(id: MapToolId, active: boolean): React.ReactNode {
   const color = active ? "#ffffff" : "#173428";
   switch (id) {
     case "pan":
-      return <MousePointer2 size={19} color={color} />;
+      return <Hand size={19} color={color} />;
     case "edit":
       return <MousePointer2 size={19} color={color} />;
     case "point":
       return <MapPin size={19} color={color} />;
     case "line":
-      return <UtilityPole size={19} color={color} />;
+      return <Route size={19} color={color} />;
     case "polygon":
       return <Pentagon size={19} color={color} />;
     case "circle":
-      return <Ruler size={19} color={color} />;
-    case "machine":
-      return <Wrench size={19} color={color} />;
-    case "layers":
-      return <Layers size={19} color={color} />;
-    case "calculate":
-      return <Calculator size={19} color={color} />;
+      return <Circle size={19} color={color} />;
   }
+}
+
+function WorkflowActionButton({
+  icon,
+  label,
+  onPress,
+  testID,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  testID: string;
+}): React.JSX.Element {
+  return (
+    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={styles.workflowActionButton} testID={testID}>
+      {icon}
+      <Text style={styles.workflowActionText}>{label}</Text>
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -396,6 +399,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  workflowActionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  workflowActionButton: {
+    alignItems: "center",
+    backgroundColor: "#fffef8",
+    borderColor: "#b9c8bd",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexGrow: 1,
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 42,
+    minWidth: 92,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  workflowActionText: {
+    color: "#173428",
+    fontSize: 11,
+    fontWeight: "900",
   },
   toolGroupShell: {
     borderTopWidth: 3,

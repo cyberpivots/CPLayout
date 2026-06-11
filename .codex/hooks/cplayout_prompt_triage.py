@@ -343,6 +343,46 @@ def _max_context_packs(context_map: dict[str, object]) -> int:
     return 3
 
 
+def _max_emitted_pack_summary_chars(context_map: dict[str, object]) -> int:
+    limits = context_map.get("limits")
+    if isinstance(limits, dict):
+        value = limits.get("maxEmittedPackSummaryChars")
+        if isinstance(value, int) and value > 0:
+            return value
+    return 1200
+
+
+def _joined_line_chars(lines: list[str]) -> int:
+    return sum(len(line) for line in lines) + max(len(lines) - 1, 0)
+
+
+def _fit_line_to_limit(line: str, limit: int) -> str:
+    if len(line) <= limit:
+        return line
+    if limit <= 3:
+        return line[:limit]
+    return line[: limit - 3] + "..."
+
+
+def _limit_lines(lines: list[str], limit: int) -> list[str]:
+    if limit <= 0 or _joined_line_chars(lines) <= limit:
+        return lines
+
+    kept: list[str] = []
+    omitted_line = f"  - Additional context pack details omitted to keep hook output under {limit} chars."
+    for line in lines:
+        if _joined_line_chars([*kept, line]) <= limit:
+            kept.append(line)
+            continue
+        break
+
+    while kept and _joined_line_chars([*kept, omitted_line]) > limit:
+        kept.pop()
+    if _joined_line_chars([*kept, omitted_line]) <= limit:
+        return [*kept, omitted_line]
+    return [_fit_line_to_limit(omitted_line, limit)]
+
+
 def _pack_trigger_score(prompt_tokens: tuple[str, ...], pack: dict[str, object]) -> int:
     terms = pack.get("triggerTerms")
     if not isinstance(terms, list):
@@ -437,7 +477,7 @@ def _context_pack_lines(prompt: str, matches: list[RouteMatch], context_map: dic
             lines.append(f"    read first: {read_first_text}")
         if command_texts:
             lines.append(f"    validation: {'; '.join(command_texts)}")
-    return lines
+    return _limit_lines(lines, _max_emitted_pack_summary_chars(context_map))
 
 
 def _selected_complexity(matches: list[RouteMatch], route_data: RouteData) -> str:

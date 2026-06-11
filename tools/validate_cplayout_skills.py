@@ -52,6 +52,9 @@ COMPLEXITY_BANDS = {"low", "medium", "high", "xhigh"}
 REASONING_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
 SUBAGENT_REASONING_EFFORTS = {"task_selected"}
 SPAWN_POLICIES = {"required", "optional", "not_useful"}
+ROUTE_POSITIVE_KEYWORD_LIMITS = {
+    "cplayout_kb_curator": 60,
+}
 REQUIRED_ROUTE_KEYWORDS = {
     "cplayout_imagery_mapper": {"will rhea", "jason harmelink"},
     "cplayout_interface_developer": {
@@ -351,6 +354,17 @@ def validate_route_data() -> list[str]:
             if not isinstance(keywords, list):
                 errors.append(f"cplayout_route_data.json: {route_id}.{field} must be a list")
                 continue
+            if (
+                field == "positiveKeywords"
+                and isinstance(route_id, str)
+                and route_id in ROUTE_POSITIVE_KEYWORD_LIMITS
+                and len(keywords) > ROUTE_POSITIVE_KEYWORD_LIMITS[route_id]
+            ):
+                errors.append(
+                    "cplayout_route_data.json: "
+                    f"{route_id}.positiveKeywords has {len(keywords)} entries; "
+                    f"limit is {ROUTE_POSITIVE_KEYWORD_LIMITS[route_id]}"
+                )
             if field == "positiveKeywords" and isinstance(route_id, str) and route_id in REQUIRED_ROUTE_KEYWORDS:
                 terms = {
                     keyword.get("term")
@@ -399,6 +413,9 @@ def validate_context_map() -> list[str]:
     max_packs = limits.get("maxContextPacksPerHook")
     if not isinstance(max_packs, int) or max_packs != 3:
         errors.append("cplayout_context_map.json: maxContextPacksPerHook must be 3")
+    max_summary_chars = limits.get("maxEmittedPackSummaryChars")
+    if not isinstance(max_summary_chars, int) or max_summary_chars != 1200:
+        errors.append("cplayout_context_map.json: maxEmittedPackSummaryChars must be 1200")
 
     validation_commands = context_map.get("validationCommands")
     if not isinstance(validation_commands, dict):

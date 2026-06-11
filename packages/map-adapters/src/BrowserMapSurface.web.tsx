@@ -81,6 +81,7 @@ interface InteractionState {
 
 export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const {
+    activeDraftGeometry,
     activeLayer: externalActiveLayer,
     activeMapFeatureKind,
     activeToolMode,
@@ -97,6 +98,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onAddSurveyPoint,
     onCommitBoundaryDraft,
     onCommitObstacleDraft,
+    onCreateMapFeatureDraft,
     onDeleteBoundaryVertex,
     onDeleteObstacleVertex,
     onMappingWorkflowModeChange,
@@ -123,6 +125,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onAddSurveyPoint,
     onCommitBoundaryDraft,
     onCommitObstacleDraft,
+    onCreateMapFeatureDraft,
     onDeleteBoundaryVertex,
     onDeleteMapFeatureVertex,
     onDeleteObstacleVertex,
@@ -143,6 +146,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const [selectedVertex, setSelectedVertex] = useState<SelectedProjectVertex | null>(null);
   const [status, setStatus] = useState("Imagery is a live reference. Project edits remain projected XY.");
   const mapFeatureOption = featureOptionForKind(mapFeatureKind);
+  const activeFeatureGeometry = activeDraftGeometry ?? mapFeatureOption.geometry;
   const projectionFrame = useMemo(() => {
     if (homeView) {
       return {
@@ -229,7 +233,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const referenceOverlayPanelStatus = referenceOverlay;
   const interactionRef = useRef<InteractionState>({
     activeLayer,
-    featureGeometry: mapFeatureOption.geometry,
+    featureGeometry: activeFeatureGeometry,
     featureKind: mapFeatureKind,
     imageryEnabled: Boolean(activeImagery),
     mode,
@@ -243,6 +247,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       onAddSurveyPoint,
       onCommitBoundaryDraft,
       onCommitObstacleDraft,
+      onCreateMapFeatureDraft,
       onDeleteBoundaryVertex,
       onDeleteMapFeatureVertex,
       onDeleteObstacleVertex,
@@ -259,6 +264,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
     onAddSurveyPoint,
     onCommitBoundaryDraft,
     onCommitObstacleDraft,
+    onCreateMapFeatureDraft,
     onDeleteBoundaryVertex,
     onDeleteMapFeatureVertex,
     onDeleteObstacleVertex,
@@ -274,14 +280,14 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   useEffect(() => {
     interactionRef.current = {
       activeLayer,
-      featureGeometry: mapFeatureOption.geometry,
+      featureGeometry: activeFeatureGeometry,
       featureKind: mapFeatureKind,
       imageryEnabled: Boolean(activeImagery),
       mode,
       projectCrs: project.projectCrs,
       workflowMode: settings.mappingWorkflowMode,
     };
-  }, [activeImagery, activeLayer, mapFeatureKind, mapFeatureOption.geometry, mode, project.projectCrs, settings.mappingWorkflowMode]);
+  }, [activeFeatureGeometry, activeImagery, activeLayer, mapFeatureKind, mode, project.projectCrs, settings.mappingWorkflowMode]);
 
   useEffect(() => {
     if (!canEditOnMap) return;
@@ -461,6 +467,16 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
       setStatus(`Captured ${intent.point.role.replaceAll("_", " ")} survey point in projected XY.`);
       return;
     }
+    if (!activeMapFeatureKind && intent.feature.geometry.type === "Point") {
+      callbacksRef.current.onCreateMapFeatureDraft?.({
+        geometryType: "Point",
+        vertices: [intent.feature.geometry.point],
+        sourceConfidence: intent.feature.confidence,
+        notes: intent.feature.notes,
+      });
+      setStatus("Point captured in projected XY. Choose its purpose before saving project geometry.");
+      return;
+    }
     callbacksRef.current.onAddMapFeature?.(intent.feature);
     setStatus(`Saved ${intent.feature.kind.replaceAll("_", " ")} point in projected XY as a map feature.`);
   }
@@ -502,17 +518,27 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
 
   function saveMapFeatureFromDraft(): void {
     if (!canEditOnMap || mode !== "measure") return;
-    const minimumVertices = featureDraftMinimumVertices(mapFeatureOption.geometry);
+    const minimumVertices = featureDraftMinimumVertices(activeFeatureGeometry);
     if (minimumVertices === 0 || draftVertices.length < minimumVertices) return;
-    const geometry = draftVerticesToFeatureGeometry(mapFeatureOption.geometry, draftVertices);
+    if (!activeMapFeatureKind) {
+      callbacksRef.current.onCreateMapFeatureDraft?.({
+        geometryType: activeFeatureGeometry,
+        vertices: draftVertices,
+        sourceConfidence: confidenceForImagery(settings.onlineImagery.enabled),
+        notes: settings.onlineImagery.enabled ? "Traced from browser imagery; verify with field survey." : undefined,
+      });
+      clearDraft(`Captured ${activeFeatureGeometry.replace("String", "")} draft in projected XY. Choose its purpose before saving.`);
+      return;
+    }
+    const geometry = draftVerticesToFeatureGeometry(activeFeatureGeometry, draftVertices);
     callbacksRef.current.onAddMapFeature?.({
-      name: defaultMapFeatureName(mapFeatureKind, mapFeatureOption.geometry, draftVertices.length),
+      name: defaultMapFeatureName(mapFeatureKind, activeFeatureGeometry, draftVertices.length),
       kind: mapFeatureKind,
       geometry,
       confidence: confidenceForImagery(settings.onlineImagery.enabled),
       notes: settings.onlineImagery.enabled ? "Traced from browser imagery; verify with field survey." : undefined,
     });
-    clearDraft(`Saved ${mapFeatureKind.replaceAll("_", " ")} ${mapFeatureStatusLabel(mapFeatureOption.geometry, draftVertices.length)} as a map feature.`);
+    clearDraft(`Saved ${mapFeatureKind.replaceAll("_", " ")} ${mapFeatureStatusLabel(activeFeatureGeometry, draftVertices.length)} as a map feature.`);
   }
 
   function clearDraft(nextStatus = "Draft cleared. Committed projected XY geometry is unchanged."): void {
@@ -615,15 +641,15 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
   const canCommitDraft = canEditOnMap && draftVertices.length >= 3 && (mode === "draw_boundary" || mode === "mark_obstacle");
   const canSaveFeature = canEditOnMap
     && mode === "measure"
-    && mapFeatureOption.geometry !== "Point"
-    && draftVertices.length >= featureDraftMinimumVertices(mapFeatureOption.geometry);
+    && activeFeatureGeometry !== "Point"
+    && draftVertices.length >= featureDraftMinimumVertices(activeFeatureGeometry);
   const selectedVertexPoint = selectedVertex ? selectedProjectVertexPoint(project, selectedVertex) : null;
   const canEditSelectedVertex = canEditOnMap && mode === "edit_vertices" && selectedVertexPoint !== null;
   const canDeleteSelectedVertex = canEditSelectedVertex && selectedVertex !== null && selectedProjectVertexCanDelete(project, selectedVertex);
   const editStepMeters = Math.max(1, settings.drawing.panStepMeters / 4);
   const canToggleReferenceOverlay = Boolean(onSettingsChange && referenceOverlay.canRender);
   const selectedVertexStatus = selectedVertex ? ` · ${selectedProjectVertexText(project, selectedVertex)}` : "";
-  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${selectedVertexStatus}${utilitySaveHint(mode, mapFeatureOption.geometry)}`;
+  const statusMetaText = `${mode.replaceAll("_", " ")} · ${draftVertices.length} draft pts${selectedVertexStatus}${utilitySaveHint(mode, activeFeatureGeometry)}`;
   const advisoryFieldPivotPlanVisible = !homeView && (advisoryFieldPivotPlan?.selectedMachineCount ?? 0) > 0;
 
   return (
@@ -735,7 +761,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
           </View>
         ) : null}
 
-        {canEditOnMap && mode === "measure" && !externalHudLayout ? (
+        {canEditOnMap && mode === "measure" && !externalHudLayout && activeMapFeatureKind ? (
           <View pointerEvents="box-none" style={[styles.optionHud, compactLayout && styles.optionHudCompact]}>
             {UTILITY_FEATURE_OPTIONS.map((option) => (
               <Chip
@@ -777,7 +803,7 @@ export function BrowserMapSurface(props: MapSurfaceProps): React.JSX.Element {
             </View>
             <View pointerEvents="box-none" style={[styles.hudActions, compactLayout && styles.hudActionsCompact]} testID="browser-map-hud-actions">
               <HudButton disabled={!canCommitDraft} icon={<Check size={15} color={canCommitDraft ? "#ffffff" : "#718077"} />} label="Commit" onPress={commitDraft} primary={canCommitDraft} testID="browser-action-commit" />
-              <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label="Save Feature" onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="browser-action-save-feature" />
+              <HudButton disabled={!canSaveFeature} icon={<Check size={15} color={canSaveFeature ? "#ffffff" : "#718077"} />} label={activeMapFeatureKind ? "Save Feature" : "Choose Purpose"} onPress={saveMapFeatureFromDraft} primary={canSaveFeature} testID="browser-action-save-feature" />
               {canEditOnMap && mode === "edit_vertices" ? (
                 <>
                   <HudButton disabled={project.fieldBoundary.length === 0} icon={<MousePointer2 size={15} color={project.fieldBoundary.length > 0 ? "#173428" : "#718077"} />} label="Boundary" onPress={selectFirstBoundaryVertex} testID="browser-edit-select-boundary" />

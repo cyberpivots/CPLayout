@@ -558,17 +558,17 @@
     ".codex/agents/cplayout_interface_developer.toml": "e7f24a527694b1f21e645f711e2c85ed12f271edfe3935950afd18fef9ef1f97",
     ".codex/agents/cplayout_kb_curator.toml": "28a28a37e94e016b0ffa0bb89899f4ec725146566b9ee8d30083db1e3b423ae7",
     ".codex/hooks.json": "2bdbfed0fcdfb1b3351a8834b89f11fb3e6f0cedda9491107b0d5c3c7b3174ca",
-    ".codex/hooks/cplayout_prompt_triage.py": "f4238d68cbaf72a2dd3537d41c0debe2aabf39401fe498a31f3a0f59392dc3da",
+    ".codex/hooks/cplayout_prompt_triage.py": "01fede914801451d80abec923dc1f7a0136053df5c66a33b6f6464b9f5c9d7c8",
     ".codex/hooks/cplayout_route_data.json": "c19b966c4c0d8e415ef9f162d94281fe318a386102c52e8c512ffcab6089fd09",
     ".codex/hooks/cplayout_subagent_start.py": "2c54b41069c7cc68a380788735a4d5c7b1209ea83e24c4f5a0ea614645fac8a5",
     "AGENTS.md": "c4d4433bbdc8c0a1c1a46c3a134518d0b6d6a66e82fba774371356480f7bfbf9",
-    "docs/agent-known-gaps.md": "f6e459dfe6581275520acb7298c50829d3a2dab8639060bf9a47756d56ad99c9",
-    "docs/agent-prompt-registry.md": "21e53b9fc72a3308e82225ed8a133fe3dcc12d4159d55e0ee2f3bcde55e377fc",
-    "docs/agent-source-ledger.md": "97c08baddc1847a086dd613f209e524de61da093929dc6b51c78eba54cf8d1e6",
+    "docs/agent-known-gaps.md": "5b98f995ef0e93c5051107d41e6672c37bee641c27c6558dc079262c8fd0ed4c",
+    "docs/agent-prompt-registry.md": "1867542c7419b0fd3d713ef62ac956897153d7ddb40cdc2aafe3031c4c658d09",
+    "docs/agent-source-ledger.md": "6b68d5ece1f710a87b75b4eeac9cc5d4f8e99c5b9e4bb02569e6faacfaa870d4",
     "docs/codex-managed-hook-deployment.md": "75a3ef85b723b66de5284feee9e3630d52f347a202414da5809474fea2ff5318",
     "package.json": "0bfd0ce60dfaf35431fe1463bc88e4e4a6b961fea4f94ab70a0b778f7f093bab",
     "tools/build_cplayout_context_map.py": "9255d688af7cbc13e7690cbd83260db65501f32dc4de03b79b659457ae57ca5f",
-    "tools/validate_cplayout_skills.py": "1c44fdbdf2d409cea1e8438a8d837179fca1a25ffebef692fe4f2faf17c731b8"
+    "tools/validate_cplayout_skills.py": "2bbfaf0c926a86b9a3cb3ff9252878cfc5abf4e021f5617ea41c0aa922b32cb6"
   },
   "validationCommands": {
     "audit": {

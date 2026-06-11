@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { AppSettings, InfrastructurePoint, LayoutResult, LonLat, MappingWorkflowMode, ObstacleZone, PivotProject, ProjectMapFeature, ProjectMapFeatureKind, SourceConfidence, SurveyPoint, XY } from "@cplayout/core";
 import type { AdvisoryFieldPivotPlan, AdvisoryMachineRenderModel, DrawingLayerType, DrawingMode } from "@cplayout/geometry";
+import type { PendingMapFeatureDraft, UtilityFeatureGeometry } from "./mapTools";
 
 export interface MapSurfaceProps {
   project: PivotProject;
@@ -9,6 +10,7 @@ export interface MapSurfaceProps {
   activeToolMode?: DrawingMode;
   activeLayer?: DrawingLayerType;
   activeMapFeatureKind?: ProjectMapFeatureKind;
+  activeDraftGeometry?: UtilityFeatureGeometry;
   activeToolRequestId?: number;
   advisoryFieldPivotPlan?: AdvisoryFieldPivotPlan;
   advisoryMachineRenderModel?: AdvisoryMachineRenderModel;
@@ -32,5 +34,6 @@ export interface MapSurfaceProps {
   onMoveInfrastructurePoint?: (pointType: InfrastructurePoint, point: XY, wgs84?: LonLat) => void;
   onAddSurveyPoint?: (point: Omit<SurveyPoint, "id" | "observedAt"> & { id?: string; observedAt?: string }) => void;
   onAddMapFeature?: (feature: Omit<ProjectMapFeature, "id"> & { id?: string }) => void;
+  onCreateMapFeatureDraft?: (draft: PendingMapFeatureDraft) => void;
   onSelectMapFeature?: (featureId: string | null) => void;
 }

@@ -24,6 +24,32 @@ const square = [
   { x: 0, y: 100 },
 ];
 
+function testPointInPolygon(point: { x: number; y: number }, ring: Array<{ x: number; y: number }>): boolean {
+  let inside = false;
+  for (let currentIndex = 0, previousIndex = ring.length - 1; currentIndex < ring.length; previousIndex = currentIndex, currentIndex += 1) {
+    const current = ring[currentIndex];
+    const previous = ring[previousIndex];
+    const cross = (point.y - previous.y) * (current.x - previous.x) - (point.x - previous.x) * (current.y - previous.y);
+    const dot = (point.x - previous.x) * (current.x - previous.x) + (point.y - previous.y) * (current.y - previous.y);
+    const lengthSquared = (current.x - previous.x) ** 2 + (current.y - previous.y) ** 2;
+    if (Math.abs(cross) <= 0.000001 && dot >= 0 && dot <= lengthSquared) return true;
+    const intersects = ((current.y > point.y) !== (previous.y > point.y))
+      && point.x < ((previous.x - current.x) * (point.y - current.y)) / (previous.y - current.y) + current.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function assertCenterlinesStayInsideField(overlays: ReturnType<typeof buildLayoutPathOverlays>, fieldBoundary: typeof square): void {
+  for (const overlay of overlays) {
+    for (const segment of overlay.centerlineSegments) {
+      for (const point of segment) {
+        assert.equal(testPointInPolygon(point, fieldBoundary), true, `${overlay.kind} centerline point must stay inside field boundary`);
+      }
+    }
+  }
+}
+
 assert.equal(polygonAreaSquareMeters(square), 10000);
 
 const machineRadius = machineRadiusMeters(sampleProject.machine);
@@ -146,15 +172,28 @@ const fullCirclePathOverlays = buildLayoutPathOverlays({
     machineClearanceBufferMeters: 3,
   },
 });
-assert.deepEqual(fullCirclePathOverlays.map((overlay) => overlay.kind), ["wheel_track", "wheel_track", "end_of_machine"]);
+const fullCircleStandardOverlays = fullCirclePathOverlays.filter((overlay) => overlay.kind === "wheel_track" || overlay.kind === "end_of_machine");
+const fullCircleDefaultCornerArmOverlays = fullCirclePathOverlays.filter((overlay) => overlay.kind === "corner_arm_wheel_track" || overlay.kind === "corner_arm_overhang_end");
+assert.deepEqual(fullCirclePathOverlays.map((overlay) => overlay.kind), ["wheel_track", "wheel_track", "end_of_machine", "corner_arm_wheel_track", "corner_arm_overhang_end"]);
 assert.deepEqual(fullCirclePathOverlays.filter((overlay) => overlay.kind === "wheel_track").map((overlay) => overlay.radiusMeters), [15, 35]);
 assert.equal(fullCirclePathOverlays[0]?.towerIndex, 1);
-assert.equal(fullCirclePathOverlays[2]?.radiusMeters, 40);
-assert.equal(fullCirclePathOverlays[2]?.bufferMeters, 3);
+assert.equal(fullCircleStandardOverlays.find((overlay) => overlay.kind === "end_of_machine")?.radiusMeters, 40);
+assert.equal(fullCircleStandardOverlays.find((overlay) => overlay.kind === "end_of_machine")?.bufferMeters, 3);
+assert.ok(fullCircleStandardOverlays.every((overlay) => overlay.centerlineSegments.length === 1));
+assert.ok(fullCircleStandardOverlays.every((overlay) => overlay.centerlineSegments[0].length > 100));
 assert.ok(fullCirclePathOverlays.every((overlay) => overlay.advisoryOnly === true));
 assert.ok(fullCirclePathOverlays.every((overlay) => overlay.canonicalGeometryMutation === false));
 assert.ok(fullCirclePathOverlays.every((overlay) => multiPolygonAreaSquareMeters(overlay.insideFieldEnvelope) > 0));
-assert.ok(fullCirclePathOverlays.every((overlay) => multiPolygonAreaSquareMeters(overlay.outsideFieldEnvelope) === 0));
+assert.ok(fullCircleStandardOverlays.every((overlay) => multiPolygonAreaSquareMeters(overlay.outsideFieldEnvelope) === 0));
+assert.equal(fullCircleDefaultCornerArmOverlays.length, 2);
+assert.ok(fullCircleDefaultCornerArmOverlays.every((overlay) => overlay.pathModel === "max_extension_envelope"));
+assert.ok(fullCircleDefaultCornerArmOverlays.every((overlay) => overlay.extensionEvidenceSource === "none"));
+assert.ok(fullCircleDefaultCornerArmOverlays.every((overlay) => overlay.wheelOverhangSeparationVerified === true));
+assertCenterlinesStayInsideField(fullCirclePathOverlays, fieldBoundedProject.fieldBoundary);
+const defaultCornerArmOverhang = fullCircleDefaultCornerArmOverlays.find((overlay) => overlay.kind === "corner_arm_overhang_end");
+assert.ok(defaultCornerArmOverhang);
+const defaultCornerArmRadii = defaultCornerArmOverhang.centerlineSegments.flat().map((point) => Math.hypot(point.x - fieldBoundedProject.pivotCenter.x, point.y - fieldBoundedProject.pivotCenter.y));
+assert.ok(Math.max(...defaultCornerArmRadii) - Math.min(...defaultCornerArmRadii) > 1);
 assert.equal(JSON.stringify({
   fieldBoundary: fieldBoundedProject.fieldBoundary,
   machine: fieldBoundedProject.machine,
@@ -181,6 +220,7 @@ assert.ok(multiPolygonAreaSquareMeters(partialTowerOverlay.insideFieldEnvelope) 
 assert.ok(multiPolygonAreaSquareMeters(partialTowerOverlay.outsideFieldEnvelope) > 0);
 assert.equal(partialMachineOverlay.radiusMeters, 45);
 assert.ok(multiPolygonAreaSquareMeters(partialMachineOverlay.outsideFieldEnvelope) > 0);
+assertCenterlinesStayInsideField(partialOutsidePathOverlays, fieldBoundedProject.fieldBoundary);
 
 const clearanceRows = evaluateMachineBoundaryClearance(fieldBoundedProject, {
   layoutReview: {
@@ -188,12 +228,12 @@ const clearanceRows = evaluateMachineBoundaryClearance(fieldBoundedProject, {
     showMachineBoundaryDistances: true,
   },
 });
-assert.deepEqual(clearanceRows.map((row) => row.kind), ["pivot_center", "wheel_track", "end_of_machine"]);
+assert.deepEqual(clearanceRows.map((row) => row.kind), ["pivot_center", "wheel_track", "end_of_machine", "corner_arm_wheel_track", "corner_arm_overhang_end"]);
 assert.equal(clearanceRows.every((row) => row.advisoryOnly === true && row.canonicalGeometryMutation === false), true);
 assert.equal(clearanceRows.find((row) => row.kind === "pivot_center")?.minimumBoundaryDistanceMeters, 50);
 assert.equal(clearanceRows.find((row) => row.kind === "wheel_track")?.minimumBoundaryDistanceMeters, 30);
 assert.equal(clearanceRows.find((row) => row.kind === "end_of_machine")?.minimumBoundaryDistanceMeters, 30);
-assert.equal(clearanceRows.every((row) => row.meetsRequiredBoundaryClearance), true);
+assert.equal(clearanceRows.find((row) => row.kind === "corner_arm_overhang_end")?.meetsRequiredBoundaryClearance, false);
 
 const strictClearanceRows = evaluateMachineBoundaryClearance(fieldBoundedProject, {
   layoutReview: {
@@ -255,6 +295,8 @@ assert.equal(cornerArmFallbackOverlays.find((overlay) => overlay.kind === "corne
 assert.equal(cornerArmFallbackOverlays.find((overlay) => overlay.kind === "corner_arm_overhang_end")?.extensionSlopeDomain, "angle_degrees");
 assert.equal(cornerArmFallbackOverlays.find((overlay) => overlay.kind === "corner_arm_overhang_end")?.maxExtensionMeters, 15);
 assert.ok((cornerArmFallbackOverlays.find((overlay) => overlay.kind === "corner_arm_overhang_end")?.sampledPathPointCount ?? 0) > 0);
+assert.equal(cornerArmFallbackOverlays.find((overlay) => overlay.kind === "corner_arm_wheel_track")?.centerlineSegments.length, 1);
+assert.equal(cornerArmFallbackOverlays.find((overlay) => overlay.kind === "corner_arm_overhang_end")?.centerlineSegments.length, 1);
 
 const beforeCornerArmPathEvaluation = JSON.stringify(evaluateLayout(cornerArmFallbackProject).metrics);
 const cornerArmPath = evaluateCornerArmPath(cornerArmFallbackProject);
@@ -265,6 +307,10 @@ assert.equal(cornerArmPath.wheelTrackRadiusMeters, 35);
 assert.equal(cornerArmPath.overhangEndRadiusMeters, 35);
 assert.equal(cornerArmPath.advisoryOnly, true);
 assert.equal(cornerArmPath.canonicalGeometryMutation, false);
+assert.equal(cornerArmPath.wheelTrackCenterlineSegments.length, 1);
+assert.equal(cornerArmPath.overhangEndCenterlineSegments.length, 1);
+assert.equal(cornerArmPath.constraintSummary.safetyZoneMeters, 4.572);
+assert.equal(cornerArmPath.constraintSummary.speedRatio.status, "not_available");
 assert.match(cornerArmPath.warnings.join("\n"), /max-extension envelope/);
 assert.equal(JSON.stringify(evaluateLayout(cornerArmFallbackProject).metrics), beforeCornerArmPathEvaluation);
 
@@ -309,7 +355,71 @@ assert.ok(cornerArmSeparatedPath);
 assert.deepEqual(cornerArmSeparatedPath.evidenceFeatureIds, ["corner-limit"]);
 assert.equal(cornerArmSeparatedPath.pathModel, "corner_swing_limit_variable_reach");
 assert.equal(cornerArmSeparatedPath.extensionSlopeSummary.domain, "angle_degrees");
+assert.ok(cornerArmSeparatedPath.wheelTrackCenterlineSegments.length >= 1);
+assert.ok(cornerArmSeparatedPath.overhangEndCenterlineSegments.length >= 1);
+assert.notDeepEqual(cornerArmSeparatedPath.wheelTrackCenterlineSegments, cornerArmSeparatedPath.overhangEndCenterlineSegments);
 assert.equal(JSON.stringify(cornerArmSeparatedProject), beforeCornerArmSeparated);
+
+const cornerArmConstraintPath = evaluateCornerArmPath({
+  ...cornerArmFallbackProject,
+  machine: {
+    ...cornerArmFallbackProject.machine,
+    driveUnits: {
+      lrdu: {
+        role: "lrdu" as const,
+        advisoryOnly: true as const,
+        operatorMeasuredSpeedMetersPerMinute: 2,
+        sourceRefs: [{ sourceId: "SRC-LRDU-MEASURED", limit: "Synthetic LRDU speed evidence." }],
+        caveats: [],
+      },
+      sdu: {
+        role: "sdu" as const,
+        advisoryOnly: true as const,
+        operatorMeasuredSpeedMetersPerMinute: 1,
+        sourceRefs: [{ sourceId: "SRC-SDU-MEASURED", limit: "Synthetic SDU speed evidence." }],
+        caveats: [],
+      },
+    },
+    cornerArm: {
+      ...cornerArmFallbackProject.machine.cornerArm,
+      maxSteerAngleDegrees: 100,
+      minSteerAngleDegrees: -10,
+      maxExtensionRateMetersPerMinute: 0.5,
+      maxRetractionRateMetersPerMinute: 0.4,
+    },
+  },
+  mapFeatures: [{
+    id: "planning-limit",
+    name: "Planning limit",
+    kind: "planning_boundary" as const,
+    geometry: {
+      type: "Polygon" as const,
+      vertices: [
+        { x: 10, y: 10 },
+        { x: 80, y: 10 },
+        { x: 80, y: 80 },
+        { x: 10, y: 80 },
+      ],
+    },
+    confidence: "user_estimated" as const,
+  }],
+}, {
+  settings: {
+    layoutReview: {
+      requiredBoundaryClearanceMeters: 25,
+      showMachineBoundaryDistances: true,
+    },
+  },
+});
+assert.ok(cornerArmConstraintPath);
+assert.equal(cornerArmConstraintPath.constraintSummary.activeFieldBoundary.status, "shortfall");
+assert.equal(cornerArmConstraintPath.constraintSummary.activeFieldBoundary.shortfallMeters, 10);
+assert.equal(cornerArmConstraintPath.constraintSummary.planningBoundary.status, "shortfall");
+assert.deepEqual(cornerArmConstraintPath.constraintSummary.planningBoundary.evidenceFeatureIds, ["planning-limit"]);
+assert.equal(cornerArmConstraintPath.constraintSummary.speedRatio.status, "operator_measured");
+assert.equal(cornerArmConstraintPath.constraintSummary.speedRatio.sduToLrduRatio, 0.5);
+assert.equal(cornerArmConstraintPath.constraintSummary.steering.status, "source_backed");
+assert.equal(cornerArmConstraintPath.constraintSummary.extensionRate.status, "source_backed");
 
 const dualSpanCornerArmPath = evaluateCornerArmPath({
   ...cornerArmFallbackProject,

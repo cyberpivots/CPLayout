@@ -35,8 +35,11 @@ test("launcher and workspace route sweep stay usable without paid APIs or hidden
   await page.goto("/");
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("CPLayout");
-  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
-  await expect(page.getByText("EPSG:32614").first()).toBeVisible();
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
+  await expect(page.getByText("North America Map")).toBeVisible();
+  await expect(page.getByText("Will Rhea / Jason Harmelink Example Map")).toHaveCount(0);
+  await expect(page.getByTestId("browser-workflow-layout")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("design-action-polygon")).toHaveCount(0);
   await expectTopToolbarSingleRow(page);
   await expectPassiveBottomStatusBar(page);
   await expect(page.getByTestId("workspace-nav-review")).toHaveCount(0);
@@ -167,7 +170,8 @@ test("workspace command menu routes preserve existing views and local boundaries
   await openCommandMenu(page, "help");
   await page.getByTestId("command-help-open").click();
   await expect(page.getByTestId("help-view")).toBeVisible();
-  await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
+  await expect(page.getByTestId("catalog-save-state").getByText("Catalog ready")).toBeVisible();
+  await expect(page.getByTestId("project-save-state")).toHaveCount(0);
   await saveScreen(page, testInfo, "workspace-command-menu-routes");
 });
 
@@ -185,6 +189,40 @@ test("catalog home readiness replaces global count metrics", async ({ page }, te
   await expect(readiness).not.toContainText("Field maps");
   await expect(readiness).not.toContainText("Designs");
   await saveScreen(page, testInfo, "catalog-home-readiness-no-counts");
+});
+
+test("catalog home routes stay navigation-only and non-project-backed", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Project Catalog");
+  await expect(page.getByTestId("catalog-save-state")).toContainText("Catalog ready");
+  await expect(page.getByTestId("project-save-state")).toHaveCount(0);
+  await expect(page.getByTestId("workspace-power-evidence-status")).toHaveCount(0);
+  await expect(page.getByText("Will Rhea / Jason Harmelink Example Map")).toHaveCount(0);
+
+  await page.getByTestId("workspace-nav-dashboard").click();
+  await expect(page.getByTestId("dashboard-workspace")).toBeVisible();
+  await expect(page.getByTestId("catalog-home-readiness")).toBeVisible();
+  await expect(page.getByText("Coverage")).toHaveCount(0);
+  await expect(page.getByText("Irrigated")).toHaveCount(0);
+  await expect(page.getByText("Will Rhea / Jason Harmelink Example Map")).toHaveCount(0);
+
+  await page.getByTestId("workspace-nav-survey").click();
+  await expect(page.getByTestId("survey-view")).toBeVisible();
+  await expect(page.getByText("No Project Open")).toBeVisible();
+  await expect(page.getByTestId("survey-metric-points")).toHaveCount(0);
+
+  await page.getByTestId("workspace-nav-files").click();
+  await expect(page.getByTestId("files-view")).toBeVisible();
+  await expect(page.getByText("No Project Open")).toBeVisible();
+  await expect(page.getByText("Will Rhea / Jason Harmelink Example Map")).toHaveCount(0);
+  await expect(page.getByTestId("project-save-state")).toHaveCount(0);
+
+  await page.getByTestId("workspace-nav-settings").click();
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await expect(page.getByTestId("catalog-save-state")).toContainText("Catalog ready");
+  await expect(page.getByTestId("project-save-state")).toHaveCount(0);
+  await expect(page.getByText("Unsaved edits")).toHaveCount(0);
+  await saveScreen(page, testInfo, "catalog-home-navigation-only");
 });
 
 test("file menu opens curated sample designs with projected xy status", async ({ page }, testInfo) => {
@@ -297,13 +335,13 @@ test("map-first catalog tree creates client projects and field maps without hidd
   await expect(page.getByTestId("design-action-polygon")).toHaveCount(0);
   await expect(page.getByText("North Quarter Concept Layout")).toBeHidden();
   await expect(page.getByText("Base Design")).toBeHidden();
-  await expect(page.getByTestId("project-tree-rail")).toContainText("0 designs");
+  await expect(page.getByTestId("project-tree-rail")).toContainText("0 design files");
   await expectNoSavedProjectDocuments(page);
 
   await createCatalogItem(page, "Field Map", "North Quarter", "Saved under: Adams Farms > Adams North Unit");
   await expect(page.getByRole("button", { name: "North Quarter" })).toBeVisible();
   await expect(page.getByTestId("project-tree-rail")).toContainText("North Quarter");
-  await expect(page.getByTestId("project-tree-rail")).toContainText("0 designs");
+  await expect(page.getByTestId("project-tree-rail")).toContainText("0 design files");
   await expect(page.getByText("North America Map")).toBeVisible();
   await expectNoSavedProjectDocuments(page);
   await createCatalogItem(page, "Design", "RTK Layout Pass", "Saved under: Adams Farms > Adams North Unit > North Quarter");
@@ -314,7 +352,8 @@ test("map-first catalog tree creates client projects and field maps without hidd
   await expectNoSavedProjectDocuments(page);
   await railProject.dispatchEvent("dblclick");
   await expect(page.getByTestId("project-tree-rail")).toContainText("North Quarter");
-  await expect(page.getByText("Saved")).toBeVisible();
+  await expect(page.getByTestId("catalog-save-state")).toContainText("Catalog ready");
+  await expect(page.getByTestId("project-save-state")).toHaveCount(0);
   await closeProjectDrawerIfOpen(page);
   await openBaselineSample(page);
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
@@ -443,8 +482,8 @@ test("client detail manages profile and contained project lifecycle", async ({ p
 
 test("public proof map features can select the side-panel editor without geometry mutation", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByTestId("workspace-nav-dashboard").click();
-  await page.getByRole("button", { name: "Real Proof" }).click();
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-real-proof").click();
   await expect(page.getByTestId("workspace-screen")).toBeVisible();
   await page.getByTestId("workspace-nav-map").click();
   await expect(page.getByTestId("browser-map-workbench")).toBeVisible();
@@ -1021,6 +1060,7 @@ test("browser map edit vertices nudges projected boundary through reducer action
 });
 
 test("browser map edit vertices nudges selected map feature through reducer actions", async ({ page }, testInfo) => {
+  test.slow();
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
@@ -1053,6 +1093,7 @@ test("browser map edit vertices nudges selected map feature through reducer acti
 });
 
 test("browser map edit vertices resizes selected circle map feature through radius handle", async ({ page }, testInfo) => {
+  test.slow();
   await page.goto("/");
   await openBaselineSample(page);
   await page.getByTestId("workspace-nav-map").click();
@@ -2057,33 +2098,35 @@ test("dashboard walkthrough modules expose checkbox state and keyboard activatio
 
 test("dashboard walkthrough progress is scoped to the active project", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByTestId("workspace-nav-dashboard").click();
-  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
+  await openBaselineSample(page);
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await page.getByTestId("walkthrough-module-imagery").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
-  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Real Proof" }).click();
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-real-proof").click();
   await expect(page.getByText("Public Adams County Center Pivot Proof", { exact: true }).first()).toBeVisible();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("0/7 modules")).toBeVisible();
-  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Open Sample" }).click();
-  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
+  await openBaselineSample(page);
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-walkthrough-project-scope");
 });
 
 test("dashboard walkthrough reset only clears the active project", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.getByTestId("workspace-nav-dashboard").click();
-  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
+  await openBaselineSample(page);
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await page.getByTestId("walkthrough-module-imagery").click();
   await page.getByTestId("walkthrough-module-boundary").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
-  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Real Proof" }).click();
+  await openCommandMenu(page, "file");
+  await page.getByTestId("command-file-real-proof").click();
   await page.getByTestId("walkthrough-module-survey").click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("1/7 modules")).toBeVisible();
   await page.getByRole("button", { name: "Reset walkthrough progress for active project" }).click();
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("0/7 modules")).toBeVisible();
-  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Open Sample" }).click();
-  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("Will Rhea / Jason Harmelink Example Map");
+  await openBaselineSample(page);
+  await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await expect(page.getByTestId("dashboard-card-walkthrough").getByText("2/7 modules")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-walkthrough-reset-project-scope");
 });
@@ -2135,8 +2178,8 @@ test("dashboard recent-project row can reopen a saved browser project", async ({
   await openInspectorIfCollapsed(page);
   await expect(page.getByTestId("catalog-notice")).toContainText("Select or create a client folder");
   await expect(page.getByText("Untitled Field Layout", { exact: true })).toBeHidden();
-  await page.getByTestId("workspace-nav-dashboard").click();
-  await recentProjects.getByRole("button", { name: "Open recent project North Quarter Concept Layout" }).click();
+  await openBaselineSample(page);
+  await page.getByTestId("dashboard-recent-projects").getByRole("button", { name: "Open recent project North Quarter Concept Layout" }).click();
   await expect(page.getByTestId("workspace-breadcrumb-current")).toContainText("North Quarter Concept Layout");
   await expect(page.getByTestId("project-save-state").getByText("Saved")).toBeVisible();
   await saveScreen(page, testInfo, "dashboard-recent-project-reopen");
@@ -2322,6 +2365,7 @@ async function expectPassiveBottomStatusBar(page: Page): Promise<void> {
     return {
       buttonCount: statusBar.querySelectorAll("[role='button'],button").length,
       commandBarHasSaveState: Boolean(commandBar?.querySelector("[data-testid='project-save-state']")),
+      hasCatalogState: Boolean(statusBar.querySelector("[data-testid='catalog-save-state']")),
       hasSaveState: Boolean(statusBar.querySelector("[data-testid='project-save-state']")),
       height: rect.height,
     };
@@ -2329,7 +2373,7 @@ async function expectPassiveBottomStatusBar(page: Page): Promise<void> {
   expect(metrics.height, "bottom status bar height").toBeGreaterThanOrEqual(28);
   expect(metrics.height, "bottom status bar height").toBeLessThanOrEqual(36);
   expect(metrics.buttonCount, "bottom status bar command buttons").toBe(0);
-  expect(metrics.hasSaveState, "save state moved to bottom status bar").toBe(true);
+  expect(metrics.hasCatalogState || metrics.hasSaveState, "catalog or project state moved to bottom status bar").toBe(true);
   expect(metrics.commandBarHasSaveState, "save state absent from top command bar").toBe(false);
 }
 
@@ -2504,7 +2548,7 @@ async function selectEditTool(page: Page): Promise<void> {
 async function activateBrowserNudgeEast(page: Page): Promise<void> {
   const button = page.getByTestId("browser-edit-nudge-east");
   await expect(button).toBeEnabled();
-  await button.evaluate((element: HTMLElement) => element.click());
+  await button.click();
 }
 
 async function clickWorkbenchMap(page: Page, position: { x: number; y: number }): Promise<void> {

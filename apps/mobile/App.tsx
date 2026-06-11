@@ -52,7 +52,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 import { CoordinateFormatPanel } from "./src/components/CoordinateFormatPanel";
 import { AndroidNativeProofRunner } from "./src/components/AndroidNativeProofRunner";
 import { BrowserRtkReceiverPanel, type BrowserRtkReceiverStatus } from "./src/components/BrowserRtkReceiverPanel";
-import { CommandBar, IconCommandButton, type CommandIconButtonConfig, type CommandMenuConfig } from "./src/components/CommandSurface";
+import { CommandBar, IconCommandButton, type CommandIconButtonConfig, type CommandMenuConfig, type CommandMenuItemConfig } from "./src/components/CommandSurface";
 import {
   MapSurface,
   defaultMapFeatureName,
@@ -79,6 +79,17 @@ import { ProjectFilesPanel } from "./src/components/ProjectFilesPanel";
 import { SettingsPanel } from "./src/components/SettingsPanel";
 import { DrawingToolLauncher, DrawingToolPalette, type DrawingToolPaletteModal } from "./src/components/DrawingToolPalette";
 import { useProjectRepository, type ProjectWorkspaceStatus } from "./src/hooks/useProjectRepository";
+import {
+  parseCplayoutLeftNavMenuXml,
+  type CplayoutLeftNavCatalogActionDefinition,
+  type CplayoutLeftNavIconId,
+  type CplayoutLeftNavMenuActionId,
+  type CplayoutLeftNavMenuDefinition,
+  type CplayoutLeftNavMenuItemDefinition,
+  type CplayoutLeftNavRailItemDefinition,
+} from "./src/navigation/leftNavMenu";
+import { buildCommandMenuConfigs, isLeftNavItemDisabled } from "./src/navigation/navigationViewModels";
+import { buildProjectTreeViewModel } from "./src/navigation/projectTreeViewModel";
 import type { ClientRecord } from "@cplayout/project-store";
 import { exportFileAsync, rehydrateInstalledMapPackageManifestsAsync } from "@cplayout/project-store";
 import {
@@ -178,6 +189,7 @@ import {
 import { formatAreaFromAcres, formatDistance, formatDistanceInputValue, formatFeetInches, parseDistanceInput } from "@cplayout/core";
 
 const defaultDevelopmentProject = willRheaJasonHarmelinkExampleProject;
+const leftNavMenuDefinition = parseCplayoutLeftNavMenuXml();
 
 type WorkspaceView = "dashboard" | "map" | "survey" | "files" | "settings" | "help";
 type Screen = "projects" | "workspace";
@@ -268,7 +280,10 @@ function AppContent(): React.JSX.Element {
     mapPackages: mergeMapPackageManifests(project.mapPackages ?? [], runtimeMapPackages),
   }), [project, runtimeMapPackages]);
   const [savedRevision, setSavedRevision] = useState(0);
-  const [settings, setSettings] = useState<AppSettings>(() => browserLocalSettings(defaultDevelopmentProject.settings));
+  const [settings, setSettings] = useState<AppSettings>(() => parseAppSettings({
+    ...browserLocalSettings(defaultDevelopmentProject.settings),
+    mappingWorkflowMode: "layout",
+  }));
   const [rtkReceiverStatus, setRtkReceiverStatus] = useState<BrowserRtkReceiverStatus | null>(null);
   const [walkthroughProgress, setWalkthroughProgress] = useState<Record<WalkthroughModuleId, boolean>>(() => loadWalkthroughProgress(defaultDevelopmentProject.id));
   const [selectedMapFeatureId, setSelectedMapFeatureId] = useState<string | null>(null);
@@ -286,7 +301,7 @@ function AppContent(): React.JSX.Element {
     requestId: number;
   } | null>(null);
   const [designConsoleModal, setDesignConsoleModal] = useState<DesignConsoleModal>(null);
-  const [homeMapView, setHomeMapView] = useState(false);
+  const [homeMapView, setHomeMapView] = useState(true);
   const [activeCatalogContext, setActiveCatalogContext] = useState<{
     clientId: string | null;
     projectId: string | null;
@@ -312,7 +327,7 @@ function AppContent(): React.JSX.Element {
   const safeBottomGutter = Math.max(insets.bottom, Platform.OS === "android" ? 24 : 0) + 10;
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(() => desktopConsole);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(() => desktopConsole);
-  const [activeSidebarPage, setActiveSidebarPage] = useState<RightWorkflowSidebarPage>("tools");
+  const [activeSidebarPage, setActiveSidebarPage] = useState<RightWorkflowSidebarPage>("catalog");
   const repository = useProjectRepository();
   const result = useMemo(() => evaluateLayout(project), [project]);
   const advisoryCostInput = useMemo(() => advisoryCostInputFromDraft(advisoryCostDraft), [advisoryCostDraft]);
@@ -475,7 +490,9 @@ function AppContent(): React.JSX.Element {
   function commitSettings(nextSettings: AppSettings): void {
     const parsed = parseAppSettings(nextSettings);
     setSettings(parsed);
-    dispatchProject({ type: "update_project_settings", unitSystem: parsed.unitSystem, settings: projectSettingsFromApp(parsed) });
+    if (!homeMapView) {
+      dispatchProject({ type: "update_project_settings", unitSystem: parsed.unitSystem, settings: projectSettingsFromApp(parsed) });
+    }
   }
 
   function setWorkflowMode(mappingWorkflowMode: AppSettings["mappingWorkflowMode"]): void {
@@ -1086,6 +1103,23 @@ function AppContent(): React.JSX.Element {
     );
   }
 
+  function selectDesignCatalogOnly(designId: string): void {
+    const design = repository.catalog.designs.find((record) => record.id === designId) ?? null;
+    const fieldMap = design ? repository.catalog.fieldMaps.find((record) => record.id === design.fieldMapId) ?? null : null;
+    const projectRecord = fieldMap
+      ? repository.catalog.projects.find((record) => record.id === fieldMap.projectId) ?? null
+      : null;
+    showCatalogMap(
+      {
+        clientId: projectRecord?.clientId ?? activeCatalogContext.clientId,
+        projectId: projectRecord?.id ?? activeCatalogContext.projectId,
+        fieldMapId: fieldMap?.id ?? activeCatalogContext.fieldMapId,
+        designId,
+      },
+      design ? `${design.name} is stored under ${fieldMap?.name ?? "this project"}.` : null,
+    );
+  }
+
   function showCatalogMap(context: Partial<typeof activeCatalogContext>, notice: string | null = null): void {
     setScreen("workspace");
     setActiveView("map");
@@ -1591,6 +1625,7 @@ function AppContent(): React.JSX.Element {
             compact={compactLayout}
             consoleMode={activeView === "map"}
             drawerOpen={activeView === "map" ? leftDrawerOpen : true}
+            menuDefinition={leftNavMenuDefinition}
             onCreateClient={openClientCreateDialog}
             onCreateDesign={() => openCatalogDialog("design")}
             onCreateFieldMap={() => openCatalogDialog("fieldMap")}
@@ -1604,6 +1639,7 @@ function AppContent(): React.JSX.Element {
             onOpenSample={() => loadProjectDashboard(defaultDevelopmentProject, { clientId: null, projectId: null, fieldMapId: null, designId: null })}
             onStartBlankDesign={startBlankDesign}
             onSelectClient={selectClientFolder}
+            onSelectDesign={selectDesignCatalogOnly}
             onSelectProject={selectProjectCatalogOnly}
             onSelectFieldMap={selectFieldMapCatalogOnly}
             onToggleDrawer={() => setLeftDrawerOpen((open) => !open)}
@@ -1614,7 +1650,18 @@ function AppContent(): React.JSX.Element {
             style={[styles.workspaceScroll, activeView === "map" && windowWidth >= 700 && styles.workspaceScrollConsole]}
             contentContainerStyle={activeView === "map" ? styles.contentConsole : [styles.content, styles.contentWithAndroidReviewInset, compactLayout && styles.contentCompact]}
           >
-          {activeView === "dashboard" && (
+          {activeView === "dashboard" && (homeMapView ? (
+            <Section title="Project Catalog" icon={<Home size={20} color="#254234" />} testID="dashboard-workspace">
+              <CatalogHomePanel
+                catalog={repository.catalog}
+                notice={catalogNotice}
+                onCreateClient={openClientCreateDialog}
+                onStartBlankDesign={startBlankDesign}
+                repository={repository}
+                settings={settings}
+              />
+            </Section>
+          ) : (
             <ProjectDashboard
               compact={compactLayout}
               dirty={isDirty}
@@ -1638,7 +1685,7 @@ function AppContent(): React.JSX.Element {
               onResetWalkthrough={resetWalkthrough}
               onToggleWalkthrough={updateWalkthrough}
             />
-          )}
+          ))}
 
           {activeView === "map" && (
             <WorkspaceConsoleShell compact={compactLayout} rightDrawerOpen={nativeMapLibreProofEnabled ? false : rightDrawerOpen} testID="map-view">
@@ -1701,7 +1748,14 @@ function AppContent(): React.JSX.Element {
             </WorkspaceConsoleShell>
           )}
 
-            {activeView === "survey" && (
+            {activeView === "survey" && (homeMapView ? (
+              <Section title="Survey Capture Readiness" icon={<Satellite size={20} color="#254234" />} testID="survey-view">
+                <View style={styles.mapFeatureEditor}>
+                  <Text style={styles.mapFeatureTitle}>No Project Open</Text>
+                  <Text style={styles.mapFeatureMeta}>Open a saved design, sample, or blank design before capturing survey points. Catalog navigation stays separate from project geometry.</Text>
+                </View>
+              </Section>
+            ) : (
               <Section title="Survey Capture Readiness" icon={<Satellite size={20} color="#254234" />} testID="survey-view">
                 <BrowserRtkReceiverPanel
                   onAddMapFeature={addMapFeature}
@@ -1733,7 +1787,7 @@ function AppContent(): React.JSX.Element {
                 </View>
               ))}
             </Section>
-          )}
+          ))}
 
           {activeView === "settings" && (
             <SettingsPanel mapPackages={runtimeProject.mapPackages ?? []} settings={settings} onChange={commitSettings} />
@@ -1750,7 +1804,20 @@ function AppContent(): React.JSX.Element {
             </Section>
           )}
 
-          {activeView === "files" && (
+          {activeView === "files" && (homeMapView ? (
+            <Section title="Files and GIS Exchange" icon={<ClipboardList size={20} color="#254234" />} testID="files-view">
+              <View style={styles.mapFeatureEditor}>
+                <Text style={styles.mapFeatureTitle}>No Project Open</Text>
+                <Text style={styles.mapFeatureMeta}>Project ZIP, GeoJSON, KML/KMZ, CSV, and map package tools become active after opening a saved design, sample, or blank design.</Text>
+              </View>
+              <View style={styles.metricGrid}>
+                <MetricTile label="Storage" value={repository.backendLabel} />
+                <MetricTile label="Catalog" value="Ready" tone="good" />
+                <MetricTile label="Geometry" value="Projected XY" />
+                <MetricTile label="Cloud required" value="No" tone="good" />
+              </View>
+            </Section>
+          ) : (
             <Section title="Files and GIS Exchange" icon={<ClipboardList size={20} color="#254234" />} testID="files-view">
               <ProjectFilesPanel
                 dirty={isDirty}
@@ -1785,12 +1852,14 @@ function AppContent(): React.JSX.Element {
                 </Text>
               </View>
             </Section>
-            )}
+            ))}
             </ScrollView>
           </View>
           <WorkspaceBottomStatusBar
+            backendLabel={repository.backendLabel}
             dirty={isDirty}
             gpsGateLabel={`${fixTypeLabel(settings.gpsQuality.minimumFixType)} gate`}
+            homeMapView={homeMapView}
             powerEvidenceStatus={powerEvidenceStatus}
             rtkStatus={rtkReceiverStatus}
             warningCount={warningCount}
@@ -1989,14 +2058,18 @@ function WorkspaceTopToolbar({
 }
 
 function WorkspaceBottomStatusBar({
+  backendLabel,
   dirty,
   gpsGateLabel,
+  homeMapView,
   powerEvidenceStatus,
   rtkStatus,
   warningCount,
 }: {
+  backendLabel: string;
   dirty: boolean;
   gpsGateLabel: string;
+  homeMapView: boolean;
   powerEvidenceStatus: ReturnType<typeof projectPowerLineEvidenceStatus>;
   rtkStatus: BrowserRtkReceiverStatus | null;
   warningCount: number;
@@ -2008,11 +2081,21 @@ function WorkspaceBottomStatusBar({
   return (
     <View style={styles.workspaceBottomStatusBar} testID="workspace-bottom-status-bar">
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bottomStatusScroll} contentContainerStyle={styles.bottomStatusContent}>
-        <BottomStatusChip icon={<ClipboardList size={12} color="#254234" />} label={dirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
-        <BottomStatusChip icon={<AlertTriangle size={12} color="#254234" />} label={warningCount === 0 ? "0 warnings" : `${warningCount} warnings`} />
-        <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={gpsGateLabel} />
-        {liveRtkLabel ? <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={liveRtkLabel} testID="workspace-live-rtk-status" /> : null}
-        <BottomStatusChip icon={<UtilityPole size={12} color={powerEvidenceIconColor} />} label={`Power ${powerEvidenceStatus.status.replaceAll("_", " ")}`} testID="workspace-power-evidence-status" />
+        {homeMapView ? (
+          <>
+            <BottomStatusChip icon={<ClipboardList size={12} color="#254234" />} label="Catalog ready" testID="catalog-save-state" />
+            <BottomStatusChip icon={<Database size={12} color="#254234" />} label={backendLabel} testID="catalog-storage-state" />
+            <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label="Catalog map" testID="catalog-map-state" />
+          </>
+        ) : (
+          <>
+            <BottomStatusChip icon={<ClipboardList size={12} color="#254234" />} label={dirty ? "Unsaved edits" : "Saved"} testID="project-save-state" />
+            <BottomStatusChip icon={<AlertTriangle size={12} color="#254234" />} label={warningCount === 0 ? "0 warnings" : `${warningCount} warnings`} />
+            <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={gpsGateLabel} />
+            {liveRtkLabel ? <BottomStatusChip icon={<Satellite size={12} color="#254234" />} label={liveRtkLabel} testID="workspace-live-rtk-status" /> : null}
+            <BottomStatusChip icon={<UtilityPole size={12} color={powerEvidenceIconColor} />} label={`Power ${powerEvidenceStatus.status.replaceAll("_", " ")}`} testID="workspace-power-evidence-status" />
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -2025,6 +2108,34 @@ function BottomStatusChip({ icon, label, testID }: { icon: React.ReactNode; labe
       <Text numberOfLines={1} style={styles.bottomStatusText}>{label}</Text>
     </View>
   );
+}
+
+function leftNavIcon(name: CplayoutLeftNavIconId | string, color?: string, size = 18): React.JSX.Element {
+  const props = { color, size };
+  if (name === "alert-triangle") return <AlertTriangle {...props} />;
+  if (name === "calculator") return <Calculator {...props} />;
+  if (name === "clipboard-list") return <ClipboardList {...props} />;
+  if (name === "database") return <Database {...props} />;
+  if (name === "download") return <Download {...props} />;
+  if (name === "folder-open") return <FolderOpen {...props} />;
+  if (name === "home") return <Home {...props} />;
+  if (name === "layers") return <Layers {...props} />;
+  if (name === "list-checks") return <ListChecks {...props} />;
+  if (name === "map") return <MapIcon {...props} />;
+  if (name === "map-pinned") return <MapPinned {...props} />;
+  if (name === "rotate-ccw") return <RotateCcw {...props} />;
+  if (name === "ruler") return <Ruler {...props} />;
+  if (name === "satellite") return <Satellite {...props} />;
+  if (name === "sliders-horizontal") return <SlidersHorizontal {...props} />;
+  if (name === "user-round") return <UserRound {...props} />;
+  if (name === "wrench") return <Wrench {...props} />;
+  throw new Error(`Unsupported CPLayout left navigation icon ${name}.`);
+}
+
+function commandMenuItemLabel(item: CplayoutLeftNavMenuItemDefinition, leftDrawerOpen: boolean, rightDrawerOpen: boolean): string {
+  if (item.id === "project-drawer") return leftDrawerOpen ? "Collapse Project Drawer" : "Open Project Drawer";
+  if (item.id === "workflow-sidebar") return rightDrawerOpen ? "Collapse Workflow Sidebar" : "Open Workflow Sidebar";
+  return item.label;
 }
 
 function WorkspaceCommandSurface({
@@ -2072,77 +2183,66 @@ function WorkspaceCommandSurface({
   onUndo: () => void;
   rightDrawerOpen: boolean;
 }): React.JSX.Element {
-  const sampleItems = sampleDesignProjects.map((entry) => ({
-    id: `sample-${entry.id}`,
-    label: `Open ${entry.label}`,
-    description: `${entry.description}${entry.reviewStatus === "needs_review" ? " - needs review baseline." : ""}`,
-    icon: entry.reviewStatus === "needs_review" ? <AlertTriangle /> : <MapPinned />,
-    onPress: () => onOpenSample(entry.project),
-    testID: `command-file-${entry.id}`,
-  }));
-  const menuIconColor = "#254234";
-  const menus: CommandMenuConfig[] = [
+  const proofSampleItems: CommandMenuItemConfig[] = [
     {
-      id: "file",
-      label: "File",
-      icon: <FolderOpen color={menuIconColor} />,
-      items: [
-        { id: "catalog", label: "Catalog home", description: "Return to the local project catalog map.", icon: <Home />, onPress: onOpenCatalog, testID: "command-file-catalog" },
-        ...sampleItems,
-        { id: "blank", label: "Start Blank Design", description: "Create an unsaved projected-XY concept layout.", icon: <Wrench />, onPress: onStartBlankDesign, testID: "command-file-blank-design" },
-        { id: "files", label: "Files / GIS Exchange", description: "Open ZIP, GeoJSON, KML/KMZ, CSV, and map package tools.", icon: <Download />, onPress: onOpenFiles, testID: "command-file-files" },
-      ],
-      testID: "command-menu-file",
+      id: "sample-real-proof",
+      label: "Open Real Proof",
+      description: "Open the public proof map sample through an explicit local sample action.",
+      icon: <MapPinned />,
+      onPress: () => onOpenSample(realCenterPivotProofProject),
+      testID: "command-file-real-proof",
     },
     {
-      id: "inspect",
-      label: "Inspect",
-      icon: <ClipboardList color={menuIconColor} />,
-      items: [
-        { id: "dashboard", label: "Dashboard", description: "Open workflow readiness, export readiness, warnings, and recent projects.", icon: <Home />, onPress: () => onNavigate("dashboard"), testID: "command-inspect-dashboard" },
-        { id: "metrics", label: "Metrics Inspector", description: "Show irrigated area, dry area, coverage, conflicts, and warnings.", disabled: homeMapView, icon: <Calculator />, onPress: onShowMetrics, testID: "command-inspect-metrics" },
-        { id: "warnings", label: "Warnings", description: "Inspect validation warnings without mutating geometry.", disabled: homeMapView, icon: <AlertTriangle />, onPress: onShowWarnings, testID: "command-inspect-warnings" },
-      ],
-      testID: "command-menu-inspect",
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      icon: <SlidersHorizontal color={menuIconColor} />,
-      items: [
-        { id: "settings", label: "Settings", icon: <SlidersHorizontal />, onPress: () => onNavigate("settings"), testID: "command-settings-open" },
-        { id: "coordinates", label: "Coordinate Display", description: "Configure display formats; projected XY remains canonical.", icon: <Ruler />, onPress: () => onNavigate("settings"), testID: "command-settings-coordinates" },
-        { id: "imagery", label: "Imagery Setup", description: "Manage no-key previews and local package metadata.", icon: <Satellite />, onPress: () => onNavigate("settings"), testID: "command-settings-imagery" },
-      ],
-      testID: "command-menu-settings",
-    },
-    {
-      id: "help",
-      label: "Help",
-      icon: <ListChecks color={menuIconColor} />,
-      items: [
-        { id: "help", label: "Help And Training", icon: <ListChecks />, onPress: () => onNavigate("help"), testID: "command-help-open" },
-        { id: "reset", label: "Reset Walkthrough", description: "Clear local-only walkthrough progress for the active project.", icon: <RotateCcw />, onPress: onResetWalkthrough, testID: "command-help-reset" },
-      ],
-      testID: "command-menu-help",
+      id: "sample-improved-proof",
+      label: "Open Improved Proof",
+      description: "Open the improved public proof sample through an explicit local sample action.",
+      icon: <MapPinned />,
+      onPress: () => onOpenSample(improvedCenterPivotProofProject),
+      testID: "command-file-improved-proof",
     },
   ];
-  if (compactLayout) {
-    menus.splice(2, 0, {
-      id: "view",
-      label: "View",
-      icon: <MapIcon color={menuIconColor} />,
-      items: [
-        { id: "map", label: "Map Workbench", icon: <MapPinned />, onPress: () => onNavigate("map"), testID: "command-view-map" },
-        { id: "dashboard", label: "Dashboard", icon: <Home />, onPress: () => onNavigate("dashboard"), testID: "command-view-dashboard" },
-        { id: "survey", label: "Survey", description: "Open local browser RTK receiver and survey capture readiness.", icon: <Satellite />, onPress: () => onNavigate("survey"), testID: "command-view-survey" },
-        { id: "files", label: "Files / GIS Exchange", icon: <Download />, onPress: () => onNavigate("files"), testID: "command-view-files" },
-        { id: "project-drawer", label: leftDrawerOpen ? "Collapse Project Drawer" : "Open Project Drawer", disabled: activeView !== "map", icon: <FolderOpen />, onPress: onToggleLeftDrawer, testID: "command-view-project-drawer" },
-        { id: "workflow-sidebar", label: rightDrawerOpen ? "Collapse Workflow Sidebar" : "Open Workflow Sidebar", disabled: activeView !== "map", icon: <SlidersHorizontal />, onPress: onToggleRightDrawer, testID: "command-view-inspector" },
-      ],
-      testID: "command-menu-view",
-    });
-  }
+  const sampleItems: CommandMenuItemConfig[] = [
+    ...sampleDesignProjects.map((entry) => ({
+      id: `sample-${entry.id}`,
+      label: `Open ${entry.label}`,
+      description: `${entry.description}${entry.reviewStatus === "needs_review" ? " - needs review baseline." : ""}`,
+      icon: entry.reviewStatus === "needs_review" ? <AlertTriangle /> : <MapPinned />,
+      onPress: () => onOpenSample(entry.project),
+      testID: `command-file-${entry.id}`,
+    })),
+    ...proofSampleItems,
+  ];
+  const menuIconColor = "#254234";
+  const actionHandlers: Record<CplayoutLeftNavMenuActionId, () => void | Promise<void>> = {
+    open_catalog: onOpenCatalog,
+    open_sample: () => onOpenSample(defaultDevelopmentProject),
+    start_blank_design: onStartBlankDesign,
+    open_files: onOpenFiles,
+    navigate_map: () => onNavigate("map"),
+    navigate_dashboard: () => onNavigate("dashboard"),
+    navigate_files: () => onNavigate("files"),
+    navigate_survey: () => onNavigate("survey"),
+    navigate_settings: () => onNavigate("settings"),
+    navigate_help: () => onNavigate("help"),
+    show_metrics: onShowMetrics,
+    show_warnings: onShowWarnings,
+    reset_walkthrough: onResetWalkthrough,
+    toggle_left_drawer: onToggleLeftDrawer,
+    toggle_right_drawer: onToggleRightDrawer,
+    create_client: onOpenCatalog,
+    create_project: onOpenCatalog,
+    create_field_map: onOpenCatalog,
+    create_design: onOpenCatalog,
+  };
+  const menus: CommandMenuConfig[] = buildCommandMenuConfigs({
+    commandMenuItemLabel: (item) => commandMenuItemLabel(item, leftDrawerOpen, rightDrawerOpen),
+    compactLayout,
+    context: { activeContext: null, activeView, homeMapView },
+    iconForName: (name, color) => leftNavIcon(name, color ?? menuIconColor),
+    menuDefinition: leftNavMenuDefinition,
+    onAction: (action) => actionHandlers[action](),
+    sampleItems,
+  });
   const iconButtons: CommandIconButtonConfig[] = [
     { id: "save", label: dirty ? "Save *" : "Save", disabled: homeMapView, icon: <Save />, onPress: onSave, testID: "command-icon-save" },
     { id: "undo", label: "Undo", disabled: !canUndo, icon: <RotateCcw />, onPress: onUndo, testID: "command-icon-undo" },
@@ -5600,6 +5700,7 @@ function ProjectTreeRail({
   compact,
   consoleMode,
   drawerOpen,
+  menuDefinition,
   onCreateClient,
   onCreateDesign,
   onCreateFieldMap,
@@ -5611,6 +5712,7 @@ function ProjectTreeRail({
   onOpenSample,
   onStartBlankDesign,
   onSelectClient,
+  onSelectDesign,
   onSelectFieldMap,
   onSelectProject,
   onToggleDrawer,
@@ -5626,6 +5728,7 @@ function ProjectTreeRail({
   compact: boolean;
   consoleMode: boolean;
   drawerOpen: boolean;
+  menuDefinition: CplayoutLeftNavMenuDefinition;
   onCreateClient: () => void | Promise<void>;
   onCreateDesign: () => void | Promise<void>;
   onCreateFieldMap: () => void | Promise<void>;
@@ -5637,17 +5740,73 @@ function ProjectTreeRail({
   onOpenSample: () => void;
   onStartBlankDesign: () => void;
   onSelectClient: (clientId: string) => void;
+  onSelectDesign: (designId: string) => void;
   onSelectFieldMap: (fieldMapId: string) => void;
   onSelectProject: (projectId: string) => void;
   onToggleDrawer: () => void;
 }): React.JSX.Element {
-  const visibleClients = activeContext.projectId
-    ? catalog.clients.filter((client) => client.id === activeContext.clientId)
-    : catalog.clients;
-  const activeProject = activeContext.projectId
-    ? catalog.projects.find((project) => project.id === activeContext.projectId) ?? null
-    : null;
+  const tree = buildProjectTreeViewModel(catalog, activeContext);
   const navCollapsed = consoleMode && !drawerOpen;
+  const primaryRailItems = menuDefinition.railItems.filter((item) => item.section === "primary");
+  const secondaryRailItems = menuDefinition.railItems.filter((item) => item.section === "secondary");
+  const createActions = menuDefinition.catalogActions.filter((item) => item.section === "create");
+  const utilityActions = menuDefinition.catalogActions.filter((item) => item.section === "utility");
+
+  function onPressRailItem(item: CplayoutLeftNavRailItemDefinition): void {
+    if (item.action === "navigate_map") onNavigate("map");
+    if (item.action === "navigate_dashboard") onNavigate("dashboard");
+    if (item.action === "navigate_files") onNavigate("files");
+    if (item.action === "navigate_survey") onNavigate("survey");
+    if (item.action === "navigate_help") onNavigate("help");
+    if (item.action === "navigate_settings") onNavigate("settings");
+  }
+
+  function railItemActive(item: CplayoutLeftNavRailItemDefinition): boolean {
+    if (item.action === "navigate_map") return activeView === "map";
+    if (item.action === "navigate_dashboard") return activeView === "dashboard";
+    if (item.action === "navigate_files") return activeView === "files";
+    if (item.action === "navigate_survey") return activeView === "survey";
+    if (item.action === "navigate_help") return activeView === "help";
+    if (item.action === "navigate_settings") return activeView === "settings";
+    return false;
+  }
+
+  function onPressCatalogAction(item: CplayoutLeftNavCatalogActionDefinition): void | Promise<void> {
+    if (item.action === "create_client") return onCreateClient();
+    if (item.action === "create_project") return onCreateProject();
+    if (item.action === "create_field_map") return onCreateFieldMap();
+    if (item.action === "create_design") return onCreateDesign();
+    if (item.action === "start_blank_design") return onStartBlankDesign();
+    if (item.action === "open_sample") return onOpenSample();
+  }
+
+  function renderRailItem(item: CplayoutLeftNavRailItemDefinition, collapsed: boolean): React.JSX.Element {
+    return (
+      <RailButton
+        active={railItemActive(item)}
+        collapsed={collapsed}
+        icon={leftNavIcon(item.icon)}
+        key={`${item.section}-${item.id}`}
+        label={item.label}
+        onPress={() => onPressRailItem(item)}
+        testID={item.testID}
+      />
+    );
+  }
+
+  function renderCatalogAction(item: CplayoutLeftNavCatalogActionDefinition): React.JSX.Element {
+    return (
+      <IconCommandButton
+        disabled={isLeftNavItemDisabled(item, { activeContext, activeView, homeMapView: false })}
+        icon={leftNavIcon(item.icon)}
+        id={item.id}
+        key={`${item.section}-${item.id}`}
+        label={item.label}
+        onPress={() => onPressCatalogAction(item)}
+        testID={item.testID}
+      />
+    );
+  }
 
   return (
     <View style={[styles.leftRail, compact && !consoleMode && styles.leftRailCompact, consoleMode && styles.leftRailConsole, consoleMode && !drawerOpen && styles.leftRailConsoleCollapsed]} testID="workspace-rail">
@@ -5665,84 +5824,78 @@ function ProjectTreeRail({
       {drawerOpen ? (
         <View style={styles.projectTreePanel} testID="project-tree-rail">
           <View style={[styles.projectTreeNav, styles.projectTreeNavPrimary, compact && !consoleMode && styles.projectTreeNavCompact]} testID="project-tree-primary-nav">
-            <RailButton active={activeView === "map"} collapsed={navCollapsed} icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
-            <RailButton active={activeView === "dashboard"} collapsed={navCollapsed} icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
-            <RailButton active={activeView === "files"} collapsed={navCollapsed} icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
-            <RailButton active={activeView === "survey"} collapsed={navCollapsed} icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
+            {primaryRailItems.map((item) => renderRailItem(item, navCollapsed))}
           </View>
           <View style={styles.projectTreeHeader}>
             <FolderOpen size={18} color="#d5e2db" />
-            <Text style={styles.projectTreeTitle}>{activeProject ? activeProject.name : "Project Catalog"}</Text>
+            <Text style={styles.projectTreeTitle}>{tree.activeProjectLabel}</Text>
           </View>
           <View style={styles.projectTreeActions} testID="project-tree-actions">
-            <IconCommandButton icon={<UserRound />} id="client" label="Client" onPress={onCreateClient} testID="project-tree-action-client" />
-            <IconCommandButton disabled={!activeContext.clientId} icon={<Database />} id="project" label="Project" onPress={onCreateProject} testID="project-tree-action-project" />
-            <IconCommandButton disabled={!activeContext.projectId} icon={<MapIcon />} id="field-map" label="Field Map" onPress={onCreateFieldMap} testID="project-tree-action-field-map" />
-            <IconCommandButton disabled={!activeContext.fieldMapId} icon={<Layers />} id="design" label="Design" onPress={onCreateDesign} testID="project-tree-action-design" />
+            {createActions.map(renderCatalogAction)}
           </View>
           <ScrollView style={[styles.projectTreeScroll, compact && styles.projectTreeScrollCompact]} contentContainerStyle={styles.projectTreeContent} testID="project-tree-scroll">
             {catalog.clients.length === 0 ? (
               <Text style={styles.projectTreeEmpty}>No client folders yet.</Text>
             ) : null}
-            {visibleClients.map((client) => {
-              const projects = catalog.projects.filter((project) => project.clientId === client.id);
+            {tree.clients.map((client) => {
               return (
                 <View key={client.id} style={styles.projectTreeGroup}>
                   <ProjectTreeNode
                     active={activeContext.clientId === client.id}
                     depth={0}
                     icon={<FolderOpen size={15} color="#d5e2db" />}
-                    label={client.displayName}
-                    meta={`${projects.length} project${projects.length === 1 ? "" : "s"}`}
+                    label={client.label}
+                    meta={client.meta}
                     onOpen={() => onSelectClient(client.id)}
                     onSelect={() => onSelectClient(client.id)}
                     testID={`catalog-client-${client.id}`}
                   />
-                  {projects.map((projectRecord) => {
-                    const fieldMaps = catalog.fieldMaps.filter((fieldMap) => fieldMap.projectId === projectRecord.id);
-                    const showProjectChildren = activeContext.projectId === null || activeContext.projectId === projectRecord.id;
+                  {client.projects.map((projectRecord) => {
                     return (
                       <View key={projectRecord.id}>
                         <ProjectTreeNode
                           active={activeContext.projectId === projectRecord.id}
                           depth={1}
                           icon={<Database size={14} color="#d5e2db" />}
-                          label={projectRecord.name}
-                          meta={`${fieldMaps.length} field map${fieldMaps.length === 1 ? "" : "s"}`}
+                          label={projectRecord.label}
+                          meta={projectRecord.meta}
                           onOpen={() => onOpenProject(projectRecord.id)}
                           onSelect={() => onSelectProject(projectRecord.id)}
                           testID={`catalog-project-${projectRecord.id}`}
                         />
-                        {showProjectChildren ? fieldMaps.map((fieldMap) => {
-                          const designs = catalog.designs.filter((design) => design.fieldMapId === fieldMap.id);
-                          return (
-                            <View key={fieldMap.id}>
-                              <ProjectTreeNode
-                                active={activeContext.fieldMapId === fieldMap.id}
-                                depth={2}
-                                icon={<MapIcon size={14} color="#d5e2db" />}
-                                label={fieldMap.name}
-                                meta={`${designs.length} design${designs.length === 1 ? "" : "s"}`}
-                                onOpen={() => onOpenFieldMap(fieldMap.id)}
-                                onSelect={() => onSelectFieldMap(fieldMap.id)}
-                                testID={`catalog-field-map-${fieldMap.id}`}
-                              />
-                              {designs.map((design) => (
+                        {projectRecord.showChildren ? (
+                          <View>
+                            {projectRecord.fieldMaps.length > 0 ? <Text style={styles.projectTreeSectionLabel}>Map Files</Text> : null}
+                            {projectRecord.fieldMaps.map((fieldMap) => (
+                              <View key={fieldMap.id}>
+                                <ProjectTreeNode
+                                  active={activeContext.fieldMapId === fieldMap.id}
+                                  depth={2}
+                                  icon={<MapIcon size={14} color="#d5e2db" />}
+                                  label={fieldMap.label}
+                                  meta={fieldMap.meta}
+                                  onOpen={() => onOpenFieldMap(fieldMap.id)}
+                                  onSelect={() => onSelectFieldMap(fieldMap.id)}
+                                  testID={`catalog-field-map-${fieldMap.id}`}
+                                />
+                                {fieldMap.designs.length > 0 ? <Text style={styles.projectTreeSectionLabel}>Design Files</Text> : null}
+                                {fieldMap.designs.map((design) => (
                                 <ProjectTreeNode
                                   active={activeContext.designId === design.id}
                                   depth={3}
                                   icon={<Layers size={14} color="#d5e2db" />}
                                   key={design.id}
-                                  label={design.name}
-                                  meta={design.isActive ? "active design" : "layout variant"}
+                                  label={design.label}
+                                  meta={design.meta}
                                   onOpen={() => onOpenDesign(design.id)}
-                                  onSelect={() => onSelectFieldMap(fieldMap.id)}
+                                  onSelect={() => onSelectDesign(design.id)}
                                   testID={`catalog-design-${design.id}`}
                                 />
-                              ))}
-                            </View>
-                          );
-                        }) : null}
+                                ))}
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
                       </View>
                     );
                   })}
@@ -5751,22 +5904,17 @@ function ProjectTreeRail({
             })}
           </ScrollView>
           <View style={styles.projectTreeUtilityActions} testID="project-tree-utility-actions">
-            <IconCommandButton icon={<Wrench />} id="blank-design" label="Blank Design" onPress={onStartBlankDesign} testID="project-tree-action-blank-design" />
-            <IconCommandButton icon={<MapPinned />} id="open-sample" label="Open Sample" onPress={onOpenSample} testID="project-tree-action-open-sample" />
+            {utilityActions.map(renderCatalogAction)}
           </View>
         </View>
       ) : null}
       <View style={[styles.projectTreeNav, compact && !consoleMode && styles.projectTreeNavCompact, consoleMode && !drawerOpen && styles.projectTreeNavConsole, consoleMode && !drawerOpen && styles.projectTreeNavCollapsed]}>
         {!drawerOpen ? (
           <>
-            <RailButton active={activeView === "map"} collapsed icon={<MapPinned size={18} />} label="Map" onPress={() => onNavigate("map")} testID="workspace-nav-map" />
-            <RailButton active={activeView === "dashboard"} collapsed icon={<Home size={18} />} label="Dashboard" onPress={() => onNavigate("dashboard")} testID="workspace-nav-dashboard" />
-            <RailButton active={activeView === "files"} collapsed icon={<Download size={18} />} label="Files" onPress={() => onNavigate("files")} testID="workspace-nav-files" />
-            <RailButton active={activeView === "survey"} collapsed icon={<Satellite size={18} />} label="Survey" onPress={() => onNavigate("survey")} testID="workspace-nav-survey" />
+            {primaryRailItems.map((item) => renderRailItem(item, true))}
           </>
         ) : null}
-        <RailButton active={activeView === "help"} collapsed={navCollapsed} icon={<ListChecks size={18} />} label="Help" onPress={() => onNavigate("help")} testID="workspace-nav-help" />
-        <RailButton active={activeView === "settings"} collapsed={navCollapsed} icon={<SlidersHorizontal size={18} />} label="Settings" onPress={() => onNavigate("settings")} testID="workspace-nav-settings" />
+        {secondaryRailItems.map((item) => renderRailItem(item, navCollapsed))}
       </View>
     </View>
   );
@@ -6603,6 +6751,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 17,
+  },
+  projectTreeSectionLabel: {
+    color: "#8fa79b",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0,
+    paddingLeft: 32,
+    paddingTop: 5,
+    textTransform: "uppercase",
   },
   projectTreeNode: {
     alignItems: "center",

@@ -11,6 +11,7 @@ export * from "./projectImports";
 export * from "./projectKml";
 export * from "./projectReducer";
 export * from "./projectXml";
+export * from "./navigationMenuXml";
 export * from "./referenceOverlays";
 export * from "./sampleProject";
 export * from "./settings";

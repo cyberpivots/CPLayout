@@ -8,6 +8,7 @@
     "web": "expo start --web --host localhost",
     "android": "expo run:android",
     "export:web": "expo export --platform web --clear",
+    "test": "tsx src/navigation/navigationViewModels.test.ts && tsx src/navigation/projectTreeViewModel.test.ts",
     "typecheck": "tsc --noEmit",
     "validate": "npm run typecheck"
   },

@@ -31,3 +31,15 @@ config_file = "agents/cplayout_database_specialist.toml"
 [agents.cplayout_kb_curator]
 description = "Read-only curator for CPLayout source ledgers, prompt registry, known gaps, and durable agent guidance."
 config_file = "agents/cplayout_kb_curator.toml"
+
+[agents.cplayout_runtime_proof_gatekeeper]
+description = "Read-only specialist for native/runtime proof gates, release evidence, and production-readiness claims."
+config_file = "agents/cplayout_runtime_proof_gatekeeper.toml"
+
+[agents.cplayout_gis_geometry_guardian]
+description = "Read-only specialist for projected/local XY, CRS, WGS84 display/input, coordinate transforms, and tile package boundaries."
+config_file = "agents/cplayout_gis_geometry_guardian.toml"
+
+[agents.cplayout_qa_validation_reviewer]
+description = "Read-only specialist for validation triage, acceptance gates, audit findings, regression evidence, and release evidence."
+config_file = "agents/cplayout_qa_validation_reviewer.toml"

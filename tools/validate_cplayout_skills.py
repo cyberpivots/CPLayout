@@ -27,13 +27,18 @@ REQUIRED_AGENT_FILES = (
     ".codex/agents/cplayout_center_pivot_designer.toml",
     ".codex/agents/cplayout_database_specialist.toml",
     ".codex/agents/cplayout_kb_curator.toml",
+    ".codex/agents/cplayout_runtime_proof_gatekeeper.toml",
+    ".codex/agents/cplayout_gis_geometry_guardian.toml",
+    ".codex/agents/cplayout_qa_validation_reviewer.toml",
 )
 
 REQUIRED_DOCS = (
     "docs/agent-prompt-registry.md",
     "docs/agent-source-ledger.md",
     "docs/agent-known-gaps.md",
+    "docs/agent-governance-summary.md",
     "docs/agent-context-map.md",
+    "docs/README.md",
     "docs/codex-managed-hook-deployment.md",
     "docs/examples/cplayout-managed-requirements.toml",
     ".codex/hooks/cplayout_context_map.json",
@@ -46,6 +51,9 @@ REQUIRED_ROUTE_IDS = {
     "cplayout_center_pivot_designer",
     "cplayout_database_specialist",
     "cplayout_kb_curator",
+    "cplayout_runtime_proof_gatekeeper",
+    "cplayout_gis_geometry_guardian",
+    "cplayout_qa_validation_reviewer",
 }
 
 COMPLEXITY_BANDS = {"low", "medium", "high", "xhigh"}
@@ -54,6 +62,9 @@ SUBAGENT_REASONING_EFFORTS = {"task_selected"}
 SPAWN_POLICIES = {"required", "optional", "not_useful"}
 ROUTE_POSITIVE_KEYWORD_LIMITS = {
     "cplayout_kb_curator": 60,
+    "cplayout_runtime_proof_gatekeeper": 30,
+    "cplayout_gis_geometry_guardian": 30,
+    "cplayout_qa_validation_reviewer": 25,
 }
 REQUIRED_ROUTE_KEYWORDS = {
     "cplayout_imagery_mapper": {"will rhea", "jason harmelink"},
@@ -86,6 +97,35 @@ REQUIRED_ROUTE_KEYWORDS = {
         "validate_cplayout_skills",
         "xhigh coordinator",
     },
+    "cplayout_runtime_proof_gatekeeper": {
+        "native proof",
+        "release gate",
+        "Android verification",
+        "iOS verification",
+        "MapLibre proof",
+        "SQLite ZIP proof",
+        "production-ready claim",
+    },
+    "cplayout_gis_geometry_guardian": {
+        "projected XY",
+        "CRS boundary",
+        "WGS84 display",
+        "coordinate transform",
+        "map package attribution",
+        "PMTiles",
+        "MBTiles",
+        "TileJSON",
+        "geometry mutation",
+    },
+    "cplayout_qa_validation_reviewer": {
+        "validation triage",
+        "acceptance gate",
+        "test gap",
+        "proof gate",
+        "audit finding",
+        "regression evidence",
+        "release evidence",
+    },
 }
 
 REQUIRED_CONTEXT_PACK_IDS = {
@@ -97,6 +137,9 @@ REQUIRED_CONTEXT_PACK_IDS = {
     "storage_archive_native",
     "imagery_kml_evidence",
     "cornergpsmap_bpf",
+    "runtime_proof_gates",
+    "gis_geometry_guardrails",
+    "qa_validation_evidence",
 }
 
 HOOK_SAMPLES = (
@@ -416,6 +459,12 @@ def validate_context_map() -> list[str]:
     max_summary_chars = limits.get("maxEmittedPackSummaryChars")
     if not isinstance(max_summary_chars, int) or max_summary_chars != 1200:
         errors.append("cplayout_context_map.json: maxEmittedPackSummaryChars must be 1200")
+    max_pack_budget = limits.get("maxContextPackTokenBudget")
+    if not isinstance(max_pack_budget, int) or max_pack_budget != 1200:
+        errors.append("cplayout_context_map.json: maxContextPackTokenBudget must be 1200")
+    max_governance_summary_chars = limits.get("maxGovernanceSummaryChars")
+    if not isinstance(max_governance_summary_chars, int) or max_governance_summary_chars != 7000:
+        errors.append("cplayout_context_map.json: maxGovernanceSummaryChars must be 7000")
 
     validation_commands = context_map.get("validationCommands")
     if not isinstance(validation_commands, dict):
@@ -486,6 +535,11 @@ def validate_context_map() -> list[str]:
             for command_id in command_ids:
                 if command_id not in validation_commands:
                     errors.append(f"cplayout_context_map.json: {pack_id}.validationCommandIds unknown {command_id}")
+        token_budget = pack.get("tokenBudget")
+        if not isinstance(token_budget, int) or token_budget <= 0:
+            errors.append(f"cplayout_context_map.json: {pack_id}.tokenBudget must be a positive integer")
+        elif isinstance(max_pack_budget, int) and token_budget > max_pack_budget:
+            errors.append(f"cplayout_context_map.json: {pack_id}.tokenBudget exceeds maxContextPackTokenBudget")
 
     missing_packs = sorted(REQUIRED_CONTEXT_PACK_IDS - set(pack_ids))
     for missing_pack in missing_packs:
@@ -502,6 +556,8 @@ def validate_context_map() -> list[str]:
         refs = route_context.get(route_id)
         if not isinstance(refs, list) or not refs:
             errors.append(f"cplayout_context_map.json: routeContext missing {route_id}")
+        elif isinstance(max_packs, int) and len(refs) > max_packs:
+            errors.append(f"cplayout_context_map.json: routeContext {route_id} exceeds maxContextPacksPerHook")
     agent_context = context_map.get("agentContext")
     if not isinstance(agent_context, dict):
         errors.append("cplayout_context_map.json: agentContext must be an object")
@@ -510,10 +566,23 @@ def validate_context_map() -> list[str]:
         refs = agent_context.get(agent_name)
         if not isinstance(refs, list) or not refs:
             errors.append(f"cplayout_context_map.json: agentContext missing {agent_name}")
+        elif isinstance(max_packs, int) and len(refs) > max_packs:
+            errors.append(f"cplayout_context_map.json: agentContext {agent_name} exceeds maxContextPacksPerHook")
 
     source_hashes = context_map.get("sourceHashes")
     if not isinstance(source_hashes, dict) or "AGENTS.md" not in source_hashes:
         errors.append("cplayout_context_map.json: sourceHashes must include AGENTS.md")
+    for required_hash in ("docs/README.md",):
+        if not isinstance(source_hashes, dict) or required_hash not in source_hashes:
+            errors.append(f"cplayout_context_map.json: sourceHashes must include {required_hash}")
+
+    governance_summary_path = ROOT / "docs" / "agent-governance-summary.md"
+    if governance_summary_path.exists() and isinstance(max_governance_summary_chars, int):
+        summary_text = governance_summary_path.read_text(encoding="utf-8")
+        if len(summary_text) > max_governance_summary_chars:
+            errors.append("docs/agent-governance-summary.md: exceeds maxGovernanceSummaryChars")
+        if "This is the compact first-read entrypoint" not in summary_text:
+            errors.append("docs/agent-governance-summary.md: missing compact first-read marker")
 
     if not errors:
         print("[context] cplayout_context_map.json: ok")

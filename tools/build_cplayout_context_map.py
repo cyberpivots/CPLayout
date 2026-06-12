@@ -19,6 +19,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTEXT_MAP_PATH = ROOT / ".codex" / "hooks" / "cplayout_context_map.json"
 CONTEXT_DOC_PATH = ROOT / "docs" / "agent-context-map.md"
+GOVERNANCE_SUMMARY_PATH = ROOT / "docs" / "agent-governance-summary.md"
 ROUTE_DATA_PATH = ROOT / ".codex" / "hooks" / "cplayout_route_data.json"
 
 LIMITS = {
@@ -27,6 +28,8 @@ LIMITS = {
     "maxSecondaryPathsPerPack": 5,
     "maxValidationCommandsPerPack": 5,
     "maxEmittedPackSummaryChars": 1200,
+    "maxContextPackTokenBudget": 1200,
+    "maxGovernanceSummaryChars": 7000,
 }
 
 VALIDATION_COMMANDS = {
@@ -103,6 +106,13 @@ GLOBAL_CONTEXT = [
         "tags": ["routing", "records", "subagents"],
     },
     {
+        "id": "governance_summary",
+        "path": "docs/agent-governance-summary.md",
+        "kind": "generated-entrypoint",
+        "summary": "Concise generated first-read for active governance contracts, caveats, validation, and detailed-ledger links.",
+        "tags": ["governance", "token-efficiency", "generated"],
+    },
+    {
         "id": "known_gaps",
         "path": "docs/agent-known-gaps.md",
         "kind": "record",
@@ -120,6 +130,7 @@ PACK_DEFINITIONS = [
         "triggerTerms": ["preflight", "git status", "validation", "AGENTS.md"],
         "readFirstPaths": [
             "AGENTS.md",
+            "docs/agent-governance-summary.md",
             "package.json",
             "docs/center-pivot-package-surface-inventory.md",
         ],
@@ -139,15 +150,15 @@ PACK_DEFINITIONS = [
         "agentIds": ["cplayout_kb_curator"],
         "triggerTerms": ["prompt triage", "managed hook", "token efficient", "subagent reasoning", "context map", "context-map", "route data", "validate_cplayout_skills"],
         "readFirstPaths": [
+            "docs/agent-governance-summary.md",
             ".codex/hooks/cplayout_prompt_triage.py",
             ".codex/hooks/cplayout_route_data.json",
-            ".codex/hooks.json",
             "tools/validate_cplayout_skills.py",
-            "docs/agent-prompt-registry.md",
+            "docs/README.md",
         ],
         "secondaryPaths": [
+            ".codex/hooks.json",
             ".codex/hooks/cplayout_subagent_start.py",
-            ".codex/agents/cplayout_kb_curator.toml",
             "docs/agent-known-gaps.md",
             "docs/agent-source-ledger.md",
             "docs/codex-managed-hook-deployment.md",
@@ -183,11 +194,13 @@ PACK_DEFINITIONS = [
         ],
         "readFirstPaths": [
             "apps/mobile/App.tsx",
-            "apps/mobile/src/components",
-            "packages/map-adapters",
+            "apps/mobile/src/components/CommandSurface.tsx",
+            "apps/mobile/src/components/DrawingToolPalette.tsx",
+            "packages/map-adapters/src/SvgMapSurface.tsx",
             ".agents/skills/cplayout-interface-development-agent/SKILL.md",
         ],
         "secondaryPaths": [
+            "packages/map-adapters/src/MapSurface.tsx",
             "playwright.config.ts",
             "docs/android-native-verification.md",
             "docs/agent-known-gaps.md",
@@ -230,7 +243,7 @@ PACK_DEFINITIONS = [
             "irrigation",
         ],
         "readFirstPaths": [
-            "packages/geometry",
+            "packages/geometry/src/index.ts",
             "docs/design-guides/topic-index.md",
             ".agents/skills/cplayout-center-pivot-design-agent/SKILL.md",
             "packages/geometry/src/cornerGpsMapAdvisoryReview.ts",
@@ -248,15 +261,13 @@ PACK_DEFINITIONS = [
     {
         "id": "core_project_geometry",
         "purpose": "Route project document, KML/XML, sample fixture, and canonical geometry contract work.",
-        "routeIds": ["cplayout_center_pivot_designer", "cplayout_database_specialist", "cplayout_imagery_mapper"],
+        "routeIds": ["cplayout_database_specialist"],
         "agentIds": [
-            "cplayout_center_pivot_designer",
             "cplayout_database_specialist",
-            "cplayout_imagery_mapper",
         ],
         "triggerTerms": ["project document", "canonical geometry", "projected XY", "KML", "sample project"],
         "readFirstPaths": [
-            "packages/core",
+            "packages/core/src/index.ts",
             "packages/core/src/projectDocument.ts",
             "packages/core/src/projectKml.ts",
             "packages/core/src/sampleProject.ts",
@@ -277,7 +288,7 @@ PACK_DEFINITIONS = [
         "agentIds": ["cplayout_database_specialist"],
         "triggerTerms": ["SQLite", "project-store", "archive", "ZIP", "migration", "schema"],
         "readFirstPaths": [
-            "packages/project-store",
+            "packages/project-store/src/index.ts",
             "packages/project-store/src/projectArchive.ts",
             "packages/project-store/src/projectRepository.native.ts",
             "packages/core/src/projectDocument.ts",
@@ -291,6 +302,114 @@ PACK_DEFINITIONS = [
         "expectedOutput": "Storage contract risks, archive round-trip implications, native proof caveats, and migration tests.",
         "tokenBudget": 900,
         "hardVetoIds": ["no_runtime_proof_without_evidence", "preserve_projected_xy"],
+    },
+    {
+        "id": "runtime_proof_gates",
+        "purpose": "Route native proof, Android/iOS verification, Google Earth proof, MapLibre proof, SQLite/ZIP proof, and release claims to evidence gates.",
+        "routeIds": ["cplayout_runtime_proof_gatekeeper"],
+        "agentIds": ["cplayout_runtime_proof_gatekeeper"],
+        "triggerTerms": [
+            "runtime proof gate",
+            "native proof",
+            "release gate",
+            "Android verification",
+            "iOS verification",
+            "MapLibre proof",
+            "SQLite ZIP proof",
+            "production-ready claim",
+        ],
+        "readFirstPaths": [
+            "AGENTS.md",
+            ".agents/skills/cplayout-runtime-proof-gate-agent/SKILL.md",
+            "docs/android-native-verification.md",
+            "docs/agent-known-gaps.md",
+            "docs/agent-source-ledger.md",
+        ],
+        "secondaryPaths": [
+            "docs/android-native-verification-report-template.json",
+            "docs/kml-kmz-google-earth-source-ledger.md",
+            "packages/project-store/src/nativeVerification.ts",
+            "packages/project-store/src/projectRepository.native.ts",
+            "docs/native-map-tile-adapter-design.md",
+        ],
+        "validationCommandIds": ["validate_skills", "validate_product", "diff_check", "audit"],
+        "expectedOutput": "Runtime proof blockers, accepted evidence, missing device/visual reports, release non-claims, and record updates.",
+        "tokenBudget": 1000,
+        "hardVetoIds": [
+            "no_runtime_proof_without_evidence",
+            "preserve_projected_xy",
+            "hooks_are_advisory",
+        ],
+    },
+    {
+        "id": "gis_geometry_guardrails",
+        "purpose": "Route projected/local XY, CRS, WGS84 input/display, coordinate transforms, geometry mutation, attribution, TileJSON, PMTiles, and MBTiles boundaries.",
+        "routeIds": ["cplayout_gis_geometry_guardian"],
+        "agentIds": ["cplayout_gis_geometry_guardian"],
+        "triggerTerms": [
+            "projected XY",
+            "canonical geometry",
+            "CRS boundary",
+            "WGS84 input/display",
+            "coordinate transform",
+            "geometry mutation",
+            "map package attribution",
+            "TileJSON",
+            "PMTiles",
+            "MBTiles",
+        ],
+        "readFirstPaths": [
+            "AGENTS.md",
+            ".agents/skills/cplayout-gis-geometry-guard-agent/SKILL.md",
+            "packages/core/src/projectDocument.ts",
+            "docs/agent-known-gaps.md",
+            "docs/imagery-provider-tool-policy-ledger.md",
+        ],
+        "secondaryPaths": [
+            "packages/core/src/imageryEvidence.ts",
+            "packages/core/src/projectKml.ts",
+            "packages/project-store/src/projectArchive.ts",
+            "docs/native-map-tile-adapter-design.md",
+            "docs/kml-kmz-google-earth-source-ledger.md",
+        ],
+        "validationCommandIds": ["validate_product", "validate_skills", "diff_check", "audit"],
+        "expectedOutput": "Geometry authority risks, CRS/input-display separation, attribution gaps, tile adapter gates, and validation needs.",
+        "tokenBudget": 1000,
+        "hardVetoIds": ["preserve_projected_xy", "no_paid_or_keyed_services", "no_runtime_proof_without_evidence"],
+    },
+    {
+        "id": "qa_validation_evidence",
+        "purpose": "Route validation triage, acceptance gates, test gaps, audit findings, regression evidence, and release evidence to QA review.",
+        "routeIds": ["cplayout_qa_validation_reviewer"],
+        "agentIds": ["cplayout_qa_validation_reviewer"],
+        "triggerTerms": [
+            "validation triage",
+            "acceptance gate",
+            "test gap",
+            "proof gate",
+            "audit finding",
+            "regression evidence",
+            "release evidence",
+            "Playwright screenshot",
+        ],
+        "readFirstPaths": [
+            "AGENTS.md",
+            ".agents/skills/cplayout-qa-validation-agent/SKILL.md",
+            "docs/agent-known-gaps.md",
+            "docs/agent-governance-summary.md",
+            "package.json",
+        ],
+        "secondaryPaths": [
+            "tools/validate_cplayout_skills.py",
+            "tools/tests/test_cplayout_prompt_triage.py",
+            "tools/tests/test_cplayout_context_map.py",
+            "docs/agent-source-ledger.md",
+            "docs/android-native-verification.md",
+        ],
+        "validationCommandIds": ["context_map_check", "validate_skills", "validate_product", "diff_check", "audit"],
+        "expectedOutput": "Findings by severity, commands run or missing, stale generated files, audit status, and residual risk.",
+        "tokenBudget": 950,
+        "hardVetoIds": ["no_runtime_proof_without_evidence", "hooks_are_advisory"],
     },
     {
         "id": "imagery_kml_evidence",
@@ -324,12 +443,10 @@ PACK_DEFINITIONS = [
         "routeIds": [
             "cplayout_imagery_mapper",
             "cplayout_center_pivot_designer",
-            "cplayout_kb_curator",
         ],
         "agentIds": [
             "cplayout_imagery_mapper",
             "cplayout_center_pivot_designer",
-            "cplayout_kb_curator",
         ],
         "triggerTerms": ["CornerGPSMap", "BPF", "Boundary Point File", "GGS", "VRI", "corner arm map"],
         "readFirstPaths": [
@@ -361,6 +478,7 @@ SOURCE_HASH_PATHS = [
     "tools/build_cplayout_context_map.py",
     "tools/validate_cplayout_skills.py",
     "docs/agent-prompt-registry.md",
+    "docs/README.md",
     "docs/agent-known-gaps.md",
     "docs/agent-source-ledger.md",
     "docs/codex-managed-hook-deployment.md",
@@ -474,6 +592,12 @@ def _require_relpath(relpath: str) -> None:
         raise ValueError(f"{relpath}: paths must be relative repo paths with forward slashes")
     if relpath.startswith("reports/") or relpath.startswith("tmp/"):
         raise ValueError(f"{relpath}: raw report/tmp paths are not allowed in context packs")
+    generated_outputs = {
+        CONTEXT_DOC_PATH.relative_to(ROOT).as_posix(),
+        GOVERNANCE_SUMMARY_PATH.relative_to(ROOT).as_posix(),
+    }
+    if relpath in generated_outputs:
+        return
     if not (ROOT / relpath).exists():
         raise ValueError(f"{relpath}: referenced path does not exist")
 
@@ -532,6 +656,9 @@ def _validate_context_map(data: dict[str, Any]) -> None:
         token_budget = pack.get("tokenBudget")
         if not isinstance(token_budget, int) or token_budget <= 0:
             raise ValueError(f"{pack_id}: tokenBudget must be a positive integer")
+        max_pack_budget = int(limits["maxContextPackTokenBudget"])
+        if token_budget > max_pack_budget:
+            raise ValueError(f"{pack_id}: tokenBudget exceeds maxContextPackTokenBudget")
 
     duplicates = sorted({pack_id for pack_id in pack_ids if pack_ids.count(pack_id) > 1})
     if duplicates:
@@ -584,16 +711,54 @@ def _markdown_text(data: dict[str, Any]) -> str:
     for key, value in data["limits"].items():
         lines.append(f"- `{key}`: `{value}`")
 
-    lines.extend(["", "## Context Packs", "", "| Pack | Purpose | Read First | Validation |", "| --- | --- | --- | --- |"])
+    lines.extend(
+        [
+            "",
+            "## Context Packs",
+            "",
+            "| Pack | Token Budget | Purpose | Minimum Read | Secondary Read | Validation |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
     validation_commands = data["validationCommands"]
     for pack in data["contextPacks"]:
         read_first = "<br>".join(f"`{path}`" for path in pack["readFirstPaths"])
+        secondary = "<br>".join(f"`{path}`" for path in pack["secondaryPaths"])
         commands = "<br>".join(f"`{validation_commands[command_id]['command']}`" for command_id in pack["validationCommandIds"])
-        lines.append(f"| `{pack['id']}` | {pack['purpose']} | {read_first} | {commands} |")
+        lines.append(
+            f"| `{pack['id']}` | `{pack['tokenBudget']}` | {pack['purpose']} | {read_first} | {secondary} | {commands} |"
+        )
 
     lines.extend(["", "## Route Context", "", "| Route | Context Packs |", "| --- | --- |"])
     for route_id, pack_ids in sorted(data["routeContext"].items()):
         lines.append(f"| `{route_id}` | {', '.join(f'`{pack_id}`' for pack_id in pack_ids)} |")
+
+    pack_by_id = {pack["id"]: pack for pack in data["contextPacks"]}
+    lines.extend(
+        [
+            "",
+            "## Route Read Guidance",
+            "",
+            "Use minimum-read entries before mutation. Use secondary-read entries only when the minimum set leaves a task-specific gap.",
+            "",
+            "| Route | Minimum Read | Secondary Read |",
+            "| --- | --- | --- |",
+        ]
+    )
+    for route_id, pack_ids in sorted(data["routeContext"].items()):
+        minimum: list[str] = []
+        secondary_paths: list[str] = []
+        for pack_id in pack_ids:
+            pack = pack_by_id[pack_id]
+            for path in pack["readFirstPaths"]:
+                if path not in minimum:
+                    minimum.append(path)
+            for path in pack["secondaryPaths"]:
+                if path not in secondary_paths and path not in minimum:
+                    secondary_paths.append(path)
+        min_text = "<br>".join(f"`{path}`" for path in minimum[:8])
+        secondary_text = "<br>".join(f"`{path}`" for path in secondary_paths[:8])
+        lines.append(f"| `{route_id}` | {min_text} | {secondary_text} |")
 
     lines.extend(["", "## Agent Context", "", "| Agent | Context Packs |", "| --- | --- |"])
     for agent_id, pack_ids in sorted(data["agentContext"].items()):
@@ -608,6 +773,57 @@ def _markdown_text(data: dict[str, Any]) -> str:
         lines.append(f"- `{relpath}`: `{digest}`")
     lines.append("")
     return "\n".join(lines)
+
+
+def _governance_summary_text(data: dict[str, Any]) -> str:
+    validation_commands = data["validationCommands"]
+    lines = [
+        "# CPLayout Agent Governance Summary",
+        "",
+        "Generated by `tools/build_cplayout_context_map.py`. Edit the generator, then run `npm run context-map:build`.",
+        "",
+        "This is the compact first-read entrypoint for agent governance. It is advisory documentation, not product runtime proof or hook enforcement.",
+        "",
+        "## Active Contracts",
+        "",
+        "- Start non-trivial work with `AGENTS.md`, `git status --short`, task complexity, selected reasoning effort, subagent decision, and validation gates.",
+        "- Preserve offline/no-cost operation, projected/local `XY` canonical geometry, and visual-only KML/KMZ style metadata.",
+        "- Treat repo-local hooks and context maps as advisory until managed deployment, restart, `/hooks`, and live prompt evidence are verified.",
+        "- Spawn bounded subagents for non-trivial CPLayout work when available; otherwise record `Accepted fallback:` with the reason.",
+        "- Do not claim native, SQLite, ZIP, MapLibre, Google Earth, imagery, or ML/CV runtime proof without direct checklist evidence.",
+        "",
+        "## Matched Records",
+        "",
+        "- Prompt routing and subagent authorization: `docs/agent-prompt-registry.md`.",
+        "- Detailed context packs and source hashes: `docs/agent-context-map.md` and `.codex/hooks/cplayout_context_map.json`.",
+        "- Source/freshness ledger: `docs/agent-source-ledger.md`.",
+        "- Section-addressable gaps: `docs/agent-known-gaps.md`.",
+        "- Managed hook deployment caveats: `docs/codex-managed-hook-deployment.md`.",
+        "",
+        "## Stale-Proof Caveats",
+        "",
+        "- Codex, package, platform, and managed-hook claims require dated source-ledger rows and may need refresh before architecture changes.",
+        "- Google Earth proof is artifact-specific; future claims need non-black rendered evidence, overlay confirmation, hashes, and uncontaminated cleanup.",
+        "- Android SQLite/ZIP and native MapLibre reports do not prove iOS, raw PMTiles/MBTiles, imported raster packages, or broad native parity.",
+        "- Companion imagery/ML/CV packets are evidence-only until a separate projected-XY reducer workflow is implemented and proved.",
+        "",
+        "## Validation Gates",
+        "",
+    ]
+    for command_id in ("context_map_check", "validate_skills", "validate_product", "diff_check", "audit"):
+        command = validation_commands[command_id]
+        lines.append(f"- `{command['command']}`: {command['purpose']}")
+    lines.extend(["", "## Token Budgets", ""])
+    for key, value in data["limits"].items():
+        lines.append(f"- `{key}`: `{value}`")
+    lines.extend(["", "## Hard Vetoes", ""])
+    for veto in data["hardVetoes"]:
+        lines.append(f"- `{veto['id']}`: {veto['summary']}")
+    lines.append("")
+    text = "\n".join(lines)
+    if len(text) > int(data["limits"]["maxGovernanceSummaryChars"]):
+        raise ValueError("governance summary exceeds maxGovernanceSummaryChars")
+    return text
 
 
 def _write_if_changed(path: Path, text: str) -> bool:
@@ -629,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
     data = _build_context_map()
     json_text = _json_text(data)
     markdown_text = _markdown_text(data)
+    governance_summary_text = _governance_summary_text(data)
 
     if args.write:
         changed = [
@@ -636,6 +853,10 @@ def main(argv: list[str] | None = None) -> int:
             for relpath, did_change in (
                 (CONTEXT_MAP_PATH.relative_to(ROOT), _write_if_changed(CONTEXT_MAP_PATH, json_text)),
                 (CONTEXT_DOC_PATH.relative_to(ROOT), _write_if_changed(CONTEXT_DOC_PATH, markdown_text)),
+                (
+                    GOVERNANCE_SUMMARY_PATH.relative_to(ROOT),
+                    _write_if_changed(GOVERNANCE_SUMMARY_PATH, governance_summary_text),
+                ),
             )
             if did_change
         ]
@@ -652,6 +873,8 @@ def main(argv: list[str] | None = None) -> int:
         stale.append(str(CONTEXT_MAP_PATH.relative_to(ROOT)))
     if not CONTEXT_DOC_PATH.exists() or CONTEXT_DOC_PATH.read_text(encoding="utf-8") != markdown_text:
         stale.append(str(CONTEXT_DOC_PATH.relative_to(ROOT)))
+    if not GOVERNANCE_SUMMARY_PATH.exists() or GOVERNANCE_SUMMARY_PATH.read_text(encoding="utf-8") != governance_summary_text:
+        stale.append(str(GOVERNANCE_SUMMARY_PATH.relative_to(ROOT)))
     if stale:
         print("Context map is stale. Run npm run context-map:build.", file=sys.stderr)
         for relpath in stale:

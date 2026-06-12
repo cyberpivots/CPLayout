@@ -40,6 +40,19 @@ class PromptTriageTests(unittest.TestCase):
         routes = self.route_ids("Review Expo SQLite project archive persistence and ZIP schema migration.")
         self.assertEqual(routes[0], "cplayout_database_specialist")
 
+    def test_runtime_proof_prompt_selects_gatekeeper_route(self) -> None:
+        routes = self.route_ids("Review Android verification native proof release gate and production-ready claim.")
+        self.assertEqual(routes[0], "cplayout_runtime_proof_gatekeeper")
+
+    def test_gis_crs_prompt_selects_geometry_guardian_route(self) -> None:
+        routes = self.route_ids("Preserve projected XY CRS boundary WGS84 display coordinate transform and geometry mutation.")
+        self.assertEqual(routes[0], "cplayout_gis_geometry_guardian")
+        self.assertNotIn("cplayout_imagery_mapper", routes)
+
+    def test_qa_validation_prompt_selects_validation_reviewer_route(self) -> None:
+        routes = self.route_ids("Perform validation triage for acceptance gate test gap audit finding and release evidence.")
+        self.assertEqual(routes[0], "cplayout_qa_validation_reviewer")
+
     def test_ui_expo_prompt_selects_interface_route(self) -> None:
         routes = self.route_ids("Improve the Expo React Native UI screen and SVG map component.")
         self.assertEqual(routes[0], "cplayout_interface_developer")
@@ -74,7 +87,28 @@ class PromptTriageTests(unittest.TestCase):
         self.assertEqual(routes[0], "cplayout_center_pivot_designer")
 
     def test_broad_terms_do_not_overmatch(self) -> None:
-        for prompt in ("agent", "hook", "layout", "web", "help", "angle", "extension", "retraction", "tire", "rpm"):
+        for prompt in (
+            "agent",
+            "hook",
+            "layout",
+            "web",
+            "help",
+            "angle",
+            "extension",
+            "retraction",
+            "tire",
+            "rpm",
+            "runtime",
+            "proof",
+            "gate",
+            "geometry",
+            "gis",
+            "qa",
+            "validation",
+            "reviewer",
+            "test",
+            "check",
+        ):
             with self.subTest(prompt=prompt):
                 self.assertEqual(self.route_ids(prompt), [])
 
@@ -98,6 +132,26 @@ class PromptTriageTests(unittest.TestCase):
                 "cplayout_imagery_mapper",
             ],
         )
+
+    def test_mixed_new_specialist_prompt_is_capped(self) -> None:
+        routes = self.route_ids(
+            "Review Android verification native proof, projected XY CRS boundary, validation triage, "
+            "acceptance gate, Google Earth imagery, SQLite ZIP proof, and managed hook registry."
+        )
+        self.assertLessEqual(len(routes), 3)
+        self.assertEqual(routes[0], "cplayout_runtime_proof_gatekeeper")
+        self.assertIn("cplayout_gis_geometry_guardian", routes)
+        self.assertIn("cplayout_qa_validation_reviewer", routes)
+
+    def test_runtime_proof_prefers_gatekeeper_over_database_without_storage_request(self) -> None:
+        routes = self.route_ids("Native proof release gate for Android verification and MapLibre proof.")
+        self.assertEqual(routes[0], "cplayout_runtime_proof_gatekeeper")
+        self.assertNotIn("cplayout_database_specialist", routes)
+
+    def test_storage_specific_runtime_prompt_can_include_database(self) -> None:
+        routes = self.route_ids("SQLite ZIP proof for project archive persistence schema migration.")
+        self.assertEqual(routes[0], "cplayout_database_specialist")
+        self.assertIn("cplayout_runtime_proof_gatekeeper", routes)
 
     def test_negative_keywords_reduce_false_positives(self) -> None:
         routes = self.route_ids("Do database only work on SQLite schema; no imagery and no pivot design.")

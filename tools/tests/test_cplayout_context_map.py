@@ -60,10 +60,16 @@ class ContextMapTests(unittest.TestCase):
                 "storage_archive_native",
                 "imagery_kml_evidence",
                 "cornergpsmap_bpf",
+                "runtime_proof_gates",
+                "gis_geometry_guardrails",
+                "qa_validation_evidence",
             }.issubset(pack_ids)
         )
         self.assertIn("cplayout_kb_curator", self.context_map["routeContext"])
         self.assertIn("cplayout_kb_curator", self.context_map["agentContext"])
+        self.assertIn("cplayout_runtime_proof_gatekeeper", self.context_map["routeContext"])
+        self.assertIn("cplayout_gis_geometry_guardian", self.context_map["agentContext"])
+        self.assertIn("cplayout_qa_validation_reviewer", self.context_map["agentContext"])
 
     def test_context_pack_paths_exist_and_avoid_raw_artifacts(self) -> None:
         for pack in self.context_map["contextPacks"]:
@@ -109,6 +115,20 @@ class ContextMapTests(unittest.TestCase):
         pack_ids = self.pack_ids_for_prompt("Improve map visual elements for wheel tracks and end-of-machine indicators.")
         self.assertIn("interface_ui", pack_ids)
         self.assertIn("geometry_design", pack_ids)
+
+    def test_runtime_gis_and_qa_prompts_select_focused_packs(self) -> None:
+        runtime_context = self.hook_context("Review native proof release gate and Android verification.")
+        self.assertIn("runtime_proof_gates", runtime_context)
+        self.assertIn("docs/android-native-verification.md", runtime_context)
+
+        gis_context = self.hook_context("Preserve projected XY CRS boundary WGS84 display and map package attribution.")
+        self.assertIn("gis_geometry_guardrails", gis_context)
+        self.assertIn("packages/core/src/projectDocument.ts", gis_context)
+        self.assertNotIn("imagery_kml_evidence", gis_context)
+
+        qa_context = self.hook_context("Review validation triage acceptance gate test gap and audit finding.")
+        self.assertIn("qa_validation_evidence", qa_context)
+        self.assertIn(".agents/skills/cplayout-qa-validation-agent/SKILL.md", qa_context)
 
     def test_lrdu_sdu_safety_zone_prompt_selects_geometry_pack(self) -> None:
         pack_ids = self.pack_ids_for_prompt("Review LRDU SDU safety zone tire RPM corner arm extension and retraction evidence.")

@@ -14,6 +14,9 @@ This registry records the repo-local specialist prompt surfaces and the session-
 | `$cplayout-interface-development-agent` | Expo UI/UX, interface workflows, visible verification | Interface developer |
 | `$cplayout-center-pivot-design-agent` | Center pivot, lateral move, and corner-arm advisory design review | Pivot designer |
 | `$cplayout-database-agent` | SQLite, project-store, archive, migration, CRUD review | Database specialist |
+| `$cplayout-runtime-proof-gate-agent` | Native/runtime proof, release gates, production-readiness claim review | Runtime proof gatekeeper |
+| `$cplayout-gis-geometry-guard-agent` | Projected/local XY, CRS, WGS84 display/input, coordinate transforms, tile package boundaries | GIS geometry guardian |
+| `$cplayout-qa-validation-agent` | Validation triage, acceptance gates, proof gates, audit findings, regression evidence | QA validation reviewer |
 
 ## Custom Codex Agents
 
@@ -24,6 +27,9 @@ This registry records the repo-local specialist prompt surfaces and the session-
 | `cplayout_center_pivot_designer` | Read-only | Pivot, lateral move, linear move, corner arm, design scoring | `.codex/agents/cplayout_center_pivot_designer.toml` |
 | `cplayout_database_specialist` | Read-only | SQLite, project-store, schema, archive, migration, CRUD | `.codex/agents/cplayout_database_specialist.toml` |
 | `cplayout_kb_curator` | Read-only | Source ledgers, prompt registry, known gaps, durable guidance | `.codex/agents/cplayout_kb_curator.toml` |
+| `cplayout_runtime_proof_gatekeeper` | Read-only | Native proof, Android/iOS verification, MapLibre proof, SQLite/ZIP proof, Google Earth render proof, release gates | `.codex/agents/cplayout_runtime_proof_gatekeeper.toml` |
+| `cplayout_gis_geometry_guardian` | Read-only | Projected/local XY, CRS, WGS84 input/display, coordinate transforms, map package attribution, PMTiles/MBTiles/TileJSON boundaries | `.codex/agents/cplayout_gis_geometry_guardian.toml` |
+| `cplayout_qa_validation_reviewer` | Read-only | Validation triage, acceptance gates, test gaps, proof gates, audit findings, regression and release evidence | `.codex/agents/cplayout_qa_validation_reviewer.toml` |
 
 ## Prompt Triage
 
@@ -35,11 +41,11 @@ Every route declares `agent`, `complexityBand`, coordinator `reasoningEffort`, `
 
 Broad terms such as `agent`, `hook`, `layout`, and `web` are intentionally low weight. They should not route by themselves; they only help rank a route when stronger task-specific terms are also present.
 
-Token-efficiency guardrails are enforced in both hook code and validation. Prompt triage emits no more than three matched routes, context-pack hook summaries respect `maxEmittedPackSummaryChars` from `.codex/hooks/cplayout_context_map.json` (currently `1200` characters for the context-pack section), and `tools/validate_cplayout_skills.py` caps the curator positive-keyword surface so governance routing cannot expand indefinitely without an explicit budget decision. Route wording changes should add or update fixture tests instead of relying on broad standalone keywords.
+Token-efficiency guardrails are enforced in both hook code and validation. Prompt triage emits no more than three matched routes, context-pack hook summaries respect `maxEmittedPackSummaryChars` from `.codex/hooks/cplayout_context_map.json` (currently `1200` characters for the context-pack section), generated route and agent context refs stay within `maxContextPacksPerHook`, each pack stays within `maxContextPackTokenBudget`, and `tools/validate_cplayout_skills.py` caps the curator positive-keyword surface so governance routing cannot expand indefinitely without an explicit budget decision. Route wording changes should add or update fixture tests instead of relying on broad standalone keywords.
 
 ## Generated Context Map
 
-`tools/build_cplayout_context_map.py` generates `.codex/hooks/cplayout_context_map.json` and `docs/agent-context-map.md`. The map gives each route and custom agent compact context-pack ids, read-first repo paths, validation commands, expected output shape, token budgets, panel weights, and hard vetoes. It does not include raw file content, ignored reports, local customer artifacts, secrets, absolute machine paths, or extracted PDF bodies.
+`tools/build_cplayout_context_map.py` generates `.codex/hooks/cplayout_context_map.json`, `docs/agent-context-map.md`, and `docs/agent-governance-summary.md`. The map gives each route and custom agent compact context-pack ids, minimum-read paths, secondary-read paths, validation commands, expected output shape, token budgets, panel weights, and hard vetoes. The Markdown exposes pack `tokenBudget` values for human budget review. It does not include raw file content, ignored reports, local customer artifacts, secrets, absolute machine paths, or extracted PDF bodies.
 
 The prompt triage hook preserves existing route scoring, then emits at most three context packs for matched routes and trims context-pack detail before it can exceed the context-map summary budget. The subagent-start hook emits matching agent context packs when a custom CPLayout agent starts. If the context map is missing or invalid, hooks fail open and keep the ordinary coordinator or subagent boundary text.
 
@@ -66,6 +72,12 @@ Command-surface, toolbar, UI parity, UI-proof, curated sample fixture, generated
 Android app-review, layout-proof, ADB/UIAutomator, OCR, and screenshot-analysis prompts route through the interface developer and KB curator when they include terms such as `review:android-app`, `android app review harness`, `verify:android-layout`, `Android layout proof`, `ADB`, `UIAutomator`, `Tesseract`, `OCR`, `OpenCV screenshot analysis`, `touch target`, `drawer/HUD`, `right-drawer`, `right-sidebar`, `toolbar`, `UI-proof`, or `system navigation bounds`. Add the database specialist only when the prompt also asks for SQLite, ZIP, schema, migration, share-sheet, DocumentsUI, or project archive proof. These prompts are app workflow evidence tasks; screenshots/XML/OCR/CV must not mutate canonical projected/local `XY` or satisfy native persistence claims.
 
 Managed-hook, process-enforcement, route keyword, governance keyword, and token-efficient subagent-governance prompts route through `cplayout_kb_curator` when they include terms such as `requirements.toml`, `managed hook`, `hook enforcement`, `process enforcement`, `prompt triage`, `route classification`, `route keywords`, `governance keywords`, `keyword updates`, `coordinator contract`, `coordinator route band`, `subagent reasoning`, `token efficient`, `advisory hooks`, or `reasoning band`. These prompts are configured as coordinator `xhigh` because they affect Codex policy surfaces and multi-agent coordination, but every spawned subagent still receives task-selected effort and a bounded scope.
+
+Runtime proof, release-gate, and production-readiness prompts route through `cplayout_runtime_proof_gatekeeper` when they include strong phrases such as `native proof`, `release gate`, `Android verification`, `iOS verification`, `MapLibre proof`, `SQLite ZIP proof`, `Google Earth render proof`, `non-black map-canvas proof`, `verify:android-native`, `verify:native-maplibre`, or `production-ready claim`. This route blocks claim wording until the relevant completed device, emulator, Google Earth, or release evidence exists. It does not prove runtime behavior by itself and should not trigger from standalone `runtime`, `proof`, or `gate`.
+
+GIS and coordinate-authority prompts route through `cplayout_gis_geometry_guardian` when they include strong phrases such as `projected XY`, `projected/local XY`, `canonical geometry`, `CRS boundary`, `WGS84 display`, `WGS84 input/display`, `coordinate transform`, `geometry mutation`, `map package attribution`, `TileJSON`, `PMTiles`, `MBTiles`, `KML/KMZ visual metadata boundary`, or `styleUrl visual-only`. This route preserves canonical projected/local `XY`; WGS84, KML/KMZ, imagery labels, screenshots, OCR/CV output, TileJSON, and operator labels remain input/display/evidence until a projected-XY workflow explicitly accepts them. It should not trigger from standalone `GIS`, `geometry`, `coordinates`, or `display`.
+
+Validation and release-evidence prompts route through `cplayout_qa_validation_reviewer` when they include strong phrases such as `validation triage`, `validation evidence`, `acceptance gate`, `acceptance criteria`, `test gap`, `proof gate`, `audit finding`, `regression evidence`, `release evidence`, `Playwright screenshot`, `proof:web`, or `npm run validate`. This route reviews evidence and residual risk; it does not convert tests, hooks, or generated context maps into native/runtime proof and should not trigger from standalone `QA`, `validation`, `reviewer`, `test`, or `check`.
 
 Whole-codebase 100-iteration improvement prompts currently route through `cplayout_kb_curator` keywords such as `100 iteration`, `weighted vote`, and `research improvement loop`; there is no separate executable route id named `whole-codebase-100-loop` in `.codex/hooks/cplayout_route_data.json`. Expected artifacts remain `docs/whole-codebase-improvement-loop-2026-06-01.md` plus milestone evidence summaries under `docs/evidence/continuous-improvement/`.
 

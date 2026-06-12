@@ -11,39 +11,65 @@ This record provides compact route-to-context references for hooks, coordinators
 - `maxSecondaryPathsPerPack`: `5`
 - `maxValidationCommandsPerPack`: `5`
 - `maxEmittedPackSummaryChars`: `1200`
+- `maxContextPackTokenBudget`: `1200`
+- `maxGovernanceSummaryChars`: `7000`
 
 ## Context Packs
 
-| Pack | Purpose | Read First | Validation |
-| --- | --- | --- | --- |
-| `workspace_preflight` | Load the durable CPLayout work contract and dirty-tree/validation expectations before non-trivial changes. | `AGENTS.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md` | `npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
-| `governance_hooks_skills` | Review and update prompt triage, route data, hooks, custom agents, skills, and process records. | `.codex/hooks/cplayout_prompt_triage.py`<br>`.codex/hooks/cplayout_route_data.json`<br>`.codex/hooks.json`<br>`tools/validate_cplayout_skills.py`<br>`docs/agent-prompt-registry.md` | `npm run context-map:check`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
-| `interface_ui` | Map Expo React Native, browser UI, HUD, right drawer/sidebar, toolbar, component, UI-proof, and visible workflow work to proof gates. | `apps/mobile/App.tsx`<br>`apps/mobile/src/components`<br>`packages/map-adapters`<br>`.agents/skills/cplayout-interface-development-agent/SKILL.md` | `npm run validate`<br>`npm run proof:web`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
-| `geometry_design` | Route center pivot, corner-arm, lateral/linear move, and sprinkler design prompts to advisory geometry evidence. | `packages/geometry`<br>`docs/design-guides/topic-index.md`<br>`.agents/skills/cplayout-center-pivot-design-agent/SKILL.md`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.ts` | `npm run validate`<br>`npm run validate:design-guides`<br>`npm run validate:corner-service-manuals`<br>`git diff --check`<br>`npm audit` |
-| `core_project_geometry` | Route project document, KML/XML, sample fixture, and canonical geometry contract work. | `packages/core`<br>`packages/core/src/projectDocument.ts`<br>`packages/core/src/projectKml.ts`<br>`packages/core/src/sampleProject.ts` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
-| `storage_archive_native` | Route SQLite, project-store, project archive, ZIP, and native/web persistence contract work. | `packages/project-store`<br>`packages/project-store/src/projectArchive.ts`<br>`packages/project-store/src/projectRepository.native.ts`<br>`packages/core/src/projectDocument.ts`<br>`.agents/skills/cplayout-database-agent/SKILL.md` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
-| `imagery_kml_evidence` | Route imagery, Google Earth, KML/KMZ, local CV, and evidence packet prompts. | `docs/kml-kmz-google-earth-source-ledger.md`<br>`.agents/skills/cplayout-imagery-mapping-agent/SKILL.md`<br>`.agents/skills/cplayout-google-earth-imagery-analysis/SKILL.md`<br>`packages/core/src/imageryEvidence.ts`<br>`packages/map-adapters/src/MapLibreImageryPreview.tsx` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
-| `cornergpsmap_bpf` | Route CornerGPSMap, BPF, GGS, VRI, and corner-arm map ingestion prompts to verified local evidence. | `packages/core/src/cornerGpsMapImport.ts`<br>`packages/core/src/cornerGpsMapImport.test.ts`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.ts`<br>`packages/map-adapters/src/mapTools.ts`<br>`docs/agent-known-gaps.md` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| Pack | Token Budget | Purpose | Minimum Read | Secondary Read | Validation |
+| --- | --- | --- | --- | --- | --- |
+| `workspace_preflight` | `650` | Load the durable CPLayout work contract and dirty-tree/validation expectations before non-trivial changes. | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md` | `npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `governance_hooks_skills` | `1200` | Review and update prompt triage, route data, hooks, custom agents, skills, and process records. | `docs/agent-governance-summary.md`<br>`.codex/hooks/cplayout_prompt_triage.py`<br>`.codex/hooks/cplayout_route_data.json`<br>`tools/validate_cplayout_skills.py`<br>`docs/README.md` | `.codex/hooks.json`<br>`.codex/hooks/cplayout_subagent_start.py`<br>`docs/agent-known-gaps.md`<br>`docs/agent-source-ledger.md`<br>`docs/codex-managed-hook-deployment.md` | `npm run context-map:check`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `interface_ui` | `900` | Map Expo React Native, browser UI, HUD, right drawer/sidebar, toolbar, component, UI-proof, and visible workflow work to proof gates. | `apps/mobile/App.tsx`<br>`apps/mobile/src/components/CommandSurface.tsx`<br>`apps/mobile/src/components/DrawingToolPalette.tsx`<br>`packages/map-adapters/src/SvgMapSurface.tsx`<br>`.agents/skills/cplayout-interface-development-agent/SKILL.md` | `packages/map-adapters/src/MapSurface.tsx`<br>`playwright.config.ts`<br>`docs/android-native-verification.md`<br>`docs/agent-known-gaps.md` | `npm run validate`<br>`npm run proof:web`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `geometry_design` | `950` | Route center pivot, corner-arm, lateral/linear move, and sprinkler design prompts to advisory geometry evidence. | `packages/geometry/src/index.ts`<br>`docs/design-guides/topic-index.md`<br>`.agents/skills/cplayout-center-pivot-design-agent/SKILL.md`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.ts` | `docs/design-guides/guides/local-precision-corner-0999428.md`<br>`docs/design-guides/guides/local-vflex-corner-0998325.md`<br>`docs/agent-known-gaps.md` | `npm run validate`<br>`npm run validate:design-guides`<br>`npm run validate:corner-service-manuals`<br>`git diff --check`<br>`npm audit` |
+| `core_project_geometry` | `900` | Route project document, KML/XML, sample fixture, and canonical geometry contract work. | `packages/core/src/index.ts`<br>`packages/core/src/projectDocument.ts`<br>`packages/core/src/projectKml.ts`<br>`packages/core/src/sampleProject.ts` | `packages/core/src/imageryEvidence.ts`<br>`docs/agent-known-gaps.md` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `storage_archive_native` | `900` | Route SQLite, project-store, project archive, ZIP, and native/web persistence contract work. | `packages/project-store/src/index.ts`<br>`packages/project-store/src/projectArchive.ts`<br>`packages/project-store/src/projectRepository.native.ts`<br>`packages/core/src/projectDocument.ts`<br>`.agents/skills/cplayout-database-agent/SKILL.md` | `docs/android-native-verification.md`<br>`docs/agent-known-gaps.md` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `runtime_proof_gates` | `1000` | Route native proof, Android/iOS verification, Google Earth proof, MapLibre proof, SQLite/ZIP proof, and release claims to evidence gates. | `AGENTS.md`<br>`.agents/skills/cplayout-runtime-proof-gate-agent/SKILL.md`<br>`docs/android-native-verification.md`<br>`docs/agent-known-gaps.md`<br>`docs/agent-source-ledger.md` | `docs/android-native-verification-report-template.json`<br>`docs/kml-kmz-google-earth-source-ledger.md`<br>`packages/project-store/src/nativeVerification.ts`<br>`packages/project-store/src/projectRepository.native.ts`<br>`docs/native-map-tile-adapter-design.md` | `npm run validate:skills`<br>`npm run validate`<br>`git diff --check`<br>`npm audit` |
+| `gis_geometry_guardrails` | `1000` | Route projected/local XY, CRS, WGS84 input/display, coordinate transforms, geometry mutation, attribution, TileJSON, PMTiles, and MBTiles boundaries. | `AGENTS.md`<br>`.agents/skills/cplayout-gis-geometry-guard-agent/SKILL.md`<br>`packages/core/src/projectDocument.ts`<br>`docs/agent-known-gaps.md`<br>`docs/imagery-provider-tool-policy-ledger.md` | `packages/core/src/imageryEvidence.ts`<br>`packages/core/src/projectKml.ts`<br>`packages/project-store/src/projectArchive.ts`<br>`docs/native-map-tile-adapter-design.md`<br>`docs/kml-kmz-google-earth-source-ledger.md` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `qa_validation_evidence` | `950` | Route validation triage, acceptance gates, test gaps, audit findings, regression evidence, and release evidence to QA review. | `AGENTS.md`<br>`.agents/skills/cplayout-qa-validation-agent/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`docs/agent-governance-summary.md`<br>`package.json` | `tools/validate_cplayout_skills.py`<br>`tools/tests/test_cplayout_prompt_triage.py`<br>`tools/tests/test_cplayout_context_map.py`<br>`docs/agent-source-ledger.md`<br>`docs/android-native-verification.md` | `npm run context-map:check`<br>`npm run validate:skills`<br>`npm run validate`<br>`git diff --check`<br>`npm audit` |
+| `imagery_kml_evidence` | `1000` | Route imagery, Google Earth, KML/KMZ, local CV, and evidence packet prompts. | `docs/kml-kmz-google-earth-source-ledger.md`<br>`.agents/skills/cplayout-imagery-mapping-agent/SKILL.md`<br>`.agents/skills/cplayout-google-earth-imagery-analysis/SKILL.md`<br>`packages/core/src/imageryEvidence.ts`<br>`packages/map-adapters/src/MapLibreImageryPreview.tsx` | `docs/agent-known-gaps.md`<br>`tools/verifyImageryEvidencePacket.ts` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
+| `cornergpsmap_bpf` | `950` | Route CornerGPSMap, BPF, GGS, VRI, and corner-arm map ingestion prompts to verified local evidence. | `packages/core/src/cornerGpsMapImport.ts`<br>`packages/core/src/cornerGpsMapImport.test.ts`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.ts`<br>`packages/map-adapters/src/mapTools.ts`<br>`docs/agent-known-gaps.md` | `packages/geometry/src/cornerGpsMapAdvisoryReview.test.ts`<br>`packages/map-adapters/src/mapTools.test.ts`<br>`docs/agent-prompt-registry.md` | `npm run validate`<br>`npm run validate:skills`<br>`git diff --check`<br>`npm audit` |
 
 ## Route Context
 
 | Route | Context Packs |
 | --- | --- |
-| `cplayout_center_pivot_designer` | `workspace_preflight`, `geometry_design`, `core_project_geometry`, `cornergpsmap_bpf` |
+| `cplayout_center_pivot_designer` | `workspace_preflight`, `geometry_design`, `cornergpsmap_bpf` |
 | `cplayout_database_specialist` | `workspace_preflight`, `core_project_geometry`, `storage_archive_native` |
-| `cplayout_imagery_mapper` | `workspace_preflight`, `core_project_geometry`, `imagery_kml_evidence`, `cornergpsmap_bpf` |
+| `cplayout_gis_geometry_guardian` | `workspace_preflight`, `gis_geometry_guardrails` |
+| `cplayout_imagery_mapper` | `workspace_preflight`, `imagery_kml_evidence`, `cornergpsmap_bpf` |
 | `cplayout_interface_developer` | `workspace_preflight`, `interface_ui` |
-| `cplayout_kb_curator` | `workspace_preflight`, `governance_hooks_skills`, `imagery_kml_evidence`, `cornergpsmap_bpf` |
+| `cplayout_kb_curator` | `workspace_preflight`, `governance_hooks_skills`, `imagery_kml_evidence` |
+| `cplayout_qa_validation_reviewer` | `workspace_preflight`, `qa_validation_evidence` |
+| `cplayout_runtime_proof_gatekeeper` | `workspace_preflight`, `runtime_proof_gates` |
+
+## Route Read Guidance
+
+Use minimum-read entries before mutation. Use secondary-read entries only when the minimum set leaves a task-specific gap.
+
+| Route | Minimum Read | Secondary Read |
+| --- | --- | --- |
+| `cplayout_center_pivot_designer` | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md`<br>`packages/geometry/src/index.ts`<br>`docs/design-guides/topic-index.md`<br>`.agents/skills/cplayout-center-pivot-design-agent/SKILL.md`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.ts` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`docs/design-guides/guides/local-precision-corner-0999428.md`<br>`docs/design-guides/guides/local-vflex-corner-0998325.md`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.test.ts`<br>`packages/map-adapters/src/mapTools.test.ts`<br>`docs/agent-prompt-registry.md` |
+| `cplayout_database_specialist` | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md`<br>`packages/core/src/index.ts`<br>`packages/core/src/projectDocument.ts`<br>`packages/core/src/projectKml.ts`<br>`packages/core/src/sampleProject.ts` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`packages/core/src/imageryEvidence.ts`<br>`docs/android-native-verification.md` |
+| `cplayout_gis_geometry_guardian` | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md`<br>`.agents/skills/cplayout-gis-geometry-guard-agent/SKILL.md`<br>`packages/core/src/projectDocument.ts`<br>`docs/agent-known-gaps.md`<br>`docs/imagery-provider-tool-policy-ledger.md` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`packages/core/src/imageryEvidence.ts`<br>`packages/core/src/projectKml.ts`<br>`packages/project-store/src/projectArchive.ts`<br>`docs/native-map-tile-adapter-design.md`<br>`docs/kml-kmz-google-earth-source-ledger.md` |
+| `cplayout_imagery_mapper` | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md`<br>`docs/kml-kmz-google-earth-source-ledger.md`<br>`.agents/skills/cplayout-imagery-mapping-agent/SKILL.md`<br>`.agents/skills/cplayout-google-earth-imagery-analysis/SKILL.md`<br>`packages/core/src/imageryEvidence.ts` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`tools/verifyImageryEvidencePacket.ts`<br>`packages/geometry/src/cornerGpsMapAdvisoryReview.test.ts`<br>`packages/map-adapters/src/mapTools.test.ts`<br>`docs/agent-prompt-registry.md` |
+| `cplayout_interface_developer` | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md`<br>`apps/mobile/App.tsx`<br>`apps/mobile/src/components/CommandSurface.tsx`<br>`apps/mobile/src/components/DrawingToolPalette.tsx`<br>`packages/map-adapters/src/SvgMapSurface.tsx` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`packages/map-adapters/src/MapSurface.tsx`<br>`playwright.config.ts`<br>`docs/android-native-verification.md` |
+| `cplayout_kb_curator` | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md`<br>`.codex/hooks/cplayout_prompt_triage.py`<br>`.codex/hooks/cplayout_route_data.json`<br>`tools/validate_cplayout_skills.py`<br>`docs/README.md` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`.codex/hooks.json`<br>`.codex/hooks/cplayout_subagent_start.py`<br>`docs/agent-source-ledger.md`<br>`docs/codex-managed-hook-deployment.md`<br>`tools/verifyImageryEvidencePacket.ts` |
+| `cplayout_qa_validation_reviewer` | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md`<br>`.agents/skills/cplayout-qa-validation-agent/SKILL.md`<br>`docs/agent-known-gaps.md` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`tools/validate_cplayout_skills.py`<br>`tools/tests/test_cplayout_prompt_triage.py`<br>`tools/tests/test_cplayout_context_map.py`<br>`docs/agent-source-ledger.md`<br>`docs/android-native-verification.md` |
+| `cplayout_runtime_proof_gatekeeper` | `AGENTS.md`<br>`docs/agent-governance-summary.md`<br>`package.json`<br>`docs/center-pivot-package-surface-inventory.md`<br>`.agents/skills/cplayout-runtime-proof-gate-agent/SKILL.md`<br>`docs/android-native-verification.md`<br>`docs/agent-known-gaps.md`<br>`docs/agent-source-ledger.md` | `.agents/skills/cplayout-workspace-preflight/SKILL.md`<br>`docs/agent-known-gaps.md`<br>`docs/android-native-verification-report-template.json`<br>`docs/kml-kmz-google-earth-source-ledger.md`<br>`packages/project-store/src/nativeVerification.ts`<br>`packages/project-store/src/projectRepository.native.ts`<br>`docs/native-map-tile-adapter-design.md` |
 
 ## Agent Context
 
 | Agent | Context Packs |
 | --- | --- |
-| `cplayout_center_pivot_designer` | `workspace_preflight`, `geometry_design`, `core_project_geometry`, `cornergpsmap_bpf` |
+| `cplayout_center_pivot_designer` | `workspace_preflight`, `geometry_design`, `cornergpsmap_bpf` |
 | `cplayout_database_specialist` | `workspace_preflight`, `core_project_geometry`, `storage_archive_native` |
-| `cplayout_imagery_mapper` | `workspace_preflight`, `core_project_geometry`, `imagery_kml_evidence`, `cornergpsmap_bpf` |
+| `cplayout_gis_geometry_guardian` | `workspace_preflight`, `gis_geometry_guardrails` |
+| `cplayout_imagery_mapper` | `workspace_preflight`, `imagery_kml_evidence`, `cornergpsmap_bpf` |
 | `cplayout_interface_developer` | `workspace_preflight`, `interface_ui` |
-| `cplayout_kb_curator` | `workspace_preflight`, `governance_hooks_skills`, `imagery_kml_evidence`, `cornergpsmap_bpf` |
+| `cplayout_kb_curator` | `workspace_preflight`, `governance_hooks_skills`, `imagery_kml_evidence` |
+| `cplayout_qa_validation_reviewer` | `workspace_preflight`, `qa_validation_evidence` |
+| `cplayout_runtime_proof_gatekeeper` | `workspace_preflight`, `runtime_proof_gates` |
 
 ## Hard Vetoes
 
@@ -58,25 +84,32 @@ This record provides compact route-to-context references for hooks, coordinators
 - `.agents/skills/cplayout-center-pivot-design-agent/SKILL.md`: `4bcad74ed787f5b3e5cf29552429d14d779238df17a21600a1b07e929b89a084`
 - `.agents/skills/cplayout-database-agent/SKILL.md`: `3cfa01cab12a411adde021d061cddaddaadd69b3dec090e6d8fc87be4f526a31`
 - `.agents/skills/cplayout-expert-agent-panels/SKILL.md`: `540a823efd5fcf405b2881f4e31ad0568d2f7d5f0cf7c6d2f4474ea64512456f`
+- `.agents/skills/cplayout-gis-geometry-guard-agent/SKILL.md`: `3947d8d067ca46ffccb7b8430e8cf90b4580dca2bd9e74d7fe4696b09c14811a`
 - `.agents/skills/cplayout-google-earth-imagery-analysis/SKILL.md`: `6f8487242fd93a2c642e6b5aadb9035aa8341146325153ce8e9267f9048545cb`
 - `.agents/skills/cplayout-imagery-mapping-agent/SKILL.md`: `b9cc53477e590b5a3d5bbbfe77e0df4eaf2a1521ec06de6244dab14b0b9f3a1e`
 - `.agents/skills/cplayout-interface-development-agent/SKILL.md`: `901f1af8c700f1d770e45d3c49364c08ea61b567e6584302745cdf5691cbe3cc`
 - `.agents/skills/cplayout-planning-review/SKILL.md`: `6ce645ae27dc77ecca760f8c0a71a236508c0eb190dd02c92d0878a85a9d15e2`
+- `.agents/skills/cplayout-qa-validation-agent/SKILL.md`: `9d3f8755fdfa2192c4de4d7c4a3321a37e9aab91a989a0eb5bca23df22682778`
+- `.agents/skills/cplayout-runtime-proof-gate-agent/SKILL.md`: `d09dac9fc1fd63ce0fe04c1a1ee3fa9fb94339a905f1ac81b28cfd337d9284d2`
 - `.agents/skills/cplayout-workspace-preflight/SKILL.md`: `8346e280c12da701978a472505fc669f235224b042c6808cfb7759cc6cca7c78`
 - `.codex/agents/cplayout_center_pivot_designer.toml`: `cf373514fdc2c2494979b3c675f9852ca2c547bc5313d573c978f4d772171194`
 - `.codex/agents/cplayout_database_specialist.toml`: `db79e21bb7fea21604e31977486a07ffeb48810027d287df03da94e3eb3ce39c`
+- `.codex/agents/cplayout_gis_geometry_guardian.toml`: `cc468c992f9e17c4212b547070f2e84908505b52e8e02880a29978b3ab57a2a6`
 - `.codex/agents/cplayout_imagery_mapper.toml`: `268d0371632dacce3937e4811b43cfef017bb1bf28c92f2438b4437ca81d6a4c`
 - `.codex/agents/cplayout_interface_developer.toml`: `e7f24a527694b1f21e645f711e2c85ed12f271edfe3935950afd18fef9ef1f97`
 - `.codex/agents/cplayout_kb_curator.toml`: `28a28a37e94e016b0ffa0bb89899f4ec725146566b9ee8d30083db1e3b423ae7`
+- `.codex/agents/cplayout_qa_validation_reviewer.toml`: `8b3a946610ffc16120acc05c89846146c94d862be9e62bb48ec2536d24229c3a`
+- `.codex/agents/cplayout_runtime_proof_gatekeeper.toml`: `6be58ee37b1c8de7985d1eeb08c0db121c5378d1a3af7990ca29fa3b946901d7`
 - `.codex/hooks.json`: `2bdbfed0fcdfb1b3351a8834b89f11fb3e6f0cedda9491107b0d5c3c7b3174ca`
 - `.codex/hooks/cplayout_prompt_triage.py`: `01fede914801451d80abec923dc1f7a0136053df5c66a33b6f6464b9f5c9d7c8`
-- `.codex/hooks/cplayout_route_data.json`: `c19b966c4c0d8e415ef9f162d94281fe318a386102c52e8c512ffcab6089fd09`
+- `.codex/hooks/cplayout_route_data.json`: `1e5732477e06d0b8598de70c3c91c5bb397192bc09b6e8c58d43b18525b5f60a`
 - `.codex/hooks/cplayout_subagent_start.py`: `2c54b41069c7cc68a380788735a4d5c7b1209ea83e24c4f5a0ea614645fac8a5`
 - `AGENTS.md`: `c4d4433bbdc8c0a1c1a46c3a134518d0b6d6a66e82fba774371356480f7bfbf9`
-- `docs/agent-known-gaps.md`: `c4deea512771b15f711c439e7917e391d51d859e5f8a4c2675bc804abc6dc262`
-- `docs/agent-prompt-registry.md`: `761eafbdff04ebc8d8431d467d342c7bed066326c2ca61bf0f29ff59694d19f6`
-- `docs/agent-source-ledger.md`: `da58fc21c5567d8d672cb0676b0fa466fb88f231cdf36cb51214226b60275782`
+- `docs/README.md`: `a941c8304fb617450c666af731b5289c1de8d14fe0ba325faafc80078a7e2dbd`
+- `docs/agent-known-gaps.md`: `2253a2a0105d1c3aae0c04beee2330d86d485cc3fd2dc4740d152bdfd0747115`
+- `docs/agent-prompt-registry.md`: `f4eeb0b19bf2dcf4b438af022f37bfb39e52319fbaad22efc766b17c68b7dbbf`
+- `docs/agent-source-ledger.md`: `714acc5c0f5ba89897ddeb3dba020178619c37c81fc776714771b8c538a6af40`
 - `docs/codex-managed-hook-deployment.md`: `75a3ef85b723b66de5284feee9e3630d52f347a202414da5809474fea2ff5318`
 - `package.json`: `0bfd0ce60dfaf35431fe1463bc88e4e4a6b961fea4f94ab70a0b778f7f093bab`
-- `tools/build_cplayout_context_map.py`: `9255d688af7cbc13e7690cbd83260db65501f32dc4de03b79b659457ae57ca5f`
-- `tools/validate_cplayout_skills.py`: `2bbfaf0c926a86b9a3cb3ff9252878cfc5abf4e021f5617ea41c0aa922b32cb6`
+- `tools/build_cplayout_context_map.py`: `b16e1abcd615de2a7e31d95590b0ff3358412ecad960bbe48fbabe177a22b0b0`
+- `tools/validate_cplayout_skills.py`: `4673563ed896cfeca5ad123280a90294a981516b346bcee57bded4b6707004a7`

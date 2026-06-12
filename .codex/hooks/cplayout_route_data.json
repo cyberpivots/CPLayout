@@ -232,6 +232,137 @@
       ]
     },
     {
+      "id": "cplayout_runtime_proof_gatekeeper",
+      "skill": "cplayout-runtime-proof-gate-agent",
+      "agent": "cplayout_runtime_proof_gatekeeper",
+      "complexityBand": "xhigh",
+      "reasoningEffort": "xhigh",
+      "subagentReasoningEffort": "task_selected",
+      "spawnPolicy": "required",
+      "note": "Block native, Google Earth, MapLibre, SQLite/ZIP, and release claims until matching runtime evidence exists.",
+      "routingReason": "Native proof, release gates, Android/iOS verification, MapLibre proof, SQLite ZIP proof, or production-ready claims need runtime proof gate review.",
+      "validationExpectations": [
+        "Do not claim native/runtime proof from compile, exporter, template, or browser-only evidence.",
+        "Require the relevant completed device, emulator, Google Earth, or release checklist evidence before accepting production-ready claims."
+      ],
+      "priority": 45,
+      "positiveKeywords": [
+        { "term": "runtime proof gatekeeper", "weight": 16 },
+        { "term": "runtime proof gate", "weight": 15 },
+        { "term": "native proof gate", "weight": 15 },
+        { "term": "native proof", "weight": 12 },
+        { "term": "release gate", "weight": 12 },
+        { "term": "production-ready claim", "weight": 14 },
+        { "term": "production ready claim", "weight": 14 },
+        { "term": "Android verification", "weight": 12 },
+        { "term": "iOS verification", "weight": 12 },
+        { "term": "Android native proof", "weight": 14 },
+        { "term": "current schema-v11 Android native verification", "weight": 16 },
+        { "term": "completed Android native verification report", "weight": 16 },
+        { "term": "OS share-sheet DocumentsUI evidence", "weight": 14 },
+        { "term": "MapLibre proof", "weight": 12 },
+        { "term": "MapLibre runtime proof", "weight": 14 },
+        { "term": "raw PMTiles MBTiles proof", "weight": 14 },
+        { "term": "SQLite ZIP proof", "weight": 14 },
+        { "term": "verify:android-native", "weight": 14 },
+        { "term": "verify:native-maplibre", "weight": 14 },
+        { "term": "Google Earth render proof", "weight": 14 },
+        { "term": "non-black map-canvas proof", "weight": 14 },
+        { "term": "runtime proof caveat", "weight": 12 }
+      ],
+      "negativeKeywords": [
+        { "term": "docs only", "weight": 7 },
+        { "term": "no runtime proof", "weight": 8 },
+        { "term": "browser only", "weight": 6 },
+        { "term": "unit tests only", "weight": 6 }
+      ]
+    },
+    {
+      "id": "cplayout_gis_geometry_guardian",
+      "skill": "cplayout-gis-geometry-guard-agent",
+      "agent": "cplayout_gis_geometry_guardian",
+      "complexityBand": "xhigh",
+      "reasoningEffort": "xhigh",
+      "subagentReasoningEffort": "task_selected",
+      "spawnPolicy": "required",
+      "note": "Preserve projected/local XY as canonical geometry while keeping WGS84, imagery, KML/KMZ, and tile metadata in input/display/evidence lanes.",
+      "routingReason": "Projected XY, CRS, WGS84 display, coordinate transform, map package attribution, PMTiles, MBTiles, TileJSON, or geometry mutation prompts need GIS geometry review.",
+      "validationExpectations": [
+        "Keep WGS84, KML/KMZ, imagery, labels, and TileJSON metadata out of canonical geometry unless projected-XY validation accepts them.",
+        "Keep PMTiles/MBTiles and map package attribution behind source-backed adapter and proof gates."
+      ],
+      "priority": 46,
+      "positiveKeywords": [
+        { "term": "projected XY", "weight": 13 },
+        { "term": "projected local XY", "weight": 14 },
+        { "term": "projected/local XY", "weight": 14 },
+        { "term": "canonical geometry", "weight": 13 },
+        { "term": "canonical geometry guardian", "weight": 15 },
+        { "term": "projected XY guardian", "weight": 15 },
+        { "term": "CRS boundary", "weight": 12 },
+        { "term": "project CRS", "weight": 12 },
+        { "term": "WGS84 display", "weight": 12 },
+        { "term": "WGS84 input/display", "weight": 14 },
+        { "term": "WGS84 input display", "weight": 14 },
+        { "term": "coordinate transform", "weight": 12 },
+        { "term": "geometry mutation", "weight": 12 },
+        { "term": "no automatic geometry mutation", "weight": 14 },
+        { "term": "operator accepted projected-XY workflow", "weight": 15 },
+        { "term": "map package attribution", "weight": 12 },
+        { "term": "TileJSON", "weight": 11 },
+        { "term": "TileJSON template proof", "weight": 13 },
+        { "term": "PMTiles", "weight": 11 },
+        { "term": "MBTiles", "weight": 11 },
+        { "term": "GIS evidence boundary", "weight": 12 },
+        { "term": "KML/KMZ visual metadata boundary", "weight": 13 },
+        { "term": "styleUrl visual-only", "weight": 13 }
+      ],
+      "negativeKeywords": [
+        { "term": "imagery only", "weight": 7 },
+        { "term": "ui only", "weight": 7 },
+        { "term": "database only", "weight": 7 },
+        { "term": "no geometry", "weight": 8 }
+      ]
+    },
+    {
+      "id": "cplayout_qa_validation_reviewer",
+      "skill": "cplayout-qa-validation-agent",
+      "agent": "cplayout_qa_validation_reviewer",
+      "complexityBand": "high",
+      "reasoningEffort": "high",
+      "subagentReasoningEffort": "task_selected",
+      "spawnPolicy": "required",
+      "note": "Review validation evidence, test gaps, audit findings, acceptance gates, and residual release risk without turning checks into runtime proof.",
+      "routingReason": "Validation triage, acceptance gates, test gaps, proof gates, audit findings, regression evidence, or release evidence need QA validation review.",
+      "validationExpectations": [
+        "Lead with missing tests, stale generated files, audit findings, and unverified claims.",
+        "Keep validation evidence distinct from native/runtime proof unless the required runtime report or visual evidence exists."
+      ],
+      "priority": 55,
+      "positiveKeywords": [
+        { "term": "validation triage", "weight": 14 },
+        { "term": "validation evidence", "weight": 13 },
+        { "term": "acceptance gate", "weight": 13 },
+        { "term": "acceptance criteria", "weight": 12 },
+        { "term": "test gap", "weight": 12 },
+        { "term": "test gaps", "weight": 12 },
+        { "term": "proof gate", "weight": 12 },
+        { "term": "audit finding", "weight": 12 },
+        { "term": "audit findings", "weight": 12 },
+        { "term": "regression evidence", "weight": 12 },
+        { "term": "release evidence", "weight": 12 },
+        { "term": "Playwright screenshot", "weight": 12 },
+        { "term": "proof:web", "weight": 12 },
+        { "term": "npm run validate", "weight": 12 },
+        { "term": "validation reviewer", "weight": 10 }
+      ],
+      "negativeKeywords": [
+        { "term": "docs only", "weight": 6 },
+        { "term": "no validation", "weight": 8 },
+        { "term": "skip tests", "weight": 8 }
+      ]
+    },
+    {
       "id": "cplayout_kb_curator",
       "skill": "cplayout-expert-agent-panels",
       "agent": "cplayout_kb_curator",

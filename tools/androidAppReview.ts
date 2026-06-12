@@ -920,7 +920,7 @@ function buildPanelDecision(input: {
     reviewer("interface reviewer", 0.24, scoreFromFindings({ critical, high, medium, low }, { critical: 0.32, high: 0.18, medium: 0.003, low: 0.001 }), blocked, hardVetoTriggered, "Layout density, touch targets, drawers, HUDs, and text-fit evidence."),
     reviewer("native/runtime reviewer", 0.22, scoreFromFindings({ critical, high, medium, low }, { critical: 0.32, high: 0.16, medium: 0.002, low: 0.001 }), blocked, hardVetoTriggered, "ADB, dev-client launch, UIAutomator XML, screenshots, and logcat evidence."),
     reviewer("gis/map reviewer", 0.18, gisScore(input.findings), blocked, hardVetoTriggered, "MapLibre route, resource URL errors, attribution boundaries, and paid/keyed source vetoes."),
-    reviewer("database/archive reviewer", 0.18, 1, blocked, hardVetoTriggered, "SQLite/ZIP claims remain behind the schema-v10 native report gate."),
+    reviewer("database/archive reviewer", 0.18, 1, blocked, hardVetoTriggered, "SQLite/ZIP claims remain behind the current schema-v11 native report gate."),
     reviewer("kb curator", 0.18, input.ocrCvAvailable ? 0.95 : 0.82, blocked, hardVetoTriggered, "Report durability, source-ledger boundaries, and OCR/CV advisory status."),
   ];
   const weightedScore = reviewers.reduce((sum, item) => sum + item.weight * item.score, 0);
@@ -959,7 +959,7 @@ function hardVetoesFor(findings: Finding[], scenarioResults: ScenarioResult[]): 
       id: "native-production-claim-without-schema10-proof",
       triggered: false,
       evidence: [],
-      boundary: "Native SQLite and ZIP sharing production claims require a separately completed schema-v10 Android native verification report.",
+      boundary: "Native SQLite and ZIP sharing production claims require a separately completed current-schema Android native verification report.",
     },
     {
       id: "raw-pmtiles-mbtiles-native-proof-claim",

@@ -32,8 +32,8 @@ export type AndroidNativeInAppProofPayload = Pick<
   error?: string;
 };
 
-const PROOF_PROJECT_ID = "cplayout-android-native-schema-v10-proof";
-const PROOF_PROJECT_NAME = "CPLayout Android Native Schema v10 Proof";
+const PROOF_PROJECT_ID = `cplayout-android-native-schema-v${ANDROID_NATIVE_REQUIRED_SQLITE_VERSION}-proof`;
+const PROOF_PROJECT_NAME = `CPLayout Android Native Schema v${ANDROID_NATIVE_REQUIRED_SQLITE_VERSION} Proof`;
 
 export async function runAndroidNativeProofRuntimeAsync(): Promise<AndroidNativeInAppProofPayload> {
   const generatedAt = new Date().toISOString();
@@ -204,11 +204,11 @@ function proofMapPackage(generatedAt: string): MapPackageManifest {
     imageryProvenance: {
       providerId: "local_android_native_proof_fixture",
       providerName: "CPLayout local Android native proof fixture",
-      productId: "android-native-schema-v10-proof",
+      productId: `android-native-schema-v${ANDROID_NATIVE_REQUIRED_SQLITE_VERSION}-proof`,
       acquisitionYear: 2026,
       sourceResolutionMeters: 1,
       originalCrs: sampleProject.projectCrs,
-      preprocessingSummary: "Proof-only local tile metadata exercises schema v10 map package columns without rendering or network use.",
+      preprocessingSummary: `Proof-only local tile metadata exercises schema v${ANDROID_NATIVE_REQUIRED_SQLITE_VERSION} map package columns without rendering or network use.`,
       accessedAt: generatedAt,
       attribution: "CPLayout generated local proof metadata",
       licenseText: "Generated proof metadata; no imagery tiles are bundled.",

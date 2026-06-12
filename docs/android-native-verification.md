@@ -23,9 +23,11 @@ Use this checklist before reporting native SQLite, native ZIP sharing, or native
 - Use `docs/android-native-verification-report-template.json` as the checked-in report shape. The observed evidence arrays start empty; fill them only from device SQL/query evidence. Runtime reports are intentionally ignored by Git unless a specific report is promoted intentionally.
 - Generated Android layout/app-review reports are local evidence artifacts. Promote only curated summaries with hashes under `docs/evidence/` when a claim must survive report cleanup.
 
-Historical Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) passed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` for Expo SQLite save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and schema migration evidence through schema v8. That report is historical evidence only and does not satisfy the current schema v10 native runtime gate.
+Historical Android proof note, 2026-06-03: Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) passed `npm run verify:android-native -- --report reports/android-native-verification/android-native-verification-20260603T034817Z.json` for Expo SQLite save/relaunch/list/load/delete, native share-sheet ZIP export, Android DocumentsUI ZIP import, and schema migration evidence through schema v8. That report is historical evidence only and does not satisfy the current schema v11 native runtime gate.
 
-Current Android proof status, 2026-06-05: `reports/android-native-verification/android-native-verification-20260605-134229571Z.json` validates on Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) for SQLite schema v10, migrations 1-10, map-package imagery provenance columns, retired review-table absence, native share-sheet ZIP export, and Android DocumentsUI ZIP import. Newer locally generated incomplete schema-v10 templates under `reports/android-native-verification/` are blocker evidence only; use a completed report path with `npm run verify:android-native -- --report <completed-report.json>` before native SQLite or ZIP sharing are reported as current for a new build/device.
+Historical Android proof note, 2026-06-05: `reports/android-native-verification/android-native-verification-20260605-134229571Z.json` validates on Samsung SM-P613 (`R52W20BK7XH`, Android 14/API 34) for SQLite schema v10, migrations 1-10, map-package imagery provenance columns, retired review-table absence, native share-sheet ZIP export, and Android DocumentsUI ZIP import. That report is artifact-specific historical evidence after the schema v11 migration and must not be used as current native SQLite/ZIP proof.
+
+Current Android proof status, 2026-06-11: no completed schema v11 Android SQLite/ZIP report is checked in or assumed current. Locally generated incomplete templates under `reports/android-native-verification/` are blocker evidence only; use a completed schema v11 report path with `npm run verify:android-native -- --report <completed-v11-report.json>` before native SQLite or ZIP sharing are reported as current for a new build/device.
 
 ## Android App Review Loop
 
@@ -39,12 +41,12 @@ The default scenarios are `map-workspace`, `map-drawers-open`, `map-drawers-clos
 
 The app-review report fails on blank or near-uniform screenshots, missing required UIAutomator route anchors, MapLibre `resourceURL` errors, or clickable controls overlapping Android system bars. It warns on dense edge/clutter metrics, duplicated labels, clipped OCR/text evidence, small touch targets, and overlapping click targets. UIAutomator XML is the primary source for labels, bounds, clickability, and route anchors; Tesseract OCR and OpenCV screenshot metrics are corroborating advisory evidence only.
 
-This loop does not satisfy Android native SQLite/ZIP proof, schema-v10 migrations, Android share-sheet/DocumentsUI proof, raw PMTiles/MBTiles rendering, iOS behavior, or production geometry correctness. Screenshots, XML, OCR, and CV evidence cannot populate or mutate canonical projected/local `XY`.
+This loop does not satisfy Android native SQLite/ZIP proof, schema-v11 migrations, Android share-sheet/DocumentsUI proof, raw PMTiles/MBTiles rendering, iOS behavior, or production geometry correctness. Screenshots, XML, OCR, and CV evidence cannot populate or mutate canonical projected/local `XY`.
 
 ## SQLite Project Store
 
 1. Open the app and navigate to `Files`.
-2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v10`.
+2. Confirm the backend panel reports `Expo SQLite`, runtime `native`, and schema version `v11`.
 3. Save the sample project.
 4. Close and relaunch the app.
 5. Refresh the project list and open the saved project.
@@ -63,10 +65,10 @@ This loop does not satisfy Android native SQLite/ZIP proof, schema-v10 migration
 
 ## Migration Evidence
 
-- `schema_migrations` contains ids `1` through `10`.
-- `PRAGMA user_version` returns `10`.
+- `schema_migrations` contains ids `1` through `11`.
+- `PRAGMA user_version` returns `11`.
 - `map_packages` has the tile metadata columns from migrations `3`, `8`, and `9`: `tile_content_type`, `tile_scheme`, `tilejson_url`, `tile_url_templates_json`, `vector_overlay_json`, `imagery_provenance_json`, `checksum_sha256`, and `install_status`.
-- The v10 migration has removed retired review tables: `layout_evidence`, `model_recommendations`, and `layout_decisions` are absent after migration.
+- The v10 migration has removed retired review tables: `layout_evidence`, `model_recommendations`, and `layout_decisions` are absent after migration, and the current v11 migration is present in `schema_migrations`.
 - Fill `sqlite.absentTables` in the report with exactly the retired review tables confirmed absent by SQL evidence: `layout_evidence`, `model_recommendations`, and `layout_decisions`.
 - Geometry rows and vertices are populated after save.
 

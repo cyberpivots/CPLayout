@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { validateImageryEvidencePacket } from "@cplayout/core";
-import { parseCompleteAndroidNativeVerificationReport } from "@cplayout/project-store";
+import { parseCompleteAndroidNativeVerificationReport, SQLITE_SCHEMA_VERSION } from "@cplayout/project-store";
 import {
   collectAndroidToolSnapshot,
   readExpoAndroidPackageName,
@@ -122,7 +122,7 @@ export function runRoadmapCompletion(options: RoadmapCompletionOptions): Roadmap
     ownerInputContract: {
       decisionRequired: false,
       resourceInputs: [
-        `Android native proof: keep a completed report under ${DEFAULT_ANDROID_NATIVE_REPORT_DIRECTORY}, connect an adb device/emulator with local.centerpivot.layout installed, or provide --android-report / CPLAYOUT_ANDROID_NATIVE_REPORT.`,
+        `Android native proof: keep a completed schema-v${SQLITE_SCHEMA_VERSION} report under ${DEFAULT_ANDROID_NATIVE_REPORT_DIRECTORY}, connect an adb device/emulator with local.centerpivot.layout installed, or provide --android-report / CPLAYOUT_ANDROID_NATIVE_REPORT.`,
         `Google Earth proof: provide --google-earth-manifest / CPLAYOUT_GOOGLE_EARTH_MANIFEST when the default ${DEFAULT_GOOGLE_EARTH_MANIFEST_PATH} is not the target proof.`,
         `Real pivot proof: place a calibrated operator-approved fixture at ${DEFAULT_REAL_PIVOT_FIXTURE_PATH}, or provide --real-pivot-fixtures / CPLAYOUT_REAL_PIVOT_FIXTURES.`,
         "Native MapLibre proof: provide a completed native render report with --native-maplibre-report / CPLAYOUT_NATIVE_MAPLIBRE_REPORT after a device run.",
@@ -396,7 +396,7 @@ function retiredReviewContractsGate(options: RoadmapCompletionOptions): RoadmapG
     repositoryTypesSource.includes("ProjectReviewData") || repositoryTypesSource.includes("loadProjectReviewDataAsync") || repositoryTypesSource.includes("saveProjectReviewDataAsync") ? "ProjectRepository still exposes review-data API" : "",
     archiveSource.includes("LEGACY_PROJECT_ARCHIVE_IGNORED_FILENAMES") ? "" : "archive importer lacks legacy review filename ignore list",
     archiveSource.includes("exports/layout-evidence.jsonl") && archiveSource.includes("exports/layout-decisions.jsonl") && archiveSource.includes("exports/model-recommendations.geojson") ? "" : "legacy review archive filenames are not explicitly ignored",
-    schemaSource.includes("SQLITE_SCHEMA_VERSION = 10") ? "" : "SQLite schema version was not incremented to 10",
+    SQLITE_SCHEMA_VERSION >= 10 ? "" : "SQLite schema version has not reached the retired-review migration gate",
     schemaSource.includes("DROP TABLE IF EXISTS layout_evidence") && schemaSource.includes("DROP TABLE IF EXISTS model_recommendations") && schemaSource.includes("DROP TABLE IF EXISTS layout_decisions") ? "" : "SQLite drop-review-contracts migration is missing",
   ].filter((value) => value.length > 0);
 

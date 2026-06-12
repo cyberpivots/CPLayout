@@ -41,7 +41,7 @@
 - Production web SQLite, because Expo SQLite web support is alpha and needs WASM plus COOP/COEP headers.
 - Native large-file import workflows beyond user-picked ZIP packages.
 - Advanced Google Earth constructs including NetworkLinks, overlays, 3D models, tours, embedded KMZ assets, style fidelity, and altitude/extrusion semantics as engineering data.
-- iOS native SQLite/FileSystem/Sharing runtime acceptance; current Android schema-v10 SQLite plus ZIP share/picker proof requires a newly completed report, while the completed 2026-06-03 Android report remains historical schema-v8 evidence.
+- iOS native SQLite/FileSystem/Sharing runtime acceptance; current Android schema-v11 SQLite plus ZIP share/picker proof requires a newly completed report, while the completed 2026-06-03 and 2026-06-05 Android reports remain historical schema-v8/schema-v10 evidence.
 - Full geometry editor commit/undo flows from draft vertices into project field and obstacle entities.
 - R-tree/FTS/SQLCipher configuration gates after target platform builds are established.
 - Live GNSS receiver transports and RTK correction workflows.
